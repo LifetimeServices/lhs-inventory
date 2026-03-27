@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LHS Inventory</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0f1f3d;--navym:#1a2f52;--navyl:#243a63;--gold:#c9a84c;--goldl:#e8c96a;
+--white:#fff;--red:#d94040;--green:#2d8c4e;--amber:#d97c20;
+--text:#1a1a2e;--muted:#6b7280;--bdr:#e2e0db;--surf:#fafaf8;
+--sh:0 2px 12px rgba(15,31,61,.10);--shlg:0 8px 32px rgba(15,31,61,.18);--r:10px;--rl:16px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-height:100vh}
+/* LOGIN */
+#ls{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--navy) 0%,var(--navym) 60%,#1e3a5f 100%);position:relative}
+#ls::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,transparent,transparent 40px,rgba(201,168,76,.03) 40px,rgba(201,168,76,.03) 80px)}
+.lc{background:var(--white);border-radius:var(--rl);padding:48px 44px;width:420px;box-shadow:var(--shlg);position:relative;z-index:1}
+.lc .mark{text-align:center;margin-bottom:32px}
+.lc .mark .m{display:inline-flex;align-items:center;background:var(--navy);color:var(--gold);
+  padding:10px 20px;border-radius:8px;font-size:22px;font-weight:700;letter-spacing:.05em}
+.lc .mark p{color:var(--muted);font-size:13px;margin-top:10px}
+.lc h2{font-size:22px;font-weight:600;margin-bottom:24px;color:var(--navy)}
+.fg{margin-bottom:18px}
+.fg label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px}
+.fg input{width:100%;padding:11px 14px;border:1.5px solid var(--bdr);border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--surf);transition:border-color .15s}
+.fg input:focus{outline:none;border-color:var(--navy)}
+.btnl{width:100%;padding:13px;background:var(--navy);color:var(--gold);border:none;border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s}
+.btnl:hover{background:var(--navyl)}
+.lerr{color:var(--red);font-size:13px;margin-top:10px;text-align:center;display:none}
+.lhint{margin-top:18px;padding-top:14px;border-top:1px solid var(--bdr);font-size:12px;color:var(--muted);text-align:center}
+/* APP */
+#app{display:none;flex-direction:column;min-height:100vh}
+.tb{background:var(--navy);height:56px;display:flex;align-items:center;padding:0 24px;gap:16px;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tbl{color:var(--gold);font-size:15px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.tbl span{color:rgba(255,255,255,.5);font-weight:300}
+.tbn{display:flex;gap:2px;flex:1;overflow-x:auto}
+.tbn::-webkit-scrollbar{display:none}
+.nb{padding:6px 14px;border-radius:6px;border:none;background:transparent;
+  color:rgba(255,255,255,.6);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s}
+.nb:hover{background:rgba(255,255,255,.08);color:var(--white)}
+.nb.active{background:rgba(201,168,76,.18);color:var(--gold)}
+.tbr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.up{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:20px;
+  padding:5px 14px;color:rgba(255,255,255,.8);font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.rb{background:var(--gold);color:var(--navy);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px}
+.lo{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);
+  border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;transition:all .15s}
+.lo:hover{border-color:var(--gold);color:var(--gold)}
+.main{flex:1;padding:28px;max-width:1400px;margin:0 auto;width:100%}
+.page{display:none}.page.active{display:block}
+.pt{font-size:22px;font-weight:700;color:var(--navy);margin-bottom:6px}
+.ps{font-size:14px;color:var(--muted);margin-bottom:24px}
+/* CARDS */
+.card{background:var(--white);border-radius:var(--rl);padding:24px;box-shadow:var(--sh);margin-bottom:20px}
+.ct{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px}
+/* STATS */
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.sc{background:var(--white);border-radius:var(--rl);padding:20px 22px;box-shadow:var(--sh);border-left:4px solid transparent}
+.sc.n{border-left-color:var(--navy)}.sc.g{border-left-color:var(--gold)}
+.sc.gr{border-left-color:var(--green)}.sc.r{border-left-color:var(--red)}.sc.a{border-left-color:var(--amber)}
+.sl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+.sv{font-size:32px;font-weight:700;color:var(--navy);font-family:'DM Mono',monospace}
+.ss{font-size:12px;color:var(--muted);margin-top:4px}
+/* TABLE */
+.tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bdr)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--navy);color:rgba(255,255,255,.85);padding:10px 14px;text-align:left;
+  font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#faf9f6}
+.bx{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600}
+.bg{background:#dcfce7;color:#15803d}.br{background:#fee2e2;color:#b91c1c}
+.ba{background:#fef3c7;color:#b45309}.bb{background:#dbeafe;color:#1d4ed8}
+.bgr{background:#f3f4f6;color:#6b7280}.bn{background:#e0e7f5;color:var(--navy)}
+/* FORM */
+.fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}
+.fl label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.fl input,.fl select,.fl textarea{width:100%;padding:10px 13px;border:1.5px solid var(--bdr);border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--surf);transition:border-color .15s}
+.fl input:focus,.fl select:focus,.fl textarea:focus{outline:none;border-color:var(--navy)}
+.fl textarea{resize:vertical;min-height:80px}
+/* BUTTONS */
+.btn{padding:9px 20px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.02em}
+.btn-n{background:var(--navy);color:var(--gold)}.btn-n:hover{background:var(--navyl)}
+.btn-g{background:var(--gold);color:var(--navy)}.btn-g:hover{background:var(--goldl)}
+.btn-o{background:transparent;border:1.5px solid var(--bdr);color:var(--text)}
+.btn-o:hover{border-color:var(--navy);color:var(--navy)}
+.btn-r{background:var(--red);color:var(--white)}
+.sm{padding:6px 12px;font-size:12px}
+.br2{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+/* ALERTS */
+.al{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.al-r{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+.al-g{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+.al-a{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.al-b{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+/* SECTION HDR */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.sh h3{font-size:16px;font-weight:600;color:var(--navy)}
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:4px;margin-bottom:20px;width:fit-content}
+.tab{padding:8px 18px;border-radius:7px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .15s}
+.tab.active{background:var(--navy);color:var(--gold)}
+/* MODAL */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center}
+.mo.open{display:flex}
+.md{background:var(--white);border-radius:var(--rl);padding:28px;width:580px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:var(--shlg)}
+.mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.mh h3{font-size:18px;font-weight:700;color:var(--navy)}
+.mx{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+/* QTY */
+.ql{color:var(--red);font-family:'DM Mono',monospace;font-size:13px;font-weight:500}
+.qo{color:var(--green);font-family:'DM Mono',monospace;font-size:13px;font-weight:500}
+.qw{color:var(--amber);font-family:'DM Mono',monospace;font-size:13px;font-weight:500}
+/* LINE TBL */
+.lt{width:100%;border-collapse:collapse;margin-top:8px}
+.lt th{background:var(--navy);color:rgba(255,255,255,.85);padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase}
+.lt td{padding:8px 10px;border-bottom:1px solid var(--bdr)}
+.lt input,.lt select{width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:13px;font-family:'DM Sans',sans-serif}
+.dx{background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;font-weight:700}
+/* INT */
+.ig{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.ic{border:1.5px solid var(--bdr);border-radius:var(--r);padding:18px}
+.ic.on2{border-color:#86efac;background:#f0fdf4}.ic.off2{border-color:#fca5a5;background:#fff5f5}
+.in2{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.is2{font-size:12px;font-weight:600}.is2.on{color:var(--green)}.is2.off{color:var(--red)}
+.id2{font-size:13px;color:var(--muted);margin:8px 0}
+.ifg{margin:10px 0 8px}
+.ifg label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px}
+.ifg input{width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif}
+/* TOAST */
+#tst{position:fixed;bottom:24px;right:24px;padding:13px 20px;background:var(--navy);color:var(--white);
+  border-radius:10px;font-size:14px;box-shadow:var(--shlg);z-index:999;
+  transform:translateY(80px);opacity:0;transition:all .3s;max-width:340px}
+#tst.show{transform:translateY(0);opacity:1}
+#tst.success{border-left:4px solid var(--green)}
+#tst.error{border-left:4px solid var(--red)}
+#tst.info{border-left:4px solid var(--gold)}
+/* LAYOUT */
+.tc{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:700px){.tc,.ig{grid-template-columns:1fr}.sg{grid-template-columns:1fr 1fr}.fr{grid-template-columns:1fr}.tbl span{display:none}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = 'https://vuwcnqvrgmdknvbajhtt.supabase.co';
+const SUPA_KEY = 'sb_publishable_Pr4OYz2a2rvhEtRjH_Nqkg_8PHTIeCb';
+const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
+</script>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="ls">
+  <div class="lc">
+    <div class="mark"><div class="m">LHS</div><p>Lifetime Home Services &mdash; Inventory</p></div>
+    <h2>Sign In</h2>
+    <div class="fg"><label>Email</label>
+      <input type="text" id="lu" placeholder="george@lifetimehomeservices.com" autocomplete="username">
+    </div>
+    <div class="fg"><label>Password</label>
+      <input type="password" id="lp" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
+    </div>
+    <button class="btnl" onclick="doLogin()">Sign In &rarr;</button>
+    <div class="lerr" id="lerr">Incorrect email or password.</div>
+    <div class="lhint">
+      <b><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="1176747e637674517d78777465787c74797e7c7462746367787274623f727e7c">[email&#160;protected]</a></b> / Radon2026!<br>
+      <b><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="86f5e5e9f2f2c6eaefe0e3f2efebe3eee9ebe3f5e3f4f0efe5e3f5a8e5e9eb">[email&#160;protected]</a></b> / Scott2026! &nbsp;|&nbsp;
+      <b><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="e18683cf8c8693a18d8992cf828e8c">[email&#160;protected]</a></b> / gbmgr
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="tb">
+    <div class="tbl">LHS <span>/ Inventory</span></div>
+    <div class="tbn" id="tnav"></div>
+    <div class="tbr">
+      <div class="up"><span id="un">&#8212;</span><span class="rb" id="ur">&#8212;</span></div>
+      <button class="lo" onclick="doLogout()">Sign Out</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="page active" id="p-dashboard"></div>
+    <div class="page" id="p-inventory"></div>
+    <div class="page" id="p-po"></div>
+    <div class="page" id="p-receive"></div>
+    <div class="page" id="p-transfer"></div>
+    <div class="page" id="p-vans"></div>
+    <div class="page" id="p-locations"></div>
+    <div class="page" id="p-locstock"></div>
+    <div class="page" id="p-testers"></div>
+    <div class="page" id="p-integrations"></div>
+    <div class="page" id="p-admin"></div>
+  </div>
+</div>
+
+<div id="tst"></div>
+
+<div class="mo" id="mo" onclick="if(event.target===this)cMod()">
+  <div class="md">
+    <div class="mh"><h3 id="mt">&#8212;</h3><button class="mx" onclick="cMod()">&#215;</button></div>
+    <div id="mb"></div>
+  </div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const CO={name:'Lifetime Home Services',addr:'3485 N 124th St, Brookfield WI 53005',phone:'608-215-2241'};
+
+const USERS=[
+  {name:'Scott Campbell',    email:'scott@lifetimehomeservices.com',  pw:'Scott2026!', role:'God View',        loc:'Green Bay WI'},
+  {name:'George Booth',      email:'george@lifetimehomeservices.com', pw:'Radon2026!', role:'God View',        loc:'Green Bay WI'},
+  {name:'Manager, Green Bay',email:'gb.mgr@lhs.com',                  pw:'gbmgr',      role:'Location Manager',loc:'Green Bay WI'},
+  {name:'Tech, Electric 1',  email:'tech1@lhs.com',                   pw:'tech1',      role:'Van Tech',        loc:'VAN-GB-01'},
+  {name:'Rep, Sales 1',      email:'sales1@lhs.com',                  pw:'sales1',     role:'Sales Rep',       loc:'SALES-01'},
+];
+
+const DIVS=['Electric','Epoxy','Closet Organization','Radon Mitigation','Radon Testing',
+  'Struxure','Hunter Douglas Blinds','Duct Cleaning','AeroSeal','AIH Security & Wiring','Handyman'];
+const VENS=['Home Depot Pro','Menards','Grainger','RadonAway','Epoxy Systems','ClosetMaid','Sherwin-Williams'];
+
+let WH=['Green Bay WI','Brookfield WI','Colorado'];
+let VH=['VAN-GB-01','VAN-BF-01','VAN-CO-01','WI-R1','WI-R2','SALES-01'];
+
+// ─── STORAGE (localStorage — works in any browser) ───────────────────────────
+const S={
+  get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+};
+
+function seed(){
+  if(S.get('lhs:ok')) return rebuildLists();
+  S.set('lhs:items',[
+    {sku:'LHS-EL-001',name:'15A Single Pole Breaker',division:'Electric',unit:'ea',vendor:'Home Depot Pro',cost:8.49,min:10,max:50},
+    {sku:'LHS-EP-001',name:'Epoxy Part A - 5 Gal',   division:'Epoxy',   unit:'gal',vendor:'Epoxy Systems', cost:142,min:5, max:25},
+    {sku:'LHS-RD-001',name:'RadonAway GP201 Fan',     division:'Radon Mitigation',unit:'ea',vendor:'RadonAway',cost:89.99,min:3,max:15},
+    {sku:'LHS-AI-001',name:'Cat6 Cable 1000ft Spool', division:'AIH Security & Wiring',unit:'spool',vendor:'Grainger',cost:189,min:2,max:10},
+  ]);
+  S.set('lhs:ls',[
+    {sku:'LHS-EL-001',item:'15A Single Pole Breaker',location:'Green Bay WI', qty:10,min:40,max:50,bin:'A-12'},
+    {sku:'LHS-EP-001',item:'Epoxy Part A - 5 Gal',   location:'Green Bay WI', qty:18,min:5, max:25,bin:'B-03'},
+    {sku:'LHS-RD-001',item:'RadonAway GP201 Fan',     location:'Green Bay WI', qty:9, min:3, max:15,bin:'C-07'},
+    {sku:'LHS-AI-001',item:'Cat6 Cable 1000ft Spool', location:'Green Bay WI', qty:6, min:2, max:10,bin:'D-01'},
+    {sku:'LHS-RD-001',item:'RadonAway GP201 Fan',     location:'Brookfield WI',qty:32,min:3, max:30,bin:''},
+  ]);
+  S.set('lhs:vi',[
+    {sku:'LHS-EL-001',item:'15A Single Pole Breaker',vehicle:'VAN-GB-01',division:'Electric',qty:2, min:6,max:12,tech:'TEST TECH'},
+    {sku:'LHS-EL-001',item:'15A Single Pole Breaker',vehicle:'VAN-BF-01',division:'Electric',qty:12,min:2,max:12,tech:'TEST TECH'},
+    {sku:'LHS-EP-001',item:'Epoxy Part A - 5 Gal',   vehicle:'VAN-GB-01',division:'Epoxy',   qty:4, min:1,max:6, tech:'TEST TECH'},
+    {sku:'LHS-RD-001',item:'RadonAway GP201 Fan',     vehicle:'VAN-CO-01',division:'Radon Mitigation',qty:2,min:1,max:3,tech:'TEST TECH'},
+  ]);
+  S.set('lhs:pos',[
+    {id:'PO-123',created:'2026-03-24',vendor:'RadonAway',location:'Green Bay WI',
+     status:'Partial - Awaiting Balance',notes:'Short: RadonAway GP201 Fan (2/5)',receiptValue:179.98,
+     lines:[{sku:'LHS-RD-001',item:'RadonAway GP201 Fan',qtyOrdered:5,qtyReceived:2,cost:89.99,status:'Short'}]},
+  ]);
+  S.set('lhs:ts',[
+    {id:'TEST-001',type:'Charcoal',  serial:'SN-CH-001',status:'At Customer', vehicle:'SALES-01',customer:'Johnson, Robert',phone:'920-555-0101',address:'456 Oak Ave Green Bay WI',dropDate:'2026-03-20'},
+    {id:'TEST-002',type:'Electronic',serial:'SN-EL-001',status:'At Customer', vehicle:'VAN-GB-01',customer:'Williams, Sarah',phone:'920-555-0202',address:'789 Elm St Appleton WI',  dropDate:'2026-03-21'},
+    {id:'TEST-003',type:'Electronic',serial:'SN-EL-002',status:'At Warehouse',vehicle:'',customer:'',phone:'',address:'',dropDate:''},
+  ]);
+  S.set('lhs:xfrs',[]);
+  S.set('lhs:locs',[
+    {name:'Green Bay WI', type:'Warehouse',   region:'Wisconsin',active:true,addr:'1227 S Maple Ave, Green Bay WI'},
+    {name:'Brookfield WI',type:'Warehouse',   region:'Wisconsin',active:true,addr:'3485 N 124th St, Brookfield WI'},
+    {name:'Colorado',     type:'Warehouse',   region:'Colorado', active:true,addr:'2603 E 120th Ave, Thornton CO'},
+    {name:'VAN-GB-01',type:'Service Van',region:'',active:true,addr:''},
+    {name:'VAN-BF-01',type:'Service Van',region:'',active:true,addr:''},
+    {name:'VAN-CO-01',type:'Service Van',region:'',active:true,addr:''},
+    {name:'WI-R1',    type:'Service Van',region:'',active:true,addr:''},
+    {name:'WI-R2',    type:'Service Van',region:'',active:true,addr:''},
+    {name:'SALES-01', type:'Sales Vehicle',region:'',active:true,addr:''},
+  ]);
+  S.set('lhs:ok',true);
+  rebuildLists();
+}
+
+function rebuildLists(){
+  const locs=S.get('lhs:locs')||[];
+  WH=locs.filter(l=>l.active&&l.type==='Warehouse').map(l=>l.name);
+  VH=locs.filter(l=>l.active&&(l.type==='Service Van'||l.type==='Sales Vehicle')).map(l=>l.name);
+}
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+let CU=null;
+
+function doLogin(){
+  const u=document.getElementById('lu').value.trim().toLowerCase();
+  const p=document.getElementById('lp').value.trim();
+  const user=USERS.find(x=>x.email.toLowerCase()===u&&x.pw===p);
+  if(!user){document.getElementById('lerr').style.display='block';return}
+  CU=user;
+  sessionStorage.setItem('lhs_s',JSON.stringify({e:user.email,p:user.pw}));
+  startApp();
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&document.getElementById('ls').style.display!=='none') doLogin();
+});
+
+function doLogout(){
+  CU=null; sessionStorage.removeItem('lhs_s');
+  document.getElementById('app').style.display='none';
+  document.getElementById('ls').style.display='flex';
+  document.getElementById('lp').value='';
+  document.getElementById('lerr').style.display='none';
+}
+
+// Restore session on browser refresh
+window.addEventListener('DOMContentLoaded',()=>{
+  const s=sessionStorage.getItem('lhs_s');
+  if(s){
+    try{
+      const d=JSON.parse(s);
+      const user=USERS.find(x=>x.email===d.e&&x.pw===d.p);
+      if(user){CU=user;startApp();return}
+    }catch{}
+  }
+  document.getElementById('ls').style.display='flex';
+});
+
+function startApp(){
+  document.getElementById('ls').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('un').textContent=CU.name.split(' ')[0];
+  document.getElementById('ur').textContent=CU.role==='God View'?'ADMIN':CU.role.toUpperCase().replace(' ','_');
+  seed(); buildNav(); showPage('dashboard');
+}
+
+// ─── NAV ─────────────────────────────────────────────────────────────────────
+const NAV=[
+  {id:'dashboard',   l:'&#128202; Dashboard'},
+  {id:'inventory',   l:'&#128230; Inventory'},
+  {id:'po',          l:'&#128717; Purchase Orders'},
+  {id:'receive',     l:'&#128229; Receive'},
+  {id:'transfer',    l:'&#8635; Transfer'},
+  {id:'vans',        l:'&#128656; Van Stock'},
+  {id:'locations',   l:'&#128205; Locations'},
+  {id:'locstock',    l:'&#127968; Location Stock'},
+  {id:'testers',     l:'&#128300; Testers'},
+  {id:'integrations',l:'&#9889; Integrations'},
+  {id:'admin',       l:'&#9881;&#65039; Admin'},
+];
+const TP=['dashboard','vans','transfer','testers'];
+const MP=['dashboard','inventory','po','receive','transfer','vans','locations','locstock','testers','integrations'];
+const SP=['dashboard','vans','testers'];
+
+function buildNav(){
+  const r=CU.role;
+  const ok=r==='God View'?NAV.map(n=>n.id):r==='Location Manager'?MP:r==='Van Tech'?TP:SP;
+  const c=document.getElementById('tnav'); c.innerHTML='';
+  NAV.filter(n=>ok.includes(n.id)).forEach(n=>{
+    const b=document.createElement('button');
+    b.className='nb'; b.innerHTML=n.l; b.dataset.p=n.id;
+    b.onclick=()=>showPage(n.id); c.appendChild(b);
+  });
+}
+
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  const pg=document.getElementById('p-'+id); if(!pg) return;
+  pg.classList.add('active');
+  const b=document.querySelector(`.nb[data-p="${id}"]`); if(b) b.classList.add('active');
+  pg.innerHTML=buildPage(id);
+}
+
+function buildPage(id){
+  return ({
+    dashboard:bDash, inventory:bInv, po:bPO, receive:bRecv,
+    transfer:bXfr, vans:bVans, locations:bLocs, locstock:bLS,
+    testers:bTest,
+    integrations:bInt, admin:bAdmin
+  }[id]||bDash)();
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+const td=()=>new Date().toISOString().split('T')[0];
+const f$=n=>'$'+Number(n||0).toFixed(2);
+const bx=(s,c)=>`<span class="bx ${c}">${s}</span>`;
+const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')?'ba':'bgr';
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+function bDash(){
+  const it=S.get('lhs:items')||[],ls=S.get('lhs:ls')||[],vi=S.get('lhs:vi')||[],pos=S.get('lhs:pos')||[];
+  const lLoc=ls.filter(r=>r.qty<r.min).length,lVan=vi.filter(r=>r.qty<r.min).length;
+  const oPOs=pos.filter(p=>['Pending','Partial - Awaiting Balance'].includes(p.status)).length;
+  const val=ls.reduce((s,r)=>{const i=it.find(x=>x.sku===r.sku);return s+r.qty*(i?.cost||0)},0);
+  const low=[...ls.filter(r=>r.qty<r.min).map(r=>({...r,w:r.location})),
+             ...vi.filter(r=>r.qty<r.min).map(r=>({...r,w:r.vehicle}))];
+  const opl=pos.filter(p=>['Pending','Partial - Awaiting Balance'].includes(p.status));
+  return`<div class="pt">Command Center</div>
+  <div class="ps">${CO.name} &mdash; ${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+  <div class="sg">
+    <div class="sc n"><div class="sl">Total SKUs</div><div class="sv">${it.length}</div><div class="ss">Active items</div></div>
+    <div class="sc ${lLoc+lVan>0?'r':'gr'}"><div class="sl">Low / Out</div><div class="sv">${lLoc+lVan}</div><div class="ss">${lLoc} locations &middot; ${lVan} vans</div></div>
+    <div class="sc g"><div class="sl">Inventory Value</div><div class="sv">$${Math.round(val).toLocaleString()}</div><div class="ss">Warehouse stock</div></div>
+    <div class="sc ${oPOs>0?'a':'gr'}"><div class="sl">Open POs</div><div class="sv">${oPOs}</div><div class="ss">Awaiting receipt</div></div>
+    <div class="sc n"><div class="sl">Vehicles</div><div class="sv">${VH.length}</div><div class="ss">${WH.length} warehouses &middot; ${DIVS.length} divisions</div></div>
+  </div>
+  <div class="tc">
+    <div class="card"><div class="sh"><h3 style="color:var(--red)">&#9888; Restock (${low.length})</h3><button class="btn btn-n sm" onclick="showPage('transfer')">Transfer &rarr;</button></div>
+      ${low.length?`<div class="tw"><table><thead><tr><th>Item</th><th>Location</th><th>Have</th><th>Need</th></tr></thead><tbody>
+      ${low.map(r=>`<tr><td style="font-weight:500">${r.item||r.sku}</td><td>${r.w}</td><td class="ql">${r.qty}</td><td>${r.min}</td></tr>`).join('')}</tbody></table></div>`:
+      '<div style="text-align:center;color:var(--muted);padding:20px">&#10003; All stock OK</div>'}
+    </div>
+    <div class="card"><div class="sh"><h3 style="color:var(--amber)">&#128230; Open POs (${opl.length})</h3><button class="btn btn-n sm" onclick="showPage('po')">View &rarr;</button></div>
+      ${opl.length?`<div class="tw"><table><thead><tr><th>PO #</th><th>Vendor</th><th>Status</th></tr></thead><tbody>
+      ${opl.map(p=>`<tr><td style="font-family:'DM Mono',monospace;font-weight:700">${p.id}</td><td>${p.vendor}</td><td>${bx(p.status,ps(p.status))}</td></tr>`).join('')}</tbody></table></div>`:
+      '<div style="text-align:center;color:var(--muted);padding:20px">&#10003; No open POs</div>'}
+    </div>
+  </div>
+  <div class="card"><div class="sh"><h3>&#128202; Stock by Warehouse</h3></div>
+  <div class="tw"><table><thead><tr><th>Item</th><th>SKU</th><th>Division</th>${WH.map(w=>`<th>${w}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+  ${it.map(i=>{const q=WH.map(w=>ls.find(r=>r.sku===i.sku&&r.location===w)?.qty||0);const t=q.reduce((a,b)=>a+b,0);
+    return`<tr><td style="font-weight:500">${i.name}</td><td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${i.sku}</td>
+    <td>${bx(i.division,'bn')}</td>${q.map((v,j)=>`<td class="${v<(ls.find(r=>r.sku===i.sku&&r.location===WH[j])?.min||0)?'ql':v===0?'qw':'qo'}">${v}</td>`).join('')}
+    <td style="font-weight:700;font-family:'DM Mono',monospace">${t}</td></tr>`;}).join('')}
+  </tbody></table></div></div>`;
+}
+
+// ─── INVENTORY ───────────────────────────────────────────────────────────────
+function bInv(){
+  const it=S.get('lhs:items')||[];
+  return`<div class="pt">Master Inventory</div><div class="ps">${it.length} SKUs</div>
+  <div class="sh"><div></div><button class="btn btn-n" onclick="oAddItem()">+ Add Item</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>SKU</th><th>Item Name</th><th>Division</th><th>Unit</th><th>Vendor</th><th>Cost</th><th>Min</th><th>Max</th><th></th></tr></thead>
+  <tbody>${it.map((i,x)=>`<tr>
+    <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)">${i.sku}</td>
+    <td style="font-weight:500">${i.name}</td><td>${bx(i.division,'bn')}</td>
+    <td>${i.unit}</td><td style="color:var(--muted);font-size:12px">${i.vendor}</td>
+    <td style="font-family:'DM Mono',monospace">${f$(i.cost)}</td><td>${i.min}</td><td>${i.max}</td>
+    <td><button class="btn btn-o sm" onclick="oEditItem(${x})">Edit</button></td>
+  </tr>`).join('')}</tbody></table></div></div>`;
+}
+function oAddItem(){
+  oMod('Add Item',`<div class="fr">
+    <div class="fl"><label>SKU</label><input id="mi0" placeholder="LHS-XX-001"></div>
+    <div class="fl"><label>Name</label><input id="mi1"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Division</label><select id="mi2">${DIVS.map(d=>`<option>${d}</option>`).join('')}</select></div>
+    <div class="fl"><label>Unit</label><select id="mi3"><option>ea</option><option>gal</option><option>qt</option><option>pint</option><option>lb</option><option>oz</option><option>spool</option><option>box</option><option>bag</option><option>ft</option><option>roll</option></select></div>
+    <div class="fl"><label>Vendor</label><select id="mi4">${(S.get('lhs:vens')||VENS.map(x=>({name:x}))).map(v=>`<option>${typeof v==='string'?v:v.name}</option>`).join('')}</select></div>
+  </div><div class="fr">
+    <div class="fl"><label>Cost $</label><input type="number" id="mi5" step="0.01"></div>
+    <div class="fl"><label>Min</label><input type="number" id="mi6" value="0"></div>
+    <div class="fl"><label>Max</label><input type="number" id="mi7" value="0"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svItem()">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svItem(){
+  const o={sku:v('mi0'),name:v('mi1'),division:v('mi2'),unit:v('mi3'),vendor:v('mi4'),
+    cost:pf('mi5'),min:pi('mi6'),max:pi('mi7')};
+  if(!o.sku||!o.name){tst('SKU and Name required','error');return}
+  const it=S.get('lhs:items')||[];it.push(o);S.set('lhs:items',it);
+  cMod();tst(`${o.name} added`,'success');showPage('inventory');
+}
+function oEditItem(x){
+  const it=S.get('lhs:items')||[];const i=it[x];
+  oMod('Edit: '+i.name,`<div class="fr">
+    <div class="fl"><label>SKU</label><input id="ei0" value="${i.sku}"></div>
+    <div class="fl"><label>Name</label><input id="ei1" value="${i.name}"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Cost</label><input type="number" id="ei2" value="${i.cost}" step="0.01"></div>
+    <div class="fl"><label>Min</label><input type="number" id="ei3" value="${i.min}"></div>
+    <div class="fl"><label>Max</label><input type="number" id="ei4" value="${i.max}"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svEdit(${x})">Save</button>
+  <button class="btn btn-r sm" onclick="delItem(${x})">Delete</button>
+  <button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svEdit(x){const it=S.get('lhs:items')||[];
+  it[x].sku=v('ei0');it[x].name=v('ei1');it[x].cost=pf('ei2');it[x].min=pi('ei3');it[x].max=pi('ei4');
+  S.set('lhs:items',it);cMod();tst('Updated','success');showPage('inventory');}
+function delItem(x){if(!confirm('Delete?'))return;const it=S.get('lhs:items')||[];
+  it.splice(x,1);S.set('lhs:items',it);cMod();tst('Deleted','info');showPage('inventory');}
+
+// ─── PO ──────────────────────────────────────────────────────────────────────
+function bPO(){
+  const pos=S.get('lhs:pos')||[];
+  return`<div class="pt">Purchase Orders</div><div class="ps">Create, track, and receive vendor orders</div>
+  <div class="sh"><div></div><button class="btn btn-n" onclick="oPO()">+ Create PO</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Location</th><th>Status</th><th>Value</th><th>Notes</th><th></th></tr></thead>
+  <tbody>${pos.length?pos.map((p,i)=>`<tr>
+    <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${p.id}</td>
+    <td style="color:var(--muted);font-size:12px">${p.created}</td>
+    <td style="font-weight:500">${p.vendor}</td><td>${p.location}</td>
+    <td>${bx(p.status,ps(p.status))}</td>
+    <td style="font-family:'DM Mono',monospace">${f$(p.receiptValue)}</td>
+    <td style="font-size:12px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.notes||''}</td>
+    <td style="white-space:nowrap"><button class="btn btn-o sm" onclick="vPO(${i})">View</button>
+    ${['Pending','Partial - Awaiting Balance'].includes(p.status)?`<button class="btn sm btn-g" onclick="showPage('receive')">Receive</button>`:''}</td>
+  </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No POs yet.</td></tr>'}
+  </tbody></table></div></div>`;
+}
+
+let _pli=[],_pit=[];
+
+// ─── PO ID GENERATION ────────────────────────────────────────────────────────
+function genPOId(){
+  const now=new Date();
+  const mm=String(now.getMonth()+1).padStart(2,'0');
+  const dd=String(now.getDate()).padStart(2,'0');
+  const yy=String(now.getFullYear()).slice(-2);
+  const dateStr=`${mm}/${dd}/${yy}`;
+  // Get next global sequence number (never resets, never duplicates)
+  let seq=(S.get('lhs:poseq')||0)+1;
+  S.set('lhs:poseq',seq);
+  return `PO - ${dateStr} - ${String(seq).padStart(4,'0')}`;
+}
+
+function oPO(){
+  _pli=[];_pit=S.get('lhs:items')||[];
+  oMod('Create PO',`<div class="fr">
+    <div class="fl"><label>PO #</label><input id="p0" value="${genPOId()}"></div>
+    <div class="fl"><label>Vendor</label><select id="p1">${(S.get('lhs:vens')||VENS.map(x=>({name:x}))).map(v=>`<option>${typeof v==='string'?v:v.name}</option>`).join('')}</select></div>
+    <div class="fl"><label>Deliver To</label><select id="p2">${WH.map(w=>`<option>${w}</option>`).join('')}</select></div>
+  </div><div class="fr">
+    <div class="fl"><label>Date</label><input type="date" id="p3" value="${td()}"></div>
+    <div class="fl"><label>Send Method</label><select id="p4"><option>Email</option><option>Phone</option><option>Online Portal</option></select></div>
+  </div>
+  <div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Line Items</label>
+      <button class="btn sm btn-o" onclick="addPL()">+ Add Item</button>
+    </div>
+    <div class="tw"><table class="lt"><thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Unit Cost</th><th>Ext</th><th></th></tr></thead>
+    <tbody id="ptb"></tbody></table></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Notes</label><textarea id="p5" placeholder="Optional"></textarea></div>
+  <div class="br2"><button class="btn btn-n" onclick="svPO()">Create PO</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+  addPL();
+}
+function addPL(){
+  const idx=_pli.length; _pli.push({sku:'',item:'',qty:1,cost:0});
+  const tb=document.getElementById('ptb'); if(!tb) return;
+  const tr=document.createElement('tr'); tr.id='pl'+idx;
+  tr.innerHTML=`<td><select onchange="plI(${idx},this)" style="width:160px">
+    <option value="">&#8212; Select &#8212;</option>
+    ${_pit.map(i=>`<option value="${i.sku}" data-c="${i.cost||0}">${i.name}</option>`).join('')}
+  </select></td>
+  <td><input id="pls${idx}" readonly style="width:85px;background:#f5f5f5"></td>
+  <td><input type="number" id="plq${idx}" value="1" min="1" style="width:55px" oninput="plE(${idx})"></td>
+  <td><input type="number" id="plc${idx}" value="0" step="0.01" style="width:65px" oninput="plE(${idx})"></td>
+  <td id="ple${idx}" style="font-family:'DM Mono',monospace">$0.00</td>
+  <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
+  tb.appendChild(tr);
+}
+function plI(i,s){
+  const o=s.options[s.selectedIndex];const it=_pit.find(x=>x.sku===s.value);
+  g('pls'+i).value=s.value; g('plc'+i).value=parseFloat(o.dataset.c||0).toFixed(2);
+  _pli[i]={sku:s.value,item:it?.name||'',qty:1,cost:parseFloat(o.dataset.c||0)}; plE(i);
+}
+function plE(i){const q=pf('plq'+i),c=pf('plc'+i);const e=g('ple'+i);
+  if(e) e.textContent='$'+(q*c).toFixed(2); if(_pli[i]){_pli[i].qty=q;_pli[i].cost=c;}}
+function svPO(){
+  const lines=_pli.filter(l=>l.sku).map(l=>({...l,qtyOrdered:l.qty,qtyReceived:0,status:'Open'}));
+  if(!lines.length){tst('Add at least one item','error');return}
+  const pos=S.get('lhs:pos')||[];
+  pos.unshift({id:v('p0'),created:v('p3'),vendor:v('p1'),location:v('p2'),
+    status:'Pending',notes:v('p5'),receiptValue:0,lines,
+    totalValue:lines.reduce((s,l)=>s+l.qty*l.cost,0)});
+  S.set('lhs:pos',pos);cMod();tst('PO created','success');showPage('po');
+}
+function vPO(i){
+  const p=(S.get('lhs:pos')||[])[i];
+  oMod('PO &#8212; '+p.id,`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+    <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Vendor</div><div style="font-weight:600;margin-top:2px">${p.vendor}</div></div>
+    <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Location</div><div style="font-weight:600;margin-top:2px">${p.location}</div></div>
+    <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Created</div><div style="margin-top:2px">${p.created}</div></div>
+    <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Status</div><div style="margin-top:2px">${bx(p.status,ps(p.status))}</div></div>
+  </div>
+  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Status</th><th>Cost</th></tr></thead>
+  <tbody>${(p.lines||[]).map(l=>`<tr><td style="font-weight:500">${l.item||l.sku}</td>
+    <td>${l.qtyOrdered}</td><td>${l.qtyReceived||0}</td>
+    <td>${bx(l.status||'Open',l.status==='Received'?'bg':l.status==='Short'?'ba':'bb')}</td>
+    <td>${f$(l.cost)}</td></tr>`).join('')}</tbody></table></div>
+  ${p.notes?`<div class="al al-a">&#128221; ${p.notes}</div>`:''}
+  <div class="br2"><button class="btn btn-o" onclick="cMod()">Close</button></div>`);
+}
+
+// ─── RECEIVE ─────────────────────────────────────────────────────────────────
+function bRecv(){
+  const pos=S.get('lhs:pos')||[];
+  const op=pos.filter(p=>['Pending','Partial - Awaiting Balance'].includes(p.status));
+  return`<div class="pt">Receive Inventory</div><div class="ps">Select a PO &#8594; confirm quantities &#8594; post to stock</div>
+  <div class="card"><div class="fr">
+    <div class="fl"><label>Select PO</label><select id="rsel" onchange="lRecv()">
+      <option value="">&#8212; Select PO &#8212;</option>
+      ${op.map(p=>`<option value="${pos.indexOf(p)}">${p.id} &#8212; ${p.vendor} &#8594; ${p.location}</option>`).join('')}
+    </select></div>
+    <div class="fl"><label>Received By</label><input id="rby" value="${CU.name}" readonly style="background:#f5f5f5"></div>
+    <div class="fl"><label>Date</label><input type="date" id="rdt" value="${td()}"></div>
+  </div></div>
+  <div id="rlines"></div>`;
+}
+function lRecv(){
+  const sel=g('rsel');const idx=parseInt(sel.value);
+  if(isNaN(idx)){document.getElementById('rlines').innerHTML='';return}
+  const pos=S.get('lhs:pos')||[];const p=pos[idx];
+  document.getElementById('rlines').innerHTML=`<div class="card">
+  <div class="sh"><h3>PO ${p.id} &#8212; ${p.vendor} &#8594; ${p.location}</h3></div>
+  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Prev</th><th>Receive Now</th><th>Balance</th></tr></thead>
+  <tbody>${(p.lines||[]).map((l,i)=>`<tr>
+    <td style="font-weight:500">${l.item||l.sku}</td><td>${l.qtyOrdered}</td><td>${l.qtyReceived||0}</td>
+    <td><input type="number" id="rl${i}" value="${l.qtyOrdered-(l.qtyReceived||0)}" min="0"
+      style="width:70px;padding:6px 8px;border:1.5px solid var(--bdr);border-radius:6px;font-size:14px;text-align:center"
+      oninput="uBal(${i},${l.qtyOrdered},${l.qtyReceived||0})"></td>
+    <td id="bal${i}" style="color:var(--amber);font-family:'DM Mono',monospace">${l.qtyOrdered-(l.qtyReceived||0)} left</td>
+  </tr>`).join('')}</tbody></table></div>
+  <div class="br2"><button class="btn btn-n" onclick="postRecv(${idx})">&#10003; Post to Stock</button>
+  <button class="btn btn-o" onclick="document.getElementById('rlines').innerHTML=''">Cancel</button></div>
+  </div>`;
+}
+function uBal(i,o,pr){const now=pi2('rl'+i);const bal=o-pr-now;const el=g('bal'+i);
+  if(el){el.textContent=bal>0?bal+' left':'&#10003; Done';el.style.color=bal>0?'var(--amber)':'var(--green)';}}
+function postRecv(pi3){
+  const pos=S.get('lhs:pos')||[];const ls=S.get('lhs:ls')||[];const p=pos[pi3];let short=false;
+  const dt=v('rdt');
+  (p.lines||[]).forEach((l,i)=>{
+    const now=pi2('rl'+i);
+    l.qtyReceived=(l.qtyReceived||0)+now;
+    l.status=l.qtyReceived>=l.qtyOrdered?'Received':'Short';
+    if(l.status==='Short') short=true;
+    if(now>0){const ex=ls.find(r=>r.sku===l.sku&&r.location===p.location);
+      if(ex) ex.qty+=now; else ls.push({sku:l.sku,item:l.item,location:p.location,qty:now,min:0,max:0,bin:''});}
+  });
+  p.status=(p.lines||[]).every(l=>l.status==='Received')?'Received in Full':'Partial - Awaiting Balance';
+  p.receivedDate=dt;p.receivedBy=CU.name;
+  p.receiptValue=(p.lines||[]).reduce((s,l)=>s+(l.qtyReceived||0)*l.cost,0);
+  if(short) p.notes='Short: '+(p.lines||[]).filter(l=>l.status==='Short')
+    .map(l=>`${l.item} (${l.qtyReceived}/${l.qtyOrdered})`).join(', ');
+  pos[pi3]=p; S.set('lhs:pos',pos); S.set('lhs:ls',ls);
+  tst(p.status==='Received in Full'?`${p.id} fully received`:`${p.id} partial — balance due`,
+    p.status==='Received in Full'?'success':'info');
+  showPage('receive');
+}
+
+// ─── TRANSFER ────────────────────────────────────────────────────────────────
+let _xl=[],_xi=[];
+function bXfr(){
+  const xfrs=S.get('lhs:xfrs')||[];
+  return`<div class="pt">Vehicle Transfer</div><div class="ps">Move inventory between warehouses and vehicles</div>
+  <div class="card"><div class="ct">New Transfer</div>
+  <div class="fr">
+    <div class="fl"><label>From</label><select id="xf" onchange="xUpA()">
+      <option value="">&#8212; Source &#8212;</option>
+      ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+      ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+    </select></div>
+    <div class="fl"><label>To</label><select id="xt">
+      <option value="">&#8212; Destination &#8212;</option>
+      ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+      ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+    </select></div>
+    <div class="fl"><label>Reason</label><select id="xr">
+      <option>Van Restock</option><option>Warehouse to Van</option><option>Van to Warehouse</option>
+      <option>Van to Van</option><option>Return</option>
+    </select></div>
+  </div>
+  <div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Items</label>
+      <button class="btn sm btn-o" onclick="addXL()">+ Add Item</button>
+    </div>
+    <div class="tw"><table class="lt"><thead><tr><th>Item</th><th>SKU</th><th>Available</th><th>Qty</th><th></th></tr></thead>
+    <tbody id="xtb"></tbody></table></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Notes</label><input id="xn" placeholder="Optional"></div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="postXfr()">&#9654; Log Transfer</button>
+    <button class="btn btn-g" onclick="restMax()">&#9889; Restock Van to Max</button>
+  </div></div>
+  <div class="card"><div class="ct">Transfer History</div>
+  <div class="tw"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>Qty</th><th>Reason</th><th>By</th></tr></thead>
+  <tbody>${xfrs.length?[...xfrs].reverse().slice(0,20).map(t=>`<tr>
+    <td style="font-size:12px;color:var(--muted)">${t.date}</td><td>${t.from}</td><td>${t.to}</td>
+    <td style="font-weight:500">${t.item}</td>
+    <td style="font-family:'DM Mono',monospace;font-weight:700">${t.qty}</td>
+    <td style="color:var(--muted);font-size:12px">${t.reason}</td>
+    <td style="color:var(--muted);font-size:12px">${t.by||'&#8212;'}</td>
+  </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No transfers yet</td></tr>'}
+  </tbody></table></div></div>`;
+}
+function addXL(){
+  if(!_xi.length) _xi=S.get('lhs:items')||[];
+  const idx=_xl.length; _xl.push({sku:'',item:'',qty:1});
+  const tb=g('xtb'); if(!tb) return;
+  const tr=document.createElement('tr'); tr.id='xl'+idx;
+  tr.innerHTML=`<td><select onchange="xlI(${idx},this)" style="width:160px">
+    <option value="">&#8212; Select &#8212;</option>
+    ${_xi.map(i=>`<option value="${i.sku}">${i.name}</option>`).join('')}
+  </select></td>
+  <td><input id="xls${idx}" readonly style="width:85px;background:#f5f5f5"></td>
+  <td id="xla${idx}" style="font-family:'DM Mono',monospace;color:var(--muted)">&#8212;</td>
+  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:55px"></td>
+  <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
+  tb.appendChild(tr);
+}
+function xlI(i,s){
+  const it=_xi.find(x=>x.sku===s.value);
+  g('xls'+i).value=s.value; _xl[i]={sku:s.value,item:it?.name||''}; xAvail(i);
+}
+function xAvail(i){
+  const from=v('xf');const sku=_xl[i]?.sku; if(!from||!sku) return;
+  let q=0;
+  if(WH.includes(from)) q=(S.get('lhs:ls')||[]).find(r=>r.sku===sku&&r.location===from)?.qty||0;
+  else q=(S.get('lhs:vi')||[]).find(r=>r.sku===sku&&r.vehicle===from)?.qty||0;
+  const el=g('xla'+i);if(el){el.textContent=q;el.style.color=q>0?'var(--green)':'var(--red)';}
+}
+function xUpA(){_xl.forEach((_,i)=>xAvail(i));}
+function postXfr(){
+  const from=v('xf');const to=v('xt');const reason=v('xr');const notes=v('xn');
+  if(!from||!to){tst('Select From and To','error');return}
+  if(from===to){tst('From and To cannot match','error');return}
+  const lines=_xl.filter(l=>l.sku); if(!lines.length){tst('Add at least one item','error');return}
+  const ls=S.get('lhs:ls')||[];const vi=S.get('lhs:vi')||[];const xfrs=S.get('lhs:xfrs')||[];
+  const errs=[];
+  lines.forEach((l,i)=>{
+    const qty=pi2('xlq'+i); if(!qty) return;
+    if(WH.includes(from)){const r=ls.find(x=>x.sku===l.sku&&x.location===from);
+      if(!r||r.qty<qty){errs.push(`Not enough ${l.item} at ${from}`);return} r.qty-=qty;
+    }else{const r=vi.find(x=>x.sku===l.sku&&x.vehicle===from);
+      if(!r||r.qty<qty){errs.push(`Not enough ${l.item} in ${from}`);return} r.qty-=qty;}
+    if(WH.includes(to)){const r=ls.find(x=>x.sku===l.sku&&x.location===to);
+      if(r) r.qty+=qty; else ls.push({sku:l.sku,item:l.item,location:to,qty,min:0,max:0,bin:''});
+    }else{const r=vi.find(x=>x.sku===l.sku&&x.vehicle===to);
+      if(r) r.qty+=qty; else vi.push({sku:l.sku,item:l.item,vehicle:to,division:'',qty,min:0,max:0,tech:''});}
+    xfrs.push({date:td(),from,to,sku:l.sku,item:l.item,qty,reason,notes:notes||'',by:CU.name});
+  });
+  if(errs.length){tst(errs[0],'error');return}
+  S.set('lhs:ls',ls);S.set('lhs:vi',vi);S.set('lhs:xfrs',xfrs);
+  _xl=[]; tst(`${lines.length} item(s) transferred`,'success'); showPage('transfer');
+}
+function restMax(){
+  const to=v('xt');const from=v('xf');
+  if(!VH.includes(to)){tst('Select a van as destination','error');return}
+  if(!WH.includes(from)){tst('Select a warehouse as source','error');return}
+  const vi=S.get('lhs:vi')||[];const need=vi.filter(r=>r.vehicle===to&&r.max>0&&r.qty<r.max);
+  if(!need.length){tst(`${to} is at max`,'info');return}
+  _xi=S.get('lhs:items')||[];_xl=[];
+  const tb=g('xtb'); if(tb) tb.innerHTML='';
+  need.forEach((vi2,i)=>{
+    _xl.push({sku:vi2.sku,item:vi2.item,qty:vi2.max-vi2.qty});
+    const tr=document.createElement('tr'); tr.id='xl'+i;
+    tr.innerHTML=`<td style="font-weight:500">${vi2.item||vi2.sku}</td>
+    <td><input id="xls${i}" value="${vi2.sku}" readonly style="width:85px;background:#f5f5f5"></td>
+    <td id="xla${i}" style="color:var(--green);font-family:'DM Mono',monospace">&#8212;</td>
+    <td><input type="number" id="xlq${i}" value="${vi2.max-vi2.qty}" style="width:55px"></td>
+    <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
+    if(tb) tb.appendChild(tr);
+  });
+  need.forEach((_,i)=>xAvail(i)); tst(`Loaded ${need.length} items to restock ${to}`,'info');
+}
+
+// ─── VANS ────────────────────────────────────────────────────────────────────
+function bVans(){
+  const vans=CU.role==='Van Tech'?[CU.loc]:VH;
+  setTimeout(()=>rVan(vans[0]),30);
+  return`<div class="pt">Van &amp; Vehicle Stock</div><div class="ps">Current inventory on each vehicle</div>
+  <div class="tabs" id="vtabs">${vans.map((v,i)=>`<button class="tab${i===0?' active':''}" onclick="swVan('${v}',this)">${v}</button>`).join('')}</div>
+  <div id="vcont"></div>`;
+}
+function swVan(van,btn){
+  document.querySelectorAll('#vtabs .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active'); rVan(van);
+}
+function rVan(van){
+  const vi=(S.get('lhs:vi')||[]).filter(r=>r.vehicle===van);
+  const el=g('vcont'); if(!el) return;
+  if(!vi.length){el.innerHTML=`<div class="card" style="text-align:center;color:var(--muted);padding:24px">No inventory on ${van}. Use Transfer to load items.</div>`;return}
+  el.innerHTML=`<div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Item</th><th>SKU</th><th>Division</th><th>On Hand</th><th>Min</th><th>Max</th><th>Status</th></tr></thead>
+  <tbody>${vi.map(r=>`<tr>
+    <td style="font-weight:500">${r.item||r.sku}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${r.sku}</td>
+    <td>${bx(r.division||'&#8212;','bn')}</td>
+    <td class="${r.qty<r.min?'ql':r.qty===0?'qw':'qo'}" style="font-weight:700">${r.qty}</td>
+    <td>${r.min}</td><td>${r.max}</td>
+    <td>${r.qty===0?bx('OUT','br'):r.qty<r.min?bx('LOW','ba'):bx('OK','bg')}</td>
+  </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+// ─── LOCATIONS ───────────────────────────────────────────────────────────────
+function bLocs(){
+  const locs=S.get('lhs:locs')||[];
+  return`<div class="pt">Locations &amp; Vehicles</div><div class="ps">Manage warehouses, service vans, and sales vehicles</div>
+  <div class="sh"><div></div><button class="btn btn-n" onclick="oAddLoc()">+ Add Location / Vehicle</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Name</th><th>Type</th><th>Region</th><th>Address</th><th>Active</th><th></th></tr></thead>
+  <tbody>${locs.map((l,i)=>`<tr>
+    <td style="font-weight:700;color:var(--navy)">${l.name}</td>
+    <td>${bx(l.type,'bn')}</td><td>${l.region||'&#8212;'}</td>
+    <td style="font-size:12px;color:var(--muted)">${l.addr||'&#8212;'}</td>
+    <td>${l.active?bx('Active','bg'):bx('Inactive','bgr')}</td>
+    <td><button class="btn sm btn-o" onclick="togLoc(${i})">${l.active?'Deactivate':'Activate'}</button></td>
+  </tr>`).join('')}</tbody></table></div></div>`;
+}
+function oAddLoc(){
+  oMod('Add Location or Vehicle',`<div class="fr">
+    <div class="fl"><label>Name / Vehicle ID</label><input id="al0" placeholder="e.g. WI-R3 or Madison WI"></div>
+    <div class="fl"><label>Type</label><select id="al1">
+      <option>Warehouse</option><option>Service Van</option><option>Sales Vehicle</option>
+    </select></div>
+  </div><div class="fr">
+    <div class="fl"><label>Region</label><input id="al2" placeholder="Wisconsin"></div>
+    <div class="fl"><label>Address</label><input id="al3" placeholder="Street address"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svLoc()">Add</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svLoc(){
+  const name=v('al0');const type=v('al1');const region=v('al2');const addr=v('al3');
+  if(!name){tst('Name required','error');return}
+  const locs=S.get('lhs:locs')||[];
+  if(locs.find(l=>l.name.toLowerCase()===name.toLowerCase())){tst(`"${name}" already exists`,'error');return}
+  locs.push({name,type,region,addr,active:true});
+  S.set('lhs:locs',locs);
+  if(type==='Warehouse'&&!WH.includes(name)) WH.push(name);
+  if((type==='Service Van'||type==='Sales Vehicle')&&!VH.includes(name)) VH.push(name);
+  // Close modal FIRST, then navigate — fix for "not appearing" bug
+  document.getElementById('mo').classList.remove('open');
+  tst(`${name} added as ${type}`,'success');
+  showPage('locations');
+}
+function togLoc(i){
+  const locs=S.get('lhs:locs')||[];locs[i].active=!locs[i].active;S.set('lhs:locs',locs);
+  WH=locs.filter(l=>l.active&&l.type==='Warehouse').map(l=>l.name);
+  VH=locs.filter(l=>l.active&&(l.type==='Service Van'||l.type==='Sales Vehicle')).map(l=>l.name);
+  showPage('locations');
+}
+
+
+// ─── LOCATION STOCK ──────────────────────────────────────────────────────────
+function bLS(){
+  const ls=S.get('lhs:ls')||[];const it=S.get('lhs:items')||[];
+  // Group by location
+  const byLoc={};
+  ls.forEach(r=>{if(!byLoc[r.location]) byLoc[r.location]=[];byLoc[r.location].push(r);});
+  const locs=Object.keys(byLoc).sort();
+  const low=ls.filter(r=>r.qty<r.min).length;
+  return`<div class="pt">Location Stock</div>
+  <div class="ps">Warehouse inventory by location &mdash; ${ls.length} entries &middot; ${low>0?`<span style="color:var(--red)">${low} below minimum</span>`:'<span style="color:var(--green)">all above minimum</span>'}</div>
+  <div class="sh"><div></div><button class="btn btn-n" onclick="oAddLS()">+ Add Stock Entry</button></div>
+  ${locs.length===0?'<div class="card" style="text-align:center;color:var(--muted);padding:32px">No location stock entries yet. Receive items via Purchase Orders to populate this.</div>'
+  :locs.map(loc=>{
+    const rows=byLoc[loc];
+    const locLow=rows.filter(r=>r.qty<r.min).length;
+    return`<div class="card" style="padding:0;margin-bottom:20px">
+      <div style="padding:14px 20px;background:var(--navy);border-radius:var(--rl) var(--rl) 0 0;display:flex;align-items:center;justify-content:space-between">
+        <div style="color:var(--gold);font-weight:700;font-size:15px">&#127968; ${loc}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${locLow>0?`<span class="bx br">${locLow} below min</span>`:''}
+          <span style="color:rgba(255,255,255,.6);font-size:12px">${rows.length} SKU${rows.length!==1?'s':''}</span>
+        </div>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Item Name</th><th>SKU</th><th>Bin/Shelf</th><th>On Hand</th><th>Min</th><th>Max</th><th>Status</th><th>Last Updated</th><th></th></tr></thead>
+        <tbody>${rows.map((r,ri)=>{
+          const idx=ls.indexOf(r);
+          const status=r.qty===0?'<span class="bx br">OUT</span>':r.qty<r.min?'<span class="bx ba">LOW</span>':'<span class="bx bg">OK</span>';
+          return`<tr>
+            <td style="font-weight:500">${r.item||r.sku}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${r.sku}</td>
+            <td style="color:var(--muted)">${r.bin||'&#8212;'}</td>
+            <td class="${r.qty<r.min?'ql':r.qty===0?'qw':'qo'}" style="font-weight:700;font-size:15px">${r.qty}</td>
+            <td>${r.min}</td><td>${r.max}</td>
+            <td>${status}</td>
+            <td style="font-size:12px;color:var(--muted)">${r.updated||'&#8212;'}</td>
+            <td><button class="btn sm btn-o" onclick="oEditLS(${idx})">Edit</button></td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+  }).join('')}`;
+}
+
+function oAddLS(){
+  const it=S.get('lhs:items')||[];
+  oMod('Add Location Stock Entry',`
+  <div class="fr">
+    <div class="fl"><label>Item</label><select id="lsa0">
+      <option value="">&#8212; Select &#8212;</option>
+      ${it.map(i=>`<option value="${i.sku}">${i.name} (${i.sku})</option>`).join('')}
+    </select></div>
+    <div class="fl"><label>Location</label><select id="lsa1">
+      ${WH.map(w=>`<option>${w}</option>`).join('')}
+    </select></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Qty On Hand</label><input type="number" id="lsa2" value="0" min="0"></div>
+    <div class="fl"><label>Min QTY</label><input type="number" id="lsa3" value="0" min="0"></div>
+    <div class="fl"><label>Max QTY</label><input type="number" id="lsa4" value="0" min="0"></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Bin / Shelf</label><input id="lsa5" placeholder="e.g. A-12"></div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddLS()">Add Entry</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svAddLS(){
+  const sku=v('lsa0');const it=(S.get('lhs:items')||[]).find(i=>i.sku===sku);
+  if(!sku){tst('Select an item','error');return}
+  const ls=S.get('lhs:ls')||[];
+  const loc=v('lsa1');
+  if(ls.find(r=>r.sku===sku&&r.location===loc)){tst('Entry already exists for this item at this location. Use Edit to update.','error');return}
+  ls.push({sku,item:it?.name||sku,location:loc,qty:pi('lsa2'),min:pi('lsa3'),max:pi('lsa4'),bin:v('lsa5'),updated:td()});
+  S.set('lhs:ls',ls);cMod();tst('Stock entry added','success');showPage('locstock');
+}
+function oEditLS(idx){
+  const ls=S.get('lhs:ls')||[];const r=ls[idx];
+  oMod(`Edit: ${r.item||r.sku} @ ${r.location}`,`
+  <div class="fr">
+    <div class="fl"><label>Qty On Hand</label><input type="number" id="lse0" value="${r.qty}" min="0"></div>
+    <div class="fl"><label>Min QTY</label><input type="number" id="lse1" value="${r.min}" min="0"></div>
+    <div class="fl"><label>Max QTY</label><input type="number" id="lse2" value="${r.max}" min="0"></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Bin / Shelf</label><input id="lse3" value="${r.bin||''}"></div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svEditLS(${idx})">Save</button>
+    <button class="btn btn-r sm" onclick="delLS(${idx})">Remove</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+function svEditLS(idx){
+  const ls=S.get('lhs:ls')||[];
+  ls[idx].qty=pi('lse0');ls[idx].min=pi('lse1');ls[idx].max=pi('lse2');ls[idx].bin=v('lse3');ls[idx].updated=td();
+  S.set('lhs:ls',ls);cMod();tst('Stock updated','success');showPage('locstock');
+}
+function delLS(idx){
+  if(!confirm('Remove this stock entry?'))return;
+  const ls=S.get('lhs:ls')||[];ls.splice(idx,1);
+  S.set('lhs:ls',ls);cMod();tst('Removed','info');showPage('locstock');
+}
+
+// ─── TESTERS ─────────────────────────────────────────────────────────────────
+function bTest(){
+  const ts=S.get('lhs:ts')||[];
+  const tc=s=>s==='At Customer'?'bb':s==='In Transit'?'ba':s==='At Warehouse'?'bg':'bgr';
+  const dep=ts.filter(x=>['At Customer','In Transit'].includes(x.status));
+  return`<div class="pt">Tester Tracker</div><div class="ps">Radon test kit inventory</div>
+  <div class="sh"><div style="display:flex;gap:12px">
+    ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
+    <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">${l}</div>
+      <div style="font-size:24px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">
+        ${l==='At Warehouse'?ts.filter(x=>x.status==='At Warehouse').length:dep.filter(x=>x.type===l).length}
+      </div><div style="font-size:11px;color:var(--muted)">${l==='At Warehouse'?'Available':'Cust/Transit'}</div>
+    </div>`).join('')}
+  </div><button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
+  <tbody>${ts.map((t,i)=>`<tr>
+    <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${t.id}</td>
+    <td>${bx(t.type,t.type==='Electronic'?'bb':'bn')}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px">${t.serial}</td>
+    <td>${bx(t.status,tc(t.status))}</td><td>${t.vehicle||'&#8212;'}</td>
+    <td style="font-weight:500">${t.customer||'&#8212;'}</td>
+    <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
+    <td><button class="btn sm btn-o" onclick="oUpdTest(${i})">Update</button></td>
+  </tr>`).join('')}</tbody></table></div></div>`;
+}
+function oAddTest(){
+  oMod('Add Tester',`<div class="fr">
+    <div class="fl"><label>ID</label><input id="at0" placeholder="TEST-004"></div>
+    <div class="fl"><label>Type</label><select id="at1"><option>Electronic</option><option>Charcoal</option></select></div>
+    <div class="fl"><label>Serial</label><input id="at2" placeholder="SN-XX-000"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Status</label><select id="at3"><option>At Warehouse</option><option>At Customer</option><option>In Transit</option></select></div>
+    <div class="fl"><label>Vehicle</label><select id="at4"><option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option>${x}</option>`).join('')}</select></div>
+    <div class="fl"><label>Drop Date</label><input type="date" id="at5" value="${td()}"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Customer</label><input id="at6" placeholder="Last, First"></div>
+    <div class="fl"><label>Address</label><input id="at7"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svTest()">Add</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svTest(){
+  const t={id:v('at0'),type:v('at1'),serial:v('at2'),status:v('at3'),vehicle:v('at4'),
+    customer:v('at6'),address:v('at7'),dropDate:v('at5')};
+  if(!t.id){tst('ID required','error');return}
+  const ts=S.get('lhs:ts')||[];ts.push(t);S.set('lhs:ts',ts);
+  cMod();tst(`${t.id} added`,'success');showPage('testers');
+}
+function oUpdTest(i){
+  const ts=S.get('lhs:ts')||[];const t=ts[i];
+  oMod('Update: '+t.id,`<div class="fr">
+    <div class="fl"><label>Status</label><select id="ut0">
+      <option${t.status==='At Customer'?' selected':''}>At Customer</option>
+      <option${t.status==='In Transit'?' selected':''}>In Transit</option>
+      <option${t.status==='At Warehouse'?' selected':''}>At Warehouse</option>
+      <option${t.status==='Lost'?' selected':''}>Lost</option>
+    </select></div>
+    <div class="fl"><label>Vehicle</label><select id="ut1">
+      <option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option${t.vehicle===x?' selected':''}>${x}</option>`).join('')}
+    </select></div>
+  </div><div class="fr">
+    <div class="fl"><label>Customer</label><input id="ut2" value="${t.customer||''}"></div>
+    <div class="fl"><label>Address</label><input id="ut3" value="${t.address||''}"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svUpdTest(i){
+  const ts=S.get('lhs:ts')||[];
+  ts[i].status=v('ut0');ts[i].vehicle=v('ut1');ts[i].customer=v('ut2');ts[i].address=v('ut3');
+  S.set('lhs:ts',ts);cMod();tst('Updated','success');showPage('testers');
+}
+
+// ─── INTEGRATIONS ────────────────────────────────────────────────────────────
+function bInt(){
+  return`<div class="pt">Integrations</div><div class="ps">Connect Salesforce CRM and QuickBooks Enterprise</div>
+  <div class="al al-b" style="margin-bottom:20px">&#128268; Enter API credentials below. OAuth authorization is completed server-side after setup.</div>
+  <div class="ig">
+    <div class="ic off2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#00a1e0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px">SF</div>
+        <div><div class="in2">Salesforce CRM</div><div class="is2 off">&#9679; Not Connected</div></div>
+      </div>
+      <div class="id2">Sync inventory with Salesforce records. Auto-create asset records when items deploy. Push PO data for job costing.</div>
+      <div class="ifg"><label>Instance URL</label><input id="sf0" placeholder="https://yourcompany.salesforce.com"></div>
+      <div class="ifg"><label>Consumer Key</label><input id="sf1" placeholder="Connected App consumer key"></div>
+      <button class="btn btn-n sm" onclick="cSF()">Connect Salesforce &#8594;</button>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        <a href="https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/" target="_blank" style="color:var(--navy)">Setup docs</a>
+        &#8212; Create Connected App in Salesforce Setup &#8594; Apps
+      </div>
+    </div>
+    <div class="ic off2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#2ca01c;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px">QB</div>
+        <div><div class="in2">QuickBooks Enterprise</div><div class="is2 off">&#9679; Not Connected</div></div>
+      </div>
+      <div class="id2">Sync POs automatically. Map inventory to QB items. Export receipts as QB bills. Track inventory value in chart of accounts.</div>
+      <div class="ifg"><label>Company ID</label><input id="qb0" placeholder="QuickBooks Company ID"></div>
+      <div class="ifg"><label>OAuth Client ID</label><input id="qb1" placeholder="developer.intuit.com OAuth client ID"></div>
+      <button class="btn btn-n sm" onclick="cQB()">Connect QuickBooks &#8594;</button>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        <a href="https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization" target="_blank" style="color:var(--navy)">Setup docs</a>
+        &#8212; Create OAuth app at developer.intuit.com
+      </div>
+    </div>
+    <div class="ic" style="border-color:var(--bdr)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:var(--navy);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--gold);font-weight:800;font-size:13px">AI</div>
+        <div><div class="in2">Claude AI Assistant</div><div class="is2 on">&#9679; Active</div></div>
+      </div>
+      <div class="id2">Inventory insights, reorder recommendations, and anomaly detection. Ask questions in plain English.</div>
+      <button class="btn btn-g sm" onclick="oAI()">Open AI Assistant &#8594;</button>
+    </div>
+    <div class="ic" style="border-color:var(--bdr)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#0078d4;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:18px">&#128228;</div>
+        <div><div class="in2">Data Export</div><div class="is2 on">&#9679; Available</div></div>
+      </div>
+      <div class="id2">Export all inventory data as JSON for backup or import into Excel and external systems.</div>
+      <button class="btn btn-o sm" onclick="expAll()">Export All Data &#8594;</button>
+    </div>
+  </div>`;
+}
+function cSF(){if(!v('sf0')||!v('sf1')){tst('Enter Instance URL and Consumer Key','error');return}
+  tst('Credentials saved. OAuth requires server-side redirect — see setup docs.','info');}
+function cQB(){if(!v('qb0')||!v('qb1')){tst('Enter Company ID and Client ID','error');return}
+  tst('Credentials saved. OAuth 2.0 requires server-side redirect — see setup docs.','info');}
+
+function oAI(){
+  const it=S.get('lhs:items')||[];const ls=S.get('lhs:ls')||[];const vi=S.get('lhs:vi')||[];
+  const pos=S.get('lhs:pos')||[];const low=[...ls.filter(r=>r.qty<r.min),...vi.filter(r=>r.qty<r.min)];
+  oMod('&#129302; LHS AI Assistant',`
+  <div style="background:#f8f9ff;border:1px solid #e0e7ff;border-radius:10px;padding:16px;margin-bottom:16px;min-height:160px;max-height:300px;overflow-y:auto" id="aim">
+    <div style="color:var(--muted);font-size:13px">Ask anything about your inventory &#8212; stock levels, reorder suggestions, anomalies.</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <input id="aiq" placeholder="e.g. Which vans need restocking?" style="flex:1;padding:10px 13px;border:1.5px solid var(--bdr);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px" onkeydown="if(event.key==='Enter')sAI()">
+    <button class="btn btn-n" onclick="sAI()">Send</button>
+  </div>
+  <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+    ${['Which vans need restocking?','What should I reorder?','Summarize stock levels','Any anomalies?'].map(q=>
+      `<button class="btn sm btn-o" onclick="g('aiq').value='${q}';sAI()">${q}</button>`).join('')}
+  </div>`);
+  window._ac={it,ls,vi,low,pos:pos.filter(p=>p.status!=='Received in Full')};
+}
+async function sAI(){
+  const q=v('aiq'); if(!q) return; g('aiq').value='';
+  const m=g('aim'); if(!m) return;
+  m.innerHTML+=`<div style="background:var(--navy);color:var(--white);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px;max-width:80%;margin-left:auto"><b>You:</b> ${q}</div>`;
+  m.innerHTML+=`<div id="aith" style="color:var(--muted);font-size:13px;padding:4px">Thinking&#8230;</div>`;
+  m.scrollTop=m.scrollHeight;
+  try{
+    const c=window._ac||{};
+    const sys=`You are an inventory assistant for Lifetime Home Services (LHS), a multi-division home services company with 11 divisions.
+Items: ${JSON.stringify(c.it?.map(i=>({sku:i.sku,name:i.name,division:i.division,cost:i.cost})))}
+Warehouse stock: ${JSON.stringify(c.ls)}
+Van inventory: ${JSON.stringify(c.vi)}
+Low stock: ${JSON.stringify(c.low?.map(r=>({sku:r.sku,where:r.location||r.vehicle,qty:r.qty,min:r.min})))}
+Open POs: ${JSON.stringify(c.pos?.map(p=>({id:p.id,vendor:p.vendor,status:p.status})))}
+Be concise and give actionable recommendations specific to LHS.`;
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:sys,messages:[{role:'user',content:q}]})});
+    const d=await r.json();const ans=d.content?.[0]?.text||'No response.';
+    g('aith')?.remove();
+    m.innerHTML+=`<div style="background:#f0f4ff;border:1px solid #c7d7ff;border-radius:8px;padding:10px 12px;margin:8px 0;font-size:13px;line-height:1.6"><b style="color:var(--navy)">AI:</b> ${ans.replace(/\n/g,'<br>')}</div>`;
+    m.scrollTop=m.scrollHeight;
+  }catch{const el=g('aith');if(el) el.textContent='Error &#8212; check connection.';}
+}
+function expAll(){
+  const all={items:S.get('lhs:items'),locstock:S.get('lhs:ls'),vaninv:S.get('lhs:vi'),
+    pos:S.get('lhs:pos'),testers:S.get('lhs:ts'),transfers:S.get('lhs:xfrs'),
+    locations:S.get('lhs:locs'),exportedAt:new Date().toISOString(),company:CO};
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(all,null,2)],{type:'application/json'}));
+  a.download=`LHS_Inventory_${td()}.json`; a.click(); tst('Exported','success');
+}
+
+// ─── ADMIN ───────────────────────────────────────────────────────────────────
+function bAdmin(){
+  if(!['God View','Location Manager'].includes(CU?.role))
+    return`<div class="pt">Admin</div><div class="al al-r">God View required.</div>`;
+  return`<div class="pt">Admin Panel</div><div class="ps">Manage users, divisions, and vendors</div>
+  <div class="tabs">
+    <button class="tab active" onclick="aTab('u',this)">Users</button>
+    <button class="tab" onclick="aTab('d',this)">Divisions</button>
+    <button class="tab" onclick="aTab('v',this)">Vendors</button>
+  </div>
+  <div id="atab">${aUsers()}</div>`;
+}
+function aTab(t,btn){
+  document.querySelectorAll('.tabs .tab').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  g('atab').innerHTML=t==='u'?aUsers():t==='d'?aDivs():aVens();
+}
+
+// ─── ADMIN: USERS ─────────────────────────────────────────────────────────────
+function aUsers(){
+  const users=S.get('lhs:users')||USERS;
+  return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddUser()">+ Add User</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Name</th><th>Email</th><th>Password</th><th>Role</th><th>Location</th><th></th></tr></thead>
+  <tbody>${users.map((u,i)=>`<tr>
+    <td style="font-weight:600">${u.name}</td>
+    <td style="font-size:12px;color:var(--muted)">${u.email}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px">${u.pw}</td>
+    <td>${bx(u.role,'bn')}</td>
+    <td>${u.loc}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm btn-o" onclick="oEditUser(${i})">Edit</button>
+      <button class="btn sm btn-r" onclick="delUser(${i})">&#215;</button>
+    </td>
+  </tr>`).join('')}
+  </tbody></table></div></div>`;
+}
+function oAddUser(){
+  oMod('Add User',`<div class="fr">
+    <div class="fl"><label>Full Name</label><input id="au0" placeholder="First Last"></div>
+    <div class="fl"><label>Email</label><input id="au1" placeholder="user@lifetimehomeservices.com"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Password</label><input id="au2" placeholder="Set a password"></div>
+    <div class="fl"><label>Role</label><select id="au3">
+      <option>Van Tech</option><option>Sales Rep</option><option>Location Manager</option><option>God View</option>
+    </select></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Home Location / Van</label>
+    <select id="au4">
+      ${WH.map(w=>`<option>${w}</option>`).join('')}
+      ${VH.map(v=>`<option>${v}</option>`).join('')}
+    </select>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddUser()">Add User</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svAddUser(){
+  const name=v('au0'),email=v('au1'),pw=v('au2'),role=v('au3'),loc=v('au4');
+  if(!name||!email||!pw){tst('Name, email, and password required','error');return}
+  const users=S.get('lhs:users')||[...USERS];
+  if(users.find(u=>u.email.toLowerCase()===email.toLowerCase())){tst('Email already exists','error');return}
+  users.push({name,email,pw,role,loc});
+  S.set('lhs:users',users);
+  // Also add to live USERS array so login works immediately
+  USERS.push({name,email,pw,role,loc});
+  cMod();tst(`${name} added`,'success');g('atab').innerHTML=aUsers();
+}
+function oEditUser(i){
+  const users=S.get('lhs:users')||USERS;const u=users[i];
+  oMod('Edit: '+u.name,`<div class="fr">
+    <div class="fl"><label>Full Name</label><input id="eu0" value="${u.name}"></div>
+    <div class="fl"><label>Email</label><input id="eu1" value="${u.email}"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Password</label><input id="eu2" value="${u.pw}"></div>
+    <div class="fl"><label>Role</label><select id="eu3">
+      ${['Van Tech','Sales Rep','Location Manager','God View'].map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+    </select></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Home Location / Van</label>
+    <select id="eu4">
+      ${[...WH,...VH].map(x=>`<option${u.loc===x?' selected':''}>${x}</option>`).join('')}
+    </select>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svEditUser(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svEditUser(i){
+  const users=S.get('lhs:users')||[...USERS];
+  users[i]={name:v('eu0'),email:v('eu1'),pw:v('eu2'),role:v('eu3'),loc:v('eu4')};
+  S.set('lhs:users',users);
+  // Sync live USERS array
+  if(USERS[i]) USERS[i]=users[i];
+  cMod();tst('User updated','success');g('atab').innerHTML=aUsers();
+}
+function delUser(i){
+  const users=S.get('lhs:users')||[...USERS];
+  if(users[i]?.email===CU?.email){tst('Cannot delete your own account','error');return}
+  if(!confirm(`Delete user "${users[i]?.name}"?`))return;
+  users.splice(i,1);S.set('lhs:users',users);
+  if(USERS[i]) USERS.splice(i,1);
+  tst('User deleted','info');g('atab').innerHTML=aUsers();
+}
+
+// ─── ADMIN: DIVISIONS ─────────────────────────────────────────────────────────
+function aDivs(){
+  const divs=S.get('lhs:divs')||DIVS;
+  return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddDiv()">+ Add Division</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Division Name</th><th>Code</th><th>Type</th><th></th></tr></thead>
+  <tbody>${divs.map((d,i)=>`<tr>
+    <td style="font-weight:600">${typeof d==='string'?d:d.name}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${typeof d==='string'?'':d.code||''}</td>
+    <td style="color:var(--muted)">${typeof d==='string'?'':d.type||''}</td>
+    <td><button class="btn sm btn-r" onclick="delDiv(${i})">&#215;</button></td>
+  </tr>`).join('')}
+  </tbody></table></div></div>`;
+}
+function oAddDiv(){
+  oMod('Add Division',`<div class="fr">
+    <div class="fl"><label>Division Name</label><input id="ad0" placeholder="e.g. Plumbing"></div>
+    <div class="fl"><label>Code (2-4 letters)</label><input id="ad1" placeholder="e.g. PL" maxlength="4"></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Service Type</label>
+    <input id="ad2" placeholder="e.g. Plumbing Services">
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddDiv()">Add Division</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svAddDiv(){
+  const name=v('ad0'),code=v('ad1').toUpperCase(),type=v('ad2');
+  if(!name||!code){tst('Name and code required','error');return}
+  const divs=S.get('lhs:divs')||[...DIVS.map(d=>typeof d==='string'?{name:d,code:'',type:''}:d)];
+  if(divs.find(d=>(d.name||d).toLowerCase()===name.toLowerCase())){tst('Division already exists','error');return}
+  divs.push({name,code,type});
+  S.set('lhs:divs',divs);
+  if(!DIVS.includes(name)) DIVS.push(name);
+  cMod();tst(`${name} added`,'success');g('atab').innerHTML=aDivs();
+}
+function delDiv(i){
+  const divs=S.get('lhs:divs')||[...DIVS.map(d=>typeof d==='string'?{name:d,code:'',type:''}:d)];
+  const dname=divs[i]?.name||divs[i];
+  if(!confirm(`Delete division "${dname}"?`))return;
+  divs.splice(i,1);S.set('lhs:divs',divs);
+  const di=DIVS.indexOf(dname);if(di>=0) DIVS.splice(di,1);
+  tst('Division deleted','info');g('atab').innerHTML=aDivs();
+}
+
+// ─── ADMIN: VENDORS ───────────────────────────────────────────────────────────
+function aVens(){
+  const vens=S.get('lhs:vens')||VENS.map(v=>({name:v,phone:'',email:'',terms:'Net 30',category:''}));
+  return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddVen()">+ Add Vendor</button></div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Vendor Name</th><th>Phone</th><th>Email</th><th>Terms</th><th>Category</th><th></th></tr></thead>
+  <tbody>${vens.map((ven,i)=>`<tr>
+    <td style="font-weight:600">${typeof ven==='string'?ven:ven.name}</td>
+    <td style="font-size:12px">${typeof ven==='string'?'':ven.phone||'&#8212;'}</td>
+    <td style="font-size:12px;color:var(--muted)">${typeof ven==='string'?'':ven.email||'&#8212;'}</td>
+    <td>${bx(typeof ven==='string'?'Net 30':ven.terms||'Net 30','bgr')}</td>
+    <td style="color:var(--muted);font-size:12px">${typeof ven==='string'?'':ven.category||'&#8212;'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm btn-o" onclick="oEditVen(${i})">Edit</button>
+      <button class="btn sm btn-r" onclick="delVen(${i})">&#215;</button>
+    </td>
+  </tr>`).join('')}
+  </tbody></table></div></div>`;
+}
+function oAddVen(){
+  oMod('Add Vendor',`<div class="fr">
+    <div class="fl"><label>Vendor Name</label><input id="av0" placeholder="Vendor Inc."></div>
+    <div class="fl"><label>Phone</label><input id="av1" placeholder="1-800-000-0000"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Email</label><input id="av2" placeholder="orders@vendor.com"></div>
+    <div class="fl"><label>Payment Terms</label><select id="av3">
+      <option>Net 30</option><option>Net 45</option><option>Net 60</option><option>COD</option><option>Prepay</option>
+    </select></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Category</label><input id="av4" placeholder="e.g. Electrical, HVAC, General Hardware"></div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddVen()">Add Vendor</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svAddVen(){
+  const name=v('av0');if(!name){tst('Vendor name required','error');return}
+  const vens=S.get('lhs:vens')||VENS.map(x=>({name:x,phone:'',email:'',terms:'Net 30',category:''}));
+  if(vens.find(x=>(x.name||x).toLowerCase()===name.toLowerCase())){tst('Vendor already exists','error');return}
+  vens.push({name,phone:v('av1'),email:v('av2'),terms:v('av3'),category:v('av4')});
+  S.set('lhs:vens',vens);if(!VENS.includes(name)) VENS.push(name);
+  cMod();tst(`${name} added`,'success');g('atab').innerHTML=aVens();
+}
+function oEditVen(i){
+  const vens=S.get('lhs:vens')||VENS.map(x=>({name:x,phone:'',email:'',terms:'Net 30',category:''}));
+  const ven=vens[i];const name=typeof ven==='string'?ven:ven.name;
+  const phone=typeof ven==='string'?'':ven.phone||'';
+  const email=typeof ven==='string'?'':ven.email||'';
+  const terms=typeof ven==='string'?'Net 30':ven.terms||'Net 30';
+  const cat=typeof ven==='string'?'':ven.category||'';
+  oMod('Edit: '+name,`<div class="fr">
+    <div class="fl"><label>Vendor Name</label><input id="ev0" value="${name}"></div>
+    <div class="fl"><label>Phone</label><input id="ev1" value="${phone}"></div>
+  </div><div class="fr">
+    <div class="fl"><label>Email</label><input id="ev2" value="${email}"></div>
+    <div class="fl"><label>Terms</label><select id="ev3">
+      ${['Net 30','Net 45','Net 60','COD','Prepay'].map(t=>`<option${terms===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Category</label><input id="ev4" value="${cat}"></div>
+  <div class="br2"><button class="btn btn-n" onclick="svEditVen(${i})">Save</button>
+  <button class="btn btn-r sm" onclick="delVen(${i})">Delete</button>
+  <button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function svEditVen(i){
+  const vens=S.get('lhs:vens')||VENS.map(x=>({name:x,phone:'',email:'',terms:'Net 30',category:''}));
+  const old=typeof vens[i]==='string'?vens[i]:vens[i].name;
+  vens[i]={name:v('ev0'),phone:v('ev1'),email:v('ev2'),terms:v('ev3'),category:v('ev4')};
+  S.set('lhs:vens',vens);
+  const vi=VENS.indexOf(old);if(vi>=0) VENS[vi]=vens[i].name;
+  cMod();tst('Vendor updated','success');g('atab').innerHTML=aVens();
+}
+function delVen(i){
+  const vens=S.get('lhs:vens')||VENS.map(x=>({name:x,phone:'',email:'',terms:'Net 30',category:''}));
+  const name=typeof vens[i]==='string'?vens[i]:vens[i].name;
+  if(!confirm(`Delete vendor "${name}"?`))return;
+  vens.splice(i,1);S.set('lhs:vens',vens);
+  const vi=VENS.indexOf(name);if(vi>=0) VENS.splice(vi,1);
+  tst('Vendor deleted','info');g('atab').innerHTML=aVens();
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function oMod(title,body){document.getElementById('mt').innerHTML=title;document.getElementById('mb').innerHTML=body;document.getElementById('mo').classList.add('open');}
+function cMod(){document.getElementById('mo').classList.remove('open');}
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let _t;
+function tst(msg,type='info'){const t=g('tst');t.textContent=msg;t.className='show '+type;clearTimeout(_t);_t=setTimeout(()=>t.classList.remove('show'),4000);}
+
+// ─── INPUT HELPERS ───
+const g=id=>document.getElementById(id);
+const v=id=>{const el=g(id);return el?el.value.trim():''};
+const pf=id=>{const el=g(id);return el?parseFloat(el.value)||0:0};
+const pi=id=>{const el=g(id);return el?parseInt(el.value)||0:0};
+const pi2=id=>{const el=g(id);return el?parseInt(el.value)||0:0};
+</script>
+</body>
+</html>
