@@ -4961,17 +4961,7 @@ function openWO(woId){
         <!-- Materials -->
         ${aptMats.length?`<div style="margin-bottom:8px">
           <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Materials Used</div>
-          ${aptMats.map(m=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:3px;font-size:12px">
-            <span style="flex:1;font-weight:500">${m.item_name||m.sku||'—'}</span>
-            <span style="color:var(--muted)">Qty:</span>
-            <input type="number" value="${m.qty_used||1}" min="1"
-              style="width:50px;padding:2px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
-              onchange="updateMaterial('${m.id||''}','${apt.id}','${woId}',this.value)">
-            <span style="font-family:'DM Mono',monospace;min-width:58px;text-align:right;color:var(--navy)">$${((m.qty_used||0)*(m.unit_cost||0)).toFixed(2)}</span>
-            <button onclick="deleteMaterial('${m.id||''}','${apt.id}','${woId}')"
-              style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;flex-shrink:0">&#215;</button>
-          </div>`).join('')}
+          ${aptMats.map(m=>matRowHTML(m,apt.id,woId)).join('')}
         </div>`:''}
 
         <!-- Stats row -->
@@ -5149,18 +5139,7 @@ function oAptDetail(aptId, woId){
     </div>
   </div>
   <div id="aptd-matlist" style="margin-bottom:12px">
-    ${(()=>{const mats=(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId);
-    if(!mats.length) return'<div style="font-size:12px;color:var(--muted)">No materials logged yet</div>';
-    return mats.map(m=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;font-size:13px">
-      <span style="flex:1;font-weight:500">${m.item_name||m.sku}</span>
-      <span style="color:var(--muted)">Qty:</span>
-      <input type="number" value="${m.qty_used||1}" min="1" style="width:52px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
-        onchange="updateMaterial('${m.id||''}','${aptId}','${woId}',this.value)">
-      <span style="font-family:'DM Mono',monospace;min-width:60px;text-align:right">$${((m.qty_used||0)*(m.unit_cost||0)).toFixed(2)}</span>
-      <button onclick="deleteMaterial('${m.id||''}','${aptId}','${woId}')"
-        style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;flex-shrink:0">&#215;</button>
-    </div>`).join('');})()}
+    ${matListHTML(aptId,woId)}
   </div>
 
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Photos</div>
@@ -5187,9 +5166,42 @@ function oAptDetail(aptId, woId){
   </div>`);
 }
 
+// ── SHARED MATERIAL ROW RENDERER ─────────────────────────────────────────────
+// Single source of truth for material rows — used in oAptDetail, aptAddMaterial,
+// updateMaterial, deleteMaterial. Prevents the read-only-after-add bug.
+function matRowHTML(m, aptId, woId){
+  const safeName=esc(m.item_name||m.sku||'—');
+  const safeId=esc(m.id||'');
+  const safeApt=esc(aptId);
+  const safeWo=esc(woId);
+  const ext=((m.qty_used||0)*(m.unit_cost||0)).toFixed(2);
+  return`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;font-size:13px">
+    <span style="flex:1;font-weight:500">${safeName}</span>
+    <span style="color:var(--muted)">Qty:</span>
+    <input type="number" value="${m.qty_used||1}" min="1"
+      style="width:52px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
+      onchange="updateMaterial('${safeId}','${safeApt}','${safeWo}',this.value)">
+    <span style="font-family:'DM Mono',monospace;min-width:60px;text-align:right">$${ext}</span>
+    <button onclick="deleteMaterial('${safeId}','${safeApt}','${safeWo}')"
+      style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;flex-shrink:0">&#215;</button>
+  </div>`;
+}
+
+function matListHTML(aptId, woId){
+  const mats=(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId);
+  return mats.length
+    ? mats.map(m=>matRowHTML(m,aptId,woId)).join('')
+    : '<div style="font-size:12px;color:var(--muted)">No materials logged yet</div>';
+}
+
+function refreshMatList(aptId, woId){
+  const list=document.getElementById('aptd-matlist');
+  if(list) list.innerHTML=matListHTML(aptId,woId);
+}
+
 async function aptAddMaterial(aptId, woId){
   const sel=document.getElementById('aptd-msku');
-  if(!sel?.value){tst('Select an item','error');return}
+  if(!sel?.value){tst('Select an item','error');return;}
   const [sku,name,cost]=sel.value.split('|');
   const qty=parseInt(document.getElementById('aptd-mqty')?.value)||1;
   const unitCost=parseFloat(cost)||0;
@@ -5197,7 +5209,7 @@ async function aptAddMaterial(aptId, woId){
     qty_used:qty,unit_cost:unitCost,pulled_from:CU.loc||'',
     entered_by:CU.name,created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:wo_materials',mat);
-  if(!saved){tst('Failed to save material','error');return}
+  if(!saved){tst('Failed to save material','error');return;}
   const vi=S.get('lhs:vi')||[];
   const vanRow=vi.find(r=>r.sku===sku&&(r.vehicle_id===CU.loc||r.vehicle===CU.loc));
   if(vanRow){
@@ -5212,12 +5224,11 @@ async function aptAddMaterial(aptId, woId){
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
   if(wo){wo.material_cost=(wo.material_cost||0)+(qty*unitCost);S.set('lhs:work_orders',wos);}
-  const list=document.getElementById('aptd-matlist');
-  if(list) list.innerHTML=(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId).map(m=>`
-    <div style="display:flex;justify-content:space-between;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;font-size:13px">
-      <span>${m.item_name||m.sku}</span><span>Qty: ${m.qty_used}</span>
-      <span style="font-family:'DM Mono',monospace">$${((m.qty_used||0)*(m.unit_cost||0)).toFixed(2)}</span>
-    </div>`).join('');
+  // Reset the add form
+  sel.value='';
+  const qtyEl=document.getElementById('aptd-mqty');if(qtyEl) qtyEl.value='1';
+  // Refresh list using shared helper — always shows full editable rows
+  refreshMatList(aptId,woId);
 }
 
 async function svAptDetail(aptId, woId){
@@ -9491,23 +9502,10 @@ async function updateMaterial(matId,aptId,woId,newQty){
   S.set('lhs:wo_materials',mats);
   if(matId&&!matId.startsWith('mat_')) await dbUpdate('lhs:wo_materials',matId,{qty_used:qty});
   await logWOAudit(woId,'Material Updated',`${m.item_name||m.sku}: qty ${oldQty}→${qty}`);
-  // Refresh in-place if aptd-matlist exists (oAptDetail), else re-render openWO
+  // Refresh in-place if aptd-matlist exists, else re-render full WO
   const list=document.getElementById('aptd-matlist');
-  if(list){
-    const remaining=mats.filter(x=>x.appointment_id===aptId);
-    list.innerHTML=remaining.length?remaining.map(x=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;font-size:13px">
-      <span style="flex:1;font-weight:500">${x.item_name||x.sku}</span>
-      <span style="color:var(--muted)">Qty:</span>
-      <input type="number" value="${x.qty_used||1}" min="1" style="width:52px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
-        onchange="updateMaterial('${x.id||''}','${aptId}','${woId}',this.value)">
-      <span style="font-family:'DM Mono',monospace;min-width:60px;text-align:right">$${((x.qty_used||0)*(x.unit_cost||0)).toFixed(2)}</span>
-      <button onclick="deleteMaterial('${x.id||''}','${aptId}','${woId}')"
-        style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px">&#215;</button>
-    </div>`).join(''):'<div style="font-size:12px;color:var(--muted)">No materials logged yet</div>';
-  } else {
-    openWO(woId);
-  }
+  if(list) refreshMatList(aptId,woId);
+  else openWO(woId);
 }
 
 async function deleteMaterial(matId,aptId,woId){
@@ -9520,23 +9518,10 @@ async function deleteMaterial(matId,aptId,woId){
   if(matId&&!matId.startsWith('mat_')) await dbDelete('lhs:wo_materials',matId);
   await logWOAudit(woId,'Material Removed',`${m.item_name||m.sku} x${m.qty_used||1}`);
   tst('Material removed','info');
-  // Refresh in-place if aptd-matlist exists (oAptDetail), else re-render openWO
+  // Refresh in-place if aptd-matlist exists, else re-render full WO
   const list=document.getElementById('aptd-matlist');
-  if(list){
-    const remaining=mats.filter(x=>x.appointment_id===aptId);
-    list.innerHTML=remaining.length?remaining.map(x=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px;font-size:13px">
-      <span style="flex:1;font-weight:500">${x.item_name||x.sku}</span>
-      <span style="color:var(--muted)">Qty:</span>
-      <input type="number" value="${x.qty_used||1}" min="1" style="width:52px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
-        onchange="updateMaterial('${x.id||''}','${aptId}','${woId}',this.value)">
-      <span style="font-family:'DM Mono',monospace;min-width:60px;text-align:right">$${((x.qty_used||0)*(x.unit_cost||0)).toFixed(2)}</span>
-      <button onclick="deleteMaterial('${x.id||''}','${aptId}','${woId}')"
-        style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px">&#215;</button>
-    </div>`).join(''):'<div style="font-size:12px;color:var(--muted)">No materials logged yet</div>';
-  } else {
-    openWO(woId);
-  }
+  if(list) refreshMatList(aptId,woId);
+  else openWO(woId);
 }
 
 
