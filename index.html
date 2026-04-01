@@ -71,7 +71,8 @@ body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-h
 .sc.n{border-left-color:var(--navy)}.sc.g{border-left-color:var(--teal)}
 .sc.gr{border-left-color:var(--green)}.sc.r{border-left-color:var(--red)}.sc.a{border-left-color:var(--amber)}
 .sl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
-.sv{font-size:32px;font-weight:700;color:var(--navy);font-family:'DM Mono',monospace}
+.sv{font-size:32px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.num{font-variant-numeric:tabular-nums;font-weight:600}
 .ss{font-size:12px;color:var(--muted);margin-top:4px}
 /* TABLE */
 .tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bdr)}
@@ -1844,7 +1845,8 @@ function buildPage(id){
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 const td=()=>new Date().toISOString().split('T')[0];
-const f$=n=>'$'+Number(n||0).toFixed(2);
+const f$=n=>{const v=Number(n||0);return '$'+(v%1===0?Math.round(v).toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));};
+const fN=n=>{const v=Number(n||0);return v%1===0?Math.round(v).toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
 const bx=(s,c='bn')=>`<span class="bx ${c}">${s}</span>`;
 const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')?'ba':'bgr';
 
@@ -1935,7 +1937,7 @@ function plI(i,s){
   _pli[i]={sku:s.value,item:it?.name||'',qty:1,cost:parseFloat(o.dataset.c||0)}; plE(i);
 }
 function plE(i){const q=pf('plq'+i),c=pf('plc'+i);const e=g('ple'+i);
-  if(e) e.textContent='$'+(q*c).toFixed(2); if(_pli[i]){_pli[i].qty=q;_pli[i].cost=c;}}
+  if(e) e.textContent=f$(q*c); if(_pli[i]){_pli[i].qty=q;_pli[i].cost=c;}}
 async function svPO(){
   const lines=_pli.filter(l=>l.sku).map(l=>({...l,qtyOrdered:l.qty,qtyReceived:0,status:'Open'}));
   if(!lines.length){tst('Add at least one item','error');return}
@@ -2442,8 +2444,8 @@ function vanDetailHTML(v, vi, tools, items, canEdit){
           <td style="padding:7px 10px;text-align:center;font-weight:700;color:${statusColor}">${r.qty||0}</td>
           <td style="padding:7px 10px;text-align:center;color:var(--muted)">${r.min||0}</td>
           <td style="padding:7px 10px;text-align:center;color:var(--muted)">${r.max||0}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">$${uc.toFixed(2)}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">$${tot.toFixed(2)}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">${f$(uc)}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">${f$(tot)}</td>
           ${canEdit?`<td style="padding:7px 10px">
             <input type="number" value="${r.qty||0}" min="0"
               style="width:60px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
@@ -2467,7 +2469,7 @@ function vanDetailHTML(v, vi, tools, items, canEdit){
         <td style="padding:7px 10px;font-weight:500">${esc(t.name)}</td>
         <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
         <td style="padding:7px 10px">${bx(t.status||'Active',t.status==='In Repair'?'ba':'bg')}</td>
-        <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">$${(t.cost||0).toFixed(2)}</td>
+        <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">${f$(t.cost)}</td>
       </tr>`).join('')}
       </tbody>
     </table></div>`
@@ -5205,9 +5207,9 @@ function bAcctDashboard(){
           <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${w.wo_number||'—'}</td>
           <td style="font-size:13px;font-weight:500">${esc(w.customer_name||'—')}</td>
           <td>${bx(w.division||'—')}</td>
-          <td style="font-family:'DM Mono',monospace">$${(w.total_price||0).toFixed(2)}</td>
-          <td style="font-family:'DM Mono',monospace;color:var(--green)">$${(w.total_paid||0).toFixed(2)}</td>
-          <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red)">$${bal.toFixed(2)}</td>
+          <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
+          <td style="font-family:'DM Mono',monospace;color:var(--green)">${f$(w.total_paid)}</td>
+          <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red)">${f$(bal)}</td>
           <td>${bx(w.status||'—',w.status==='Complete'?'bg':w.status==='In Progress'?'bb':'ba')}</td>
         </tr>`;}).join('')}
       </tbody></table></div>`}
@@ -5422,15 +5424,15 @@ Return this exact JSON structure:
               return`<tr style="border-bottom:1px solid var(--surf)">
                 <td style="padding:4px 6px">${esc(li.description||'')}</td>
                 <td style="padding:4px 6px;color:var(--navy);font-weight:600">${c?c.code:'—'}</td>
-                <td style="padding:4px 6px;text-align:right;font-family:'DM Mono',monospace">$${(li.amount||0).toFixed(2)}</td>
+                <td style="padding:4px 6px;text-align:right;font-family:'DM Mono',monospace">${f$(li.amount)}</td>
               </tr>`;}).join('')}
             </tbody>
             <tfoot><tr style="border-top:2px solid var(--bdr)">
               <td colspan="2" style="padding:4px 6px;font-weight:700">Total</td>
-              <td style="padding:4px 6px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">$${(parsed.total_amount||0).toFixed(2)}</td>
+              <td style="padding:4px 6px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">${f$(parsed.total_amount)}</td>
             </tr></tfoot>
           </table>`
-        :`<div style="color:var(--muted);font-size:12px">Total: $${(parsed.total_amount||0).toFixed(2)}</div>`}`;
+        :`<div style="color:var(--muted);font-size:12px">Total: ${f$(parsed.total_amount)}</div>`}`;
     tst('Receipt analyzed successfully','success');
   }catch(e){
     console.error('AI receipt error',e);
@@ -5507,7 +5509,7 @@ function viewReceipt(id){
   const r=receipts.find(x=>x.id===id); if(!r) return;
   const codes=S.get('lhs:accounting_codes')||[];
   const code=codes.find(c=>c.id===r.primary_code_id);
-  const fmt=n=>'$'+Number(n||0).toFixed(2);
+  const fmt=n=>f$(n);
   const canApprove=['God View','Admin','Director'].includes(CU?.role);
   oMod('&#129518; Receipt Detail',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
@@ -5525,7 +5527,7 @@ function viewReceipt(id){
       <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">&#129302; AI-Detected Line Items</div>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead><tr style="border-bottom:1px solid var(--bdr)"><th style="text-align:left;padding:4px">Item</th><th style="text-align:right;padding:4px">Amount</th></tr></thead>
-        <tbody>${(r.line_items||[]).map(li=>`<tr style="border-bottom:1px solid var(--surf)"><td style="padding:4px">${esc(li.description||'')}</td><td style="padding:4px;text-align:right;font-family:'DM Mono',monospace">$${(li.amount||0).toFixed(2)}</td></tr>`).join('')}</tbody>
+        <tbody>${(r.line_items||[]).map(li=>`<tr style="border-bottom:1px solid var(--surf)"><td style="padding:4px">${esc(li.description||'')}</td><td style="padding:4px;text-align:right;font-family:'DM Mono',monospace">${f$(li.amount)}</td></tr>`).join('')}</tbody>
       </table></div>`:''}
     ${r.file_data&&r.file_type?.startsWith('image/')?`<div style="margin-bottom:12px"><img src="${r.file_data}" style="max-width:100%;max-height:250px;border-radius:8px;border:1px solid var(--bdr)"></div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -7239,7 +7241,7 @@ function dispShowTooltip(e,aptId,woId){
         <div><span style="color:var(--muted)">Status:</span> ${esc(apt.status||wo.status||'—')}</div>
         <div><span style="color:var(--muted)">Window:</span> ${esc(apt.arrival_window||'—')}</div>
         <div style="grid-column:span 2"><span style="color:var(--muted)">Time:</span> ${startFmt} – ${endFmt} (${durMin} min)</div>
-        ${canSeePrice?`<div><span style="color:var(--muted)">Total:</span> $${(wo.total_price||0).toFixed(2)}</div><div><span style="color:${balance>0?'var(--red)':'var(--green)'}">Balance: $${balance.toFixed(2)}</span></div>`:''}
+        ${canSeePrice?`<div><span style="color:var(--muted)">Total:</span> ${f$(wo.total_price)}</div><div><span style="color:${balance>0?'var(--red)':'var(--green)'}">Balance: ${f$(balance)}</span></div>`:''}
       </div>
       ${techs.length?`<div style="font-size:11px;color:var(--muted)">👷 ${techs.join(', ')}</div>`:''}
       ${wo.description?`<div style="font-size:11px;color:var(--muted);margin-top:4px;border-top:1px solid var(--bdr);padding-top:4px;white-space:pre-wrap">${esc(wo.description.slice(0,120))}${wo.description.length>120?'…':''}</div>`:''}
@@ -7679,8 +7681,8 @@ function renderWOList(wos,status){
       <td style="font-size:12px">${wo.job_type||'—'}<br><span style="color:var(--muted)">${wo.job_subtype||''}</span></td>
       <td>${bx(wo.status||'Scheduled',statusColor)}</td>
       <td style="font-size:12px;color:var(--muted)">${nextApt?.scheduled_date||'—'}<br>${nextApt?.arrival_window||''}</td>
-      <td style="font-family:'DM Mono',monospace">$${(wo.total_price||0).toFixed(2)}</td>
-      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">$${balance.toFixed(2)}</td>
+      <td style="font-family:'DM Mono',monospace">${f$(wo.total_price)}</td>
+      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">${f$(balance)}</td>
       <td style="font-size:12px">${uniqueTechs.slice(0,2).join(', ')+(uniqueTechs.length>2?` +${uniqueTechs.length-2}`:'')}</td>
       <td><button class="btn sm btn-n" onclick="event.stopPropagation();openWO('${wo.id}')">Open</button></td>
     </tr>`;}).join('')}
@@ -8321,7 +8323,7 @@ function openWO(woId){
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             ${bx(apt.status||'Scheduled',apt.status==='Completed'?'bg':apt.status==='On Site'?'bb':apt.status==='En Route'?'ba':'bgr')}
-            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">$${(apt.price||0).toFixed(2)}</span>
+            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${f$(apt.price)}</span>
           </div>
         </div>
 
@@ -8369,7 +8371,7 @@ function openWO(woId){
             const sc=calcSafetyScore(aptPhotos);
             return`<span style="font-size:11px;font-weight:700;color:${sc.color}" title="Safety compliance">&#9888; ${sc.score}% (${sc.letter})</span>`;
           })():''}
-                    <span>&#36; Paid: $${aptPaid.toFixed(2)}</span>
+                    <span>&#36; Paid: ${f$(aptPaid)}</span>
           ${(isTech||canEdit)?`<button class="btn btn-o sm" style="padding:2px 8px;font-size:11px;margin-left:auto" onclick="oAptDetail('${apt.id}','${woId}')">Details / Update</button>`:''}
         </div>
       </div>`;
@@ -8385,7 +8387,7 @@ function openWO(woId){
     ${payments.length?`<div class="tw"><table><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Ref #</th><th>Posted By</th><th>Notes</th></tr></thead>
     <tbody>${payments.map(p=>`<tr>
       <td style="font-size:12px;color:var(--muted)">${new Date(p.posted_at).toLocaleDateString()}</td>
-      <td style="font-family:'DM Mono',monospace;font-weight:600;color:var(--green)">$${(p.amount||0).toFixed(2)}</td>
+      <td style="font-family:'DM Mono',monospace;font-weight:600;color:var(--green)">${f$(p.amount)}</td>
       <td>${p.payment_method||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.reference_number||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.posted_by||'—'}</td>
@@ -8566,7 +8568,7 @@ function matRowHTML(m, aptId, woId){
   const safeApt=esc(aptId);
   const safeWo=esc(woId);
   const qty=m.qty_used||0;
-  const ext=(qty*(m.unit_cost||0)).toFixed(2);
+  const ext=fN(qty*(m.unit_cost||0));
   const ql=(m.question_label||'').trim();
   const isPreset=!!(ql||m.pulled_from==='preset');
   const items=S.get('lhs:items')||[];
@@ -8597,7 +8599,7 @@ function matRowHTML(m, aptId, woId){
       <span style="font-size:12px;color:var(--muted);flex-shrink:0">Qty:</span>
       <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
         style="width:54px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center;flex-shrink:0">
-      ${(['God View','Regional Manager'].includes(CU?.role))?`<span style="font-family:'DM Mono',monospace;font-size:12px;min-width:46px;text-align:right;color:var(--muted);flex-shrink:0">$$${ext}</span>`:''}
+      ${(['God View','Regional Manager'].includes(CU?.role))?`<span style="font-family:'DM Mono',monospace;font-size:12px;min-width:46px;text-align:right;color:var(--muted);flex-shrink:0">$${ext}</span>`:''}
       <button onclick="saveMatRow('${safeId}','${safeApt}','${safeWo}')"
         style="background:var(--navy);color:white;border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Add</button>
       <button onclick="deleteMaterial('${safeId}','${safeApt}','${safeWo}')"
@@ -8958,8 +8960,8 @@ async function svPostPayment(woId){
   const wo=wos.find(w=>w.id===woId);
   if(wo){wo.total_paid=(wo.total_paid||0)+amt;S.set('lhs:work_orders',wos);
     await dbUpdate('lhs:work_orders',woId,{total_paid:wo.total_paid});}
-  logWOAudit(woId,'Payment Posted',`$${amt.toFixed(2)} via ${method}${ref?' ref:'+ref:''}`);
-  cMod();tst(`$${amt.toFixed(2)} posted via ${method}`,'success');openWO(woId);
+  logWOAudit(woId,'Payment Posted',`${f$(amt)} via ${method}${ref?' ref:'+ref:''}`);
+  cMod();tst(`${f$(amt)} posted via ${method}`,'success');openWO(woId);
 }
 
 function oAddAppointment(woId){
@@ -9202,7 +9204,7 @@ async function svEditWOPrice(woId){
       if(apt.id) await dbUpdate('lhs:appointments',apt.id,{price:aptPrice});}
   }
   S.set('lhs:appointments',apts);
-  tst(`Pricing updated — Total: $${total.toFixed(2)}`,'success');openWO(woId);
+  tst(`Pricing updated — Total: ${f$(total)}`,'success');openWO(woId);
 }
 
 
@@ -10222,7 +10224,7 @@ function openProperty(id){
         <td style="font-size:12px">${w.job_type||'—'}</td>
         <td style="font-size:12px;color:var(--muted)">${wCust?wCust.first_name+' '+wCust.last_name:(w.customer_name||'—')}</td>
         <td>${bx(w.status||'Scheduled',w.status==='Completed'?'bg':'ba')}</td>
-        <td style="font-family:'DM Mono',monospace">$${(w.total_price||0).toFixed(2)}</td>
+        <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
         <td style="font-size:12px;color:var(--muted)">${(w.created_at||'').slice(0,10)}</td>
         <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
       </tr>`;}).join('')}
@@ -10236,7 +10238,7 @@ function openProperty(id){
     <tbody>${ests.map(e=>`<tr>
       <td style="font-family:'DM Mono',monospace;font-weight:700">${e.estimate_number}</td>
       <td>${bx(e.division||'—','bn')}</td>
-      <td style="font-family:'DM Mono',monospace">$${(e.total_price||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+      <td style="font-family:'DM Mono',monospace">${f$(e.total_price)}</td>
       <td>${bx(e.status||'Draft',e.status==='Accepted'?'bg':e.status==='Sent'?'ba':'bn')}</td>
       <td style="font-size:12px;color:var(--muted)">${(e.estimate_date||e.created_at||'').slice(0,10)}</td>
       <td><button class="btn sm btn-o" onclick="openEstimate('${e.id}')">Open</button></td>
@@ -10489,7 +10491,7 @@ function openCustomer(id){
         </div>
         <div style="text-align:center;background:var(--surf);border-radius:8px;padding:12px">
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Total Paid</div>
-          <div style="font-size:24px;font-weight:700;font-family:'DM Mono',monospace;color:var(--green)">$${totalSpent.toFixed(0)}</div>
+          <div style="font-size:24px;font-weight:700;font-family:'DM Mono',monospace;color:var(--green)">${f$(totalSpent)}</div>
         </div>
       </div>
     </div>
@@ -10521,8 +10523,8 @@ function openCustomer(id){
       <td>${bx(w.division,'bn')}</td>
       <td style="font-size:12px">${w.job_type||'—'}</td>
       <td>${bx(w.status||'Scheduled',w.status==='Completed'?'bg':'ba')}</td>
-      <td style="font-family:'DM Mono',monospace">$${(w.total_price||0).toFixed(2)}</td>
-      <td style="font-family:'DM Mono',monospace;color:${((w.total_price||0)-(w.total_paid||0))>0?'var(--red)':'var(--green)'}">$${((w.total_price||0)-(w.total_paid||0)).toFixed(2)}</td>
+      <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
+      <td style="font-family:'DM Mono',monospace;color:${((w.total_price||0)-(w.total_paid||0))>0?'var(--red)':'var(--green)'}">${f$((w.total_price||0)-(w.total_paid||0))}</td>
       <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
     </tr>`).join('')}</tbody>
   </table></div>`:'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No work orders yet</div>'}
@@ -10696,7 +10698,7 @@ function invTableRows(items, divFilter, search){
     <td>${bx(item.division||'—')}</td>
     <td style="font-size:13px">${esc(item.unit||'—')}</td>
     <td style="color:var(--muted);font-size:12px">${esc(item.vendor||'—')}</td>
-    <td style="font-family:'DM Mono',monospace">$${(item.cost||0).toFixed(2)}</td>
+    <td style="font-family:'DM Mono',monospace">${f$(item.cost)}</td>
     <td style="text-align:center">${item.min||0}</td>
     <td style="text-align:center">${item.max||0}</td>
     <td><button class="btn btn-o sm" onclick="oEditItem('${esc(item.id||item.sku)}')">Edit</button></td>
@@ -11223,7 +11225,7 @@ function impStep3(){
       <td style="font-size:11px">${it.division||'—'}</td>
       <td style="font-size:11px">${it.unit||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${it.vendor||'—'}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:11px">$${it.cost.toFixed(2)}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${f$(it.cost)}</td>
       <td style="font-size:11px">${it.min}</td>
       <td style="font-size:11px">${it.max}</td>
     </tr>`).join('')}${toAdd.length>50?`<tr><td colspan="8" style="text-align:center;padding:8px;color:var(--muted);font-size:12px">…and ${toAdd.length-50} more rows</td></tr>`:''}</tbody>
@@ -11430,7 +11432,7 @@ function bCloseout(){
           <span style="font-size:11px;font-weight:700;color:${pctColor};min-width:30px">${pct}%</span>
         </div>
       </td>
-      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">$${balance.toFixed(2)}</td>
+      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">${f$(balance)}</td>
       <td style="text-align:center">${hasMoreApts?bx('Yes','bb'):bx('No','bg')}</td>
       <td>${auditScore!=null?bx(auditScore+'%',auditScore>=80?'bg':auditScore>=60?'ba':'br'):bx('Pending','bgr')}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">
@@ -11596,7 +11598,7 @@ function bTools(){
         <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
         <td>${t.division?bx(t.division,'bn'):'—'}</td>
         <td>${bx(t.status||'Active',t.status==='Out of Service'?'br':t.status==='In Repair'?'ba':'bg')}</td>
-        <td style="font-family:'DM Mono',monospace">$${(t.cost||0).toFixed(2)}</td>
+        <td style="font-family:'DM Mono',monospace">${f$(t.cost)}</td>
         ${canEdit?`<td><button class="btn sm btn-o" onclick="oEditTool(${realIdx})">Edit</button></td>`:''}
       </tr>`;}).join('')}
     </tbody></table>
@@ -11633,12 +11635,12 @@ function toolDetailHTML(v, vt, canEdit){
           <td style="padding:7px 10px">${bx(t.status||'Active',t.status==='Out of Service'?'br':t.status==='In Repair'?'ba':'bg')}</td>
           <td style="padding:7px 10px;font-size:12px;color:var(--muted)">${t.in_service_date||'—'}</td>
           <td style="padding:7px 10px;font-size:12px;color:${t.next_maintenance&&new Date(t.next_maintenance)<new Date()?'var(--red)':'var(--muted)'}">${t.next_maintenance||'—'}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">$${(t.cost||0).toFixed(2)}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">${f$(t.cost)}</td>
           ${canEdit?`<td style="padding:7px 10px"><button class="btn sm btn-o" onclick="oEditTool(${realIdx})">Edit</button></td>`:''}
         </tr>`;}).join('')}
         <tr style="border-top:2px solid var(--bdr);background:var(--surf)">
           <td colspan="${canEdit?6:5}" style="padding:7px 10px;font-weight:700;font-size:12px;color:var(--navy)">Total Tool Value</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">$${vt.reduce((s,t)=>s+(t.cost||0),0).toFixed(2)}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${f$(vt.reduce((s,t)=>s+(t.cost||0),0))}</td>
           ${canEdit?'<td></td>':''}
         </tr>
       </tbody>
@@ -12397,7 +12399,7 @@ function rptDateFilter(records,dateField,from,to){
 function rptDivFilter(records,divField,div){
   return div?records.filter(r=>(r[divField]||'')=== div):records;
 }
-function rptFmt(n){return n!=null?'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'$0.00';}
+function rptFmt(n){const v=Number(n||0);return '$'+(v%1===0?Math.round(v).toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));}
 
 function rpt_allJobs(from,to,div,tech,status){
   let wos=S.get('lhs:work_orders')||[];
@@ -14284,7 +14286,7 @@ function renderCRMEstimates(){
     <td style="font-weight:500">${e.customer_name||'—'}</td>
     <td>${bx(e.division||'—','bn')}</td>
     <td style="font-size:12px">${e.selected_package||'Custom'}</td>
-    <td style="font-family:'DM Mono',monospace">$${((e.total_price||0)).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+    <td style="font-family:'DM Mono',monospace">${f$(e.total_price)}</td>
     <td>${bx(e.status||'Draft',statusColor(e.status))}</td>
     <td style="font-size:12px;color:var(--muted)">${(e.created_at||'').slice(0,10)}</td>
     <td style="white-space:nowrap">
@@ -14616,9 +14618,9 @@ function openEstimate(id){
         <td style="font-weight:500">${l.label||'—'}</td>
         <td style="font-size:12px">${bx(l.type||'Material','bn')}</td>
         <td style="text-align:right;font-family:'DM Mono',monospace">${l.qty||1}</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted)">$${(l.cost||0).toFixed(2)}</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace">$${(l.price||0).toFixed(2)}</td>
-        <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">$${((l.qty||1)*(l.price||0)).toFixed(2)}</td>
+        <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted)">${f$(l.cost)}</td>
+        <td style="text-align:right;font-family:'DM Mono',monospace">${f$(l.price)}</td>
+        <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${f$((l.qty||1)*(l.price||0))}</td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>
@@ -14627,10 +14629,10 @@ function openEstimate(id){
   <div style="display:flex;justify-content:flex-end">
     <div style="min-width:260px;font-size:13px">
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bdr)">
-        <span>Total Price</span><span style="font-weight:700;font-family:'DM Mono',monospace;font-size:16px;color:var(--navy)">$${total.toLocaleString('en-US',{minimumFractionDigits:2})}</span>
+        <span>Total Price</span><span style="font-weight:700;font-family:'DM Mono',monospace;font-size:16px;color:var(--navy)">${f$(total)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);font-size:12px">
-        <span>Est. Cost</span><span style="font-family:'DM Mono',monospace">$${cost.toFixed(2)}</span>
+        <span>Est. Cost</span><span style="font-family:'DM Mono',monospace">${f$(cost)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">
         <span>Margin</span><span style="font-family:'DM Mono',monospace;color:${margin>=30?'var(--green)':margin>=15?'#c9a84c':'var(--red)'};font-weight:600">${margin}%</span>
@@ -14747,13 +14749,13 @@ function printEstimate(id){
   ${matLines.length?`<div class="section">
     <div class="section-title">Materials & Services</div>
     <table><thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Extended</th></tr></thead>
-    <tbody>${matLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>$${(l.price||0).toFixed(2)}</td><td>$${((l.qty||1)*(l.price||0)).toFixed(2)}</td></tr>`).join('')}</tbody>
+    <tbody>${matLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>${f$(l.price||0)}</td><td>${f$((l.qty||1)*(l.price||0))}</td></tr>`).join('')}</tbody>
     </table></div>`:''}
 
   ${laborLines.length?`<div class="section">
     <div class="section-title">Labor</div>
     <table><thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Total</th></tr></thead>
-    <tbody>${laborLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>$${(l.price||0).toFixed(2)}</td><td>$${((l.qty||1)*(l.price||0)).toFixed(2)}</td></tr>`).join('')}</tbody>
+    <tbody>${laborLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>${f$(l.price||0)}</td><td>${f$((l.qty||1)*(l.price||0))}</td></tr>`).join('')}</tbody>
     </table></div>`:''}
 
   <div class="totals">
