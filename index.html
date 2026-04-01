@@ -1907,7 +1907,7 @@ function genPOId(){
   const mm=String(now.getMonth()+1).padStart(2,'0');
   const dd=String(now.getDate()).padStart(2,'0');
   const yy=String(now.getFullYear()).slice(-2);
-  const dateStr=`${mm}/${dd}/${yy}`;
+  const dateStr=`${mm}-${dd}-${yy}`;
   // Get next global sequence number (never resets, never duplicates)
   let seq=(S.get('lhs:poseq')||0)+1;
   S.set('lhs:poseq',seq);
@@ -1967,7 +1967,7 @@ async function svPO(){
   const mm=String(now.getMonth()+1).padStart(2,'0');
   const dd=String(now.getDate()).padStart(2,'0');
   const yy=String(now.getFullYear()).slice(-2);
-  const poNum=`PO - ${mm}/${dd}/${yy} - ${String(seq).padStart(4,'0')}`;
+  const poNum=`PO - ${mm}-${dd}-${yy} - ${String(seq).padStart(4,'0')}`;
   const po={po_number:poNum,id:poNum,created:v('p3'),created_date:v('p3'),
     vendor:v('p1'),location:v('p2'),delivery_location:v('p2'),
     status:'Pending',notes:v('p5'),receiptValue:0,receipt_value:0,lines,
