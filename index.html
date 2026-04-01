@@ -1493,9 +1493,12 @@ function doLogout(){
 
 // Restore session on browser refresh
 window.addEventListener('DOMContentLoaded',async()=>{
-  // Store any pending PO confirmation token from URL before login redirects clear the hash
+  // ── Vendor PO confirmation — intercept BEFORE login screen ──────────────────
   const _initHash=(window.location.hash||'').replace('#','');
-  if(_initHash.startsWith('confirm-po-')) window._pendingConfirmToken=_initHash.replace('confirm-po-','');
+  if(_initHash.startsWith('confirm-po-')){
+    showVendorConfirmPage(_initHash.replace('confirm-po-',''));
+    return; // Do not start the app — vendor should never see the login or app UI
+  }
   const s=sessionStorage.getItem('lhs_s');
   if(s){
     try{
@@ -2069,14 +2072,13 @@ async function sendPO(i){
     p.confirm_token=token;
     p.sent_at=sentAt;
     S.set('lhs:pos',pos);
-    // Save to Supabase if PO has a real ID
-    const poDbId=p.id&&!String(p.id).startsWith('PO')?p.id:null;
-    if(poDbId) await dbUpdate('lhs:pos',poDbId,{confirm_token:token,sent_at:sentAt});
-    else {
-      // Try finding by po_number
-      const {data}=await DB.from('lhs_purchase_orders').update({confirm_token:token,sent_at:sentAt})
-        .eq('po_number',p.id||p.po_number);
-    }
+    // Save to Supabase — update by the PO's id field (the text PO number)
+    try{
+      const {error:saveErr}=await DB.from('lhs_purchase_orders')
+        .update({confirm_token:token,sent_at:sentAt})
+        .eq('id',p.id||p.po_number);
+      if(saveErr) console.warn('PO token save to Supabase failed:',saveErr.message);
+    }catch(e){ console.warn('PO token save error:',e.message); }
 
     tst(`✓ PO sent to ${toEmail}${ccEmail?' + '+ccEmail:''}!`,'success');
     showPage('po');
@@ -15121,6 +15123,112 @@ document.addEventListener('click',e=>{
 // Reset _notifSelected when note modal opens
 const _origOAddWONote=typeof oAddWONote==='function'?oAddWONote:null;
 
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     VENDOR PO CONFIRMATION PAGE — standalone, no login required
+     Shown when vendor clicks the confirm link in their email.
+     The full app never loads when this is displayed.
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="vc" style="display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px;
+  background:linear-gradient(135deg,#0f1f3d 0%,#1a2f52 60%,#1e3a5f 100%);position:relative">
+  <div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 40px,rgba(58,191,191,.03) 40px,rgba(58,191,191,.03) 80px)"></div>
+  <div style="background:#fff;border-radius:16px;padding:48px 40px;max-width:480px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(15,31,61,.3);position:relative;z-index:1">
+    <!-- Branding -->
+    <div style="margin-bottom:28px">
+      <img src="LHS_Logo.png" alt="Lifetime Home Services" style="height:56px;margin-bottom:8px" onerror="this.style.display='none'">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-top:4px">Lifetime Home Services</div>
+    </div>
+    <!-- Loading state -->
+    <div id="vc-loading">
+      <div style="width:52px;height:52px;border:4px solid #e2e0db;border-top-color:#3abfbf;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px"></div>
+      <div style="font-size:17px;font-weight:600;color:#0f1f3d;margin-bottom:6px">Confirming your order…</div>
+      <div style="font-size:13px;color:#6b7280">Please wait a moment.</div>
+    </div>
+    <!-- Success state -->
+    <div id="vc-success" style="display:none">
+      <div style="width:72px;height:72px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px">✅</div>
+      <div style="font-size:22px;font-weight:700;color:#0f1f3d;margin-bottom:10px">Order Confirmed!</div>
+      <div style="font-size:14px;color:#6b7280;line-height:1.6;margin-bottom:24px" id="vc-msg">Thank you for confirming receipt of this purchase order. Lifetime Home Services has been notified.</div>
+      <div style="font-size:12px;color:#9ca3af;background:#f9f9f9;border-radius:8px;padding:12px">You can safely close this window.</div>
+    </div>
+    <!-- Already confirmed state -->
+    <div id="vc-already" style="display:none">
+      <div style="width:72px;height:72px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px">✔️</div>
+      <div style="font-size:20px;font-weight:700;color:#0f1f3d;margin-bottom:10px">Already Confirmed</div>
+      <div style="font-size:14px;color:#6b7280;margin-bottom:12px" id="vc-already-msg">This purchase order was already confirmed. No action needed.</div>
+      <div style="font-size:12px;color:#9ca3af">You can safely close this window.</div>
+    </div>
+    <!-- Error state -->
+    <div id="vc-error" style="display:none">
+      <div style="width:72px;height:72px;background:#fff3e0;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px">⚠️</div>
+      <div style="font-size:20px;font-weight:700;color:#0f1f3d;margin-bottom:10px">Something Went Wrong</div>
+      <div style="font-size:14px;color:#6b7280;margin-bottom:20px" id="vc-err-msg">This confirmation link may be invalid or expired. Please contact Lifetime Home Services directly.</div>
+      <a href="tel:+1-800-555-0000" style="display:inline-block;background:#0f1f3d;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none">Contact Us</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Vendor PO confirmation — runs without login, uses Supabase anon key ───────
+async function showVendorConfirmPage(token){
+  if(!token) return;
+  // Show vendor confirm overlay, hide everything else
+  document.getElementById('ls').style.display='none';
+  const vc=document.getElementById('vc');
+  vc.style.display='flex';
+  history.replaceState(null,'',window.location.pathname); // Clean the hash from URL
+
+  try{
+    // Look up the PO by token (anon key can read with RLS select policy)
+    const {data:rows,error:fetchErr}=await DB
+      .from('lhs_purchase_orders')
+      .select('id,vendor,vendor_confirmed_at')
+      .eq('confirm_token',token)
+      .limit(1);
+
+    if(fetchErr||!rows||rows.length===0){
+      document.getElementById('vc-loading').style.display='none';
+      document.getElementById('vc-error').style.display='block';
+      document.getElementById('vc-err-msg').textContent=
+        'This confirmation link is invalid or has expired. Please contact Lifetime Home Services directly.';
+      return;
+    }
+
+    const po=rows[0];
+
+    // Already confirmed?
+    if(po.vendor_confirmed_at){
+      document.getElementById('vc-loading').style.display='none';
+      document.getElementById('vc-already').style.display='block';
+      document.getElementById('vc-already-msg').textContent=
+        `PO ${po.id} was already confirmed on ${new Date(po.vendor_confirmed_at).toLocaleDateString()}. No action needed.`;
+      return;
+    }
+
+    // Mark confirmed
+    const confirmedAt=new Date().toISOString();
+    const {error:updErr}=await DB
+      .from('lhs_purchase_orders')
+      .update({vendor_confirmed_at:confirmedAt})
+      .eq('confirm_token',token);
+
+    document.getElementById('vc-loading').style.display='none';
+
+    if(!updErr){
+      document.getElementById('vc-success').style.display='block';
+      document.getElementById('vc-msg').textContent=
+        `PO ${po.id} from ${po.vendor} has been confirmed. Lifetime Home Services has been notified. Thank you!`;
+    } else {
+      console.error('Vendor confirm update error:',updErr);
+      document.getElementById('vc-error').style.display='block';
+    }
+  }catch(e){
+    console.error('Vendor confirm error:',e);
+    document.getElementById('vc-loading').style.display='none';
+    document.getElementById('vc-error').style.display='block';
+  }
+}
 </script>
 </body>
 </html>
