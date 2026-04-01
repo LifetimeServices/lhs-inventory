@@ -6060,7 +6060,13 @@ function bDash(){
   const todayWOIds=new Set(todayApts.map(a=>a.wo_id));
   const openWOs=wos.filter(w=>!['Complete','Closed with Dispatch','Cancelled'].includes(w.status));
   const inProgressWOs=wos.filter(w=>w.status==='In Progress');
-  const closeoutPending=wos.filter(w=>w.status==='Pending Closeout'||w.status==='Awaiting Review');
+  const closeoutPending=wos.filter(w=>{
+    if(['Closed with Dispatch','Cancelled','Complete'].includes(w.status)) return false;
+    const woApts=apts.filter(a=>a.wo_id===w.id);
+    const hasCompletedApt=woApts.some(a=>a.status==='Completed'||a.pct_complete>=100);
+    const woPct=woApts.length?Math.round(woApts.reduce((s,a)=>s+(a.pct_complete||0),0)/woApts.length):0;
+    return hasCompletedApt||woPct>=50||w.status==='Pending Closeout'||w.status==='Awaiting Review';
+  });
   const todayRevenue=wos.filter(w=>w.completed_at&&w.completed_at.startsWith(today)).reduce((s,w)=>s+(w.total_price||0),0);
   const monthStart=today.slice(0,7)+'-01';
   const monthRevenue=wos.filter(w=>w.completed_at&&w.completed_at>=monthStart).reduce((s,w)=>s+(w.total_price||0),0);
