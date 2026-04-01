@@ -1263,6 +1263,21 @@ async function warmCache(){
       const{data:seq}=await DB.from('lhs_po_sequence').select('last_seq').eq('id',1).single();
       if(seq) S.set('lhs:poseq',seq.last_seq);
     }catch{}
+    // Sync vendor confirmation dates from lhs_po_confirmations → local PO cache
+    try{
+      const{data:confs}=await DB.from('lhs_po_confirmations')
+        .select('po_number,confirmed_at,token')
+        .not('confirmed_at','is',null);
+      if(confs&&confs.length){
+        const pos=S.get('lhs:pos')||[];
+        let changed=false;
+        confs.forEach(c=>{
+          const po=pos.find(p=>(p.po_number||p.id)===c.po_number);
+          if(po&&!po.vendor_confirmed_at){po.vendor_confirmed_at=c.confirmed_at;changed=true;}
+        });
+        if(changed) S.set('lhs:pos',pos);
+      }
+    }catch(e){console.warn('PO confirmation sync failed:',e.message);}
     rebuildLists();
     // Trim trailing/leading spaces from division names in cache (DB can store them dirty)
     const rawDivs=S.get('lhs:divs')||[];
@@ -2067,18 +2082,19 @@ async function sendPO(i){
 
     await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, params);
 
-    // Save token and sent_at to PO
+    // Save token and sent_at to PO (local cache)
     const sentAt=new Date().toISOString();
     p.confirm_token=token;
     p.sent_at=sentAt;
     S.set('lhs:pos',pos);
-    // Save to Supabase — update by the PO's id field (the text PO number)
+    // Save token to dedicated confirmations table (reliable — no UUID mismatch)
     try{
-      const {error:saveErr}=await DB.from('lhs_purchase_orders')
-        .update({confirm_token:token,sent_at:sentAt})
-        .eq('id',p.id||p.po_number);
-      if(saveErr) console.warn('PO token save to Supabase failed:',saveErr.message);
-    }catch(e){ console.warn('PO token save error:',e.message); }
+      const poNum=p.po_number||p.id;
+      const {error:saveErr}=await DB.from('lhs_po_confirmations')
+        .upsert({token,po_number:poNum,vendor:p.vendor,confirmed_at:null,created_at:sentAt},
+                {onConflict:'token'});
+      if(saveErr) console.warn('PO confirmation token save failed:',saveErr.message);
+    }catch(e){ console.warn('PO confirmation token save error:',e.message); }
 
     tst(`✓ PO sent to ${toEmail}${ccEmail?' + '+ccEmail:''}!`,'success');
     showPage('po');
@@ -15180,11 +15196,11 @@ async function showVendorConfirmPage(token){
   history.replaceState(null,'',window.location.pathname); // Clean the hash from URL
 
   try{
-    // Look up the PO by token (anon key can read with RLS select policy)
+    // Look up token in dedicated confirmations table (works without login)
     const {data:rows,error:fetchErr}=await DB
-      .from('lhs_purchase_orders')
-      .select('id,vendor,vendor_confirmed_at')
-      .eq('confirm_token',token)
+      .from('lhs_po_confirmations')
+      .select('token,po_number,vendor,confirmed_at')
+      .eq('token',token)
       .limit(1);
 
     if(fetchErr||!rows||rows.length===0){
@@ -15198,27 +15214,27 @@ async function showVendorConfirmPage(token){
     const po=rows[0];
 
     // Already confirmed?
-    if(po.vendor_confirmed_at){
+    if(po.confirmed_at){
       document.getElementById('vc-loading').style.display='none';
       document.getElementById('vc-already').style.display='block';
       document.getElementById('vc-already-msg').textContent=
-        `PO ${po.id} was already confirmed on ${new Date(po.vendor_confirmed_at).toLocaleDateString()}. No action needed.`;
+        `PO ${po.po_number} was already confirmed on ${new Date(po.confirmed_at).toLocaleDateString()}. No action needed.`;
       return;
     }
 
     // Mark confirmed
     const confirmedAt=new Date().toISOString();
     const {error:updErr}=await DB
-      .from('lhs_purchase_orders')
-      .update({vendor_confirmed_at:confirmedAt})
-      .eq('confirm_token',token);
+      .from('lhs_po_confirmations')
+      .update({confirmed_at:confirmedAt})
+      .eq('token',token);
 
     document.getElementById('vc-loading').style.display='none';
 
     if(!updErr){
       document.getElementById('vc-success').style.display='block';
       document.getElementById('vc-msg').textContent=
-        `PO ${po.id} from ${po.vendor} has been confirmed. Lifetime Home Services has been notified. Thank you!`;
+        `PO ${po.po_number} from ${po.vendor} has been confirmed. Lifetime Home Services has been notified. Thank you!`;
     } else {
       console.error('Vendor confirm update error:',updErr);
       document.getElementById('vc-error').style.display='block';
