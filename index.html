@@ -331,6 +331,42 @@ function getDivJobDuration(divName,jobType){
 }
 function getDivDuration(divName){ return getDivJobDuration(divName,''); }
 
+// ── PHOTO LABEL HELPERS ───────────────────────────────────────────────────────
+function getPhotoLabels(){return S.get('lhs:photo_labels')||{};}
+function getPhotoLabelsFor(div,jobType){
+  const map=getPhotoLabels();
+  // Most specific first: Division|JobType, then Division-only, then []
+  return map[(div||'')+'|'+(jobType||'')]||map[div||'']||[];
+}
+function savePhotoLabels(map){S.set('lhs:photo_labels',map);}
+function addPhotoLabelRow(key){
+  const map=getPhotoLabels();
+  if(!map[key]) map[key]=[];
+  map[key].push({id:'pl_'+Date.now()+'_'+Math.random().toString(36).slice(2),label:'',order:map[key].length});
+  savePhotoLabels(map);
+  g('atab').innerHTML=aWOSettings();
+}
+function removePhotoLabelRow(key,idx){
+  const map=getPhotoLabels();
+  if(map[key]) map[key].splice(idx,1);
+  savePhotoLabels(map);
+  g('atab').innerHTML=aWOSettings();
+}
+function updatePhotoLabelRow(key,idx,val){
+  const map=getPhotoLabels();
+  if(map[key]&&map[key][idx]!==undefined) map[key][idx].label=val;
+  savePhotoLabels(map);
+}
+function movePhotoLabelRow(key,idx,dir){
+  const map=getPhotoLabels();
+  const arr=map[key]||[];
+  const to=idx+dir;
+  if(to<0||to>=arr.length) return;
+  [arr[idx],arr[to]]=[arr[to],arr[idx]];
+  savePhotoLabels(map);
+  g('atab').innerHTML=aWOSettings();
+}
+
 // ── PAYMENT METHODS ───────────────────────────────────────────────────────────
 const PAY_METHODS=['Cash','Check','Credit Card','ACH','Financing','Invoice / Net 30','Invoice / Net 45','Invoice / Net 60'];
 
@@ -3602,6 +3638,8 @@ function aWOSettings(){
 
   ${renderMatPresetsAdmin()}
 
+  ${renderPhotoLabelsAdmin()}
+
   ${renderEstTemplateAdmin()}`;
 }
 
@@ -3713,6 +3751,75 @@ function renderMatPresetsAdmin(){
       'Job Type Preset — '+selDiv+' › '+selType+' only',
       typeSafeKey+'_type')}`
     :'<div style="text-align:center;padding:24px;color:var(--muted)">Select a division to manage its presets</div>'}
+  </div>`;
+}
+
+// ── PHOTO CHECKLISTS ADMIN ────────────────────────────────────────────────────
+function renderPhotoLabelsAdmin(){
+  const allDivs=S.get('lhs:divs')||[];
+  const divNames=allDivs.length?allDivs.map(d=>typeof d==='string'?d:d.name).filter(Boolean):DIVS;
+  const selDiv=window._photoLabelDiv||divNames[0]||'';
+  const selType=window._photoLabelType||'Installation';
+  const map=getPhotoLabels();
+  const divKey=selDiv;
+  const typeKey=selDiv+'|'+selType;
+  const divRows=map[divKey]||[];
+  const typeRows=map[typeKey]||[];
+
+  const renderLabelTable=(key,rows,label)=>{
+    const rowsHTML=rows.length?rows.map((row,i)=>`
+      <tr style="vertical-align:middle;border-bottom:1px solid var(--bdr)">
+        <td style="padding:6px 8px;width:36px;text-align:center;color:var(--muted);font-weight:700;font-size:13px">${i+1}</td>
+        <td style="padding:6px 8px">
+          <input value="${esc(row.label||'')}" placeholder="e.g. Before — Front of house"
+            style="width:100%;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"
+            onchange="updatePhotoLabelRow('${esc(key)}',${i},this.value)">
+        </td>
+        <td style="padding:6px 4px;white-space:nowrap">
+          <button onclick="movePhotoLabelRow('${esc(key)}',${i},-1)" ${i===0?'disabled':''} title="Move up"
+            style="background:none;border:1px solid var(--bdr);border-radius:4px;padding:4px 7px;cursor:pointer;font-size:12px;opacity:${i===0?'.3':'1'}">▲</button>
+          <button onclick="movePhotoLabelRow('${esc(key)}',${i},1)" ${i===rows.length-1?'disabled':''} title="Move down"
+            style="background:none;border:1px solid var(--bdr);border-radius:4px;padding:4px 7px;cursor:pointer;font-size:12px;margin-left:2px;opacity:${i===rows.length-1?'.3':'1'}">▼</button>
+          <button onclick="removePhotoLabelRow('${esc(key)}',${i})" title="Delete"
+            style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;margin-left:4px">&#215;</button>
+        </td>
+      </tr>`).join('')
+    :`<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--muted);font-size:13px">No photo labels yet — click + Add Photo Label below</td></tr>`;
+
+    return`<div style="margin-bottom:24px">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">${label}</div>
+      <table style="width:100%;border-collapse:collapse;background:var(--surf);border-radius:8px;overflow:hidden;border:1px solid var(--bdr)">
+        <thead><tr style="background:var(--navy);color:white;font-size:11px;text-transform:uppercase;letter-spacing:.06em">
+          <th style="padding:8px;width:36px;text-align:center">#</th>
+          <th style="padding:8px;text-align:left;font-weight:600">Photo Label</th>
+          <th style="padding:8px;width:100px"></th>
+        </tr></thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+      <button class="btn btn-n sm" style="margin-top:10px" onclick="addPhotoLabelRow('${esc(key)}')">+ Add Photo Label</button>
+    </div>`;
+  };
+
+  return`<div class="card" style="margin-bottom:16px">
+    <div class="ct">&#128247; Photo Checklists</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      Define required photo labels for each division and job type. When a tech opens a work order, they'll see these labeled upload slots automatically.
+      Set <strong>Division-level</strong> labels that apply to all job types, or <strong>Division + Job Type</strong> labels for specific combinations.
+    </div>
+    <div class="fr" style="margin-bottom:20px">
+      <div class="fl"><label>Division</label>
+        <select onchange="window._photoLabelDiv=this.value;window._photoLabelType='Installation';g('atab').innerHTML=aWOSettings()">
+          ${divNames.map(d=>`<option${d===selDiv?' selected':''}>${esc(d)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>Job Type</label>
+        <select onchange="window._photoLabelType=this.value;g('atab').innerHTML=aWOSettings()">
+          ${JOB_TYPES_FIXED.map(t=>`<option${t===selType?' selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    ${renderLabelTable(divKey,divRows,`${selDiv} — All Job Types`)}
+    ${renderLabelTable(typeKey,typeRows,`${selDiv} — ${selType} Only`)}
   </div>`;
 }
 
@@ -8504,6 +8611,15 @@ function openWO(woId){
     :`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No payments posted yet</div>`}
   </div>
 
+  <!-- WO Photo Checklist -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:600;color:var(--navy)">&#128247; Photos</div>
+      <span style="font-size:11px;color:var(--muted)">${(S.get('lhs:wo_photos')||[]).filter(p=>p.wo_id===woId).length} uploaded</span>
+    </div>
+    <div id="wo-photos-${woId}">${renderWOPhotos(woId,wo.division,wo.job_type)}</div>
+  </div>
+
   <!-- WO Tags -->
   ${canEdit?`<div style="margin-bottom:16px">
     <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:8px">&#127991; Tags</div>
@@ -8922,6 +9038,133 @@ async function aptUploadPhotos(aptId,woId,input){
   refreshPhotoList(aptId,woId,photos);
   if(failed) tst(`${uploaded} uploaded, ${failed} failed`,'warning');
   else tst(`${uploaded} photo${uploaded!==1?'s':''} saved${usedStorage?' to cloud':' locally'}`,uploaded?'success':'error');
+}
+
+// ── WO LEVEL PHOTO CHECKLIST ──────────────────────────────────────────────────
+async function woPhotoUpload(woId,labelId,labelText,input){
+  const files=Array.from(input.files||[]);
+  if(!files.length) return;
+  const photos=S.get('lhs:wo_photos')||[];
+  const existing=photos.filter(p=>p.wo_id===woId&&p.wo_label_id===labelId);
+  let added=0;
+  for(const file of files){
+    const photoId='wph_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    let url='';
+    // Try Supabase Storage
+    try{
+      const ext=file.name.split('.').pop();
+      const path=`wo-photos/${woId}/${photoId}.${ext}`;
+      const{data:upData,error:upErr}=await DB.storage.from('wo-photos').upload(path,file,{upsert:true});
+      if(!upErr&&upData){
+        const{data:urlData}=DB.storage.from('wo-photos').getPublicUrl(path);
+        url=urlData?.publicUrl||'';
+      }
+    }catch{}
+    // Fallback to base64
+    if(!url){
+      url=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+    }
+    photos.push({id:photoId,wo_id:woId,appointment_id:null,wo_label_id:labelId,
+      label_text:labelText,photo_url:url,file_name:file.name,
+      photo_number:existing.length+added+1,uploaded_by:CU?.name||'',
+      uploaded_at:new Date().toISOString(),flags:[],review_notes:'',safety:'',safety_notes:''});
+    added++;
+  }
+  S.set('lhs:wo_photos',photos);
+  // Re-render the photo section inline
+  const el=document.getElementById('wo-photos-'+woId);
+  if(el){const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);el.innerHTML=renderWOPhotos(woId,wo?.division,wo?.job_type);}
+  if(added) tst(`${added} photo${added>1?'s':''} uploaded`,'success');
+}
+
+function woPhotoDelete(photoId,woId){
+  if(!confirm('Delete this photo?')) return;
+  const photos=(S.get('lhs:wo_photos')||[]).filter(p=>p.id!==photoId);
+  S.set('lhs:wo_photos',photos);
+  const el=document.getElementById('wo-photos-'+woId);
+  if(el){const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);el.innerHTML=renderWOPhotos(woId,wo?.division,wo?.job_type);}
+}
+
+function renderWOPhotos(woId,division,jobType){
+  const labels=getPhotoLabelsFor(division,jobType);
+  const allPhotos=(S.get('lhs:wo_photos')||[]).filter(p=>p.wo_id===woId);
+  const labeledIds=new Set(labels.map(l=>l.id));
+  // Extra photos = uploaded without a matching label slot
+  const extraPhotos=allPhotos.filter(p=>!p.wo_label_id||!labeledIds.has(p.wo_label_id));
+
+  const photoCard=(photo,canDel=true)=>`
+    <div style="position:relative;width:90px;flex-shrink:0">
+      <img src="${photo.photo_url}" alt="${esc(photo.file_name||'')}"
+        style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:2px solid var(--bdr);cursor:pointer"
+        onclick="viewWOPhoto('${photo.id}','${woId}')" title="${esc(photo.file_name||'')}">
+      ${canDel?`<button onclick="woPhotoDelete('${photo.id}','${woId}')"
+        style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.65);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">&#215;</button>`:''}
+    </div>`;
+
+  const labelRow=(lbl,idx)=>{
+    const slotPhotos=allPhotos.filter(p=>p.wo_label_id===lbl.id);
+    const inputId='wph-input-'+lbl.id;
+    return`<div style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--bdr);border-radius:10px;background:${slotPhotos.length?'#f0faf4':'var(--surf)'}">
+      <div style="min-width:32px;height:32px;background:${slotPhotos.length?'var(--green)':'var(--navy)'};color:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px">${esc(lbl.label||'Photo '+(idx+1))}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          ${slotPhotos.map(p=>photoCard(p)).join('')}
+          <label style="width:90px;height:90px;border:2px dashed var(--bdr);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:white;transition:border-color .15s;flex-shrink:0"
+            onmouseenter="this.style.borderColor='var(--teal)'" onmouseleave="this.style.borderColor='var(--bdr)'">
+            <span style="font-size:24px">📷</span>
+            <span style="font-size:10px;color:var(--muted);margin-top:4px">Add photo</span>
+            <input type="file" id="${inputId}" accept="image/*" capture="environment" multiple style="display:none"
+              onchange="woPhotoUpload('${woId}','${esc(lbl.id)}','${esc(lbl.label||'')}',this)">
+          </label>
+        </div>
+      </div>
+      <div style="font-size:11px;color:${slotPhotos.length?'var(--green)':'var(--muted)'};font-weight:600;flex-shrink:0;padding-top:6px">
+        ${slotPhotos.length?'✓ '+slotPhotos.length+' photo'+(slotPhotos.length>1?'s':''):'No photos'}
+      </div>
+    </div>`;
+  };
+
+  const hasLabels=labels.length>0;
+  return`
+    ${hasLabels
+      ?`<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">${labels.map((l,i)=>labelRow(l,i)).join('')}</div>`
+      :`<div style="padding:12px;text-align:center;color:var(--muted);font-size:13px;background:var(--surf);border-radius:8px;border:1px dashed var(--bdr);margin-bottom:12px">
+          No photo checklist configured for ${division||'this division'}${jobType?' — '+jobType:''}.<br>
+          <span style="font-size:12px">Set up labels in Work Order Settings → Photo Checklists.</span>
+        </div>`}
+    ${extraPhotos.length?`<div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Additional Photos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${extraPhotos.map(p=>photoCard(p)).join('')}</div>
+    </div>`:''}
+    <label style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:2px dashed var(--bdr);border-radius:8px;cursor:pointer;background:white;font-size:13px;color:var(--muted);transition:border-color .15s"
+      onmouseenter="this.style.borderColor='var(--teal)'" onmouseleave="this.style.borderColor='var(--bdr)'">
+      <span style="font-size:18px">📎</span> Add extra photo
+      <input type="file" accept="image/*" capture="environment" multiple style="display:none"
+        onchange="woPhotoUpload('${woId}','extra_${Date.now()}','Extra',this)">
+    </label>`;
+}
+
+function viewWOPhoto(photoId,woId){
+  const photos=(S.get('lhs:wo_photos')||[]).filter(p=>p.wo_id===woId);
+  const idx=photos.findIndex(p=>p.id===photoId);
+  if(idx<0) return;
+  const show=(i)=>{
+    const p=photos[i];
+    if(!p) return;
+    oMod(`📷 ${p.label_text||p.file_name||'Photo'} (${i+1}/${photos.length})`,`
+      <div style="text-align:center">
+        <img src="${p.photo_url}" style="max-width:100%;max-height:60vh;object-fit:contain;border-radius:8px;border:1px solid var(--bdr)">
+        <div style="margin-top:10px;font-size:12px;color:var(--muted)">${p.label_text||''} · Uploaded by ${p.uploaded_by||'—'} · ${(p.uploaded_at||'').slice(0,10)}</div>
+        <div style="display:flex;justify-content:center;gap:8px;margin-top:12px">
+          ${i>0?`<button class="btn btn-o sm" onclick="cMod();viewWOPhoto('${photos[i-1].id}','${woId}')">&#8592; Prev</button>`:''}
+          <a href="${p.photo_url}" download="${p.file_name||'photo'}" class="btn btn-n sm">&#11015; Download</a>
+          ${i<photos.length-1?`<button class="btn btn-o sm" onclick="cMod();viewWOPhoto('${photos[i+1].id}','${woId}')">Next &#8594;</button>`:''}
+        </div>
+      </div>
+      <div class="br2" style="margin-top:8px"><button class="btn btn-o" onclick="cMod()">Close</button></div>`);
+  };
+  show(idx);
 }
 
 function refreshPhotoList(aptId,woId,allPhotos){
