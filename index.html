@@ -1847,6 +1847,8 @@ function buildPage(id){
 const td=()=>new Date().toISOString().split('T')[0];
 const f$=n=>{const v=Number(n||0);return '$'+(v%1===0?Math.round(v).toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));};
 const fN=n=>{const v=Number(n||0);return v%1===0?Math.round(v).toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+// Balance display: shows amount in red if owed, "Paid" badge in green if zero
+const fBal=(b,html=true)=>{const v=Math.max(0,Number(b||0));return v>0?(html?`<span style="color:var(--red);font-weight:600">${f$(v)}</span>`:`${f$(v)}`):(html?`<span style="color:var(--green);font-weight:600">Paid</span>`:'Paid');};
 const bx=(s,c='bn')=>`<span class="bx ${c}">${s}</span>`;
 const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')?'ba':'bgr';
 
@@ -5209,7 +5211,7 @@ function bAcctDashboard(){
           <td>${bx(w.division||'—')}</td>
           <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
           <td style="font-family:'DM Mono',monospace;color:var(--green)">${f$(w.total_paid)}</td>
-          <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red)">${f$(bal)}</td>
+          <td>${fBal(bal)}</td>
           <td>${bx(w.status||'—',w.status==='Complete'?'bg':w.status==='In Progress'?'bb':'ba')}</td>
         </tr>`;}).join('')}
       </tbody></table></div>`}
@@ -7241,7 +7243,7 @@ function dispShowTooltip(e,aptId,woId){
         <div><span style="color:var(--muted)">Status:</span> ${esc(apt.status||wo.status||'—')}</div>
         <div><span style="color:var(--muted)">Window:</span> ${esc(apt.arrival_window||'—')}</div>
         <div style="grid-column:span 2"><span style="color:var(--muted)">Time:</span> ${startFmt} – ${endFmt} (${durMin} min)</div>
-        ${canSeePrice?`<div><span style="color:var(--muted)">Total:</span> ${f$(wo.total_price)}</div><div><span style="color:${balance>0?'var(--red)':'var(--green)'}">Balance: ${f$(balance)}</span></div>`:''}
+        ${canSeePrice?`<div><span style="color:var(--muted)">Total:</span> ${f$(wo.total_price)}</div><div><span style="color:var(--muted)">Balance:</span> ${fBal(balance)}</div>`:''}
       </div>
       ${techs.length?`<div style="font-size:11px;color:var(--muted)">👷 ${techs.join(', ')}</div>`:''}
       ${wo.description?`<div style="font-size:11px;color:var(--muted);margin-top:4px;border-top:1px solid var(--bdr);padding-top:4px;white-space:pre-wrap">${esc(wo.description.slice(0,120))}${wo.description.length>120?'…':''}</div>`:''}
@@ -7682,7 +7684,7 @@ function renderWOList(wos,status){
       <td>${bx(wo.status||'Scheduled',statusColor)}</td>
       <td style="font-size:12px;color:var(--muted)">${nextApt?.scheduled_date||'—'}<br>${nextApt?.arrival_window||''}</td>
       <td style="font-family:'DM Mono',monospace">${f$(wo.total_price)}</td>
-      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">${f$(balance)}</td>
+      <td>${fBal(balance)}</td>
       <td style="font-size:12px">${uniqueTechs.slice(0,2).join(', ')+(uniqueTechs.length>2?` +${uniqueTechs.length-2}`:'')}</td>
       <td><button class="btn sm btn-n" onclick="event.stopPropagation();openWO('${wo.id}')">Open</button></td>
     </tr>`;}).join('')}
@@ -8244,7 +8246,7 @@ function openWO(woId){
 
   <!-- Header stats -->
   ${(()=>{
-    const fmt=n=>{const v=Math.abs(n);const s=v%1===0?v.toLocaleString('en-US'):'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return(n<0?'-':'')+'$'+(v%1===0?v.toLocaleString('en-US'):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));};
+    const fmt=n=>f$(n);
     const numStyle=(color)=>`font-size:22px;font-weight:800;color:${color};letter-spacing:-0.5px;font-variant-numeric:tabular-nums;line-height:1.2`;
     const labelStyle=`font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.06em;margin-bottom:4px`;
     const cardStyle=`background:var(--surf);border-radius:10px;padding:14px 12px;text-align:center;position:relative`;
@@ -8260,7 +8262,7 @@ function openWO(woId){
       </div>
       <div style="${cardStyle}">
         <div style="${labelStyle}">Balance Due</div>
-        <div style="${numStyle(balance>0?'var(--red)':'var(--green)')}">${fmt(balance)}</div>
+        <div style="${numStyle(balance>0?'var(--red)':'var(--green)')}">${balance>0?fmt(balance):'Paid ✓'}</div>
       </div>
       ${canSeeCost?`<div style="${cardStyle}"><div style="${labelStyle}">Material Cost</div><div style="${numStyle('var(--amber)')}">${fmt(matTotal)}</div></div>`:''}
     </div>`;
@@ -10524,7 +10526,7 @@ function openCustomer(id){
       <td style="font-size:12px">${w.job_type||'—'}</td>
       <td>${bx(w.status||'Scheduled',w.status==='Completed'?'bg':'ba')}</td>
       <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
-      <td style="font-family:'DM Mono',monospace;color:${((w.total_price||0)-(w.total_paid||0))>0?'var(--red)':'var(--green)'}">${f$((w.total_price||0)-(w.total_paid||0))}</td>
+      <td>${fBal((w.total_price||0)-(w.total_paid||0))}</td>
       <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
     </tr>`).join('')}</tbody>
   </table></div>`:'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No work orders yet</div>'}
@@ -11432,7 +11434,7 @@ function bCloseout(){
           <span style="font-size:11px;font-weight:700;color:${pctColor};min-width:30px">${pct}%</span>
         </div>
       </td>
-      <td style="font-family:'DM Mono',monospace;color:${balance>0?'var(--red)':'var(--green)'}">${f$(balance)}</td>
+      <td>${fBal(balance)}</td>
       <td style="text-align:center">${hasMoreApts?bx('Yes','bb'):bx('No','bg')}</td>
       <td>${auditScore!=null?bx(auditScore+'%',auditScore>=80?'bg':auditScore>=60?'ba':'br'):bx('Pending','bgr')}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">
