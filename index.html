@@ -277,13 +277,9 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const CO={name:'Lifetime Management System',addr:'3485 N 124th St, Brookfield WI 53005',phone:'608-215-2241'};
 
-const _e=s=>atob(s);const USERS=[
-  {name:'Scott Campbell',    email:_e('c2NvdHRAbGlmZXRpbWVob21lc2VydmljZXMuY29t'),  pw:'Scott2026!', role:'God View',        loc:'Green Bay WI'},
-  {name:'George Booth',      email:_e('Z2VvcmdlQGxpZmV0aW1laG9tZXNlcnZpY2VzLmNvbQ=='), pw:'Radon2026!', role:'God View',        loc:'Green Bay WI'},
-  {name:'Manager, Green Bay',email:_e('Z2IubWdyQGxocy5jb20='),                  pw:'gbmgr',      role:'Location Manager',loc:'Green Bay WI'},
-  {name:'Tech, Electric 1',  email:_e('dGVjaDFAbGhzLmNvbQ=='),                   pw:'tech1',      role:'Van Tech',        loc:'VAN-GB-01'},
-  {name:'Rep, Sales 1',      email:_e('c2FsZXMxQGxocy5jb20='),                  pw:'sales1',     role:'Sales Rep',       loc:'SALES-01'},
-];
+// SECURITY: All authentication is handled exclusively by Supabase.
+// No hardcoded credentials — users must exist in the lhs_users table.
+const USERS = [];
 
 const DIVS=['Radon Mitigation','Electric','Concrete Coatings','Closet Organization',
   'Air Solutions','Window Treatments','Struxure','AIH Security & Wiring',
@@ -1465,11 +1461,7 @@ async function doLogin(){
     }
   }catch(e){console.warn('Supabase login failed, trying local:',e.message);}
 
-  // Step 2: Fallback to hardcoded USERS if Supabase unreachable
-  if(!user){
-    const local=USERS.find(x=>x.email.toLowerCase()===u&&x.pw===p);
-    if(local) user=local;
-  }
+  // SECURITY: Hardcoded fallback removed — Supabase is the sole auth provider.
 
   if(btn){btn.textContent='Sign In →';btn.disabled=false;}
 
@@ -1518,8 +1510,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
             manager:data.manager||'',id:data.id};
         }
       }catch{}
-      // Fallback to hardcoded
-      if(!user) user=USERS.find(x=>x.email.toLowerCase()===d.e.toLowerCase()&&x.pw===d.p);
+      // SECURITY: Hardcoded fallback removed — Supabase is the sole auth provider.
       if(user){CU=user;startApp();return}
     }catch{}
   }
@@ -4473,6 +4464,9 @@ let _chatShowNewGroup=false;
 let _chatGroupSearch='';
 
 function bChatter(){
+  // Sync window state back to module variables so onclick handlers take effect
+  if(window._chatChannel!==undefined)_chatChannel=window._chatChannel;
+  if(window._chatShowNewGroup!==undefined)_chatShowNewGroup=window._chatShowNewGroup;
   const users=S.get('lhs:users')||[];
   const divs=(S.get('lhs:divs')||[]).map(d=>typeof d==='string'?d:(d.name||''));
   const msgs=(S.get('lhs:messages')||[])
