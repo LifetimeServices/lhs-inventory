@@ -428,7 +428,7 @@ function regionOpts(selected=''){
 
 // ── JOB TYPES (color coded) ───────────────────────────────────────────────────
 const JOB_TYPES={
-  'Install':              '#E65100',
+  'Install':              '#FF8A50',
   'Standard Service Call':'#1565C0',
   'Do Not Move':          '#C62828',
   'Estimates / Consults': '#2E7D32',
@@ -6644,7 +6644,7 @@ function bDispatch(){
     ${Object.entries(JOB_TYPES).map(([t,c])=>`<span style="background:${c};color:white;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">${t}</span>`).join('')}
     <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-left:8px">Flexibility:</span>
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:var(--green);border-radius:2px;display:inline-block"></span>Flexible</span>
-    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:var(--red);border-radius:2px;display:inline-block"></span>Fixed</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:#B71C1C;border-radius:2px;display:inline-block"></span>Fixed</span>
   </div>
 
   <!-- Board -->
@@ -6856,7 +6856,7 @@ function renderDispBoard(){
           wo.job_type==='Design/Consultation'?JOB_TYPES['Estimates / Consults']:
           wo.job_type==='Service Call'?JOB_TYPES['Standard Service Call']:
           wo.job_type==='Warranty'?JOB_TYPES['Do Not Move']:'#607D8B';
-        const flexColor=wo.is_flexible?'var(--green)':'var(--red)';
+        const flexColor=wo.is_flexible?'var(--green)':'#B71C1C';
         const techStatus=allTechs.find(t=>t.appointment_id===apt.id&&t.tech_name===techName);
         const statusAlpha=techStatus?.arrived_at?'ff':techStatus?.dispatched_at?'cc':'99';
 
@@ -6910,7 +6910,7 @@ function renderDispBoard(){
             wo.job_type==='Design/Consultation'?JOB_TYPES['Estimates / Consults']:
             wo.job_type==='Service Call'?JOB_TYPES['Standard Service Call']:
             wo.job_type==='Warranty'?JOB_TYPES['Do Not Move']:'#607D8B';
-          const flexColor=wo.is_flexible?'var(--green)':'var(--red)';
+          const flexColor=wo.is_flexible?'var(--green)':'#B71C1C';
           const techStatus=allTechs.find(t=>t.appointment_id===apt.id&&t.tech_name===techName);
           return`<div
             data-apt-id="${apt.id}" data-wo-id="${wo.id}" data-tech="${techName}" data-date="${date}"
@@ -8270,7 +8270,7 @@ function openWO(woId){
         <div style="color:var(--muted)">Subtype</div><div>${wo.job_subtype||'—'}</div>
         <div style="color:var(--muted)">Classification</div><div>${wo.job_classification||'—'}</div>
         <div style="color:var(--muted)">Priority</div><div>${bx(wo.priority||'Normal',wo.priority==='Emergency'?'br':wo.priority==='High'?'ba':'bn')}</div>
-        <div style="color:var(--muted)">Flexibility</div><div><span style="display:inline-block;width:28px;height:5px;background:${wo.is_flexible?'var(--green)':'var(--red)'};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${wo.is_flexible?'Flexible':'Do Not Move'}</div>
+        <div style="color:var(--muted)">Flexibility</div><div><span style="display:inline-block;width:28px;height:5px;background:${wo.is_flexible?'var(--green)':'#B71C1C'};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${wo.is_flexible?'Flexible':'Do Not Move'}</div>
         <div style="color:var(--muted)">Created By</div><div>${wo.created_by||'—'}</div>
       </div>
       ${wo.description?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)"><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Description</div><div style="font-size:13px">${wo.description}</div></div>`:''}
