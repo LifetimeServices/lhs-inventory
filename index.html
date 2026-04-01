@@ -5206,11 +5206,11 @@ function bAcctDashboard(){
       <tbody>${arWOs.slice(0,50).map(w=>{
         const bal=(w.total_price||0)-(w.total_paid||0);
         return`<tr style="cursor:pointer" onclick="showPage('workorders');setTimeout(()=>openWO('${w.id}'),300)">
-          <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${w.wo_number||'—'}</td>
+          <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${w.wo_number||'—'}</td>
           <td style="font-size:13px;font-weight:500">${esc(w.customer_name||'—')}</td>
           <td>${bx(w.division||'—')}</td>
-          <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
-          <td style="font-family:'DM Mono',monospace;color:var(--green)">${f$(w.total_paid)}</td>
+          <td style="font-variant-numeric:tabular-nums;font-weight:600">${w.total_price?f$(w.total_price):'—'}</td>
+          <td style="font-variant-numeric:tabular-nums;color:var(--green)">${w.total_paid?f$(w.total_paid):'—'}</td>
           <td>${fBal(bal)}</td>
           <td>${bx(w.status||'—',w.status==='Complete'?'bg':w.status==='In Progress'?'bb':'ba')}</td>
         </tr>`;}).join('')}
@@ -7677,13 +7677,13 @@ function renderWOList(wos,status){
     const statusColor=wo.status==='Completed'||wo.status==='Closed with Dispatch'?'bg':wo.status==='In Progress'?'bb':wo.status==='Cancelled'?'br':'ba';
     const balance=(wo.total_price||0)-(wo.total_paid||0);
     return`<tr style="cursor:pointer" onclick="openWO('${wo.id}')">
-      <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${wo.wo_number}</td>
+      <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${wo.wo_number}</td>
       <td style="font-weight:500">${wo.customer_name||'—'}${(wo.customer_city||wo.customer_state)?`<span style="font-weight:400;color:var(--muted);font-size:12px"> &middot; ${[wo.customer_city,wo.customer_state].filter(Boolean).join(', ')}</span>`:''}</td>
       <td>${bx(wo.division||'—','bn')}</td>
       <td style="font-size:12px">${wo.job_type||'—'}<br><span style="color:var(--muted)">${wo.job_subtype||''}</span></td>
       <td>${bx(wo.status||'Scheduled',statusColor)}</td>
       <td style="font-size:12px;color:var(--muted)">${nextApt?.scheduled_date||'—'}<br>${nextApt?.arrival_window||''}</td>
-      <td style="font-family:'DM Mono',monospace">${f$(wo.total_price)}</td>
+      <td style="font-variant-numeric:tabular-nums;font-weight:600">${wo.total_price?f$(wo.total_price):'—'}</td>
       <td>${fBal(balance)}</td>
       <td style="font-size:12px">${uniqueTechs.slice(0,2).join(', ')+(uniqueTechs.length>2?` +${uniqueTechs.length-2}`:'')}</td>
       <td><button class="btn sm btn-n" onclick="event.stopPropagation();openWO('${wo.id}')">Open</button></td>
@@ -10221,12 +10221,12 @@ function openProperty(id){
     <tbody>${wos.map(w=>{
       const wCust=allCustomers.find(c=>c.id===w.customer_id);
       return`<tr>
-        <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${w.wo_number}</td>
+        <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${w.wo_number}</td>
         <td>${bx(w.division||'—','bn')}</td>
         <td style="font-size:12px">${w.job_type||'—'}</td>
         <td style="font-size:12px;color:var(--muted)">${wCust?wCust.first_name+' '+wCust.last_name:(w.customer_name||'—')}</td>
         <td>${bx(w.status||'Scheduled',w.status==='Completed'?'bg':'ba')}</td>
-        <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
+        <td style="font-variant-numeric:tabular-nums;font-weight:600">${w.total_price?f$(w.total_price):'—'}</td>
         <td style="font-size:12px;color:var(--muted)">${(w.created_at||'').slice(0,10)}</td>
         <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
       </tr>`;}).join('')}
@@ -10521,11 +10521,11 @@ function openCustomer(id){
   ${wos.length?`<div class="tw"><table>
     <thead><tr><th>WO #</th><th>Division</th><th>Job Type</th><th>Status</th><th>Total</th><th>Balance</th><th></th></tr></thead>
     <tbody>${wos.map(w=>`<tr>
-      <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${w.wo_number}</td>
+      <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${w.wo_number}</td>
       <td>${bx(w.division,'bn')}</td>
       <td style="font-size:12px">${w.job_type||'—'}</td>
       <td>${bx(w.status||'Scheduled',w.status==='Completed'?'bg':'ba')}</td>
-      <td style="font-family:'DM Mono',monospace">${f$(w.total_price)}</td>
+      <td style="font-variant-numeric:tabular-nums;font-weight:600">${w.total_price?f$(w.total_price):'—'}</td>
       <td>${fBal((w.total_price||0)-(w.total_paid||0))}</td>
       <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
     </tr>`).join('')}</tbody>
@@ -11421,9 +11421,9 @@ function bCloseout(){
     const pctColor=pct>=100?'var(--green)':pct>=50?'var(--navy)':'var(--amber)';
     const hasMoreApts=woApts.some(a=>a.status==='Scheduled');
     return`<tr style="cursor:pointer" onclick="openWO('${wo.id}')">
-      <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${wo.wo_number}</td>
+      <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${wo.wo_number}</td>
       <td style="font-weight:500;font-size:13px">${wo.customer_name}</td>
-      <td style="font-size:12px;font-family:'DM Mono',monospace">${wo.customer_state||'—'}</td>
+      <td style="font-size:12px">${wo.customer_state||'—'}</td>
       <td>${bx(wo.division)}</td>
       <td style="font-size:12px">${woTechs.slice(0,2).join(', ')+(woTechs.length>2?` +${woTechs.length-2}`:'')}</td>
       <td style="min-width:100px">
