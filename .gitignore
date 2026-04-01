@@ -1,0 +1,12 @@
+# Backups — never push to GitHub
+index-backup-*.html
+
+# Local dev files
+serve.py
+supabase-*.sql
+
+# Claude Code
+.claude/
+
+# Mac system files
+.DS_Store
