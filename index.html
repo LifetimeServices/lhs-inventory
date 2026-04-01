@@ -1910,13 +1910,52 @@ const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')
 
 // ─── PO ──────────────────────────────────────────────────────────────────────
 function bPO(){
-  const pos=S.get('lhs:pos')||[];
+  const allPos=S.get('lhs:pos')||[];
   const canSend=['God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
+  const filterStatus=window._poFilterStatus||'active';
+  const searchQ=(window._poSearch||'').toLowerCase();
+
+  // Filter
+  let pos=allPos.filter((p,_i)=>{
+    if(filterStatus==='active') return !['Received in Full','Cancelled'].includes(p.status);
+    if(filterStatus==='received') return p.status==='Received in Full';
+    if(filterStatus==='cancelled') return p.status==='Cancelled';
+    return true; // 'all'
+  });
+  if(searchQ) pos=pos.filter(p=>
+    (p.id||'').toLowerCase().includes(searchQ)||
+    (p.vendor||'').toLowerCase().includes(searchQ)||
+    (p.location||'').toLowerCase().includes(searchQ)
+  );
+
+  const receivedCount=allPos.filter(p=>p.status==='Received in Full').length;
+  const activeCount=allPos.filter(p=>!['Received in Full','Cancelled'].includes(p.status)).length;
+
+  const filterBtn=(val,label,count)=>`<button onclick="window._poFilterStatus='${val}';showPage('po')"
+    style="padding:6px 14px;border-radius:20px;border:2px solid ${filterStatus===val?'var(--navy)':'var(--bdr)'};
+    background:${filterStatus===val?'var(--navy)':'white'};color:${filterStatus===val?'white':'var(--text)'};
+    font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+    ${label}${count!=null?` <span style="opacity:.7">(${count})</span>`:''}
+  </button>`;
+
   return`<div class="pt">Purchase Orders</div><div class="ps">Create, track, and receive vendor orders</div>
-  <div class="sh"><div></div><button class="btn btn-n" onclick="oPO()">+ Create PO</button></div>
+
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <input placeholder="&#128269; Search PO #, vendor, location…" value="${esc(window._poSearch||'')}"
+      oninput="window._poSearch=this.value;document.getElementById('po-tbody').innerHTML=bPORows()"
+      style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${filterBtn('active','Active',activeCount)}
+      ${filterBtn('received','Received',receivedCount)}
+      ${filterBtn('all','All',allPos.length)}
+    </div>
+    <button class="btn btn-n" onclick="oPO()">+ Create PO</button>
+  </div>
+
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Location</th><th>Status</th><th>Sent</th><th>Vendor Confirmed</th><th>Value</th><th></th></tr></thead>
-  <tbody>${pos.length?pos.map((p,i)=>`<tr>
+  <tbody id="po-tbody">${pos.length?pos.map((p)=>{const i=allPos.indexOf(p);return`<tr>
     <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${p.id}</td>
     <td style="color:var(--muted);font-size:12px">${p.created}</td>
     <td style="font-weight:500">${p.vendor}</td>
@@ -1932,7 +1971,9 @@ function bPO(){
       ${['Pending','Partial - Awaiting Balance'].includes(p.status)?`<button class="btn sm btn-g" onclick="showPage('receive')">Receive</button>`:''}
       ${canSend?`<button class="btn sm btn-r" onclick="deletePO(${i})" title="Delete PO">&#128465;</button>`:''}
     </td>
-  </tr>`).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No POs yet.</td></tr>'}
+  </tr>`}).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">
+    ${searchQ?'No POs match your search.':filterStatus==='received'?'No fully received POs.':'No active POs.'}
+  </td></tr>`}
   </tbody></table></div></div>`;
 }
 
@@ -2043,13 +2084,14 @@ function vPO(i){
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Sent to Vendor</div><div style="margin-top:2px">${p.sent_at?'<span style="color:var(--green)">✓ Sent '+new Date(p.sent_at).toLocaleString()+'</span>':'Not yet sent'}</div></div>
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Vendor Confirmed</div><div style="margin-top:2px">${p.vendor_confirmed_at?'<span style="color:var(--green)">✓ Confirmed '+new Date(p.vendor_confirmed_at).toLocaleString()+'</span>':'<span style="color:var(--amber)">Awaiting confirmation</span>'}</div></div>
   </div>
-  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Status</th></tr></thead>
-  <tbody>${(p.lines||[]).map(l=>`<tr>
+  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Short</th><th>Status</th></tr></thead>
+  <tbody>${(p.lines||[]).map(l=>{const short=Math.max(0,(l.qtyOrdered||0)-(l.qtyReceived||0));return`<tr>
     <td style="font-weight:500">${esc(l.item||l.sku)}</td>
-    <td>${l.qtyOrdered}</td>
-    <td>${l.qtyReceived||0}</td>
+    <td style="text-align:center">${l.qtyOrdered}</td>
+    <td style="text-align:center">${l.qtyReceived||0}</td>
+    <td style="text-align:center;font-weight:700;color:${short>0?'var(--red)':'var(--green)'}">${short>0?short:'✓'}</td>
     <td>${bx(l.status||'Open',l.status==='Received'?'bg':l.status==='Short'?'ba':'bb')}</td>
-  </tr>`).join('')}</tbody></table></div>
+  </tr>`;}).join('')}</tbody></table></div>
   ${p.notes?`<div class="al al-a" style="margin-bottom:12px">&#128221; ${esc(p.notes)}</div>`:''}
   ${p.receivedDate?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;padding:12px;background:var(--surf);border-radius:8px;border:1px solid var(--bdr)">
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Received Date</div><div style="margin-top:2px">${p.receivedDate}</div></div>
