@@ -1863,14 +1863,14 @@ function bPO(){
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Location</th><th>Status</th><th>Sent</th><th>Vendor Confirmed</th><th>Value</th><th></th></tr></thead>
   <tbody>${pos.length?pos.map((p,i)=>`<tr>
-    <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${p.id}</td>
+    <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${p.id}</td>
     <td style="color:var(--muted);font-size:12px">${p.created}</td>
     <td style="font-weight:500">${p.vendor}</td>
     <td>${p.location}</td>
     <td>${bx(p.status,ps(p.status))}</td>
     <td style="font-size:12px">${p.sent_at?'<span style="color:var(--green)">✓ '+new Date(p.sent_at).toLocaleDateString()+'</span>':'<span style="color:var(--muted)">Not sent</span>'}</td>
     <td style="font-size:12px">${p.vendor_confirmed_at?'<span style="color:var(--green)">✓ '+new Date(p.vendor_confirmed_at).toLocaleDateString()+'</span>':'<span style="color:var(--muted)">Pending</span>'}</td>
-    <td style="font-family:'DM Mono',monospace">${f$(p.receiptValue)}</td>
+    <td style="font-variant-numeric:tabular-nums;font-weight:600">${p.receiptValue?f$(p.receiptValue):'—'}</td>
     <td style="white-space:nowrap">
       <button class="btn btn-o sm" onclick="vPO(${i})">View</button>
       ${canSend&&!p.sent_at?`<button class="btn btn-n sm" onclick="sendPO(${i})">&#9993; Send</button>`:''}
