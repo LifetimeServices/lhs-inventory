@@ -1297,7 +1297,7 @@ async function warmCache(){
     // Load PO sequence
     try{
       const{data:seq}=await DB.from('lhs_po_sequence').select('last_seq').eq('id',1).single();
-      if(seq) S.set('lhs:poseq',seq.last_seq);
+      if(seq) S.set('lhs:poseq',Math.max(seq.last_seq||0,S.get('lhs:poseq')||0));
     }catch{}
     // Sync vendor confirmation dates from lhs_po_confirmations → local PO cache
     try{
@@ -1930,9 +1930,21 @@ function bPO(){
       ${canSend&&!p.sent_at?`<button class="btn btn-n sm" onclick="sendPO(${i})">&#9993; Send</button>`:''}
       ${canSend&&p.sent_at&&!p.vendor_confirmed_at?`<button class="btn btn-o sm" onclick="sendPO(${i})">Resend</button>`:''}
       ${['Pending','Partial - Awaiting Balance'].includes(p.status)?`<button class="btn sm btn-g" onclick="showPage('receive')">Receive</button>`:''}
+      ${canSend?`<button class="btn sm btn-r" onclick="deletePO(${i})" title="Delete PO">&#128465;</button>`:''}
     </td>
   </tr>`).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No POs yet.</td></tr>'}
   </tbody></table></div></div>`;
+}
+
+function deletePO(i){
+  const pos=S.get('lhs:pos')||[];
+  const p=pos[i];
+  if(!p) return;
+  if(!confirm(`Delete ${p.id}?\nThis cannot be undone.`)) return;
+  pos.splice(i,1);
+  S.set('lhs:pos',pos);
+  tst(`${p.id} deleted`,'info');
+  showPage('po');
 }
 
 let _pli=[],_pit=[];
