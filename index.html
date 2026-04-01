@@ -1336,11 +1336,12 @@ async function dbDelete(key,id){
 
 // Update a row by id
 async function dbUpdate(key,id,updates){
-  const tbl=TBL[key]; if(!tbl) return;
+  const tbl=TBL[key]; if(!tbl) return false;
   try{
     const{error}=await DB.from(tbl).update(updates).eq('id',id);
-    if(error) console.warn('dbUpdate error',tbl,error.message);
-  }catch(e){console.warn('dbUpdate failed',tbl,e.message);}
+    if(error){console.warn('dbUpdate error',tbl,error.message);return false;}
+    return true;
+  }catch(e){console.warn('dbUpdate failed',tbl,e.message);return false;}
 }
 
 // Get next PO sequence number (atomic via Supabase)
@@ -9731,7 +9732,8 @@ async function svEditWODetails(woId){
   const state=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
   const prev={division:wo.division,job_type:wo.job_type,job_subtype:wo.job_subtype,
     job_classification:wo.job_classification,description:wo.description,
-    special_instructions:wo.special_instructions,priority:wo.priority};
+    special_instructions:wo.special_instructions,priority:wo.priority,
+    is_flexible:wo.is_flexible};
   const updates={
     division:v('ewo-div'),job_type:v('ewo-type'),
     job_subtype:v('ewo-sub')||'',job_classification:v('ewo-cls')||'',
@@ -9744,7 +9746,8 @@ async function svEditWODetails(woId){
   };
   Object.assign(wo,updates);
   S.set('lhs:work_orders',wos);
-  await dbUpdate('lhs:work_orders',woId,updates);
+  const saved=await dbUpdate('lhs:work_orders',woId,updates);
+  if(!saved){tst('Save failed — check your connection and try again','error');return;}
   // Build change log
   const prev2={customer_name:wo.customer_name,customer_phone:wo.customer_phone,
     customer_email:wo.customer_email,customer_address:wo.customer_address,
@@ -9754,6 +9757,7 @@ async function svEditWODetails(woId){
   if(prev.job_type!==updates.job_type) changes.push(`Job Type: ${prev.job_type}→${updates.job_type}`);
   if(prev.job_subtype!==updates.job_subtype) changes.push(`Subtype: ${prev.job_subtype||'—'}→${updates.job_subtype||'—'}`);
   if(prev.priority!==updates.priority) changes.push(`Priority: ${prev.priority}→${updates.priority}`);
+  if(prev.is_flexible!==updates.is_flexible) changes.push(`Flexibility: ${prev.is_flexible?'Flexible':'Do Not Move'}→${updates.is_flexible?'Flexible':'Do Not Move'}`);
   if(prev.description!==updates.description) changes.push('Description updated');
   if(prev.special_instructions!==updates.special_instructions) changes.push('Special instructions updated');
   if(prev2.customer_name!==updates.customer_name) changes.push(`Customer name: ${prev2.customer_name}→${updates.customer_name}`);
@@ -9762,7 +9766,9 @@ async function svEditWODetails(woId){
   if(prev2.customer_state!==updates.customer_state) changes.push(`State: ${prev2.customer_state||'—'}→${updates.customer_state||'—'}`);
   await logWOAudit(woId,'WO Details Edited',changes.join(' | ')||'No changes detected');
   tst('Work order updated','success');
-  openWO(woId);
+  // Refresh dispatch board if currently viewing it so color changes appear immediately
+  const onDispatch=document.querySelector('.main [data-page="dispatch"]');
+  if(onDispatch) showPage('dispatch'); else openWO(woId);
 }
 
 // ── PROPERTIES ────────────────────────────────────────────────────────────────
