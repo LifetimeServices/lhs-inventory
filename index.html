@@ -438,9 +438,22 @@ let REGIONS={
   'Northeast':   {color:'#C62828', light:'#FFEBEE', states:['NY','VT','NJ','NH','ME','MA','CT','RI']},
 };
 // Load saved region state assignments (admin-editable)
+// Restore Southeast if it was corrupted (bug from incorrect modal selector)
 try{
   const saved=JSON.parse(localStorage.getItem('lhs_region_states')||'null');
-  if(saved) Object.entries(saved).forEach(([r,states])=>{if(REGIONS[r]) REGIONS[r].states=states;});
+  if(saved){
+    // Only apply saved states if the array is non-empty (guard against corruption)
+    Object.entries(saved).forEach(([r,states])=>{
+      if(REGIONS[r]&&Array.isArray(states)&&states.length>0) REGIONS[r].states=states;
+    });
+    // If Southeast is empty or missing, restore defaults
+    if(!saved['Southeast']||saved['Southeast'].length===0){
+      REGIONS['Southeast'].states=['TN','NC','SC','GA','AL'];
+      const toSave={};
+      Object.entries(REGIONS).forEach(([rn,rx])=>{toSave[rn]=rx.states;});
+      localStorage.setItem('lhs_region_states',JSON.stringify(toSave));
+    }
+  }
 }catch(e){}
 
 const STATES_BY_REGION={
@@ -3738,19 +3751,22 @@ function oEditRegion(name){
 
 function svRegionEdit(name){
   const r=REGIONS[name]; if(!r) return;
-  const checked=[...document.querySelectorAll(`#mod input[type=checkbox]:checked`)].map(x=>x.value);
-  // Remove these states from any other region first
+  // Fix: modal body is #mb not #mod
+  const checked=[...document.querySelectorAll('#mb input[type=checkbox]:checked')].map(x=>x.value);
+  // Safety guard — never allow saving an empty region (indicates a selector failure)
+  if(checked.length===0){tst('No states selected — please check at least one state','error');return;}
+  // Remove checked states from any other region first
   Object.entries(REGIONS).forEach(([rn,rx])=>{
     if(rn!==name) rx.states=rx.states.filter(s=>!checked.includes(s));
   });
   // Set this region's states
   r.states=checked;
-  // Persist to localStorage so it survives refresh
+  // Persist — only save regions that have states
   const toSave={};
-  Object.entries(REGIONS).forEach(([rn,rx])=>{toSave[rn]=rx.states;});
+  Object.entries(REGIONS).forEach(([rn,rx])=>{if(rx.states.length>0) toSave[rn]=rx.states;});
   localStorage.setItem('lhs_region_states',JSON.stringify(toSave));
   cMod();
-  tst(`${name} region updated`,'success');
+  tst(`${name} updated`,'success');
   g('atab').innerHTML=aRegions();
 }
 
