@@ -5479,7 +5479,7 @@ function buildTerritory(editId=null){
     <div style="display:flex;gap:10px;margin-bottom:14px">
       <button class="btn btn-n" id="tb-load-btn" onclick="tbLoadMaps()">Load County Maps</button>
     </div>
-    <div id="tb-maps-area" style="display:flex;gap:24px;flex-wrap:nowrap;align-items:flex-start;overflow-x:auto;padding-bottom:8px"></div>
+    <div id="tb-maps-area" style="display:flex;flex-direction:column;gap:32px;width:100%"></div>
     <div style="margin-top:16px;display:flex;gap:10px">
       <button class="btn btn-n" onclick="saveTerritoryMap()">Save Territory</button>
       <button class="btn btn-o" onclick="cancelBuildTerritory()">Cancel</button>
@@ -5557,13 +5557,13 @@ function tbRenderStateMap(stAbbr,container){
   }
 
   // Build SVG
-  const W=600, H=460;
+  const W=780, H=560;
   const projection=d3.geoMercator().fitSize([W,H],stateCounties);
   const path=d3.geoPath().projection(projection);
   const ns='http://www.w3.org/2000/svg';
   const svg=document.createElementNS(ns,'svg');
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.style.cssText=`width:${W}px;height:${H}px;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC`;
+  svg.style.cssText=`width:100%;max-width:${W}px;height:auto;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC`;
 
   stateCounties.features.forEach(f=>{
     const countyName=(f.properties&&(f.properties.name||f.properties.NAME))||'';
@@ -5591,13 +5591,14 @@ function tbRenderStateMap(stAbbr,container){
     svg.appendChild(p);
     // County label for larger counties
     const centroid=path.centroid(f);
-    if(centroid&&!isNaN(centroid[0])&&countyName.length<=14){
+    if(centroid&&!isNaN(centroid[0])){
       const txt=document.createElementNS(ns,'text');
       txt.setAttribute('x',centroid[0]);
       txt.setAttribute('y',centroid[1]+4);
       txt.setAttribute('text-anchor','middle');
-      txt.setAttribute('font-size','9');
-      txt.setAttribute('fill',isSelected?'white':'#444');
+      txt.setAttribute('font-size','10');
+      txt.setAttribute('font-weight','500');
+      txt.setAttribute('fill',isSelected?'white':'#333');
       txt.setAttribute('pointer-events','none');
       txt.textContent=countyName;
       svg.appendChild(txt);
@@ -5606,7 +5607,7 @@ function tbRenderStateMap(stAbbr,container){
 
   // Wrapper div per state
   const div=document.createElement('div');
-  div.style.cssText='display:inline-flex;flex-direction:column;align-items:center;gap:8px;min-width:'+W+'px';
+  div.style.cssText='display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:100%';
   const lbl=document.createElement('div');
   lbl.style.cssText='font-weight:700;font-size:13px;color:var(--navy)';
   lbl.textContent=stAbbr+' – '+STATE_NAMES[stAbbr];
