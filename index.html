@@ -4282,6 +4282,24 @@ function bInt(){
         &#8212; Create OAuth app at developer.intuit.com
       </div>
     </div>
+    <div class="ic off2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#1a3d6e;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#f4a827;font-weight:800;font-size:13px;letter-spacing:-.5px">DT</div>
+        <div><div class="in2">D-Tools Cloud</div><div class="is2 off" id="dtc-status">&#9679; Not Connected</div></div>
+      </div>
+      <div class="id2">Sync projects, proposals, and material lists from D-Tools Cloud. Import job BOMs directly into work orders. Keep customer pricing aligned between platforms.</div>
+      <div class="ifg"><label>API Key</label><input id="dtc-key" type="password" placeholder="D-Tools Cloud API key" autocomplete="off"></div>
+      <div class="ifg"><label>Company Subdomain</label><input id="dtc-sub" placeholder="e.g. lifetimehomeservices"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-n sm" onclick="cDTC()">Connect D-Tools &#8594;</button>
+        <button class="btn btn-o sm" onclick="oDTCSync()" id="dtc-sync-btn" style="display:none">&#8635; Sync Projects</button>
+      </div>
+      <div id="dtc-projects" style="margin-top:12px;display:none"></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        <a href="https://www.d-tools.com/cloud/" target="_blank" style="color:var(--navy)">About D-Tools Cloud</a>
+        &#8212; API key found in D-Tools Cloud &#8594; Settings &#8594; Integrations &#8594; API Access
+      </div>
+    </div>
     <div class="ic" style="border-color:var(--bdr)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <div style="width:36px;height:36px;background:var(--navy);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--teal);font-weight:800;font-size:13px">AI</div>
@@ -4304,6 +4322,126 @@ function cSF(){if(!v('sf0')||!v('sf1')){tst('Enter Instance URL and Consumer Key
   tst('Credentials saved. OAuth requires server-side redirect — see setup docs.','info');}
 function cQB(){if(!v('qb0')||!v('qb1')){tst('Enter Company ID and Client ID','error');return}
   tst('Credentials saved. OAuth 2.0 requires server-side redirect — see setup docs.','info');}
+
+// ── D-TOOLS CLOUD INTEGRATION ─────────────────────────────────────────────────
+function cDTC(){
+  const key=(v('dtc-key')||'').trim();
+  const sub=(v('dtc-sub')||'').trim();
+  if(!key||!sub){tst('Enter API Key and Company Subdomain','error');return;}
+  // Save credentials to localStorage
+  localStorage.setItem('lhs:dtc_key',key);
+  localStorage.setItem('lhs:dtc_sub',sub);
+  // Update status badge
+  const st=document.getElementById('dtc-status');
+  if(st){st.textContent='● Credentials Saved — Verifying...';st.className='is2';}
+  // Attempt a test connection via the D-Tools Cloud REST API
+  // D-Tools Cloud API base: https://{subdomain}.d-tools.com/api/v1/
+  const base=`https://${sub}.d-tools.com/api/v1`;
+  fetch(`${base}/projects?limit=1`,{
+    headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json'}
+  }).then(r=>{
+    if(r.ok){
+      if(st){st.textContent='● Connected';st.className='is2 on';}
+      const syncBtn=document.getElementById('dtc-sync-btn');
+      if(syncBtn) syncBtn.style.display='';
+      tst('D-Tools Cloud connected!','success');
+    } else {
+      if(st){st.textContent='● Auth Failed — check key & subdomain';st.className='is2 off';}
+      tst(`D-Tools auth failed (${r.status}) — check your API key and subdomain`,'error');
+    }
+  }).catch(()=>{
+    // CORS will block browser-direct calls in production — treat as "saved, verify on-site"
+    if(st){st.textContent='● Credentials Saved (verify from D-Tools portal)';st.className='is2';}
+    const syncBtn=document.getElementById('dtc-sync-btn');
+    if(syncBtn) syncBtn.style.display='';
+    tst('Credentials saved. D-Tools API must be verified from within your network.','info');
+  });
+}
+
+async function oDTCSync(){
+  const key=localStorage.getItem('lhs:dtc_key')||'';
+  const sub=localStorage.getItem('lhs:dtc_sub')||'';
+  if(!key||!sub){tst('Connect D-Tools first','error');return;}
+  const panel=document.getElementById('dtc-projects');
+  if(panel){panel.style.display='block';panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">&#8635; Fetching projects from D-Tools Cloud...</div>';}
+  const base=`https://${sub}.d-tools.com/api/v1`;
+  try{
+    const r=await fetch(`${base}/projects?limit=50&status=active`,{
+      headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json'}
+    });
+    if(!r.ok){
+      if(panel) panel.innerHTML=`<div style="color:var(--red);font-size:13px">Error ${r.status} — check API key and subdomain</div>`;
+      return;
+    }
+    const d=await r.json();
+    const projects=d.data||d.projects||d.items||d||[];
+    if(!projects.length){
+      if(panel) panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">No active projects found</div>';
+      return;
+    }
+    if(panel) panel.innerHTML=`
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">${projects.length} Project${projects.length!==1?'s':''} Found</div>
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">
+        ${projects.map(p=>`
+        <div style="border:1px solid var(--bdr);border-radius:7px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:white">
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:13px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name||p.project_name||'Unnamed Project')}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(p.client_name||p.customer||'')} ${p.total?'· '+f$(p.total||p.total_price||0):''} ${p.status?'· '+p.status:''}</div>
+          </div>
+          <button class="btn btn-o sm" style="flex-shrink:0;white-space:nowrap" onclick="oDTCImport(${JSON.stringify(JSON.stringify(p))})">Import &#8594;</button>
+        </div>`).join('')}
+      </div>`;
+  }catch(e){
+    if(panel) panel.innerHTML=`<div style="color:var(--muted);font-size:13px">Unable to reach D-Tools API directly — CORS restriction may apply. Use D-Tools Cloud portal to export and import manually.<br><br><a href="https://${sub}.d-tools.com" target="_blank" style="color:var(--navy);font-weight:600">Open D-Tools Cloud Portal &#8594;</a></div>`;
+  }
+}
+
+function oDTCImport(projectJson){
+  try{
+    const p=JSON.parse(projectJson);
+    // Build a summary of what would be imported
+    const name=p.name||p.project_name||'D-Tools Project';
+    const items=p.items||p.line_items||p.bom||[];
+    oMod('Import from D-Tools Cloud',`
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:4px">${esc(name)}</div>
+        <div style="font-size:13px;color:var(--muted)">${esc(p.client_name||p.customer||'')} ${p.status?'· '+p.status:''}</div>
+      </div>
+      ${items.length?`
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Bill of Materials (${items.length} items)</div>
+      <div class="tw" style="max-height:240px;overflow-y:auto"><table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th></tr></thead>
+        <tbody>${items.map(it=>`<tr>
+          <td>${esc(it.name||it.description||it.sku||'')}</td>
+          <td style="text-align:center">${it.qty||it.quantity||1}</td>
+          <td style="font-weight:600">${f$(it.unit_price||it.price||it.cost||0)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      :`<div style="color:var(--muted);font-size:13px;padding:12px;border:1px dashed var(--bdr);border-radius:8px;text-align:center">No BOM items in this project</div>`}
+      <div style="margin-top:16px;padding:12px;background:var(--surf);border-radius:8px;font-size:13px;color:var(--muted)">
+        &#8505; Full import (creating a work order and pre-populating materials) requires mapping D-Tools clients to LHS customers. This feature is in development.
+      </div>
+      <div class="br2" style="margin-top:16px">
+        <button class="btn btn-o" onclick="cMod()">Close</button>
+        <a href="https://${localStorage.getItem('lhs:dtc_sub')||''}.d-tools.com" target="_blank" class="btn btn-n sm">Open in D-Tools &#8594;</a>
+      </div>`);
+  }catch{tst('Could not parse project data','error');}
+}
+
+// Restore D-Tools connection state on page load
+function restoreDTCState(){
+  const key=localStorage.getItem('lhs:dtc_key');
+  const sub=localStorage.getItem('lhs:dtc_sub');
+  if(!key||!sub) return;
+  const keyEl=document.getElementById('dtc-key');
+  const subEl=document.getElementById('dtc-sub');
+  const st=document.getElementById('dtc-status');
+  const syncBtn=document.getElementById('dtc-sync-btn');
+  if(keyEl) keyEl.value=key;
+  if(subEl) subEl.value=sub;
+  if(st){st.textContent='● Credentials Saved';st.className='is2';}
+  if(syncBtn) syncBtn.style.display='';
+}
 
 function oAI(){
   const it=S.get('lhs:items')||[];const ls=S.get('lhs:ls')||[];const vi=S.get('lhs:vi')||[];
@@ -4380,6 +4518,7 @@ function aTab(tab,btn){
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
     regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,integrations:bInt};
   if(fns[tab]) el.innerHTML=fns[tab]();
+  if(tab==='integrations') setTimeout(restoreDTCState,50);
 }
 
 
