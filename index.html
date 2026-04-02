@@ -5467,7 +5467,7 @@ function buildTerritory(editId=null){
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px">
       <div class="fl" style="margin:0"><label>Territory Name</label><input id="tb-name" value="${esc(_TB.name)}" placeholder="e.g. Green Bay Area"></div>
       <div class="fl" style="margin:0"><label>Region</label><select id="tb-region"><option value="">— Select —</option>${regionOpts}</select></div>
-      <div class="fl" style="margin:0"><label>Territory Color</label><input type="color" id="tb-color" value="${_TB.color}" oninput="tbColorChanged(this.value)" style="height:56px;width:100%;padding:3px 5px;cursor:pointer;border-radius:6px;border:1.5px solid var(--bdr)"></div>
+      <div class="fl" style="margin:0"><label>Territory Color</label><input type="color" id="tb-color" value="${_TB.color}" oninput="tbColorChanged(this.value)" style="height:80px;width:100%;min-width:120px;padding:4px 6px;cursor:pointer;border-radius:8px;border:1.5px solid var(--bdr)"></div>
       <div></div>
     </div>
     <div style="margin-bottom:12px">
