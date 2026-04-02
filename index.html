@@ -500,6 +500,45 @@ const STATE_NAMES={
   'WY':'Wyoming',
 };
 const ALL_STATES=Object.keys(STATE_NAMES).sort();
+
+// Counties by state — used for territory assignment
+const COUNTIES_BY_STATE={
+  'WI':['Adams','Ashland','Barron','Bayfield','Brown','Buffalo','Burnett','Calumet','Chippewa','Clark','Columbia','Crawford','Dane','Dodge','Door','Douglas','Dunn','Eau Claire','Florence','Fond du Lac','Forest','Grant','Green','Green Lake','Iowa','Iron','Jackson','Jefferson','Juneau','Kenosha','Kewaunee','La Crosse','Lafayette','Langlade','Lincoln','Manitowoc','Marathon','Marinette','Marquette','Menominee','Milwaukee','Monroe','Oconto','Oneida','Outagamie','Ozaukee','Pepin','Pierce','Polk','Portage','Price','Racine','Richland','Rock','Rusk','St. Croix','Sauk','Sawyer','Shawano','Sheboygan','Taylor','Trempealeau','Vernon','Vilas','Walworth','Washburn','Washington','Waukesha','Waupaca','Waushara','Winnebago','Wood'],
+  'IL':['Adams','Alexander','Bond','Boone','Brown','Bureau','Calhoun','Carroll','Cass','Champaign','Christian','Clark','Clay','Clinton','Coles','Cook','Crawford','Cumberland','De Kalb','De Witt','Douglas','Du Page','Edgar','Edwards','Effingham','Fayette','Ford','Franklin','Fulton','Gallatin','Greene','Grundy','Hamilton','Hancock','Hardin','Henderson','Henry','Iroquois','Jackson','Jasper','Jefferson','Jersey','Jo Daviess','Johnson','Kane','Kankakee','Kendall','Knox','Lake','La Salle','Lawrence','Lee','Livingston','Logan','Macon','Macoupin','Madison','Marion','Marshall','Mason','Massac','McDonough','McHenry','McLean','Menard','Mercer','Monroe','Montgomery','Morgan','Moultrie','Ogle','Peoria','Perry','Piatt','Pike','Pope','Pulaski','Putnam','Randolph','Richland','Rock Island','Saline','Sangamon','Schuyler','Scott','Shelby','St. Clair','Stark','Stephenson','Tazewell','Union','Vermilion','Wabash','Warren','Washington','Wayne','White','Whiteside','Will','Williamson','Winnebago','Woodford'],
+  'MN':['Aitkin','Anoka','Becker','Beltrami','Benton','Big Stone','Blue Earth','Brown','Carlton','Carver','Cass','Chippewa','Chisago','Clay','Clearwater','Cook','Cottonwood','Crow Wing','Dakota','Dodge','Douglas','Faribault','Fillmore','Freeborn','Goodhue','Grant','Hennepin','Houston','Hubbard','Isanti','Itasca','Jackson','Kanabec','Kandiyohi','Kittson','Koochiching','Lac qui Parle','Lake','Lake of the Woods','Le Sueur','Lincoln','Lyon','Mahnomen','Marshall','Martin','McLeod','Meeker','Mille Lacs','Morrison','Mower','Murray','Nicollet','Nobles','Norman','Olmsted','Otter Tail','Pennington','Pine','Pipestone','Polk','Pope','Ramsey','Red Lake','Redwood','Renville','Rice','Rock','Roseau','Scott','Sherburne','Sibley','St. Louis','Stearns','Steele','Stevens','Swift','Todd','Traverse','Wabasha','Wadena','Waseca','Washington','Watonwan','Wilkin','Winona','Wright','Yellow Medicine'],
+  'IA':['Adair','Adams','Allamakee','Appanoose','Audubon','Benton','Black Hawk','Boone','Bremer','Buchanan','Buena Vista','Butler','Calhoun','Carroll','Cass','Cedar','Cerro Gordo','Cherokee','Chickasaw','Clarke','Clay','Clayton','Clinton','Crawford','Dallas','Davis','Decatur','Delaware','Des Moines','Dickinson','Dubuque','Emmet','Fayette','Floyd','Franklin','Fremont','Greene','Grundy','Guthrie','Hamilton','Hancock','Hardin','Harrison','Henry','Howard','Humboldt','Ida','Iowa','Jackson','Jasper','Jefferson','Johnson','Jones','Keokuk','Kossuth','Lee','Linn','Louisa','Lucas','Lyon','Madison','Mahaska','Marion','Marshall','Mills','Mitchell','Monona','Monroe','Montgomery','Muscatine','O\'Brien','Osceola','Page','Palo Alto','Plymouth','Pocahontas','Polk','Pottawattamie','Poweshiek','Ringgold','Sac','Scott','Shelby','Sioux','Story','Tama','Taylor','Union','Van Buren','Wapello','Warren','Washington','Wayne','Webster','Winnebago','Winneshiek','Woodbury','Worth','Wright'],
+  'MO':['Adair','Andrew','Atchison','Audrain','Barry','Barton','Bates','Benton','Bollinger','Boone','Buchanan','Butler','Caldwell','Callaway','Camden','Cape Girardeau','Carroll','Carter','Cass','Cedar','Chariton','Christian','Clark','Clay','Clinton','Cole','Cooper','Crawford','Dade','Dallas','Daviess','DeKalb','Dent','Douglas','Dunklin','Franklin','Gasconade','Gentry','Greene','Grundy','Harrison','Henry','Hickory','Holt','Howard','Howell','Iron','Jackson','Jasper','Jefferson','Johnson','Knox','Laclede','Lafayette','Lawrence','Lewis','Lincoln','Linn','Livingston','Macon','Madison','Maries','Marion','McDonald','Mercer','Miller','Mississippi','Moniteau','Monroe','Montgomery','Morgan','New Madrid','Newton','Nodaway','Oregon','Osage','Ozark','Pemiscot','Perry','Pettis','Phelps','Pike','Platte','Polk','Pulaski','Putnam','Ralls','Randolph','Ray','Reynolds','Ripley','St. Charles','St. Clair','St. Francois','St. Louis','St. Louis City','Ste. Genevieve','Saline','Schuyler','Scotland','Scott','Shannon','Shelby','Stoddard','Stone','Sullivan','Taney','Texas','Vernon','Warren','Washington','Wayne','Webster','Worth','Wright'],
+  'NE':['Adams','Antelope','Arthur','Banner','Blaine','Boone','Box Butte','Boyd','Brown','Buffalo','Burt','Butler','Cass','Cedar','Chase','Cherry','Cheyenne','Clay','Colfax','Cuming','Custer','Dakota','Dawes','Dawson','Deuel','Dixon','Dodge','Douglas','Dundy','Fillmore','Franklin','Frontier','Furnas','Gage','Garden','Garfield','Gosper','Grant','Greeley','Hall','Hamilton','Harlan','Hayes','Hitchcock','Holt','Hooker','Howard','Jefferson','Johnson','Kearney','Keith','Keya Paha','Kimball','Knox','Lancaster','Lincoln','Logan','Loup','Madison','McPherson','Merrick','Morrill','Nance','Nemaha','Nuckolls','Otoe','Pawnee','Perkins','Phelps','Pierce','Platte','Polk','Red Willow','Richardson','Rock','Saline','Sarpy','Saunders','Scotts Bluff','Seward','Sheridan','Sherman','Sioux','Stanton','Thayer','Thomas','Thurston','Valley','Washington','Wayne','Webster','Wheeler','York'],
+  'KS':['Allen','Anderson','Atchison','Barber','Barton','Bourbon','Brown','Butler','Chase','Chautauqua','Cherokee','Cheyenne','Clark','Clay','Cloud','Coffey','Comanche','Cowley','Crawford','Decatur','Dickinson','Doniphan','Douglas','Edwards','Elk','Ellis','Ellsworth','Finney','Ford','Franklin','Geary','Gove','Graham','Grant','Gray','Greeley','Greenwood','Hamilton','Harper','Harvey','Haskell','Hodgeman','Jackson','Jefferson','Jewell','Johnson','Kearny','Kingman','Kiowa','Labette','Lane','Leavenworth','Lincoln','Linn','Logan','Lyon','Marion','Marshall','McPherson','Meade','Miami','Mitchell','Montgomery','Morris','Morton','Nemaha','Neosho','Ness','Norton','Osage','Osborne','Ottawa','Pawnee','Phillips','Pottawatomie','Pratt','Rawlins','Reno','Republic','Rice','Riley','Rooks','Rush','Russell','Saline','Scott','Sedgwick','Seward','Shawnee','Sheridan','Sherman','Smith','Stafford','Stanton','Stevens','Sumner','Thomas','Trego','Wabaunsee','Wallace','Washington','Wichita','Wilson','Woodson','Wyandotte'],
+  'CO':['Adams','Alamosa','Arapahoe','Archuleta','Baca','Bent','Boulder','Broomfield','Chaffee','Cheyenne','Clear Creek','Conejos','Costilla','Crowley','Custer','Delta','Denver','Dolores','Douglas','Eagle','El Paso','Elbert','Fremont','Garfield','Gilpin','Grand','Gunnison','Hinsdale','Huerfano','Jackson','Jefferson','Kiowa','Kit Carson','La Plata','Lake','Larimer','Las Animas','Lincoln','Logan','Mesa','Mineral','Moffat','Montezuma','Montrose','Morgan','Otero','Ouray','Park','Phillips','Pitkin','Prowers','Pueblo','Rio Blanco','Rio Grande','Routt','Saguache','San Juan','San Miguel','Sedgwick','Summit','Teller','Washington','Weld','Yuma'],
+  'UT':['Beaver','Box Elder','Cache','Carbon','Daggett','Davis','Duchesne','Emery','Garfield','Grand','Iron','Juab','Kane','Millard','Morgan','Piute','Rich','Salt Lake','San Juan','Sanpete','Sevier','Summit','Tooele','Uintah','Utah','Wasatch','Washington','Wayne','Weber'],
+  'OR':['Baker','Benton','Clackamas','Clatsop','Columbia','Coos','Crook','Curry','Deschutes','Douglas','Gilliam','Grant','Harney','Hood River','Jackson','Jefferson','Josephine','Klamath','Lake','Lane','Lincoln','Linn','Malheur','Marion','Morrow','Multnomah','Polk','Sherman','Tillamook','Umatilla','Union','Wallowa','Wasco','Washington','Wheeler','Yamhill'],
+  'WA':['Adams','Asotin','Benton','Chelan','Clallam','Clark','Columbia','Cowlitz','Douglas','Ferry','Franklin','Garfield','Grant','Grays Harbor','Island','Jefferson','King','Kitsap','Kittitas','Klickitat','Lewis','Lincoln','Mason','Okanogan','Pacific','Pend Oreille','Pierce','San Juan','Skagit','Skamania','Snohomish','Spokane','Stevens','Thurston','Wahkiakum','Walla Walla','Whatcom','Whitman','Yakima'],
+  'MI':['Alcona','Alger','Allegan','Alpena','Antrim','Arenac','Baraga','Barry','Bay','Benzie','Berrien','Branch','Calhoun','Cass','Charlevoix','Cheboygan','Chippewa','Clare','Clinton','Crawford','Delta','Dickinson','Eaton','Emmet','Genesee','Gladwin','Gogebic','Grand Traverse','Gratiot','Hillsdale','Houghton','Huron','Ingham','Ionia','Iosco','Iron','Isabella','Jackson','Kalamazoo','Kalkaska','Kent','Keweenaw','Lake','Lapeer','Leelanau','Lenawee','Livingston','Luce','Mackinac','Macomb','Manistee','Marquette','Mason','Mecosta','Menominee','Midland','Missaukee','Monroe','Montcalm','Montmorency','Muskegon','Newaygo','Oakland','Oceana','Ogemaw','Ontonagon','Osceola','Oscoda','Otsego','Ottawa','Presque Isle','Roscommon','Saginaw','Sanilac','Schoolcraft','Shiawassee','St. Clair','St. Joseph','Tuscola','Van Buren','Washtenaw','Wayne','Wexford'],
+  'IN':['Adams','Allen','Bartholomew','Benton','Blackford','Boone','Brown','Carroll','Cass','Clark','Clay','Clinton','Crawford','Daviess','De Kalb','Dearborn','Decatur','Delaware','Dubois','Elkhart','Fayette','Floyd','Fountain','Franklin','Fulton','Gibson','Grant','Greene','Hamilton','Hancock','Harrison','Hendricks','Henry','Howard','Huntington','Jackson','Jasper','Jay','Jefferson','Jennings','Johnson','Knox','Kosciusko','La Porte','Lagrange','Lake','Lawrence','Madison','Marion','Marshall','Martin','Miami','Monroe','Montgomery','Morgan','Newton','Noble','Ohio','Orange','Owen','Parke','Perry','Pike','Porter','Posey','Pulaski','Putnam','Randolph','Ripley','Rush','Scott','Shelby','Spencer','St. Joseph','Starke','Steuben','Sullivan','Switzerland','Tippecanoe','Tipton','Union','Vanderburgh','Vermillion','Vigo','Wabash','Warren','Warrick','Washington','Wayne','Wells','White','Whitley'],
+  'OH':['Adams','Allen','Ashland','Ashtabula','Athens','Auglaize','Belmont','Brown','Butler','Carroll','Champaign','Clark','Clermont','Clinton','Columbiana','Coshocton','Crawford','Cuyahoga','Darke','Defiance','Delaware','Erie','Fairfield','Fayette','Franklin','Fulton','Gallia','Geauga','Greene','Guernsey','Hamilton','Hancock','Hardin','Harrison','Henry','Highland','Hocking','Holmes','Huron','Jackson','Jefferson','Knox','Lake','Lawrence','Licking','Logan','Lorain','Lucas','Madison','Mahoning','Marion','Medina','Meigs','Mercer','Miami','Monroe','Montgomery','Morgan','Morrow','Muskingum','Noble','Ottawa','Paulding','Perry','Pickaway','Pike','Portage','Preble','Putnam','Richland','Ross','Sandusky','Scioto','Seneca','Shelby','Stark','Summit','Trumbull','Tuscarawas','Union','Van Wert','Vinton','Warren','Washington','Wayne','Williams','Wood','Wyandot'],
+  'KY':['Adair','Allen','Anderson','Ballard','Barren','Bath','Bell','Boone','Bourbon','Boyd','Boyle','Bracken','Breathitt','Breckinridge','Bullitt','Butler','Caldwell','Calloway','Campbell','Carlisle','Carroll','Carter','Casey','Christian','Clark','Clay','Clinton','Crittenden','Cumberland','Daviess','Edmonson','Elliott','Estill','Fayette','Fleming','Floyd','Franklin','Fulton','Gallatin','Garrard','Grant','Graves','Grayson','Green','Greenup','Hancock','Hardin','Harlan','Harrison','Hart','Henderson','Henry','Hickman','Hopkins','Jackson','Jefferson','Jessamine','Johnson','Kenton','Knott','Knox','Larue','Laurel','Lawrence','Lee','Leslie','Letcher','Lewis','Lincoln','Livingston','Logan','Lyon','Madison','Magoffin','Marion','Marshall','Martin','Mason','McCracken','McCreary','McLean','Meade','Menifee','Mercer','Metcalfe','Monroe','Montgomery','Morgan','Muhlenberg','Nelson','Nicholas','Ohio','Oldham','Owen','Owsley','Pendleton','Perry','Pike','Powell','Pulaski','Robertson','Rockcastle','Rowan','Russell','Scott','Shelby','Simpson','Spencer','Taylor','Todd','Trigg','Trimble','Union','Warren','Washington','Wayne','Webster','Whitley','Wolfe','Woodford'],
+  'TN':['Anderson','Bedford','Benton','Bledsoe','Blount','Bradley','Campbell','Cannon','Carroll','Carter','Cheatham','Chester','Claiborne','Clay','Cocke','Coffee','Crockett','Cumberland','Davidson','Decatur','DeKalb','Dickson','Dyer','Fayette','Fentress','Franklin','Gibson','Giles','Grainger','Greene','Grundy','Hamblen','Hamilton','Hancock','Hardeman','Hardin','Hawkins','Haywood','Henderson','Henry','Hickman','Houston','Humphreys','Jackson','Jefferson','Johnson','Knox','Lake','Lauderdale','Lawrence','Lewis','Lincoln','Loudon','Macon','Madison','Marion','Marshall','Maury','McMinn','McNairy','Meigs','Monroe','Montgomery','Moore','Morgan','Obion','Overton','Perry','Pickett','Polk','Putnam','Rhea','Roane','Robertson','Rutherford','Scott','Sequatchie','Sevier','Shelby','Smith','Stewart','Sullivan','Sumner','Tipton','Trousdale','Unicoi','Union','Van Buren','Warren','Washington','Wayne','Weakley','White','Williamson','Wilson'],
+  'NC':['Alamance','Alexander','Alleghany','Anson','Ashe','Avery','Beaufort','Bertie','Bladen','Brunswick','Buncombe','Burke','Cabarrus','Caldwell','Camden','Carteret','Caswell','Catawba','Chatham','Cherokee','Chowan','Clay','Cleveland','Columbus','Craven','Cumberland','Currituck','Dare','Davidson','Davie','Duplin','Durham','Edgecombe','Forsyth','Franklin','Gaston','Gates','Graham','Granville','Greene','Guilford','Halifax','Harnett','Haywood','Henderson','Hertford','Hoke','Hyde','Iredell','Jackson','Johnston','Jones','Lee','Lenoir','Lincoln','Macon','Madison','Martin','McDowell','Mecklenburg','Mitchell','Montgomery','Moore','Nash','New Hanover','Northampton','Onslow','Orange','Pamlico','Pasquotank','Pender','Perquimans','Person','Pitt','Polk','Randolph','Richmond','Robeson','Rockingham','Rowan','Rutherford','Sampson','Scotland','Stanly','Stokes','Surry','Swain','Transylvania','Tyrrell','Union','Vance','Wake','Warren','Washington','Watauga','Wayne','Wilkes','Wilson','Yadkin','Yancey'],
+  'SC':['Abbeville','Aiken','Allendale','Anderson','Bamberg','Barnwell','Beaufort','Berkeley','Calhoun','Charleston','Cherokee','Chester','Chesterfield','Clarendon','Colleton','Darlington','Dillon','Dorchester','Edgefield','Fairfield','Florence','Georgetown','Greenville','Greenwood','Hampton','Horry','Jasper','Kershaw','Lancaster','Laurens','Lee','Lexington','Marion','Marlboro','McCormick','Newberry','Oconee','Orangeburg','Pickens','Richland','Saluda','Spartanburg','Sumter','Union','Williamsburg','York'],
+  'GA':['Appling','Atkinson','Bacon','Baker','Baldwin','Banks','Barrow','Bartow','Ben Hill','Berrien','Bibb','Bleckley','Brantley','Brooks','Bryan','Bulloch','Burke','Butts','Calhoun','Camden','Candler','Carroll','Catoosa','Charlton','Chatham','Chattahoochee','Chattooga','Cherokee','Clarke','Clay','Clayton','Clinch','Cobb','Coffee','Colquitt','Columbia','Cook','Coweta','Crawford','Crisp','Dade','Dawson','Decatur','DeKalb','Dodge','Dooly','Dougherty','Douglas','Early','Echols','Effingham','Elbert','Emanuel','Evans','Fannin','Fayette','Floyd','Forsyth','Franklin','Fulton','Gilmer','Glascock','Glynn','Gordon','Grady','Greene','Gwinnett','Habersham','Hall','Hancock','Haralson','Harris','Hart','Heard','Henry','Houston','Irwin','Jackson','Jasper','Jeff Davis','Jefferson','Jenkins','Johnson','Jones','Lamar','Lanier','Laurens','Lee','Liberty','Lincoln','Long','Lowndes','Lumpkin','Macon','Madison','Marion','McDuffie','McIntosh','Meriwether','Miller','Mitchell','Monroe','Montgomery','Morgan','Murray','Muscogee','Newton','Oconee','Oglethorpe','Paulding','Peach','Pickens','Pierce','Pike','Polk','Pulaski','Putnam','Quitman','Rabun','Randolph','Richmond','Rockdale','Schley','Screven','Seminole','Spalding','Stephens','Stewart','Sumter','Talbot','Taliaferro','Tattnall','Taylor','Telfair','Terrell','Thomas','Tift','Toombs','Towns','Treutlen','Troup','Turner','Twiggs','Union','Upson','Walker','Walton','Ware','Warren','Washington','Wayne','Webster','Wheeler','White','Whitfield','Wilcox','Wilkes','Wilkinson','Worth'],
+  'AL':['Autauga','Baldwin','Barbour','Bibb','Blount','Bullock','Butler','Calhoun','Chambers','Cherokee','Chilton','Choctaw','Clarke','Clay','Cleburne','Coffee','Colbert','Conecuh','Coosa','Covington','Crenshaw','Cullman','Dale','Dallas','DeKalb','Elmore','Escambia','Etowah','Fayette','Franklin','Geneva','Greene','Hale','Henry','Houston','Jackson','Jefferson','Lamar','Lauderdale','Lawrence','Lee','Limestone','Lowndes','Macon','Madison','Marengo','Marion','Marshall','Mobile','Monroe','Montgomery','Morgan','Perry','Pickens','Pike','Randolph','Russell','Shelby','St. Clair','Sumter','Talladega','Tallapoosa','Tuscaloosa','Walker','Washington','Wilcox','Winston'],
+  'PA':['Adams','Allegheny','Armstrong','Beaver','Bedford','Berks','Blair','Bradford','Bucks','Butler','Cambria','Cameron','Carbon','Centre','Chester','Clarion','Clearfield','Clinton','Columbia','Crawford','Cumberland','Dauphin','Delaware','Elk','Erie','Fayette','Forest','Franklin','Fulton','Greene','Huntingdon','Indiana','Jefferson','Juniata','Lackawanna','Lancaster','Lawrence','Lebanon','Lehigh','Luzerne','Lycoming','McKean','Mercer','Mifflin','Monroe','Montgomery','Montour','Northampton','Northumberland','Perry','Philadelphia','Pike','Potter','Schuylkill','Snyder','Somerset','Sullivan','Susquehanna','Tioga','Union','Venango','Warren','Washington','Wayne','Westmoreland','Wyoming','York'],
+  'WV':['Barbour','Berkeley','Boone','Braxton','Brooke','Cabell','Calhoun','Clay','Doddridge','Fayette','Gilmer','Grant','Greenbrier','Hampshire','Hancock','Hardy','Harrison','Jackson','Jefferson','Kanawha','Lewis','Lincoln','Logan','Marion','Marshall','Mason','McDowell','Mercer','Mineral','Mingo','Monongalia','Monroe','Morgan','Nicholas','Ohio','Pendleton','Pleasants','Pocahontas','Preston','Putnam','Raleigh','Randolph','Ritchie','Roane','Summers','Taylor','Tucker','Tyler','Upshur','Wayne','Webster','Wetzel','Wirt','Wood','Wyoming'],
+  'VA':['Accomack','Albemarle','Alleghany','Amelia','Amherst','Appomattox','Arlington','Augusta','Bath','Bedford','Bland','Botetourt','Brunswick','Buchanan','Buckingham','Campbell','Caroline','Carroll','Charles City','Charlotte','Chesterfield','Clarke','Craig','Culpeper','Cumberland','Dickenson','Dinwiddie','Essex','Fairfax','Fauquier','Floyd','Fluvanna','Franklin','Frederick','Giles','Gloucester','Goochland','Grayson','Greene','Greensville','Halifax','Hanover','Henrico','Henry','Highland','Isle of Wight','James City','King and Queen','King George','King William','Lancaster','Lee','Loudoun','Louisa','Lunenburg','Madison','Mathews','Mecklenburg','Middlesex','Montgomery','Nelson','New Kent','Northampton','Northumberland','Nottoway','Orange','Page','Patrick','Pittsylvania','Powhatan','Prince Edward','Prince George','Prince William','Pulaski','Rappahannock','Richmond','Roanoke','Rockbridge','Rockingham','Russell','Scott','Shenandoah','Smyth','Southampton','Spotsylvania','Stafford','Surry','Sussex','Tazewell','Warren','Washington','Westmoreland','Wise','Wythe','York'],
+  'DE':['Kent','New Castle','Sussex'],
+  'MD':['Allegany','Anne Arundel','Baltimore','Baltimore City','Calvert','Caroline','Carroll','Cecil','Charles','Dorchester','Frederick','Garrett','Harford','Howard','Kent','Montgomery','Prince George\'s','Queen Anne\'s','Somerset','St. Mary\'s','Talbot','Washington','Wicomico','Worcester'],
+  'DC':['Washington D.C.'],
+  'NY':['Albany','Allegany','Bronx','Broome','Cattaraugus','Cayuga','Chautauqua','Chemung','Chenango','Clinton','Columbia','Cortland','Delaware','Dutchess','Erie','Essex','Franklin','Fulton','Genesee','Greene','Hamilton','Herkimer','Jefferson','Kings','Lewis','Livingston','Madison','Monroe','Montgomery','Nassau','New York','Niagara','Oneida','Onondaga','Ontario','Orange','Orleans','Oswego','Otsego','Putnam','Queens','Rensselaer','Richmond','Rockland','St. Lawrence','Saratoga','Schenectady','Schoharie','Schuyler','Seneca','Steuben','Suffolk','Sullivan','Tioga','Tompkins','Ulster','Warren','Washington','Wayne','Westchester','Wyoming','Yates'],
+  'VT':['Addison','Bennington','Caledonia','Chittenden','Essex','Franklin','Grand Isle','Lamoille','Orange','Orleans','Rutland','Washington','Windham','Windsor'],
+  'NJ':['Atlantic','Bergen','Burlington','Camden','Cape May','Cumberland','Essex','Gloucester','Hudson','Hunterdon','Mercer','Middlesex','Monmouth','Morris','Ocean','Passaic','Salem','Somerset','Sussex','Union','Warren'],
+  'NH':['Belknap','Carroll','Cheshire','Coos','Grafton','Hillsborough','Merrimack','Rockingham','Strafford','Sullivan'],
+  'ME':['Androscoggin','Aroostook','Cumberland','Franklin','Hancock','Kennebec','Knox','Lincoln','Oxford','Penobscot','Piscataquis','Sagadahoc','Somerset','Waldo','Washington','York'],
+  'MA':['Barnstable','Berkshire','Bristol','Dukes','Essex','Franklin','Hampden','Hampshire','Middlesex','Nantucket','Norfolk','Plymouth','Suffolk','Worcester'],
+  'CT':['Fairfield','Hartford','Litchfield','Middlesex','New Haven','New London','Tolland','Windham'],
+  'RI':['Bristol','Kent','Newport','Providence','Washington'],
+};
+
 function statesForRegion(region){
   if(!region||region==='All Regions') return ALL_STATES;
   return STATES_BY_REGION[region]||ALL_STATES;
@@ -1335,6 +1374,7 @@ const TBL={
   'lhs:grey_blocks':'lhs_grey_blocks',
   'lhs:timesheets':'lhs_timesheets',
   'lhs:time_punches':'lhs_time_punches',
+  'lhs:territories':'lhs_territories',
 };
 
 // Pull all data from Supabase into cache on login
@@ -4762,6 +4802,7 @@ function bAdmin(){
     <button class="tab" onclick="aTab('regions',this)">Regions</button>
     <button class="tab" onclick="aTab('perms',this)">Permissions</button>
     <button class="tab" onclick="aTab('wo-settings',this)">WO Settings</button>
+    <button class="tab" onclick="aTab('territories',this)">Territories</button>
     <button class="tab" onclick="aTab('integrations',this)">Integrations</button>
   </div>
   <div id="atab">${aUsers()}</div>`;
@@ -4772,7 +4813,7 @@ function aTab(tab,btn){
   btn.classList.add('active');
   const el=g('atab'); if(!el) return;
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
-    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,integrations:bInt};
+    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt};
   if(fns[tab]) el.innerHTML=fns[tab]();
   if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
 }
@@ -5068,6 +5109,158 @@ function delUser(i){
   users.splice(i,1);S.set('lhs:users',users);
   if(USERS[i]) USERS.splice(i,1);
   tst('User deleted','info');g('atab').innerHTML=aUsers();
+}
+
+// ─── TERRITORIES ──────────────────────────────────────────────────────────────
+function lookupTerritory(state,county){
+  if(!state&&!county) return '';
+  const st=(state||'').toUpperCase().trim();
+  const co=(county||'').toLowerCase().replace(/\s*county\s*$/i,'').trim();
+  const terrs=S.get('lhs:territories')||[];
+  const match=terrs.find(t=>{
+    if(t.active===false) return false;
+    if(t.state&&t.state.toUpperCase()!==st) return false;
+    const counties=(t.counties||[]).map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim());
+    return counties.includes(co);
+  });
+  return match?match.name:'';
+}
+
+function wocAutoTerritory(){
+  const state=(g('woc-cst')?.value||'').split(' - ')[0].trim();
+  const county=v('woc-county');
+  const terr=lookupTerritory(state,county);
+  const el=g('woc-territory-preview');
+  if(el) el.textContent=terr?'Territory: '+terr:'';
+}
+
+function aTerritories(){
+  const terrs=S.get('lhs:territories')||[];
+  const byRegion={};
+  terrs.forEach(t=>{
+    const r=t.region||'Unassigned';
+    if(!byRegion[r]) byRegion[r]=[];
+    byRegion[r].push(t);
+  });
+  const regionKeys=Object.keys(byRegion).sort();
+  return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddTerritory()">+ Add Territory</button></div>
+  ${!terrs.length?`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No territories yet. Click <strong>+ Add Territory</strong> to get started.</div>`:''}
+  ${regionKeys.map(rg=>`
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);padding-bottom:6px;border-bottom:2px solid var(--bdr);margin-bottom:10px">${esc(rg)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
+        ${byRegion[rg].map(t=>`<div style="background:white;border:1.5px solid ${t.color||'var(--bdr)'};border-radius:10px;padding:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-weight:700;font-size:14px;color:var(--navy)">${esc(t.name)}</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn sm btn-o" onclick="oEditTerritory('${t.id}')">Edit</button>
+              <button class="btn sm btn-r" onclick="delTerritory('${t.id}')">&#215;</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${esc(t.state||'')} ${t.region?'· '+esc(t.region):''}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">${(t.counties||[]).map(c=>`<span style="background:${t.color||'var(--surf)'};opacity:.85;color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${esc(c)}</span>`).join('')}</div>
+          ${!t.active?`<div style="margin-top:6px"><span style="background:#EEE;color:#999;font-size:11px;padding:2px 8px;border-radius:8px">Inactive</span></div>`:''}
+        </div>`).join('')}
+      </div>
+    </div>`).join('')}`;
+}
+
+function oAddTerritory(){
+  const regionOpts=Object.keys(REGIONS).map(r=>`<option>${r}</option>`).join('');
+  const stateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}">${s} - ${STATE_NAMES[s]}</option>`).join('');
+  oMod('Add Territory',`
+    <div class="fr">
+      <div class="fl"><label>Territory Name</label><input id="nt-name" placeholder="e.g. Green Bay"></div>
+      <div class="fl"><label>Region</label><select id="nt-region"><option value="">— Select —</option>${regionOpts}</select></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>State</label><select id="nt-state" onchange="ntLoadCounties()"><option value="">— Select —</option>${stateOpts}</select></div>
+      <div class="fl"><label>Color</label><input type="color" id="nt-color" value="#3ABFBF" style="height:38px;padding:2px 6px"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Counties (select all that apply)</label>
+      <div id="nt-county-wrap" style="border:1px solid var(--bdr);border-radius:8px;padding:8px;max-height:200px;overflow-y:auto;min-height:60px;color:var(--muted);font-size:13px">Select a state first</div>
+    </div>
+    <div class="br2"><button class="btn btn-n" onclick="svTerritory()">Save Territory</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+
+function oEditTerritory(id){
+  const t=(S.get('lhs:territories')||[]).find(x=>x.id===id);
+  if(!t){tst('Territory not found','error');return}
+  const regionOpts=Object.keys(REGIONS).map(r=>`<option${t.region===r?' selected':''}>${r}</option>`).join('');
+  const stateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}"${t.state===s?' selected':''}>${s} - ${STATE_NAMES[s]}</option>`).join('');
+  oMod('Edit Territory',`
+    <input type="hidden" id="nt-id" value="${esc(id)}">
+    <div class="fr">
+      <div class="fl"><label>Territory Name</label><input id="nt-name" value="${esc(t.name||'')}"></div>
+      <div class="fl"><label>Region</label><select id="nt-region"><option value="">— Select —</option>${regionOpts}</select></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>State</label><select id="nt-state" onchange="ntLoadCounties()"><option value="">— Select —</option>${stateOpts}</select></div>
+      <div class="fl"><label>Color</label><input type="color" id="nt-color" value="${esc(t.color||'#3ABFBF')}" style="height:38px;padding:2px 6px"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Counties (select all that apply)</label>
+      <div id="nt-county-wrap" style="border:1px solid var(--bdr);border-radius:8px;padding:8px;max-height:200px;overflow-y:auto;min-height:60px">Loading…</div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px"><input type="checkbox" id="nt-active"${t.active!==false?' checked':''}> Active</label>
+    <div class="br2"><button class="btn btn-n" onclick="svTerritory()">Save Changes</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+  setTimeout(()=>ntLoadCounties(t.counties||[]),80);
+}
+
+function ntLoadCounties(preSelected=[]){
+  const st=(g('nt-state')?.value||'').trim();
+  const wrap=g('nt-county-wrap');
+  if(!wrap) return;
+  const counties=COUNTIES_BY_STATE[st]||[];
+  if(!counties.length){wrap.innerHTML='<span style="color:var(--muted);font-size:13px">No county data for this state</span>';return;}
+  const sel=new Set(preSelected.map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim()));
+  wrap.innerHTML=counties.map(c=>{
+    const key=c.toLowerCase().replace(/\s*county\s*$/i,'').trim();
+    return`<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${esc(c)}"${sel.has(key)?' checked':''}> ${esc(c)} County</label>`;
+  }).join('');
+}
+
+async function svTerritory(){
+  const id=v('nt-id');
+  const name=v('nt-name').trim();
+  const region=v('nt-region');
+  const state=v('nt-state');
+  const color=v('nt-color')||'#3ABFBF';
+  const active=g('nt-active')?g('nt-active').checked:true;
+  if(!name){tst('Territory name required','error');return}
+  const checked=[...document.querySelectorAll('#nt-county-wrap input[type=checkbox]:checked')].map(x=>x.value);
+  const obj={name,region,state,counties:checked,color,active};
+  let saved;
+  if(id){
+    saved=await dbUpdate('lhs:territories',id,obj);
+    if(!saved){tst('Save failed','error');return}
+    const all=S.get('lhs:territories')||[];
+    const idx=all.findIndex(x=>x.id===id);
+    if(idx>=0) all[idx]={...all[idx],...obj};
+    S.set('lhs:territories',all);
+    tst('Territory updated','success');
+  } else {
+    obj.created_at=new Date().toISOString();
+    obj.created_by=CU?.name||'';
+    saved=await dbInsert('lhs:territories',obj);
+    if(!saved){tst('Save failed','error');return}
+    const all=S.get('lhs:territories')||[];
+    all.push(saved);
+    S.set('lhs:territories',all);
+    tst('Territory created','success');
+  }
+  cMod();
+  g('atab').innerHTML=aTerritories();
+}
+
+async function delTerritory(id){
+  const all=S.get('lhs:territories')||[];
+  const t=all.find(x=>x.id===id);
+  if(!confirm(`Delete territory "${t?.name}"?`)) return;
+  await dbDelete('lhs:territories',id);
+  S.set('lhs:territories',all.filter(x=>x.id!==id));
+  tst('Territory deleted','info');
+  g('atab').innerHTML=aTerritories();
 }
 
 // ─── ADMIN: DIVISIONS ─────────────────────────────────────────────────────────
@@ -7384,6 +7577,7 @@ function dashCard(label,value,sub,textColor,bgColor,page){
 let _dispDate=new Date().toISOString().split('T')[0];
 let _dispView='day'; // day, 2day, 3day
 let _dispRegion='all';
+let _dispTerritory='all';
 let _dispPinned={};
 let _dispCollapsed=[];
 let _dragApt=null;
@@ -7434,6 +7628,8 @@ function bDispatch(){
         <button class="btn sm btn-o" onclick="dispSetRegion('all')" style="${_dispRegion==='all'?'background:var(--navy);color:var(--teal)':''}">All</button>
         ${Object.keys(REGIONS).map(r=>`<button class="btn sm btn-o" onclick="dispSetRegion('${r}')"
           style="${_dispRegion===r?`background:${REGIONS[r].color};color:white`:`border-color:${REGIONS[r].color};color:${REGIONS[r].color}`}">${r}</button>`).join('')}
+        <span style="color:var(--bdr)">|</span>
+        ${(()=>{const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));if(!terrs.length)return'';return`<select onchange="dispSetTerritory(this.value)" style="padding:4px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;background:white"><option value="all"${_dispTerritory==='all'?' selected':''}>All Territories</option>${terrs.map(t=>`<option value="${esc(t.id)}"${_dispTerritory===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`;})()}
         <span style="color:var(--bdr)">|</span>
         <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
           style="${Object.keys(_dispPinned).length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
@@ -7498,7 +7694,12 @@ function renderDispBoard(){
       if(!raw) return true; // no state = show in all regions
       const state=raw.length<=3?raw.toUpperCase():raw.toUpperCase().slice(0,2);
       return REGIONS[_dispRegion]?.states.includes(state);
-    })).filter(w=>w.status!=='Cancelled');
+    })).filter(w=>w.status!=='Cancelled').filter(w=>{
+      if(_dispTerritory==='all') return true;
+      const terr=(S.get('lhs:territories')||[]).find(t=>t.id===_dispTerritory);
+      if(!terr) return true;
+      return w.territory===terr.name;
+    });
   const filteredWOIds=new Set(filteredWOs.map(w=>w.id));
 
   // Group techs by division
@@ -7854,7 +8055,8 @@ function dispNav(dir){
 function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; showPage('dispatch'); }
 function dispSetDate(val){ if(val){ _dispDate=val; showPage('dispatch'); } }
 function dispSetView(v){ _dispView=v; showPage('dispatch'); }
-function dispSetRegion(r){ _dispRegion=r; showPage('dispatch'); }
+function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; showPage('dispatch'); }
+function dispSetTerritory(t){ _dispTerritory=t; showPage('dispatch'); }
 
 function dispToggleDiv(div){
   const idx=_dispCollapsed.indexOf(div);
@@ -8820,6 +9022,9 @@ function woCreateForm(){
         </select>
       </div>
       <div class="fl"><label>Zip</label><input id="woc-czip" placeholder="00000"></div>
+      <div class="fl"><label>County</label><input id="woc-county" placeholder="e.g. Brown County" oninput="wocAutoTerritory()">
+        <div id="woc-territory-preview" style="font-size:11px;color:var(--teal);font-weight:600;margin-top:4px;min-height:16px"></div>
+      </div>
     </div>
   </div>
   <div id="woc-cselected" style="display:none;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:12px">
@@ -9097,6 +9302,8 @@ async function svCreateWO(){
     customer_city:cust.city||'',
     customer_state:cust.state||'',
     customer_zip:cust.zip||'',
+    county:v('woc-county')||'',
+    territory:lookupTerritory(cust.state||'',v('woc-county')||''),
     division:div, division_code:code,
     job_type:type, job_subtype:sub, job_classification:cls,
     description:v('woc-desc'),
@@ -14203,6 +14410,8 @@ const REPORT_DEFS=[
   {id:'leads-followup',cat:'Sales',name:'Leads Follow Up',desc:'All leads with status, source, and last activity date.',run:rpt_leadsFollowup},
   {id:'sales-whiteboard',cat:'Sales',name:'Sales Whiteboard (MTD)',desc:'Month-to-date sales totals by rep and division.',run:rpt_salesWhiteboard},
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
+  // TERRITORIES
+  {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
 ];
 
 const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'];
@@ -15089,6 +15298,40 @@ function rpt_yoySales(from,to){
   return{cols,rows};
 }
 
+
+function rpt_territoryPerformance(from,to){
+  let wos=S.get('lhs:work_orders')||[];
+  wos=rptDateFilter(wos,'created_at',from,to);
+  const terrs=S.get('lhs:territories')||[];
+  const map={};
+  wos.forEach(w=>{
+    const key=w.territory||'Unassigned';
+    if(!map[key]) map[key]={territory:key,region:'',state:'',jobs:0,revenue:0};
+    map[key].jobs++;
+    map[key].revenue+=(w.total_price||0);
+    if(!map[key].region){
+      const t=terrs.find(x=>x.name===key);
+      if(t){map[key].region=t.region||'';map[key].state=t.state||'';}
+    }
+  });
+  const rows=Object.values(map).sort((a,b)=>b.revenue-a.revenue).map(r=>({
+    territory:r.territory,
+    region:r.region||'—',
+    state:r.state||'—',
+    jobs:r.jobs,
+    revenue:rptFmt(r.revenue),
+    avg_job:rptFmt(r.jobs?r.revenue/r.jobs:0),
+  }));
+  const cols=[
+    {key:'territory',label:'Territory'},
+    {key:'region',label:'Region'},
+    {key:'state',label:'State'},
+    {key:'jobs',label:'Jobs'},
+    {key:'revenue',label:'Revenue',mono:true},
+    {key:'avg_job',label:'Avg Job Value',mono:true},
+  ];
+  return{cols,rows};
+}
 
 // ── SALES SECTION ─────────────────────────────────────────────────────────────
 const LEAD_STATUSES=['New','Contacted','Qualified','Unqualified','Converted'];
