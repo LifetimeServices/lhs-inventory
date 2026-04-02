@@ -1554,6 +1554,7 @@ async function doLogin(){
           region:data.region||'',
           manager:data.manager||'',
           id:data.id,
+          dispatch_pins:data.dispatch_pins||{},
         };
       }
     }
@@ -1608,7 +1609,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
           user={name:data.name,email:data.email,pw:data.password_hash||data.pw,
             role:data.role||'Van Tech',loc:data.home_location||'',
             division:data.division||'',region:data.region||'',
-            manager:data.manager||'',id:data.id};
+            manager:data.manager||'',id:data.id,
+            dispatch_pins:data.dispatch_pins||{}};
         }
       }catch{}
       // SECURITY: Hardcoded fallback removed — Supabase is the sole auth provider.
@@ -1626,6 +1628,11 @@ async function startApp(){
   // Show loading spinner while Supabase warms up
   document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading LHS data...</div></div>';
   await warmCache();
+  // Load dispatch pins from Supabase user row (overrides localStorage so pins sync across devices)
+  if(CU?.dispatch_pins&&Object.keys(CU.dispatch_pins).length>0){
+    _dispPinned=CU.dispatch_pins;
+    try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
+  }
   // Restore page divs
   document.querySelector('.main').innerHTML=`
     <div class="page active" id="p-dashboard"></div>
@@ -7358,7 +7365,8 @@ function bDispatch(){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateLabel=`${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 
-  return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+  return`<div id="disp-sticky-bar" style="position:sticky;top:0;z-index:200;background:#f0ece3;margin:-28px -28px 0;padding:16px 28px 10px;border-bottom:2px solid #e2e0db">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:8px">
       <button class="btn btn-o sm" onclick="dispNav(-1)">&#9664;</button>
       <button class="btn btn-n sm" onclick="dispToday()">Today</button>
@@ -7393,18 +7401,18 @@ function bDispatch(){
       <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
     </div>
   </div>
-
   <!-- Color legend -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Job Type:</span>
     ${Object.entries(JOB_TYPES).map(([t,c])=>`<span style="background:${c};color:white;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">${t}</span>`).join('')}
     <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-left:8px">Flexibility:</span>
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:var(--green);border-radius:2px;display:inline-block"></span>Flexible</span>
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:#E53935;border-radius:2px;display:inline-block"></span>Fixed</span>
   </div>
+</div>
 
   <!-- Board -->
-  <div style="overflow-x:auto">
+  <div style="overflow-x:auto;padding-top:12px">
     ${(()=>{try{return renderDispBoard();}catch(e){console.error('Dispatch board error:',e);return`<div class="card" style="text-align:center;padding:32px;color:var(--red)">Dispatch board error: ${esc(e.message)}<br><small>Check browser console for details</small></div>`;}})()}
   </div>`;
 }
@@ -7812,13 +7820,18 @@ function dispToggleDiv(div){
   showPage('dispatch');
 }
 
-function dispPin(div){
+async function dispPin(div){
   if(_dispPinned[div]) delete _dispPinned[div]; else _dispPinned[div]=true;
   try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
+  // Save to Supabase so pins persist across devices/browsers
+  if(CU?.id){
+    try{await DB.from('lhs_users').update({dispatch_pins:_dispPinned}).eq('id',CU.id);}catch(e){console.warn('pin save failed',e?.message);}
+    CU.dispatch_pins=_dispPinned;
+  }
   showPage('dispatch');
 }
 
-function dispPinAll(){
+async function dispPinAll(){
   const isCurrentlyPinned=Object.keys(_dispPinned).length>0;
   if(isCurrentlyPinned){
     // Unpin all
@@ -7830,6 +7843,11 @@ function dispPinAll(){
     DIVS.forEach((d,i)=>{ _dispPinned[d]=true; });
     try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
     tst('Division order pinned as your default','success');
+  }
+  // Save to Supabase so pins persist across devices/browsers
+  if(CU?.id){
+    try{await DB.from('lhs_users').update({dispatch_pins:_dispPinned}).eq('id',CU.id);}catch(e){console.warn('pin save failed',e?.message);}
+    CU.dispatch_pins=_dispPinned;
   }
   showPage('dispatch');
 }
@@ -8187,6 +8205,22 @@ document.addEventListener('mouseup',async e=>{
 
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
+
+// Time dropdown options in 15-min increments (5 AM – 10 PM)
+function mkDispTimeOpts(selected){
+  const opts=[];
+  for(let h=5;h<23;h++){
+    for(let m=0;m<60;m+=15){
+      const hh=String(h).padStart(2,'0');
+      const mm=String(m).padStart(2,'0');
+      const val=`${hh}:${mm}`;
+      const ap=h>=12?'PM':'AM';
+      const dh=h>12?h-12:h===0?12:h;
+      opts.push(`<option value="${val}"${val===selected?' selected':''}>${dh}:${mm} ${ap}</option>`);
+    }
+  }
+  return opts.join('');
+}
 const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
 
 function oAddGreyBlock(){
@@ -8219,14 +8253,18 @@ function oAddGreyBlock(){
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>`
         <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
-          <input type="checkbox" class="gb-dow" value="${i===6?0:i+1}" ${i<5?'checked':''} style="width:14px;height:14px">
+          <input type="checkbox" class="gb-dow" value="${i===6?0:i+1}" style="width:14px;height:14px">
           ${d}
         </label>`).join('')}
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Start Time</label><input type="time" id="gb-time" value="08:00"></div>
-    <div class="fl"><label>End Time</label><input type="time" id="gb-end" value="09:00"></div>
+    <div class="fl"><label>Start Time</label>
+      <select id="gb-time">${mkDispTimeOpts('08:00')}</select>
+    </div>
+    <div class="fl"><label>End Time</label>
+      <select id="gb-end">${mkDispTimeOpts('09:00')}</select>
+    </div>
   </div>
   <div id="gb-pto-note" style="display:none;background:#FFF3E0;border:1px solid #FFB300;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#E65100">
     &#128197; PTO/UTO will be flagged on this employee's timesheet for manager review.
@@ -8341,8 +8379,12 @@ function oEditGreyBlock(id){
   </div>
   <div class="fr">
     <div class="fl"><label>Date</label><input type="date" id="egb-date" value="${b.date}" ${!canEdit?'disabled':''}></div>
-    <div class="fl"><label>Start Time</label><input type="time" id="egb-time" value="${b.time}" ${!canEdit?'disabled':''}></div>
-    <div class="fl"><label>End Time</label><input type="time" id="egb-end" value="${(()=>{const s=b.time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(b.duration||60);return String(Math.floor(tot/60)%24).padStart(2,'0')+':'+String(tot%60).padStart(2,'0');})()}" ${!canEdit?'disabled':''}></div>
+    <div class="fl"><label>Start Time</label>
+      <select id="egb-time" ${!canEdit?'disabled':''}>${mkDispTimeOpts(b.time||'08:00')}</select>
+    </div>
+    <div class="fl"><label>End Time</label>
+      <select id="egb-end" ${!canEdit?'disabled':''}>${(()=>{const s=b.time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(b.duration||60);const eh=Math.floor(tot/60)%24;const em=tot%60;const endTime=String(eh).padStart(2,'0')+':'+String(em).padStart(2,'0');return mkDispTimeOpts(endTime);})()}</select>
+    </div>
   </div>
   ${canEdit?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
     <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer">
