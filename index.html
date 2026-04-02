@@ -1317,6 +1317,7 @@ const TBL={
   'lhs:receipts':'lhs_receipts',
   'lhs:accounting_codes':'lhs_accounting_codes',
   'lhs:grey_blocks':'lhs_grey_blocks',
+  'lhs:timesheets':'lhs_timesheets',
 };
 
 // Pull all data from Supabase into cache on login
@@ -13001,41 +13002,565 @@ async function svEditTool(i){
 }
 
 // ── PAYROLL ───────────────────────────────────────────────────────────────────
+// State
+window._prPeriod  = window._prPeriod  || prWeekStart();
+window._prTab     = window._prTab     || 'pending';
+window._prView    = window._prView    || 'dashboard';
+window._prEmp     = window._prEmp     || '';
+
+// Compute Monday of the week containing date d (or today)
+function prWeekStart(d){
+  const dt=d?new Date(d+'T12:00:00'):new Date();
+  const day=dt.getDay();
+  const diff=day===0?-6:1-day;
+  const mon=new Date(dt);
+  mon.setDate(dt.getDate()+diff);
+  return mon.toISOString().slice(0,10);
+}
+
+// Format a YYYY-MM-DD as "Apr 7"
+function prFmtDate(d,includeYear){
+  if(!d) return'—';
+  const dt=new Date(d+'T12:00:00');
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return`${days[dt.getDay()]}, ${months[dt.getMonth()]} ${dt.getDate()}${includeYear?', '+dt.getFullYear():''}`;
+}
+
+// Format period label "Mar 30 – Apr 5, 2026"
+function prPeriodLabel(weekStart){
+  if(!weekStart) return'';
+  const s=new Date(weekStart+'T12:00:00');
+  const e=new Date(s); e.setDate(s.getDate()+6);
+  const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return`${M[s.getMonth()]} ${s.getDate()} – ${M[e.getMonth()]} ${e.getDate()}, ${e.getFullYear()}`;
+}
+
+// Get array of 7 date strings for a week
+function prWeekDates(weekStart){
+  const dates=[];
+  const s=new Date(weekStart+'T12:00:00');
+  for(let i=0;i<7;i++){
+    const d=new Date(s); d.setDate(s.getDate()+i);
+    dates.push(d.toISOString().slice(0,10));
+  }
+  return dates;
+}
+
+// Generate period options: 6 weeks back, current, 2 weeks forward
+function prPeriodOptions(){
+  const opts=[];
+  const today=new Date();
+  const curMon=new Date(today);
+  const day=today.getDay();
+  curMon.setDate(today.getDate()-(day===0?6:day-1));
+  for(let w=-6;w<=2;w++){
+    const d=new Date(curMon);
+    d.setDate(curMon.getDate()+w*7);
+    const key=d.toISOString().slice(0,10);
+    opts.push({key,label:prPeriodLabel(key)});
+  }
+  return opts;
+}
+
+// Get status badge HTML
+function prStatusBadge(s){
+  if(s==='Locked') return bx('Locked','bn');
+  if(s==='Manager Approved') return bx('Approved','bg');
+  return bx('Pending','ba');
+}
+
+// Hours formatted to 1 decimal
+function prH(n){return(+n||0).toFixed(1);}
+
+// Determine overall status for an employee's week
+function prWeekStatus(rows){
+  if(!rows||!rows.length) return'Pending';
+  if(rows.every(r=>r.status==='Locked')) return'Locked';
+  if(rows.every(r=>r.status==='Manager Approved'||r.status==='Locked')) return'Manager Approved';
+  return'Pending';
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 function bPayroll(){
-  const users=S.get('lhs:users')||[];
-  const tsUsers=users.filter(u=>u.timesheet_needed!==false);
+  if(window._prView==='detail'&&window._prEmp) return bPayrollDetail();
+  return bPayrollDashboard();
+}
+
+function bPayrollDashboard(){
   const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
-  const isOwnView=CU?.role==='Van Tech'||CU?.role==='Sales Rep';
+  const isOwnView=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
+  const users=S.get('lhs:users')||[];
+  const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
+  const allTS=S.get('lhs:timesheets')||[];
+
+  // If own view, redirect to own detail
+  if(isOwnView){
+    window._prEmp=CU.name;
+    window._prView='detail';
+    return bPayrollDetail();
+  }
+
+  const period=window._prPeriod;
+  const periodEnd=(()=>{const e=new Date(period+'T12:00:00');e.setDate(e.getDate()+6);return e.toISOString().slice(0,10);})();
+  const periodTS=allTS.filter(t=>t.week_start===period);
+
+  // Group by employee
+  const byEmp={};
+  tsUsers.forEach(u=>{
+    byEmp[u.name]={user:u,rows:[]};
+  });
+  periodTS.forEach(t=>{
+    if(!byEmp[t.employee]) byEmp[t.employee]={user:tsUsers.find(u=>u.name===t.employee)||{name:t.employee,manager:'—',division:'—'},rows:[]};
+    byEmp[t.employee].rows.push(t);
+  });
+
+  const tab=window._prTab;
+  const empList=Object.values(byEmp).map(e=>{
+    const rows=e.rows;
+    const reg=rows.reduce((a,r)=>a+(+r.regular_hours||0),0);
+    const ot=rows.reduce((a,r)=>a+(+r.overtime_hours||0),0);
+    const pto=rows.reduce((a,r)=>a+(+r.pto_hours||0),0);
+    const other=rows.reduce((a,r)=>a+(+r.other_time||0),0);
+    const total=rows.reduce((a,r)=>a+(+r.total_hours||0),0);
+    const status=prWeekStatus(rows);
+    return{...e,reg,ot,pto,other,total,status};
+  });
+
+  // Tab counts
+  const pendingList=empList.filter(e=>e.status==='Pending');
+  const approvedList=empList.filter(e=>e.status==='Manager Approved');
+  const lockedList=empList.filter(e=>e.status==='Locked');
+  const shownList=tab==='pending'?pendingList:tab==='approved'?approvedList:lockedList;
+
+  // Summary stats for shown tab
+  const totalReg=shownList.reduce((a,e)=>a+e.reg,0);
+  const totalOT=shownList.reduce((a,e)=>a+e.ot,0);
+  const totalPTO=shownList.reduce((a,e)=>a+e.pto,0);
+  const totalHrs=shownList.reduce((a,e)=>a+e.total,0);
+
+  const periodOpts=prPeriodOptions();
+  const prevPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()-7);return d.toISOString().slice(0,10);})();
+  const nextPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})();
+
   return`<div class="pt">Payroll</div>
-  <div class="ps">Timesheet tracking and payroll queue — ${tsUsers.length} employees tracked</div>
-  <div class="sg">
-    <div class="sc n"><div class="sl">Employees</div><div class="sv">${tsUsers.length}</div><div class="ss">Clocked/tracked</div></div>
-    <div class="sc a"><div class="sl">Pending Review</div><div class="sv">—</div><div class="ss">Timesheet Review</div></div>
-    <div class="sc r"><div class="sl">Disputes</div><div class="sv">—</div><div class="ss">Awaiting resolution</div></div>
-    <div class="sc g"><div class="sl">Approved Payroll</div><div class="sv">—</div><div class="ss">Fully approved</div></div>
+  <div class="ps">Weekly timesheet management — ${tsUsers.length} employee${tsUsers.length!==1?'s':''} tracked</div>
+
+  <!-- Period Selector -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+    <button class="btn sm btn-o" onclick="prNavPeriod('${prevPeriod}')">&#8592; Prev</button>
+    <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;cursor:pointer" onchange="prSetPeriod(this.value)">
+      ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
+    </select>
+    <button class="btn sm btn-o" onclick="prNavPeriod('${nextPeriod}')">Next &#8594;</button>
+    <span style="font-size:12px;color:var(--muted);margin-left:4px">${prPeriodLabel(period)}</span>
+    ${canApprove?`<button class="btn sm btn-n" style="margin-left:auto" onclick="prAddEntry()">+ Add Entry</button>`:''}
   </div>
-  ${isOwnView?`<div class="card">
-    <div class="ct">My Timesheet — Current Pay Period</div>
-    <div style="text-align:center;padding:32px;color:var(--muted)">
-      <div style="font-size:13px;margin-bottom:16px">Clock in/out is tied to appointment dispatch and arrival times.</div>
-      <button class="btn btn-n" onclick="tst('Clock In — Full time tracking coming with next payroll update','info')">Clock In</button>
-      <button class="btn btn-o" style="margin-left:8px" onclick="tst('Clock Out — Full time tracking coming with next payroll update','info')">Clock Out</button>
+
+  <!-- Tabs -->
+  <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--bdr)">
+    <button onclick="prSetTab('pending')" style="padding:9px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='pending'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='pending'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">
+      Pending <span style="background:${tab==='pending'?'var(--navy)':'#ccc'};color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">${pendingList.length}</span>
+    </button>
+    <button onclick="prSetTab('approved')" style="padding:9px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='approved'?'2px solid #2E7D32':'2px solid transparent'};color:${tab==='approved'?'#2E7D32':'var(--muted)'};margin-bottom:-2px">
+      Manager Approved <span style="background:${tab==='approved'?'#2E7D32':'#ccc'};color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">${approvedList.length}</span>
+    </button>
+    <button onclick="prSetTab('locked')" style="padding:9px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='locked'?'2px solid #555':'2px solid transparent'};color:${tab==='locked'?'#333':'var(--muted)'};margin-bottom:-2px">
+      Locked <span style="background:${tab==='locked'?'#555':'#ccc'};color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">${lockedList.length}</span>
+    </button>
+  </div>
+
+  <!-- Summary Stats Bar -->
+  <div style="display:flex;gap:0;background:#f8f7f4;border:1px solid var(--bdr);border-top:none;border-radius:0 0 8px 8px;margin-bottom:20px;overflow:hidden">
+    <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Regular Hours</div>
+      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalReg)}</div>
     </div>
-  </div>`:`<div class="card">
-    <div class="ct">Employee Timesheets</div>
-    <div class="tw"><table><thead><tr><th>Employee</th><th>Division</th><th>Region</th><th>Status</th><th>Hours</th><th></th></tr></thead>
-    <tbody>${tsUsers.map(u=>`<tr>
-      <td style="font-weight:600">${u.name}</td>
-      <td>${bx(u.division||'—')}</td>
-      <td style="font-size:12px;color:var(--muted)">${u.region||'—'}</td>
-      <td>${bx('Pending','ba')}</td>
-      <td style="font-family:'DM Mono',monospace">—</td>
-      <td><button class="btn sm btn-o" onclick="tst('Full timesheet detail coming soon','info')">View</button></td>
-    </tr>`).join('')}</tbody></table></div>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr);font-size:12px;color:var(--muted)">
-      Full clock in/out, overtime tracking, and manager approval workflow coming in next update.
+    <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Overtime</div>
+      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
     </div>
-  </div>`}`;
+    <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">PTO Hours</div>
+      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:#1565C0">${prH(totalPTO)}</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total Hours</div>
+      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalHrs)}</div>
+    </div>
+  </div>
+
+  <!-- Employee Table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    ${shownList.length===0?`<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">&#9200;</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">No ${tab==='pending'?'Pending':tab==='approved'?'Approved':'Locked'} Timesheets</div>
+      <div style="font-size:12px">for the week of ${prPeriodLabel(period)}</div>
+      ${canApprove&&tab==='pending'?`<button class="btn btn-n" style="margin-top:16px" onclick="prAddEntry()">+ Add Timesheet Entry</button>`:''}
+    </div>`:`
+    <div class="tw" style="margin:0">
+    <table>
+      <thead><tr>
+        <th>Employee</th>
+        <th>Manager</th>
+        <th>Division</th>
+        <th style="text-align:right">Regular</th>
+        <th style="text-align:right">Overtime</th>
+        <th style="text-align:right">PTO</th>
+        <th style="text-align:right">Total Hours</th>
+        <th>Status</th>
+        <th style="text-align:center">Actions</th>
+      </tr></thead>
+      <tbody>
+      ${shownList.map(e=>`<tr>
+        <td style="font-weight:600">${e.user.name}</td>
+        <td style="font-size:12px;color:var(--muted)">${e.user.manager||'—'}</td>
+        <td>${bx(e.user.division||'—')}</td>
+        <td style="font-family:'DM Mono',monospace;text-align:right">${prH(e.reg)}</td>
+        <td style="font-family:'DM Mono',monospace;text-align:right;color:${e.ot>0?'#E65100':'inherit'}">${prH(e.ot)}</td>
+        <td style="font-family:'DM Mono',monospace;text-align:right;color:${e.pto>0?'#1565C0':'inherit'}">${prH(e.pto)}</td>
+        <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700">${prH(e.total)}</td>
+        <td>${prStatusBadge(e.status)}</td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn sm btn-o" onclick="prViewDetail('${esc(e.user.name)}')">View</button>
+          ${canApprove&&e.status==='Pending'&&e.rows.length>0?`<button class="btn sm btn-g" style="margin-left:4px" onclick="prApproveAll('${esc(e.user.name)}','${period}')">Approve</button>`:''}
+          ${canApprove&&e.status==='Manager Approved'?`<button class="btn sm" style="margin-left:4px;background:#555;color:white" onclick="prLockAll('${esc(e.user.name)}','${period}')">Lock</button>`:''}
+        </td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`}
+  </div>`;
+}
+
+// ── PAYROLL DETAIL VIEW ───────────────────────────────────────────────────────
+function bPayrollDetail(){
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const isOwnView=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
+  const users=S.get('lhs:users')||[];
+  const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
+  const allTS=S.get('lhs:timesheets')||[];
+  const emp=window._prEmp||CU?.name||'';
+  const period=window._prPeriod;
+
+  // My own timesheets — filter to own name only
+  const empTS=allTS.filter(t=>t.employee===emp&&t.week_start===period);
+  const weekDates=prWeekDates(period);
+
+  // Build a map: date → timesheet row
+  const tsMap={};
+  empTS.forEach(t=>{tsMap[t.date]=t;});
+
+  const totalReg=empTS.reduce((a,r)=>a+(+r.regular_hours||0),0);
+  const totalOT=empTS.reduce((a,r)=>a+(+r.overtime_hours||0),0);
+  const totalMeal=empTS.reduce((a,r)=>a+(+r.meal_break||0),0);
+  const totalOther=empTS.reduce((a,r)=>a+(+r.other_time||0),0);
+  const totalPTO=empTS.reduce((a,r)=>a+(+r.pto_hours||0),0);
+  const totalHrs=empTS.reduce((a,r)=>a+(+r.total_hours||0),0);
+  const overallStatus=prWeekStatus(empTS);
+
+  const periodOpts=prPeriodOptions();
+  const prevPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()-7);return d.toISOString().slice(0,10);})();
+  const nextPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})();
+  const isLocked=overallStatus==='Locked';
+
+  return`
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    ${!isOwnView?`<button class="btn sm btn-o" onclick="prBackToDashboard()">&#8592; Payroll</button>`:''}
+    <div class="pt" style="margin:0">Timesheet</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      ${!isOwnView?`<select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetEmployee(this.value)">
+        ${tsUsers.map(u=>`<option value="${esc(u.name)}"${u.name===emp?' selected':''}>${u.name}</option>`).join('')}
+      </select>`:`<span style="font-size:14px;font-weight:600">${emp}</span>`}
+      <button class="btn sm btn-o" onclick="prNavPeriod('${prevPeriod}')">&#8592;</button>
+      <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetPeriod(this.value)">
+        ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
+      </select>
+      <button class="btn sm btn-o" onclick="prNavPeriod('${nextPeriod}')">&#8594;</button>
+    </div>
+  </div>
+
+  <!-- Stats Bar -->
+  <div style="display:flex;gap:0;background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;margin-bottom:20px;overflow:hidden">
+    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Regular</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalReg)}</div>
+    </div>
+    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Overtime</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
+    </div>
+    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">PTO</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:#1565C0">${prH(totalPTO)}</div>
+    </div>
+    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Meal Break</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">${prH(totalMeal)}</div>
+    </div>
+    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Other Time</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">${prH(totalOther)}</div>
+    </div>
+    <div style="flex:1;padding:12px 14px;text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total Hours</div>
+      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalHrs)}</div>
+    </div>
+  </div>
+
+  <!-- Week Status Banner -->
+  ${isLocked?`<div style="background:#333;color:white;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
+    &#128274; This timesheet is <strong>Locked</strong> — no further edits allowed
+  </div>`:''}
+  ${overallStatus==='Manager Approved'&&!isLocked?`<div style="background:#E8F5E9;border:1px solid #81C784;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#1B5E20;display:flex;align-items:center;gap:8px">
+    &#10004; Manager Approved — awaiting payroll lock
+  </div>`:''}
+
+  <!-- Day-by-Day Table -->
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div style="padding:14px 18px;background:#f8f7f4;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:12px">
+      <span style="font-weight:600;font-size:14px">Week of ${prPeriodLabel(period)}</span>
+      <span>${prStatusBadge(overallStatus)}</span>
+    </div>
+    <div class="tw" style="margin:0">
+    <table>
+      <thead><tr>
+        <th>Date</th>
+        <th style="text-align:right">Working Hours</th>
+        <th style="text-align:right">Meal Break</th>
+        <th style="text-align:right">Other Time</th>
+        <th style="text-align:right">PTO</th>
+        <th style="text-align:right">Total Hours</th>
+        <th style="text-align:center">Notes</th>
+        ${!isLocked?`<th style="text-align:center">Edit</th>`:''}
+      </tr></thead>
+      <tbody>
+      ${weekDates.map(date=>{
+        const row=tsMap[date];
+        const reg=row?(+row.regular_hours||0):0;
+        const ot=row?(+row.overtime_hours||0):0;
+        const meal=row?(+row.meal_break||0):0;
+        const other=row?(+row.other_time||0):0;
+        const pto=row?(+row.pto_hours||0):0;
+        const total=row?(+row.total_hours||0):0;
+        const workHrs=reg+ot;
+        const isToday=date===new Date().toISOString().slice(0,10);
+        const hasEntry=!!row;
+        const rowStatus=row?.status||'';
+        const isPTO=row?.is_pto||false;
+        return`<tr style="${isToday?'background:#FFF8E1':''}${isPTO?';background:#E3F2FD':''};${!hasEntry?'color:var(--muted)':''}">
+          <td style="font-weight:${isToday?'700':'500'};white-space:nowrap">
+            ${prFmtDate(date)}${isToday?' <span style="font-size:10px;background:var(--navy);color:white;border-radius:4px;padding:1px 5px;margin-left:4px">Today</span>':''}
+          </td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${hasEntry?prH(workHrs):'—'}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--muted)">${hasEntry?prH(meal):'—'}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--muted)">${hasEntry?prH(other):'—'}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right;color:${pto>0?'#1565C0':'inherit'}">${hasEntry?prH(pto):'—'}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700">${hasEntry?prH(total):'—'}</td>
+          <td style="font-size:12px;color:var(--muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(row?.notes||'')}">${row?.notes||'—'}</td>
+          ${!isLocked?`<td style="text-align:center">
+            ${canApprove||!hasEntry?`<button class="btn sm ${hasEntry?'btn-o':'btn-n'}" onclick="prEditDay('${esc(emp)}','${date}','${period}')">${hasEntry?'&#9998;':'+Add'}</button>`:''}
+            ${canApprove&&hasEntry?`<button class="btn sm btn-r" style="margin-left:3px" onclick="prDeleteDay('${row.id}','${esc(emp)}','${period}')">&#215;</button>`:''}
+          </td>`:''}
+        </tr>`;
+      }).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="font-weight:700;background:#f0f0f0">
+          <td>Totals</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalReg+totalOT)}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalMeal)}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalOther)}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalPTO)}</td>
+          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalHrs)}</td>
+          <td></td>
+          ${!isLocked?`<td></td>`:''}
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  ${canApprove&&!isLocked?`<div style="display:flex;gap:10px;flex-wrap:wrap">
+    ${overallStatus==='Pending'&&empTS.length>0?`<button class="btn btn-g" onclick="prApproveAll('${esc(emp)}','${period}')">&#10003; Approve All Days</button>`:''}
+    ${overallStatus==='Manager Approved'?`<button class="btn" style="background:#555;color:white" onclick="prLockAll('${esc(emp)}','${period}')">&#128274; Lock Timesheet</button>`:''}
+    <button class="btn btn-n" onclick="prEditDay('${esc(emp)}','','${period}')">+ Add Entry</button>
+  </div>`:''}
+  `;
+}
+
+// ── PAYROLL NAVIGATION ────────────────────────────────────────────────────────
+function prSetTab(tab){window._prTab=tab;showPage('payroll');}
+function prSetPeriod(p){window._prPeriod=p;showPage('payroll');}
+function prNavPeriod(p){window._prPeriod=p;showPage('payroll');}
+function prSetEmployee(name){window._prEmp=name;showPage('payroll');}
+function prViewDetail(name){window._prEmp=name;window._prView='detail';showPage('payroll');}
+function prBackToDashboard(){window._prView='dashboard';window._prEmp='';showPage('payroll');}
+
+// ── PAYROLL EDIT DAY MODAL ────────────────────────────────────────────────────
+function prEditDay(emp, date, period){
+  const allTS=S.get('lhs:timesheets')||[];
+  const existing=date?allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===period):null;
+  const users=S.get('lhs:users')||[];
+  const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
+  const weekDates=prWeekDates(period);
+
+  // Build date options for the week
+  const dateOpts=weekDates.map(d=>`<option value="${d}"${d===date?' selected':''}>${prFmtDate(d,true)}</option>`).join('');
+
+  const e=existing||{};
+  const workHrs=(+(e.regular_hours||0))+(+(e.overtime_hours||0));
+  const meal=+(e.meal_break||0);
+  const other=+(e.other_time||0);
+  const pto=+(e.pto_hours||0);
+  const notes=e.notes||'';
+  const isPTO=e.is_pto||false;
+
+  oMod(existing?'Edit Timesheet Entry':'Add Timesheet Entry',`
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:320px">
+    <div class="fl"><label>Employee</label>
+      <select id="pr-emp">
+        ${tsUsers.map(u=>`<option value="${esc(u.name)}"${u.name===emp?' selected':''}>${u.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Date</label>
+      <select id="pr-date">${dateOpts}</select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fl"><label>Working Hours</label>
+        <input id="pr-work" type="number" min="0" max="24" step="0.25" value="${workHrs||''}" placeholder="e.g. 8.0" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+      </div>
+      <div class="fl"><label>Meal Break (hrs)</label>
+        <input id="pr-meal" type="number" min="0" max="4" step="0.25" value="${meal||''}" placeholder="0.5" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fl"><label>Other Time (hrs)</label>
+        <input id="pr-other" type="number" min="0" max="24" step="0.25" value="${other||''}" placeholder="0.0" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+      </div>
+      <div class="fl"><label>PTO Hours</label>
+        <input id="pr-pto" type="number" min="0" max="24" step="0.25" value="${pto||''}" placeholder="0.0" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+      </div>
+    </div>
+    <div class="fl"><label>Notes</label>
+      <input id="pr-notes" type="text" value="${esc(notes)}" placeholder="Optional note..." style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="pr-ispto"${isPTO?' checked':''}>
+      Mark as PTO/UTO (affects timesheet flag)
+    </label>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+      <button class="btn btn-n" onclick="prSaveEntry('${esc(existing?.id||'')}','${period}')">Save Entry</button>
+    </div>
+  </div>`);
+}
+
+async function prSaveEntry(existingId, period){
+  const emp=document.getElementById('pr-emp')?.value||'';
+  const date=document.getElementById('pr-date')?.value||'';
+  const workHrs=+(document.getElementById('pr-work')?.value||0);
+  const meal=+(document.getElementById('pr-meal')?.value||0);
+  const other=+(document.getElementById('pr-other')?.value||0);
+  const pto=+(document.getElementById('pr-pto')?.value||0);
+  const notes=document.getElementById('pr-notes')?.value||'';
+  const isPTO=document.getElementById('pr-ispto')?.checked||false;
+
+  if(!emp||!date){tst('Employee and date are required','warning');return;}
+  if(workHrs===0&&pto===0&&other===0){tst('Please enter at least some hours','warning');return;}
+
+  // Compute regular vs overtime (>8 hrs/day = overtime)
+  const regularHrs=Math.min(workHrs,8);
+  const overtimeHrs=Math.max(0,workHrs-8);
+  // Net total = working hours + other + pto (meal break is subtracted from worked time)
+  const totalHrs=regularHrs+overtimeHrs+other+pto;
+
+  const weekStart=prWeekStart(date);
+  const users=S.get('lhs:users')||[];
+  const userObj=users.find(u=>u.name===emp)||{};
+
+  const allTS=S.get('lhs:timesheets')||[];
+  if(existingId){
+    // Update
+    const i=allTS.findIndex(t=>t.id===existingId);
+    if(i>=0){
+      Object.assign(allTS[i],{regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO});
+      S.set('lhs:timesheets',allTS);
+      try{await DB.from('lhs_timesheets').update({
+        regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,
+        other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO
+      }).eq('id',existingId);}catch(err){console.warn('ts update failed',err?.message);}
+    }
+  } else {
+    // Check for duplicate
+    const dup=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
+    if(dup){tst('Entry already exists for this date. Click the edit button on the row instead.','warning');cMod();return;}
+    const newRow={
+      id:'ts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
+      date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
+      meal_break:meal, other_time:other, pto_hours:pto, total_hours:totalHrs,
+      notes, is_pto:isPTO, status:'Pending', created_at:new Date().toISOString()
+    };
+    allTS.push(newRow);
+    S.set('lhs:timesheets',allTS);
+    try{await DB.from('lhs_timesheets').insert(newRow);}catch(err){console.warn('ts insert failed',err?.message);}
+  }
+  cMod();
+  window._prPeriod=weekStart;
+  window._prEmp=emp;
+  window._prView='detail';
+  tst('Timesheet entry saved','success');
+  showPage('payroll');
+}
+
+async function prDeleteDay(id, emp, period){
+  if(!confirm('Delete this timesheet entry?')) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const updated=allTS.filter(t=>t.id!==id);
+  S.set('lhs:timesheets',updated);
+  try{await DB.from('lhs_timesheets').delete().eq('id',id);}catch(err){console.warn('ts delete failed',err?.message);}
+  tst('Entry deleted','success');
+  showPage('payroll');
+}
+
+async function prApproveAll(emp, period){
+  if(!confirm(`Approve all timesheet entries for ${emp} — ${prPeriodLabel(period)}?`)) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const toApprove=allTS.filter(t=>t.employee===emp&&t.week_start===period&&t.status==='Pending');
+  toApprove.forEach(t=>{t.status='Manager Approved';t.approved_by=CU?.name||'Manager';t.approved_at=new Date().toISOString();});
+  S.set('lhs:timesheets',allTS);
+  for(const t of toApprove){
+    try{await DB.from('lhs_timesheets').update({status:'Manager Approved',approved_by:CU?.name||'Manager',approved_at:t.approved_at}).eq('id',t.id);}catch(err){console.warn('ts approve failed',err?.message);}
+  }
+  tst(`Timesheet approved for ${emp}`,'success');
+  showPage('payroll');
+}
+
+async function prLockAll(emp, period){
+  if(!confirm(`Lock timesheet for ${emp} — ${prPeriodLabel(period)}? This cannot be undone.`)) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const toLock=allTS.filter(t=>t.employee===emp&&t.week_start===period&&t.status!=='Locked');
+  toLock.forEach(t=>{t.status='Locked';t.locked_by=CU?.name||'Manager';t.locked_at=new Date().toISOString();});
+  S.set('lhs:timesheets',allTS);
+  for(const t of toLock){
+    try{await DB.from('lhs_timesheets').update({status:'Locked',locked_by:CU?.name||'Manager',locked_at:t.locked_at}).eq('id',t.id);}catch(err){console.warn('ts lock failed',err?.message);}
+  }
+  tst(`Timesheet locked for ${emp}`,'success');
+  showPage('payroll');
+}
+
+function prAddEntry(){
+  const users=S.get('lhs:users')||[];
+  const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
+  const today=new Date().toISOString().slice(0,10);
+  const period=window._prPeriod;
+  const weekDates=prWeekDates(period);
+  const nearestDate=weekDates.find(d=>d>=today)||weekDates[0];
+  const defaultEmp=window._prEmp||tsUsers[0]?.name||'';
+  prEditDay(defaultEmp, nearestDate, period);
 }
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
