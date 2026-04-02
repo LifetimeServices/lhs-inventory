@@ -8569,6 +8569,25 @@ function openWO(woId){
   const payments=(S.get('lhs:payments')||[]).filter(p=>p.wo_id===woId);
   const materials=(S.get('lhs:wo_materials')||[]).filter(m=>m.wo_id===woId);
   const photos=(S.get('lhs:wo_photos')||[]).filter(p=>p.wo_id===woId);
+  // Silently refresh photos from Supabase in the background so other users' uploads appear
+  DB.from('lhs_wo_photos').select('*').eq('wo_id',woId).then(({data})=>{
+    if(!data?.length) return;
+    const all=S.get('lhs:wo_photos')||[];
+    let changed=false;
+    data.forEach(p=>{if(!all.find(x=>x.id===p.id)){all.push(p);changed=true;}});
+    if(changed){
+      S.set('lhs:wo_photos',all);
+      // Refresh the photos section if WO is still open
+      const el=document.getElementById('wo-photos-'+woId);
+      if(el) el.innerHTML=renderWOPhotos(woId,wo.division,wo.job_type);
+      const aptPhotoEls=document.querySelectorAll('[id^="aptd-photolist"]');
+      aptPhotoEls.forEach(el=>{
+        const aptId=el.id.replace('aptd-photolist-','');
+        const fresh=(S.get('lhs:wo_photos')||[]).filter(p=>p.appointment_id===aptId);
+        if(fresh.length) refreshPhotoList(aptId,woId,S.get('lhs:wo_photos')||[]);
+      });
+    }
+  }).catch(()=>{});
   const balance=(wo.total_price||0)-(wo.total_paid||0);
   const matTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.unit_cost||0),0);
   const isTech=CU?.role==='Van Tech';
@@ -9252,10 +9271,22 @@ async function woPhotoUpload(woId,labelId,labelText,input){
     if(!url){
       url=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
     }
-    photos.push({id:photoId,wo_id:woId,appointment_id:null,wo_label_id:labelId,
+    const photoRow={id:photoId,wo_id:woId,appointment_id:null,wo_label_id:labelId,
       label_text:labelText,photo_url:url,file_name:file.name,
       photo_number:existing.length+added+1,uploaded_by:CU?.name||'',
-      uploaded_at:new Date().toISOString(),flags:[],review_notes:'',safety:'',safety_notes:''});
+      uploaded_at:new Date().toISOString(),flags:[],review_notes:'',safety:'',safety_notes:''};
+    // Save to Supabase DB so other users can see it
+    try{
+      const{data:dbData,error:dbErr}=await DB.from('lhs_wo_photos').insert({
+        wo_id:woId,appointment_id:null,wo_label_id:labelId,
+        label_text:labelText,photo_url:url,file_name:file.name,
+        photo_number:photoRow.photo_number,uploaded_by:photoRow.uploaded_by,
+        uploaded_at:photoRow.uploaded_at
+      }).select().single();
+      if(!dbErr&&dbData){photoRow.id=dbData.id;}
+      else if(dbErr) console.error('Photo DB insert failed:',dbErr.message,'— run supabase-photos.sql to fix');
+    }catch(e){console.warn('Photo DB:',e.message);}
+    photos.push(photoRow);
     added++;
   }
   S.set('lhs:wo_photos',photos);
@@ -9265,12 +9296,14 @@ async function woPhotoUpload(woId,labelId,labelText,input){
   if(added) tst(`${added} photo${added>1?'s':''} uploaded`,'success');
 }
 
-function woPhotoDelete(photoId,woId){
+async function woPhotoDelete(photoId,woId){
   if(!confirm('Delete this photo?')) return;
   const photos=(S.get('lhs:wo_photos')||[]).filter(p=>p.id!==photoId);
   S.set('lhs:wo_photos',photos);
   const el=document.getElementById('wo-photos-'+woId);
   if(el){const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);el.innerHTML=renderWOPhotos(woId,wo?.division,wo?.job_type);}
+  // Delete from Supabase so it's gone for everyone
+  try{await DB.from('lhs_wo_photos').delete().eq('id',photoId);}catch(e){console.warn('Photo delete DB:',e.message);}
 }
 
 function renderWOPhotos(woId,division,jobType){
