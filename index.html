@@ -7365,7 +7365,7 @@ function bDispatch(){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateLabel=`${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 
-  return`<div id="disp-sticky-bar" style="position:sticky;top:0;z-index:200;background:#f0ece3;margin:-28px -28px 0;padding:16px 28px 10px;border-bottom:2px solid #e2e0db">
+  return`<div id="disp-sticky-bar" style="position:sticky;top:0;z-index:200;background:#f0ece3;margin:0 -28px;padding:12px 28px 10px;border-bottom:2px solid #e2e0db">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:8px">
       <button class="btn btn-o sm" onclick="dispNav(-1)">&#9664;</button>
@@ -8206,8 +8206,9 @@ document.addEventListener('mouseup',async e=>{
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
 
-// Time dropdown options in 15-min increments (5 AM – 10 PM)
-function mkDispTimeOpts(selected){
+// Time input with datalist — dropdown suggestions + free manual entry
+// Returns the full <input> + <datalist> HTML for a given field id and pre-selected value
+function mkDispTimeInput(id, selected, disabled){
   const opts=[];
   for(let h=5;h<23;h++){
     for(let m=0;m<60;m+=15){
@@ -8216,10 +8217,31 @@ function mkDispTimeOpts(selected){
       const val=`${hh}:${mm}`;
       const ap=h>=12?'PM':'AM';
       const dh=h>12?h-12:h===0?12:h;
-      opts.push(`<option value="${val}"${val===selected?' selected':''}>${dh}:${mm} ${ap}</option>`);
+      opts.push(`<option value="${val}">${dh}:${mm} ${ap}</option>`);
     }
   }
-  return opts.join('');
+  const dis=disabled?'disabled':'';
+  return`<input type="text" id="${id}" value="${selected||''}" list="${id}-dl"
+    placeholder="e.g. 08:00" autocomplete="off" ${dis}
+    style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;
+    font-size:13px;font-family:inherit;background:${disabled?'var(--surf)':'white'}">
+  <datalist id="${id}-dl">${opts.join('')}</datalist>`;
+}
+// Legacy alias used in save functions — parse HH:MM from either "08:00" or "8:00 AM" style
+function parseDispTime(val){
+  if(!val) return '08:00';
+  val=val.trim();
+  // Already 24-hr format
+  if(/^\d{1,2}:\d{2}$/.test(val)){
+    const[h,m]=val.split(':').map(Number);
+    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  }
+  // 12-hr format e.g. "8:30 AM" or "1:15 PM"
+  const pm=/pm/i.test(val); const am=/am/i.test(val);
+  const nums=val.replace(/[^0-9:]/g,'');
+  const[h,m]=(nums+':00').split(':').map(Number);
+  let h24=h; if(pm&&h<12) h24=h+12; if(am&&h===12) h24=0;
+  return String(h24).padStart(2,'0')+':'+String(m||0).padStart(2,'0');
 }
 const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
 
@@ -8259,12 +8281,8 @@ function oAddGreyBlock(){
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Start Time</label>
-      <select id="gb-time">${mkDispTimeOpts('08:00')}</select>
-    </div>
-    <div class="fl"><label>End Time</label>
-      <select id="gb-end">${mkDispTimeOpts('09:00')}</select>
-    </div>
+    <div class="fl"><label>Start Time</label>${mkDispTimeInput('gb-time','08:00',false)}</div>
+    <div class="fl"><label>End Time</label>${mkDispTimeInput('gb-end','09:00',false)}</div>
   </div>
   <div id="gb-pto-note" style="display:none;background:#FFF3E0;border:1px solid #FFB300;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#E65100">
     &#128197; PTO/UTO will be flagged on this employee's timesheet for manager review.
@@ -8297,8 +8315,8 @@ async function svAddGreyBlock(){
   if(!tech||!dateFrom){tst('Technician and start date required','error');return}
   const locked=document.getElementById('gb-lock')?.checked||false;
   const isPTO=type==='PTO'||type==='UTO';
-  const time=v('gb-time')||'08:00';
-  const dur=(()=>{const s=time;const e=v('gb-end')||'09:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
+  const time=parseDispTime(v('gb-time')||'08:00');
+  const dur=(()=>{const s=time;const e=parseDispTime(v('gb-end')||'09:00');const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
 
   // Build list of dates to create blocks for
   const dates=[];
@@ -8379,12 +8397,8 @@ function oEditGreyBlock(id){
   </div>
   <div class="fr">
     <div class="fl"><label>Date</label><input type="date" id="egb-date" value="${b.date}" ${!canEdit?'disabled':''}></div>
-    <div class="fl"><label>Start Time</label>
-      <select id="egb-time" ${!canEdit?'disabled':''}>${mkDispTimeOpts(b.time||'08:00')}</select>
-    </div>
-    <div class="fl"><label>End Time</label>
-      <select id="egb-end" ${!canEdit?'disabled':''}>${(()=>{const s=b.time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(b.duration||60);const eh=Math.floor(tot/60)%24;const em=tot%60;const endTime=String(eh).padStart(2,'0')+':'+String(em).padStart(2,'0');return mkDispTimeOpts(endTime);})()}</select>
-    </div>
+    <div class="fl"><label>Start Time</label>${mkDispTimeInput('egb-time',b.time||'08:00',!canEdit)}</div>
+    <div class="fl"><label>End Time</label>${(()=>{const s=b.time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(b.duration||60);const eh=Math.floor(tot/60)%24;const em=tot%60;const endTime=String(eh).padStart(2,'0')+':'+String(em).padStart(2,'0');return mkDispTimeInput('egb-end',endTime,!canEdit);})()}</div>
   </div>
   ${canEdit?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
     <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -8409,10 +8423,11 @@ async function svEditGreyBlock(id){
   // Get tech name without the division suffix
   const techRaw=v('egb-tech')||'';
   const tech=techRaw.includes(' (')?techRaw.split(' (')[0]:techRaw;
-  const dur=(()=>{const s=v('egb-time')||'08:00';const e=v('egb-end')||'09:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
+  const egbTime=parseDispTime(v('egb-time')||'08:00');
+  const dur=(()=>{const s=egbTime;const e=parseDispTime(v('egb-end')||'09:00');const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
   blocks[i]={...blocks[i],
     label:customLabel||type,type,tech,
-    date:v('egb-date'),time:v('egb-time'),
+    date:v('egb-date'),time:egbTime,
     duration:dur,locked,is_pto:isPTO,color:'#90A4AE'};
   S.set('lhs:grey_blocks',blocks);
   try{await DB.from('lhs_grey_blocks').update({
