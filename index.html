@@ -238,7 +238,23 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
             min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;
             justify-content:center;padding:0 3px;line-height:1">0</span>
         </div>
-        <span id="un">&#8212;</span><span class="rb" id="ur">&#8212;</span>
+        <div style="position:relative" id="user-menu-wrap">
+          <button onclick="toggleUserMenu(event)" style="background:rgba(255,255,255,.1);border:none;color:white;cursor:pointer;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;font-size:13px">
+            <span id="un">&#8212;</span><span class="rb" id="ur">&#8212;</span>
+            <span id="pr-payroll-badge" style="display:none;background:#E65100;color:white;font-size:9px;font-weight:700;min-width:15px;height:15px;border-radius:8px;align-items:center;justify-content:center;padding:0 3px;line-height:15px">!</span>
+          </button>
+          <div id="user-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.22);min-width:260px;z-index:500;overflow:hidden">
+            <div style="background:var(--navy);padding:14px 16px;color:white">
+              <div style="font-weight:700;font-size:14px" id="um-name">—</div>
+              <div style="font-size:11px;opacity:.7" id="um-role">—</div>
+            </div>
+            <div id="um-punch-area" style="padding:12px 16px;border-bottom:1px solid var(--bdr)"></div>
+            <div style="padding:8px">
+              <button class="btn btn-n" style="width:100%;margin-bottom:6px" onclick="cUserMenu();prViewMyTimecard()">&#128196; View My Time Card</button>
+              <button class="btn btn-o" style="width:100%" onclick="cUserMenu();showPage('payroll')">&#9776; Full Payroll</button>
+            </div>
+          </div>
+        </div>
       </div>
       <button class="lo" onclick="doLogout()" style="flex-shrink:0">Sign Out</button>
     </div>
@@ -1318,6 +1334,7 @@ const TBL={
   'lhs:accounting_codes':'lhs_accounting_codes',
   'lhs:grey_blocks':'lhs_grey_blocks',
   'lhs:timesheets':'lhs_timesheets',
+  'lhs:time_punches':'lhs_time_punches',
 };
 
 // Pull all data from Supabase into cache on login
@@ -1695,6 +1712,7 @@ async function startApp(){
       S.set('lhs:notifications',all);}
   }catch{}
   refreshNotifBadge();
+  prRefreshPayrollBadge();
   startNotifPolling();
 }
 
@@ -13007,6 +13025,9 @@ window._prPeriod  = window._prPeriod  || prWeekStart();
 window._prTab     = window._prTab     || 'pending';
 window._prView    = window._prView    || 'dashboard';
 window._prEmp     = window._prEmp     || '';
+window._prFilter  = window._prFilter  || {name:'',manager:'',division:''};
+window._prPanelEmp= window._prPanelEmp|| '';
+window._prPanelTab= window._prPanelTab|| 'details';
 
 // Compute Monday of the week containing date d (or today)
 function prWeekStart(d){
@@ -13018,7 +13039,7 @@ function prWeekStart(d){
   return mon.toISOString().slice(0,10);
 }
 
-// Format a YYYY-MM-DD as "Apr 7"
+// Format a YYYY-MM-DD as "Mon, Apr 7"
 function prFmtDate(d,includeYear){
   if(!d) return'—';
   const dt=new Date(d+'T12:00:00');
@@ -13067,18 +13088,34 @@ function prPeriodOptions(){
 function prStatusBadge(s){
   if(s==='Locked') return bx('Locked','bn');
   if(s==='Manager Approved') return bx('Approved','bg');
+  if(s==='Disputed') return`<span style="background:#B71C1C;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">⚠ Disputed</span>`;
   return bx('Pending','ba');
 }
 
-// Hours formatted to 1 decimal
+// Employee status badge (employee's own review)
+function prEmpStatusBadge(s){
+  if(s==='Approved') return`<span style="background:#1B5E20;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">✓ Emp Approved</span>`;
+  if(s==='Disputed') return`<span style="background:#B71C1C;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">⚠ Disputed</span>`;
+  return'';
+}
+
+// Hours formatted to 1 decimal — no monospace
 function prH(n){return(+n||0).toFixed(1);}
 
-// Determine overall status for an employee's week
+// Determine overall manager status for an employee's week
 function prWeekStatus(rows){
   if(!rows||!rows.length) return'Pending';
   if(rows.every(r=>r.status==='Locked')) return'Locked';
   if(rows.every(r=>r.status==='Manager Approved'||r.status==='Locked')) return'Manager Approved';
   return'Pending';
+}
+
+// Determine employee review status for the week
+function prEmpWeekStatus(rows){
+  if(!rows||!rows.length) return'';
+  if(rows.some(r=>r.employee_status==='Disputed')) return'Disputed';
+  if(rows.every(r=>r.employee_status==='Approved')) return'Approved';
+  return'';
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -13094,7 +13131,6 @@ function bPayrollDashboard(){
   const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
   const allTS=S.get('lhs:timesheets')||[];
 
-  // If own view, redirect to own detail
   if(isOwnView){
     window._prEmp=CU.name;
     window._prView='detail';
@@ -13102,38 +13138,40 @@ function bPayrollDashboard(){
   }
 
   const period=window._prPeriod;
-  const periodEnd=(()=>{const e=new Date(period+'T12:00:00');e.setDate(e.getDate()+6);return e.toISOString().slice(0,10);})();
   const periodTS=allTS.filter(t=>t.week_start===period);
 
-  // Group by employee
+  // Build employee list
   const byEmp={};
-  tsUsers.forEach(u=>{
-    byEmp[u.name]={user:u,rows:[]};
-  });
+  tsUsers.forEach(u=>{byEmp[u.name]={user:u,rows:[]};});
   periodTS.forEach(t=>{
     if(!byEmp[t.employee]) byEmp[t.employee]={user:tsUsers.find(u=>u.name===t.employee)||{name:t.employee,manager:'—',division:'—'},rows:[]};
     byEmp[t.employee].rows.push(t);
   });
 
   const tab=window._prTab;
+  const f=window._prFilter||{};
+
   const empList=Object.values(byEmp).map(e=>{
     const rows=e.rows;
     const reg=rows.reduce((a,r)=>a+(+r.regular_hours||0),0);
     const ot=rows.reduce((a,r)=>a+(+r.overtime_hours||0),0);
     const pto=rows.reduce((a,r)=>a+(+r.pto_hours||0),0);
-    const other=rows.reduce((a,r)=>a+(+r.other_time||0),0);
     const total=rows.reduce((a,r)=>a+(+r.total_hours||0),0);
     const status=prWeekStatus(rows);
-    return{...e,reg,ot,pto,other,total,status};
+    const empStatus=prEmpWeekStatus(rows);
+    return{...e,reg,ot,pto,total,status,empStatus};
   });
 
-  // Tab counts
   const pendingList=empList.filter(e=>e.status==='Pending');
   const approvedList=empList.filter(e=>e.status==='Manager Approved');
   const lockedList=empList.filter(e=>e.status==='Locked');
-  const shownList=tab==='pending'?pendingList:tab==='approved'?approvedList:lockedList;
+  let shownList=tab==='pending'?pendingList:tab==='approved'?approvedList:lockedList;
 
-  // Summary stats for shown tab
+  // Apply filters
+  if(f.name) shownList=shownList.filter(e=>e.user.name.toLowerCase().includes(f.name.toLowerCase()));
+  if(f.manager) shownList=shownList.filter(e=>(e.user.manager||'').toLowerCase().includes(f.manager.toLowerCase()));
+  if(f.division) shownList=shownList.filter(e=>(e.user.division||'')===(f.division));
+
   const totalReg=shownList.reduce((a,e)=>a+e.reg,0);
   const totalOT=shownList.reduce((a,e)=>a+e.ot,0);
   const totalPTO=shownList.reduce((a,e)=>a+e.pto,0);
@@ -13143,22 +13181,44 @@ function bPayrollDashboard(){
   const prevPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()-7);return d.toISOString().slice(0,10);})();
   const nextPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})();
 
+  // Managers + divisions for filter dropdowns
+  const allMgrs=[...new Set(tsUsers.map(u=>u.manager).filter(Boolean))].sort();
+  const allDivs=[...new Set(tsUsers.map(u=>u.division).filter(Boolean))].sort();
+
+  // Disputed count across ALL tabs
+  const disputedCount=empList.filter(e=>e.empStatus==='Disputed').length;
+
   return`<div class="pt">Payroll</div>
   <div class="ps">Weekly timesheet management — ${tsUsers.length} employee${tsUsers.length!==1?'s':''} tracked</div>
 
   <!-- Period Selector -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-    <button class="btn sm btn-o" onclick="prNavPeriod('${prevPeriod}')">&#8592; Prev</button>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <button class="btn btn-n sm" onclick="prNavPeriod('${prevPeriod}')">&#8592; Prev</button>
     <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;cursor:pointer" onchange="prSetPeriod(this.value)">
       ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
     </select>
-    <button class="btn sm btn-o" onclick="prNavPeriod('${nextPeriod}')">Next &#8594;</button>
-    <span style="font-size:12px;color:var(--muted);margin-left:4px">${prPeriodLabel(period)}</span>
+    <button class="btn btn-n sm" onclick="prNavPeriod('${nextPeriod}')">Next &#8594;</button>
+    ${disputedCount>0?`<span style="background:#B71C1C;color:white;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin-left:4px">⚠ ${disputedCount} Dispute${disputedCount!==1?'s':''}</span>`:''}
     ${canApprove?`<button class="btn sm btn-n" style="margin-left:auto" onclick="prAddEntry()">+ Add Entry</button>`:''}
   </div>
 
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;align-items:center">
+    <span style="font-size:12px;font-weight:600;color:var(--muted);margin-right:4px">&#9660; Filters:</span>
+    <input id="pr-f-name" type="text" placeholder="Search employee..." value="${esc(f.name||'')}" oninput="prSetFilter('name',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;width:160px">
+    <select id="pr-f-mgr" onchange="prSetFilter('manager',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Managers</option>
+      ${allMgrs.map(m=>`<option value="${esc(m)}"${f.manager===m?' selected':''}>${m}</option>`).join('')}
+    </select>
+    <select id="pr-f-div" onchange="prSetFilter('division',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Divisions</option>
+      ${allDivs.map(d=>`<option value="${esc(d)}"${f.division===d?' selected':''}>${d}</option>`).join('')}
+    </select>
+    ${(f.name||f.manager||f.division)?`<button class="btn sm btn-o" onclick="prClearFilters()">&#10005; Clear</button>`:''}
+  </div>
+
   <!-- Tabs -->
-  <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--bdr)">
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:0">
     <button onclick="prSetTab('pending')" style="padding:9px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='pending'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='pending'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">
       Pending <span style="background:${tab==='pending'?'var(--navy)':'#ccc'};color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">${pendingList.length}</span>
     </button>
@@ -13174,19 +13234,19 @@ function bPayrollDashboard(){
   <div style="display:flex;gap:0;background:#f8f7f4;border:1px solid var(--bdr);border-top:none;border-radius:0 0 8px 8px;margin-bottom:20px;overflow:hidden">
     <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Regular Hours</div>
-      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalReg)}</div>
+      <div style="font-size:22px;font-weight:700;color:var(--navy)">${prH(totalReg)}</div>
     </div>
     <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Overtime</div>
-      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
+      <div style="font-size:22px;font-weight:700;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
     </div>
     <div style="flex:1;padding:12px 16px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">PTO Hours</div>
-      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:#1565C0">${prH(totalPTO)}</div>
+      <div style="font-size:22px;font-weight:700;color:#1565C0">${prH(totalPTO)}</div>
     </div>
     <div style="flex:1;padding:12px 16px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total Hours</div>
-      <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalHrs)}</div>
+      <div style="font-size:22px;font-weight:700;color:var(--navy)">${prH(totalHrs)}</div>
     </div>
   </div>
 
@@ -13198,39 +13258,217 @@ function bPayrollDashboard(){
       <div style="font-size:12px">for the week of ${prPeriodLabel(period)}</div>
       ${canApprove&&tab==='pending'?`<button class="btn btn-n" style="margin-top:16px" onclick="prAddEntry()">+ Add Timesheet Entry</button>`:''}
     </div>`:`
-    <div class="tw" style="margin:0">
-    <table>
+    <div class="tw" style="margin:0"><table>
       <thead><tr>
-        <th>Employee</th>
-        <th>Manager</th>
-        <th>Division</th>
+        <th>Employee</th><th>Manager</th><th>Division</th>
         <th style="text-align:right">Regular</th>
         <th style="text-align:right">Overtime</th>
         <th style="text-align:right">PTO</th>
-        <th style="text-align:right">Total Hours</th>
+        <th style="text-align:right">Total Hrs</th>
         <th>Status</th>
         <th style="text-align:center">Actions</th>
       </tr></thead>
       <tbody>
-      ${shownList.map(e=>`<tr>
-        <td style="font-weight:600">${e.user.name}</td>
-        <td style="font-size:12px;color:var(--muted)">${e.user.manager||'—'}</td>
-        <td>${bx(e.user.division||'—')}</td>
-        <td style="font-family:'DM Mono',monospace;text-align:right">${prH(e.reg)}</td>
-        <td style="font-family:'DM Mono',monospace;text-align:right;color:${e.ot>0?'#E65100':'inherit'}">${prH(e.ot)}</td>
-        <td style="font-family:'DM Mono',monospace;text-align:right;color:${e.pto>0?'#1565C0':'inherit'}">${prH(e.pto)}</td>
-        <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700">${prH(e.total)}</td>
-        <td>${prStatusBadge(e.status)}</td>
-        <td style="text-align:center;white-space:nowrap">
-          <button class="btn sm btn-o" onclick="prViewDetail('${esc(e.user.name)}')">View</button>
-          ${canApprove&&e.status==='Pending'&&e.rows.length>0?`<button class="btn sm btn-g" style="margin-left:4px" onclick="prApproveAll('${esc(e.user.name)}','${period}')">Approve</button>`:''}
-          ${canApprove&&e.status==='Manager Approved'?`<button class="btn sm" style="margin-left:4px;background:#555;color:white" onclick="prLockAll('${esc(e.user.name)}','${period}')">Lock</button>`:''}
-        </td>
-      </tr>`).join('')}
+      ${shownList.map(e=>{
+        const isDisputed=e.empStatus==='Disputed';
+        return`<tr style="${isDisputed?'background:#FFF5F5':''};">
+          <td style="font-weight:600">
+            ${e.user.name}
+            ${isDisputed?`<span style="margin-left:6px;font-size:10px;background:#B71C1C;color:white;border-radius:4px;padding:1px 5px">⚠ Dispute</span>`:''}
+            ${e.empStatus==='Approved'?`<span style="margin-left:6px;font-size:10px;background:#1B5E20;color:white;border-radius:4px;padding:1px 5px">✓ Emp OK</span>`:''}
+          </td>
+          <td style="font-size:12px;color:var(--muted)">${e.user.manager||'—'}</td>
+          <td>${bx(e.user.division||'—')}</td>
+          <td style="text-align:right">${prH(e.reg)}</td>
+          <td style="text-align:right;color:${e.ot>0?'#E65100':'inherit'}">${prH(e.ot)}</td>
+          <td style="text-align:right;color:${e.pto>0?'#1565C0':'inherit'}">${prH(e.pto)}</td>
+          <td style="text-align:right;font-weight:700">${prH(e.total)}</td>
+          <td>${prStatusBadge(e.status)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn sm btn-o" onclick="prOpenPanel('${esc(e.user.name)}')">View</button>
+            ${canApprove&&e.status==='Pending'&&e.rows.length>0?`<button class="btn sm btn-g" style="margin-left:4px" onclick="prApproveAll('${esc(e.user.name)}','${period}')">Approve</button>`:''}
+            ${canApprove&&e.status==='Manager Approved'?`<button class="btn sm" style="margin-left:4px;background:#1565C0;color:white" onclick="prSendToEmployee('${esc(e.user.name)}','${period}')">Send</button>`:''}
+          </td>
+        </tr>`;
+      }).join('')}
       </tbody>
-    </table>
-    </div>`}
-  </div>`;
+    </table></div>`}
+  </div>
+
+  <!-- Employee Detail Panel (slide-in) -->
+  <div id="pr-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:420px;background:white;box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;display:flex;flex-direction:column;overflow:hidden"></div>
+  <div id="pr-panel-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:399" onclick="prClosePanel()"></div>
+  `;
+}
+
+// ── EMPLOYEE DETAIL PANEL ─────────────────────────────────────────────────────
+function prOpenPanel(empName){
+  window._prPanelEmp=empName;
+  window._prPanelTab='details';
+  prRenderPanel();
+  document.getElementById('pr-panel').style.display='flex';
+  document.getElementById('pr-panel-overlay').style.display='block';
+}
+
+function prClosePanel(){
+  document.getElementById('pr-panel').style.display='none';
+  document.getElementById('pr-panel-overlay').style.display='none';
+}
+
+function prRenderPanel(){
+  const panel=document.getElementById('pr-panel');
+  if(!panel) return;
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const emp=window._prPanelEmp;
+  const period=window._prPeriod;
+  const allTS=S.get('lhs:timesheets')||[];
+  const empRows=allTS.filter(t=>t.employee===emp&&t.week_start===period);
+  const users=S.get('lhs:users')||[];
+  const userObj=users.find(u=>u.name===emp)||{name:emp,manager:'—',division:'—',email:''};
+  const tab=window._prPanelTab;
+
+  const reg=empRows.reduce((a,r)=>a+(+r.regular_hours||0),0);
+  const ot=empRows.reduce((a,r)=>a+(+r.overtime_hours||0),0);
+  const pto=empRows.reduce((a,r)=>a+(+r.pto_hours||0),0);
+  const total=empRows.reduce((a,r)=>a+(+r.total_hours||0),0);
+  const status=prWeekStatus(empRows);
+  const empStatus=prEmpWeekStatus(empRows);
+  const isSent=empRows.some(r=>r.sent_to_employee);
+  const isLocked=status==='Locked';
+  const disputes=empRows.filter(r=>r.employee_status==='Disputed');
+
+  const now=new Date();
+  const lastUpdated=empRows.length?`${now.toLocaleDateString()} ${now.toLocaleTimeString([],({hour:'2-digit',minute:'2-digit'}))}`:'Never';
+
+  // Audit trail
+  const auditRows=empRows.map(r=>({
+    date:r.date,
+    events:[
+      r.created_at?{time:r.created_at,text:`Entry created`}:null,
+      r.approved_at?{time:r.approved_at,text:`Approved by ${r.approved_by||'Manager'}`}:null,
+      r.sent_at?{time:r.sent_at,text:`Sent to employee`}:null,
+      r.employee_reviewed_at?{time:r.employee_reviewed_at,text:`Employee ${r.employee_status==='Disputed'?'disputed':'approved'}`}:null,
+      r.locked_at?{time:r.locked_at,text:`Locked by ${r.locked_by||'Manager'}`}:null,
+    ].filter(Boolean)
+  })).flat();
+
+  panel.innerHTML=`
+  <!-- Header -->
+  <div style="background:var(--navy);padding:16px 18px;color:white;flex-shrink:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:700">${emp}</div>
+      <button onclick="prClosePanel()" style="background:rgba(255,255,255,.15);border:none;color:white;cursor:pointer;width:28px;height:28px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center">&#10005;</button>
+    </div>
+    <div style="font-size:12px;opacity:.7">${userObj.division||'—'} &bull; Manager: ${userObj.manager||'—'}</div>
+    <div style="font-size:11px;opacity:.5;margin-top:4px">Last updated ${lastUpdated}</div>
+  </div>
+
+  <!-- Status Banner -->
+  <div style="padding:10px 18px;background:${empStatus==='Disputed'?'#FFEBEE':status==='Locked'?'#F5F5F5':status==='Manager Approved'?'#E8F5E9':'#FFF8E1'};border-bottom:1px solid var(--bdr);flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:8px">
+      ${empStatus==='Disputed'?`<span style="color:#B71C1C;font-weight:700;font-size:13px">⚠ Disputed by Employee</span>`
+        :status==='Locked'?`<span style="color:#333;font-weight:700;font-size:13px">🔒 Locked</span>`
+        :status==='Manager Approved'?`<span style="color:#1B5E20;font-weight:700;font-size:13px">✓ Manager Approved</span>`
+        :`<span style="color:#E65100;font-weight:700;font-size:13px">○ Pending Review</span>`}
+      <span style="font-size:12px;color:var(--muted)">${prPeriodLabel(period)}</span>
+    </div>
+    ${isSent&&!isLocked?`<div style="font-size:11px;color:var(--muted);margin-top:2px">📤 Sent to employee for review</div>`:''}
+  </div>
+
+  <!-- Tabs -->
+  <div style="display:flex;border-bottom:1px solid var(--bdr);flex-shrink:0">
+    <button onclick="window._prPanelTab='details';prRenderPanel()" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;border-bottom:${tab==='details'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='details'?'var(--navy)':'var(--muted)'}">Report Details</button>
+    <button onclick="window._prPanelTab='adjustments';prRenderPanel()" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;border-bottom:${tab==='adjustments'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='adjustments'?'var(--navy)':'var(--muted)'}">Adjustments</button>
+    <button onclick="window._prPanelTab='audit';prRenderPanel()" style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;border-bottom:${tab==='audit'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='audit'?'var(--navy)':'var(--muted)'}">Audit Trail</button>
+    ${disputes.length>0?`<button onclick="window._prPanelTab='disputes';prRenderPanel()" style="flex:1;padding:10px;border:none;background:#FFF5F5;cursor:pointer;font-size:12px;font-weight:700;border-bottom:${tab==='disputes'?'2px solid #B71C1C':'2px solid transparent'};color:#B71C1C">⚠ Disputes</button>`:''}
+  </div>
+
+  <!-- Tab Content -->
+  <div style="flex:1;overflow-y:auto;padding:16px 18px">
+    ${tab==='details'?`
+      <!-- Stats -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div style="background:#f8f7f4;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Regular</div>
+          <div style="font-size:20px;font-weight:700;color:var(--navy)">${prH(reg)}</div>
+        </div>
+        <div style="background:#f8f7f4;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Overtime</div>
+          <div style="font-size:20px;font-weight:700;color:${ot>0?'#E65100':'var(--navy)'}">${prH(ot)}</div>
+        </div>
+        <div style="background:#f8f7f4;border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">PTO</div>
+          <div style="font-size:20px;font-weight:700;color:#1565C0">${prH(pto)}</div>
+        </div>
+        <div style="background:var(--navy);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total Hours</div>
+          <div style="font-size:20px;font-weight:700;color:white">${prH(total)}</div>
+        </div>
+      </div>
+      <!-- Timesheet section -->
+      <div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:12px">
+        <div style="padding:10px 14px;background:#f8f7f4;border-bottom:1px solid var(--bdr);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Timesheet</div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+          <a href="#" onclick="prClosePanel();prViewDetail('${esc(emp)}');return false" style="color:var(--navy);font-size:13px;text-decoration:none;display:flex;align-items:center;gap:6px">
+            &#128196; Edit Timesheet
+          </a>
+          ${empRows.length===0?`<div style="font-size:12px;color:var(--muted)">No entries for this period. <a href="#" onclick="prClosePanel();prAddEntry();return false">+ Add entry</a></div>`:''}
+        </div>
+      </div>
+      ${disputes.length>0?`<div style="background:#FFEBEE;border:1px solid #FFCDD2;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#B71C1C;margin-bottom:6px">⚠ Employee Dispute Notes</div>
+        ${disputes.map(r=>`<div style="font-size:12px;color:#333;margin-bottom:6px;padding:6px 10px;background:white;border-radius:6px;border-left:3px solid #B71C1C">
+          <div style="font-weight:600;font-size:11px;color:var(--muted)">${prFmtDate(r.date)}</div>
+          <div>${r.employee_notes||'No notes provided'}</div>
+        </div>`).join('')}
+      </div>`:''}
+    `:''}
+    ${tab==='adjustments'?`
+      <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">
+        <div style="font-size:24px;margin-bottom:8px">&#9998;</div>
+        <div style="font-weight:600;margin-bottom:4px">Payroll Adjustments</div>
+        <div style="font-size:12px">Manual adjustments can be added as notes on individual timesheet entries.</div>
+        <button class="btn btn-n" style="margin-top:12px" onclick="prClosePanel();prViewDetail('${esc(emp)}')">Open Timesheet</button>
+      </div>
+    `:''}
+    ${tab==='audit'?`
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Activity Log</div>
+      ${empRows.length===0?`<div style="color:var(--muted);font-size:13px">No entries yet for this period.</div>`:
+        empRows.sort((a,b)=>a.date>b.date?1:-1).map(r=>`
+        <div style="margin-bottom:12px">
+          <div style="font-weight:600;font-size:12px;color:var(--navy);margin-bottom:4px">${prFmtDate(r.date)}</div>
+          ${[
+            r.created_at?`<div style="font-size:11px;color:var(--muted);padding:3px 0 3px 12px;border-left:2px solid var(--bdr)">Created — ${new Date(r.created_at).toLocaleString()}</div>`:null,
+            r.approved_at?`<div style="font-size:11px;color:#1B5E20;padding:3px 0 3px 12px;border-left:2px solid #81C784">Approved by ${r.approved_by} — ${new Date(r.approved_at).toLocaleString()}</div>`:null,
+            r.sent_at?`<div style="font-size:11px;color:#1565C0;padding:3px 0 3px 12px;border-left:2px solid #90CAF9">Sent to employee — ${new Date(r.sent_at).toLocaleString()}</div>`:null,
+            r.employee_reviewed_at?`<div style="font-size:11px;color:${r.employee_status==='Disputed'?'#B71C1C':'#1B5E20'};padding:3px 0 3px 12px;border-left:2px solid ${r.employee_status==='Disputed'?'#EF9A9A':'#81C784'}">Employee ${r.employee_status==='Disputed'?'disputed':'approved'} — ${new Date(r.employee_reviewed_at).toLocaleString()}${r.employee_notes?' — "'+r.employee_notes+'"':''}</div>`:null,
+            r.locked_at?`<div style="font-size:11px;color:#333;padding:3px 0 3px 12px;border-left:2px solid #999">Locked by ${r.locked_by} — ${new Date(r.locked_at).toLocaleString()}</div>`:null,
+          ].filter(Boolean).join('')}
+        </div>`).join('')}
+    `:''}
+    ${tab==='disputes'?`
+      <div style="font-size:12px;font-weight:700;color:#B71C1C;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Employee Dispute Notes</div>
+      ${disputes.length===0?`<div style="color:var(--muted);font-size:13px">No disputes for this period.</div>`:
+        disputes.map(r=>`<div style="background:#FFF5F5;border:1px solid #FFCDD2;border-radius:8px;padding:12px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:12px;color:var(--navy);margin-bottom:4px">${prFmtDate(r.date)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Hours on record: ${prH((+r.regular_hours||0)+(+r.overtime_hours||0))} working, ${prH(+r.pto_hours||0)} PTO</div>
+          <div style="font-size:13px;border-left:3px solid #B71C1C;padding-left:10px;color:#333">${r.employee_notes||'No notes provided'}</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn sm btn-g" onclick="prResolveDispute('${esc(r.id)}','${esc(emp)}','${period}')">✓ Mark Resolved</button>
+            <button class="btn sm btn-o" onclick="prClosePanel();prViewDetail('${esc(emp)}')">Edit Entry</button>
+          </div>
+        </div>`).join('')}
+    `:''}
+  </div>
+
+  <!-- Footer Actions -->
+  ${!isLocked?`<div style="padding:14px 18px;border-top:1px solid var(--bdr);background:#f8f7f4;flex-shrink:0;display:flex;gap:8px;flex-wrap:wrap">
+    ${canApprove&&status==='Pending'&&empRows.length>0?`<button class="btn btn-g" style="flex:1" onclick="prApproveAll('${esc(emp)}','${period}');prClosePanel()">✓ Approve All</button>`:''}
+    ${canApprove&&status==='Manager Approved'&&!isSent?`<button class="btn btn-n" style="flex:1" onclick="prSendToEmployee('${esc(emp)}','${period}')">📤 Send to Employee</button>`:''}
+    ${canApprove&&status==='Manager Approved'&&isSent?`<button class="btn" style="flex:1;background:#1565C0;color:white" onclick="prLockAll('${esc(emp)}','${period}');prClosePanel()">🔒 Lock</button>`:''}
+    <button class="btn btn-o" style="flex:1" onclick="prClosePanel();prViewDetail('${esc(emp)}')">View Full Timesheet</button>
+  </div>`:`<div style="padding:14px 18px;border-top:1px solid var(--bdr);background:#f5f5f5;flex-shrink:0;text-align:center;font-size:12px;color:var(--muted)">🔒 This timesheet is locked</div>`}
+  `;
 }
 
 // ── PAYROLL DETAIL VIEW ───────────────────────────────────────────────────────
@@ -13243,11 +13481,8 @@ function bPayrollDetail(){
   const emp=window._prEmp||CU?.name||'';
   const period=window._prPeriod;
 
-  // My own timesheets — filter to own name only
   const empTS=allTS.filter(t=>t.employee===emp&&t.week_start===period);
   const weekDates=prWeekDates(period);
-
-  // Build a map: date → timesheet row
   const tsMap={};
   empTS.forEach(t=>{tsMap[t.date]=t;});
 
@@ -13258,26 +13493,29 @@ function bPayrollDetail(){
   const totalPTO=empTS.reduce((a,r)=>a+(+r.pto_hours||0),0);
   const totalHrs=empTS.reduce((a,r)=>a+(+r.total_hours||0),0);
   const overallStatus=prWeekStatus(empTS);
+  const empStatus=prEmpWeekStatus(empTS);
+  const isLocked=overallStatus==='Locked';
+  const isSent=empTS.some(r=>r.sent_to_employee);
+  const isMyOwn=emp===CU?.name;
 
   const periodOpts=prPeriodOptions();
   const prevPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()-7);return d.toISOString().slice(0,10);})();
   const nextPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})();
-  const isLocked=overallStatus==='Locked';
 
   return`
   <!-- Header -->
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-    ${!isOwnView?`<button class="btn sm btn-o" onclick="prBackToDashboard()">&#8592; Payroll</button>`:''}
-    <div class="pt" style="margin:0">Timesheet</div>
+    ${!isOwnView?`<button class="btn sm btn-n" onclick="prBackToDashboard()">&#8592; Payroll</button>`:''}
+    <div class="pt" style="margin:0">Timesheet ${isMyOwn?'— My Time Card':''}</div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       ${!isOwnView?`<select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetEmployee(this.value)">
         ${tsUsers.map(u=>`<option value="${esc(u.name)}"${u.name===emp?' selected':''}>${u.name}</option>`).join('')}
       </select>`:`<span style="font-size:14px;font-weight:600">${emp}</span>`}
-      <button class="btn sm btn-o" onclick="prNavPeriod('${prevPeriod}')">&#8592;</button>
+      <button class="btn sm btn-n" onclick="prNavPeriod('${prevPeriod}')">&#8592;</button>
       <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetPeriod(this.value)">
         ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
       </select>
-      <button class="btn sm btn-o" onclick="prNavPeriod('${nextPeriod}')">&#8594;</button>
+      <button class="btn sm btn-n" onclick="prNavPeriod('${nextPeriod}')">&#8594;</button>
     </div>
   </div>
 
@@ -13285,55 +13523,49 @@ function bPayrollDetail(){
   <div style="display:flex;gap:0;background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;margin-bottom:20px;overflow:hidden">
     <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Regular</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalReg)}</div>
+      <div style="font-size:18px;font-weight:700;color:var(--navy)">${prH(totalReg)}</div>
     </div>
     <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Overtime</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
+      <div style="font-size:18px;font-weight:700;color:${totalOT>0?'#E65100':'var(--navy)'}">${prH(totalOT)}</div>
     </div>
     <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">PTO</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:#1565C0">${prH(totalPTO)}</div>
+      <div style="font-size:18px;font-weight:700;color:#1565C0">${prH(totalPTO)}</div>
     </div>
     <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Meal Break</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">${prH(totalMeal)}</div>
-    </div>
-    <div style="flex:1;padding:12px 14px;border-right:1px solid var(--bdr);text-align:center">
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Other Time</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">${prH(totalOther)}</div>
+      <div style="font-size:18px;font-weight:700;color:var(--muted)">${prH(totalMeal)}</div>
     </div>
     <div style="flex:1;padding:12px 14px;text-align:center">
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total Hours</div>
-      <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--navy)">${prH(totalHrs)}</div>
+      <div style="font-size:18px;font-weight:700;color:var(--navy)">${prH(totalHrs)}</div>
     </div>
   </div>
 
-  <!-- Week Status Banner -->
-  ${isLocked?`<div style="background:#333;color:white;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px">
-    &#128274; This timesheet is <strong>Locked</strong> — no further edits allowed
-  </div>`:''}
-  ${overallStatus==='Manager Approved'&&!isLocked?`<div style="background:#E8F5E9;border:1px solid #81C784;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#1B5E20;display:flex;align-items:center;gap:8px">
-    &#10004; Manager Approved — awaiting payroll lock
-  </div>`:''}
+  <!-- Status Banners -->
+  ${isLocked?`<div style="background:#333;color:white;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px">🔒 This timesheet is <strong>Locked</strong></div>`:''}
+  ${empStatus==='Disputed'&&!isLocked?`<div style="background:#FFEBEE;border:1px solid #FFCDD2;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#B71C1C">⚠ Employee has disputed entries on this timesheet</div>`:''}
+  ${isSent&&empStatus===''&&!isLocked?`<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#1565C0">📤 Sent to ${emp} for review — awaiting response</div>`:''}
+  ${isMyOwn&&isSent&&empStatus===''?`<div style="background:#FFF8E1;border:1px solid #FFB300;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#E65100">⏰ Your timesheet is ready for review. Please approve or dispute below.</div>`:''}
 
-  <!-- Day-by-Day Table -->
+  <!-- Day Table -->
   <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
     <div style="padding:14px 18px;background:#f8f7f4;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:12px">
       <span style="font-weight:600;font-size:14px">Week of ${prPeriodLabel(period)}</span>
-      <span>${prStatusBadge(overallStatus)}</span>
+      ${prStatusBadge(overallStatus)}
+      ${empStatus?prEmpStatusBadge(empStatus):''}
     </div>
-    <div class="tw" style="margin:0">
-    <table>
+    <div class="tw" style="margin:0"><table>
       <thead><tr>
         <th>Date</th>
-        <th style="text-align:right">Working Hours</th>
+        <th style="text-align:right">Working Hrs</th>
         <th style="text-align:right">Meal Break</th>
         <th style="text-align:right">Other Time</th>
         <th style="text-align:right">PTO</th>
-        <th style="text-align:right">Total Hours</th>
-        <th style="text-align:center">Notes</th>
-        ${!isLocked?`<th style="text-align:center">Edit</th>`:''}
+        <th style="text-align:right">Total</th>
+        <th style="text-align:center">Notes / Status</th>
+        ${!isLocked&&(canApprove||isMyOwn)?`<th style="text-align:center">Edit</th>`:''}
       </tr></thead>
       <tbody>
       ${weekDates.map(date=>{
@@ -13347,21 +13579,26 @@ function bPayrollDetail(){
         const workHrs=reg+ot;
         const isToday=date===new Date().toISOString().slice(0,10);
         const hasEntry=!!row;
-        const rowStatus=row?.status||'';
         const isPTO=row?.is_pto||false;
-        return`<tr style="${isToday?'background:#FFF8E1':''}${isPTO?';background:#E3F2FD':''};${!hasEntry?'color:var(--muted)':''}">
+        const isDisputed=row?.employee_status==='Disputed';
+        const isEmpApproved=row?.employee_status==='Approved';
+        return`<tr style="${isDisputed?'background:#FFF5F5':isToday?'background:#FFF8E1':isPTO?'background:#E3F2FD':''}">
           <td style="font-weight:${isToday?'700':'500'};white-space:nowrap">
-            ${prFmtDate(date)}${isToday?' <span style="font-size:10px;background:var(--navy);color:white;border-radius:4px;padding:1px 5px;margin-left:4px">Today</span>':''}
+            ${prFmtDate(date)}${isToday?` <span style="font-size:10px;background:var(--navy);color:white;border-radius:4px;padding:1px 5px">Today</span>`:''}
           </td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${hasEntry?prH(workHrs):'—'}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--muted)">${hasEntry?prH(meal):'—'}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--muted)">${hasEntry?prH(other):'—'}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right;color:${pto>0?'#1565C0':'inherit'}">${hasEntry?prH(pto):'—'}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700">${hasEntry?prH(total):'—'}</td>
-          <td style="font-size:12px;color:var(--muted);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(row?.notes||'')}">${row?.notes||'—'}</td>
-          ${!isLocked?`<td style="text-align:center">
-            ${canApprove||!hasEntry?`<button class="btn sm ${hasEntry?'btn-o':'btn-n'}" onclick="prEditDay('${esc(emp)}','${date}','${period}')">${hasEntry?'&#9998;':'+Add'}</button>`:''}
-            ${canApprove&&hasEntry?`<button class="btn sm btn-r" style="margin-left:3px" onclick="prDeleteDay('${row.id}','${esc(emp)}','${period}')">&#215;</button>`:''}
+          <td style="text-align:right">${hasEntry?prH(workHrs):'—'}</td>
+          <td style="text-align:right;color:var(--muted)">${hasEntry?prH(meal):'—'}</td>
+          <td style="text-align:right;color:var(--muted)">${hasEntry?prH(other):'—'}</td>
+          <td style="text-align:right;color:${pto>0?'#1565C0':'inherit'}">${hasEntry?prH(pto):'—'}</td>
+          <td style="text-align:right;font-weight:700">${hasEntry?prH(total):'—'}</td>
+          <td style="font-size:11px;max-width:150px">
+            ${isDisputed?`<span style="color:#B71C1C;font-weight:700">⚠ Disputed</span>${row?.employee_notes?`<div style="color:#666;margin-top:2px">"${row.employee_notes}"</div>`:''}`
+              :isEmpApproved?`<span style="color:#1B5E20">✓ Emp OK</span>`
+              :row?.notes?`<span style="color:var(--muted)">${esc(row.notes)}</span>`:''}
+          </td>
+          ${!isLocked&&(canApprove||isMyOwn)?`<td style="text-align:center;white-space:nowrap">
+            ${canApprove?`<button class="btn sm ${hasEntry?'btn-o':'btn-n'}" onclick="prEditDay('${esc(emp)}','${date}','${period}')">${hasEntry?'✎':'+Add'}</button>`:''}
+            ${canApprove&&hasEntry?`<button class="btn sm btn-r" style="margin-left:3px" onclick="prDeleteDay('${row.id}','${esc(emp)}','${period}')">✕</button>`:''}
           </td>`:''}
         </tr>`;
       }).join('')}
@@ -13369,25 +13606,29 @@ function bPayrollDetail(){
       <tfoot>
         <tr style="font-weight:700;background:#f0f0f0">
           <td>Totals</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalReg+totalOT)}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalMeal)}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalOther)}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalPTO)}</td>
-          <td style="font-family:'DM Mono',monospace;text-align:right">${prH(totalHrs)}</td>
+          <td style="text-align:right">${prH(totalReg+totalOT)}</td>
+          <td style="text-align:right">${prH(totalMeal)}</td>
+          <td style="text-align:right">${prH(totalOther)}</td>
+          <td style="text-align:right">${prH(totalPTO)}</td>
+          <td style="text-align:right">${prH(totalHrs)}</td>
           <td></td>
-          ${!isLocked?`<td></td>`:''}
+          ${!isLocked&&(canApprove||isMyOwn)?`<td></td>`:''}
         </tr>
       </tfoot>
-    </table>
-    </div>
+    </table></div>
   </div>
 
   <!-- Action Buttons -->
-  ${canApprove&&!isLocked?`<div style="display:flex;gap:10px;flex-wrap:wrap">
-    ${overallStatus==='Pending'&&empTS.length>0?`<button class="btn btn-g" onclick="prApproveAll('${esc(emp)}','${period}')">&#10003; Approve All Days</button>`:''}
-    ${overallStatus==='Manager Approved'?`<button class="btn" style="background:#555;color:white" onclick="prLockAll('${esc(emp)}','${period}')">&#128274; Lock Timesheet</button>`:''}
-    <button class="btn btn-n" onclick="prEditDay('${esc(emp)}','','${period}')">+ Add Entry</button>
-  </div>`:''}
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${canApprove&&!isLocked&&overallStatus==='Pending'&&empTS.length>0?`<button class="btn btn-g" onclick="prApproveAll('${esc(emp)}','${period}')">✓ Approve All Days</button>`:''}
+    ${canApprove&&!isLocked&&overallStatus==='Manager Approved'&&!isSent?`<button class="btn btn-n" onclick="prSendToEmployee('${esc(emp)}','${period}')">📤 Send to Employee</button>`:''}
+    ${canApprove&&!isLocked&&overallStatus==='Manager Approved'&&isSent?`<button class="btn" style="background:#1565C0;color:white" onclick="prLockAll('${esc(emp)}','${period}')">🔒 Lock Timesheet</button>`:''}
+    ${canApprove&&!isLocked?`<button class="btn btn-n" onclick="prEditDay('${esc(emp)}','','${period}')">+ Add Entry</button>`:''}
+    ${isMyOwn&&isSent&&!isLocked&&empStatus===''?`
+      <button class="btn btn-g" onclick="prEmployeeApproveAll('${period}')">✓ Approve My Timesheet</button>
+      <button class="btn btn-r" onclick="prEmployeeDisputePrompt('${period}')">⚠ Dispute</button>
+    `:''}
+  </div>
   `;
 }
 
@@ -13398,6 +13639,272 @@ function prNavPeriod(p){window._prPeriod=p;showPage('payroll');}
 function prSetEmployee(name){window._prEmp=name;showPage('payroll');}
 function prViewDetail(name){window._prEmp=name;window._prView='detail';showPage('payroll');}
 function prBackToDashboard(){window._prView='dashboard';window._prEmp='';showPage('payroll');}
+function prSetFilter(key,val){if(!window._prFilter)window._prFilter={};window._prFilter[key]=val;showPage('payroll');}
+function prClearFilters(){window._prFilter={name:'',manager:'',division:''};showPage('payroll');}
+
+// ── SEND TO EMPLOYEE ──────────────────────────────────────────────────────────
+async function prSendToEmployee(emp, period){
+  const allTS=S.get('lhs:timesheets')||[];
+  const rows=allTS.filter(t=>t.employee===emp&&t.week_start===period);
+  if(!rows.length){tst('No timesheet entries to send','warning');return;}
+  const now=new Date().toISOString();
+  rows.forEach(r=>{r.sent_to_employee=true;r.sent_at=now;});
+  S.set('lhs:timesheets',allTS);
+  for(const r of rows){
+    try{await DB.from('lhs_timesheets').update({sent_to_employee:true,sent_at:now}).eq('id',r.id);}catch(e){console.warn('ts send failed',e?.message);}
+  }
+  // Send notification to employee
+  const users=S.get('lhs:users')||[];
+  const empUser=users.find(u=>u.name===emp);
+  if(empUser?.email){
+    await sendNotification({
+      user_email:empUser.email,user_name:emp,
+      type:'payroll',title:'Timesheet Ready for Review',
+      body:`Your timesheet for ${prPeriodLabel(period)} has been sent for your review. Please approve or dispute.`,
+      entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),
+      from_user:CU?.name||'Manager'
+    });
+  }
+  // Refresh payroll badge for that employee
+  prRefreshPayrollBadge();
+  tst(`Timesheet sent to ${emp}`,'success');
+  if(document.getElementById('pr-panel')?.style.display!=='none') prRenderPanel();
+  else showPage('payroll');
+}
+
+// ── EMPLOYEE APPROVE / DISPUTE ────────────────────────────────────────────────
+async function prEmployeeApproveAll(period){
+  if(!confirm('Approve your timesheet for this period?')) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const now=new Date().toISOString();
+  const rows=allTS.filter(t=>t.employee===CU?.name&&t.week_start===period&&t.sent_to_employee);
+  rows.forEach(r=>{r.employee_status='Approved';r.employee_reviewed_at=now;});
+  S.set('lhs:timesheets',allTS);
+  for(const r of rows){
+    try{await DB.from('lhs_timesheets').update({employee_status:'Approved',employee_reviewed_at:now}).eq('id',r.id);}catch(e){console.warn('ts emp approve failed',e?.message);}
+  }
+  // Notify manager
+  const users=S.get('lhs:users')||[];
+  const empUser=users.find(u=>u.name===CU?.name);
+  const mgr=empUser?.manager;
+  if(mgr){
+    const mgrUser=users.find(u=>u.name===mgr);
+    if(mgrUser?.email){
+      await sendNotification({
+        user_email:mgrUser.email,user_name:mgr,
+        type:'payroll',title:`${CU.name} Approved Timesheet`,
+        body:`${CU.name} has approved their timesheet for ${prPeriodLabel(period)}.`,
+        entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),
+        from_user:CU?.name
+      });
+    }
+  }
+  prRefreshPayrollBadge();
+  tst('Timesheet approved','success');
+  showPage('payroll');
+}
+
+function prEmployeeDisputePrompt(period){
+  oMod('Dispute Timesheet',`
+  <div style="min-width:300px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Please describe what is incorrect about your timesheet for <strong>${prPeriodLabel(period)}</strong>.</div>
+    <div class="fl"><label>Dispute Notes <span style="color:var(--red)">*</span></label>
+      <textarea id="pr-dispute-notes" rows="4" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical" placeholder="Describe what hours are incorrect and what they should be..."></textarea>
+    </div>
+    <div class="fl" style="margin-top:10px"><label>Which Date(s) are affected?</label>
+      <input id="pr-dispute-dates" type="text" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px" placeholder="e.g. Mon Apr 7, Wed Apr 9">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+      <button class="btn btn-r" onclick="prEmployeeSubmitDispute('${period}')">Submit Dispute</button>
+    </div>
+  </div>`);
+}
+
+async function prEmployeeSubmitDispute(period){
+  const notes=document.getElementById('pr-dispute-notes')?.value?.trim();
+  if(!notes){tst('Please enter dispute notes before submitting','warning');return;}
+  const allTS=S.get('lhs:timesheets')||[];
+  const now=new Date().toISOString();
+  const rows=allTS.filter(t=>t.employee===CU?.name&&t.week_start===period&&t.sent_to_employee);
+  rows.forEach(r=>{r.employee_status='Disputed';r.employee_notes=notes;r.employee_reviewed_at=now;});
+  S.set('lhs:timesheets',allTS);
+  for(const r of rows){
+    try{await DB.from('lhs_timesheets').update({employee_status:'Disputed',employee_notes:notes,employee_reviewed_at:now}).eq('id',r.id);}catch(e){console.warn('ts emp dispute failed',e?.message);}
+  }
+  // Notify manager
+  const users=S.get('lhs:users')||[];
+  const empUser=users.find(u=>u.name===CU?.name);
+  const mgr=empUser?.manager;
+  if(mgr){
+    const mgrUser=users.find(u=>u.name===mgr);
+    if(mgrUser?.email){
+      await sendNotification({
+        user_email:mgrUser.email,user_name:mgr,
+        type:'payroll',title:`⚠ ${CU.name} Disputed Timesheet`,
+        body:`${CU.name} disputed their timesheet for ${prPeriodLabel(period)}: "${notes}"`,
+        entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),
+        from_user:CU?.name
+      });
+    }
+  }
+  cMod();
+  tst('Dispute submitted — your manager will be notified','info');
+  showPage('payroll');
+}
+
+async function prResolveDispute(rowId, emp, period){
+  const allTS=S.get('lhs:timesheets')||[];
+  const row=allTS.find(t=>t.id===rowId);
+  if(!row) return;
+  row.employee_status='Resolved';
+  S.set('lhs:timesheets',allTS);
+  try{await DB.from('lhs_timesheets').update({employee_status:'Resolved'}).eq('id',rowId);}catch(e){console.warn('ts resolve failed',e?.message);}
+  tst('Dispute marked resolved','success');
+  prRenderPanel();
+}
+
+// ── PAYROLL BADGE ON USER NAME ────────────────────────────────────────────────
+function prRefreshPayrollBadge(){
+  const badge=document.getElementById('pr-payroll-badge');
+  if(!badge||!CU) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const mine=allTS.filter(t=>t.employee===CU.name&&t.sent_to_employee&&!t.employee_status&&t.status!=='Locked');
+  if(mine.length>0){badge.style.display='inline-flex';badge.textContent=mine.length;}
+  else badge.style.display='none';
+}
+
+// ── USER MENU (CLOCK IN/OUT) ──────────────────────────────────────────────────
+function toggleUserMenu(e){
+  e?.stopPropagation();
+  const menu=document.getElementById('user-menu');
+  if(!menu) return;
+  const isOpen=menu.style.display!=='none';
+  menu.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    // Update name/role labels
+    document.getElementById('um-name').textContent=CU?.name||'—';
+    document.getElementById('um-role').textContent=CU?.role||'—';
+    renderPunchArea();
+    // Close on outside click
+    setTimeout(()=>document.addEventListener('click',closeUserMenuOutside,{once:true}),0);
+  }
+}
+function closeUserMenuOutside(e){
+  const wrap=document.getElementById('user-menu-wrap');
+  if(wrap&&!wrap.contains(e.target)) cUserMenu();
+}
+function cUserMenu(){
+  const menu=document.getElementById('user-menu');
+  if(menu) menu.style.display='none';
+}
+
+function renderPunchArea(){
+  const area=document.getElementById('um-punch-area');
+  if(!area||!CU) return;
+  const punches=S.get('lhs:time_punches')||[];
+  const today=new Date().toISOString().slice(0,10);
+  const todayPunches=punches.filter(p=>p.employee===CU.name&&p.date===today);
+  const lastPunch=todayPunches[todayPunches.length-1];
+  const lastType=lastPunch?.punch_type||'';
+
+  const isClockedIn=lastType==='clock_in'||lastType==='meal_end';
+  const isMeal=lastType==='meal_start';
+  const isClockedOut=lastType==='clock_out';
+
+  area.innerHTML=`
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Today's Punches</div>
+    ${todayPunches.length?`<div style="margin-bottom:8px;max-height:80px;overflow-y:auto">${todayPunches.map(p=>`<div style="font-size:11px;color:#555;display:flex;justify-content:space-between;padding:2px 0">
+      <span>${p.punch_type==='clock_in'?'🟢 Clock In':p.punch_type==='meal_start'?'🟡 Meal Start':p.punch_type==='meal_end'?'🟢 Meal End':'🔴 Clock Out'}</span>
+      <span style="color:var(--muted)">${new Date(p.punched_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+    </div>`).join('')}</div>`:'<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No punches yet today</div>'}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${!isClockedIn&&!isMeal&&!isClockedOut?`<button class="btn sm btn-g" onclick="prPunch('clock_in')">🟢 Clock In</button>`:''}
+      ${isClockedIn?`<button class="btn sm" style="background:#FFA000;color:white" onclick="prPunch('meal_start')">🟡 Meal</button>`:''}
+      ${isMeal?`<button class="btn sm btn-g" onclick="prPunch('meal_end')">↩ Return</button>`:''}
+      ${isClockedIn?`<button class="btn sm btn-r" onclick="prPunch('clock_out')">🔴 Clock Out</button>`:''}
+    </div>
+  `;
+}
+
+async function prPunch(type){
+  const now=new Date();
+  const date=now.toISOString().slice(0,10);
+  const weekStart=prWeekStart(date);
+  const punch={
+    id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    employee:CU.name, employee_id:CU.id||'',
+    punch_type:type, punched_at:now.toISOString(),
+    date, week_start:weekStart
+  };
+  const punches=S.get('lhs:time_punches')||[];
+  punches.push(punch);
+  S.set('lhs:time_punches',punches);
+  try{await DB.from('lhs_time_punches').insert(punch);}catch(e){console.warn('punch failed',e?.message);}
+
+  // Auto-calculate and update today's timesheet entry from punches
+  prCalcTimesheetFromPunches(CU.name, date, weekStart);
+
+  const labels={'clock_in':'Clocked in','meal_start':'Meal break started','meal_end':'Back from meal','clock_out':'Clocked out'};
+  tst(labels[type]||type,'success');
+  renderPunchArea();
+}
+
+async function prCalcTimesheetFromPunches(emp, date, weekStart){
+  const punches=(S.get('lhs:time_punches')||[]).filter(p=>p.employee===emp&&p.date===date);
+  punches.sort((a,b)=>a.punched_at>b.punched_at?1:-1);
+
+  let workMins=0, mealMins=0;
+  let clockInTime=null, mealStartTime=null;
+  for(const p of punches){
+    const t=new Date(p.punched_at);
+    if(p.punch_type==='clock_in'||p.punch_type==='meal_end') clockInTime=t;
+    else if(p.punch_type==='meal_start'){if(clockInTime){workMins+=Math.round((t-clockInTime)/60000);clockInTime=null;}mealStartTime=t;}
+    else if(p.punch_type==='clock_out'){
+      if(mealStartTime){mealMins+=Math.round((t-mealStartTime)/60000);mealStartTime=null;}
+      if(clockInTime){workMins+=Math.round((t-clockInTime)/60000);clockInTime=null;}
+    }
+  }
+
+  if(workMins<1) return; // No complete punches yet
+  const workHrs=+(workMins/60).toFixed(2);
+  const mealHrs=+(mealMins/60).toFixed(2);
+  const regularHrs=Math.min(workHrs,8);
+  const overtimeHrs=Math.max(0,workHrs-8);
+  const totalHrs=+(regularHrs+overtimeHrs).toFixed(2);
+
+  const allTS=S.get('lhs:timesheets')||[];
+  const users=S.get('lhs:users')||[];
+  const userObj=users.find(u=>u.name===emp)||{};
+  const existing=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
+
+  if(existing){
+    existing.regular_hours=regularHrs;
+    existing.overtime_hours=overtimeHrs;
+    existing.meal_break=mealHrs;
+    existing.total_hours=totalHrs;
+    S.set('lhs:timesheets',allTS);
+    try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:mealHrs,total_hours:totalHrs}).eq('id',existing.id);}catch(e){console.warn('ts auto-update failed',e?.message);}
+  } else {
+    const newRow={
+      id:'ts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
+      date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
+      meal_break:mealHrs, other_time:0, pto_hours:0, total_hours:totalHrs,
+      notes:'From clock punches', is_pto:false, status:'Pending', created_at:new Date().toISOString()
+    };
+    allTS.push(newRow);
+    S.set('lhs:timesheets',allTS);
+    try{await DB.from('lhs_timesheets').insert(newRow);}catch(e){console.warn('ts auto-insert failed',e?.message);}
+  }
+}
+
+function prViewMyTimecard(){
+  window._prEmp=CU?.name||'';
+  window._prView='detail';
+  window._prPeriod=prWeekStart();
+  showPage('payroll');
+}
 
 // ── PAYROLL EDIT DAY MODAL ────────────────────────────────────────────────────
 function prEditDay(emp, date, period){
@@ -13406,10 +13913,7 @@ function prEditDay(emp, date, period){
   const users=S.get('lhs:users')||[];
   const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
   const weekDates=prWeekDates(period);
-
-  // Build date options for the week
   const dateOpts=weekDates.map(d=>`<option value="${d}"${d===date?' selected':''}>${prFmtDate(d,true)}</option>`).join('');
-
   const e=existing||{};
   const workHrs=(+(e.regular_hours||0))+(+(e.overtime_hours||0));
   const meal=+(e.meal_break||0);
@@ -13449,7 +13953,7 @@ function prEditDay(emp, date, period){
     </div>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
       <input type="checkbox" id="pr-ispto"${isPTO?' checked':''}>
-      Mark as PTO/UTO (affects timesheet flag)
+      Mark as PTO/UTO
     </label>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -13471,32 +13975,24 @@ async function prSaveEntry(existingId, period){
   if(!emp||!date){tst('Employee and date are required','warning');return;}
   if(workHrs===0&&pto===0&&other===0){tst('Please enter at least some hours','warning');return;}
 
-  // Compute regular vs overtime (>8 hrs/day = overtime)
   const regularHrs=Math.min(workHrs,8);
   const overtimeHrs=Math.max(0,workHrs-8);
-  // Net total = working hours + other + pto (meal break is subtracted from worked time)
   const totalHrs=regularHrs+overtimeHrs+other+pto;
-
   const weekStart=prWeekStart(date);
   const users=S.get('lhs:users')||[];
   const userObj=users.find(u=>u.name===emp)||{};
-
   const allTS=S.get('lhs:timesheets')||[];
+
   if(existingId){
-    // Update
     const i=allTS.findIndex(t=>t.id===existingId);
     if(i>=0){
       Object.assign(allTS[i],{regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO});
       S.set('lhs:timesheets',allTS);
-      try{await DB.from('lhs_timesheets').update({
-        regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,
-        other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO
-      }).eq('id',existingId);}catch(err){console.warn('ts update failed',err?.message);}
+      try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO}).eq('id',existingId);}catch(err){console.warn('ts update failed',err?.message);}
     }
   } else {
-    // Check for duplicate
     const dup=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
-    if(dup){tst('Entry already exists for this date. Click the edit button on the row instead.','warning');cMod();return;}
+    if(dup){tst('Entry already exists for this date — use the edit button on that row','warning');cMod();return;}
     const newRow={
       id:'ts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
@@ -13519,8 +14015,7 @@ async function prSaveEntry(existingId, period){
 async function prDeleteDay(id, emp, period){
   if(!confirm('Delete this timesheet entry?')) return;
   const allTS=S.get('lhs:timesheets')||[];
-  const updated=allTS.filter(t=>t.id!==id);
-  S.set('lhs:timesheets',updated);
+  S.set('lhs:timesheets',allTS.filter(t=>t.id!==id));
   try{await DB.from('lhs_timesheets').delete().eq('id',id);}catch(err){console.warn('ts delete failed',err?.message);}
   tst('Entry deleted','success');
   showPage('payroll');
@@ -13530,10 +14025,11 @@ async function prApproveAll(emp, period){
   if(!confirm(`Approve all timesheet entries for ${emp} — ${prPeriodLabel(period)}?`)) return;
   const allTS=S.get('lhs:timesheets')||[];
   const toApprove=allTS.filter(t=>t.employee===emp&&t.week_start===period&&t.status==='Pending');
-  toApprove.forEach(t=>{t.status='Manager Approved';t.approved_by=CU?.name||'Manager';t.approved_at=new Date().toISOString();});
+  const now=new Date().toISOString();
+  toApprove.forEach(t=>{t.status='Manager Approved';t.approved_by=CU?.name||'Manager';t.approved_at=now;});
   S.set('lhs:timesheets',allTS);
   for(const t of toApprove){
-    try{await DB.from('lhs_timesheets').update({status:'Manager Approved',approved_by:CU?.name||'Manager',approved_at:t.approved_at}).eq('id',t.id);}catch(err){console.warn('ts approve failed',err?.message);}
+    try{await DB.from('lhs_timesheets').update({status:'Manager Approved',approved_by:t.approved_by,approved_at:now}).eq('id',t.id);}catch(err){console.warn('ts approve failed',err?.message);}
   }
   tst(`Timesheet approved for ${emp}`,'success');
   showPage('payroll');
@@ -13543,10 +14039,11 @@ async function prLockAll(emp, period){
   if(!confirm(`Lock timesheet for ${emp} — ${prPeriodLabel(period)}? This cannot be undone.`)) return;
   const allTS=S.get('lhs:timesheets')||[];
   const toLock=allTS.filter(t=>t.employee===emp&&t.week_start===period&&t.status!=='Locked');
-  toLock.forEach(t=>{t.status='Locked';t.locked_by=CU?.name||'Manager';t.locked_at=new Date().toISOString();});
+  const now=new Date().toISOString();
+  toLock.forEach(t=>{t.status='Locked';t.locked_by=CU?.name||'Manager';t.locked_at=now;});
   S.set('lhs:timesheets',allTS);
   for(const t of toLock){
-    try{await DB.from('lhs_timesheets').update({status:'Locked',locked_by:CU?.name||'Manager',locked_at:t.locked_at}).eq('id',t.id);}catch(err){console.warn('ts lock failed',err?.message);}
+    try{await DB.from('lhs_timesheets').update({status:'Locked',locked_by:t.locked_by,locked_at:now}).eq('id',t.id);}catch(err){console.warn('ts lock failed',err?.message);}
   }
   tst(`Timesheet locked for ${emp}`,'success');
   showPage('payroll');
