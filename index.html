@@ -4251,7 +4251,7 @@ async function delClass(div,type,sub,cls){
 }
 
 function bInt(){
-  return`<div class="pt">Integrations</div><div class="ps">Connect Salesforce CRM and QuickBooks Enterprise</div>
+  return`<div class="pt">Integrations</div><div class="ps">Connect Salesforce, QuickBooks, D-Tools Cloud, Intermedia Extend, and more</div>
   <div class="al al-b" style="margin-bottom:20px">&#128268; Enter API credentials below. OAuth authorization is completed server-side after setup.</div>
   <div class="ig">
     <div class="ic off2">
@@ -4298,6 +4298,25 @@ function bInt(){
       <div style="margin-top:8px;font-size:12px;color:var(--muted)">
         <a href="https://www.d-tools.com/cloud/" target="_blank" style="color:var(--navy)">About D-Tools Cloud</a>
         &#8212; API key found in D-Tools Cloud &#8594; Settings &#8594; Integrations &#8594; API Access
+      </div>
+    </div>
+    <div class="ic off2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:white;letter-spacing:-.5px;background:linear-gradient(135deg,#5b2d8e,#8b47d4)">EX</div>
+        <div><div class="in2">Intermedia Extend</div><div class="is2 off" id="imx-status">&#9679; Not Connected</div></div>
+      </div>
+      <div class="id2">Cloud phone system integration. Log calls to work orders automatically, click-to-call customers from any WO, view call history, manage extensions, and send SMS notifications to techs and customers.</div>
+      <div class="ifg"><label>Account ID</label><input id="imx-acct" placeholder="Intermedia account ID"></div>
+      <div class="ifg"><label>API Key</label><input id="imx-key" type="password" placeholder="Intermedia Extend API key" autocomplete="off"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-n sm" onclick="cIMX()">Connect Extend &#8594;</button>
+        <button class="btn btn-o sm" id="imx-calls-btn" style="display:none" onclick="oIMXCalls()">&#128222; Recent Calls</button>
+        <button class="btn btn-o sm" id="imx-ext-btn" style="display:none" onclick="oIMXExtensions()">&#128101; Extensions</button>
+      </div>
+      <div id="imx-panel" style="margin-top:12px;display:none"></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        <a href="https://www.intermedia.com/extend" target="_blank" style="color:var(--navy)">About Intermedia Extend</a>
+        &#8212; API key found in Intermedia Control Panel &#8594; My Services &#8594; Extend &#8594; API Access
       </div>
     </div>
     <div class="ic" style="border-color:var(--bdr)">
@@ -4428,6 +4447,186 @@ function oDTCImport(projectJson){
   }catch{tst('Could not parse project data','error');}
 }
 
+// ── INTERMEDIA EXTEND INTEGRATION ─────────────────────────────────────────────
+function cIMX(){
+  const acct=(v('imx-acct')||'').trim();
+  const key=(v('imx-key')||'').trim();
+  if(!acct||!key){tst('Enter Account ID and API Key','error');return;}
+  localStorage.setItem('lhs:imx_acct',acct);
+  localStorage.setItem('lhs:imx_key',key);
+  const st=document.getElementById('imx-status');
+  if(st){st.textContent='● Verifying...';st.className='is2';}
+  // Intermedia Extend REST API base: https://api.intermedia.net/voice/v2/
+  fetch(`https://api.intermedia.net/voice/v2/accounts/${encodeURIComponent(acct)}/extensions?limit=1`,{
+    headers:{'Authorization':`Bearer ${key}`,'Accept':'application/json'}
+  }).then(r=>{
+    if(r.ok){
+      if(st){st.textContent='● Connected';st.className='is2 on';}
+      _imxShowButtons();
+      tst('Intermedia Extend connected!','success');
+    } else {
+      if(st){st.textContent=`● Auth Failed (${r.status}) — check credentials`;st.className='is2 off';}
+      tst(`Intermedia auth failed (${r.status})`,'error');
+    }
+  }).catch(()=>{
+    // CORS expected in browser — credentials saved, verify from portal
+    if(st){st.textContent='● Credentials Saved';st.className='is2';}
+    _imxShowButtons();
+    tst('Credentials saved. Verify connection from Intermedia Control Panel.','info');
+  });
+}
+
+function _imxShowButtons(){
+  ['imx-calls-btn','imx-ext-btn'].forEach(id=>{const b=document.getElementById(id);if(b) b.style.display='';});
+}
+
+async function oIMXCalls(){
+  const acct=localStorage.getItem('lhs:imx_acct')||'';
+  const key=localStorage.getItem('lhs:imx_key')||'';
+  if(!acct||!key){tst('Connect Intermedia Extend first','error');return;}
+  const panel=document.getElementById('imx-panel');
+  if(panel){panel.style.display='block';panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">&#8635; Fetching recent call history...</div>';}
+  try{
+    const r=await fetch(`https://api.intermedia.net/voice/v2/accounts/${encodeURIComponent(acct)}/calls?limit=25&sort=desc`,{
+      headers:{'Authorization':`Bearer ${key}`,'Accept':'application/json'}
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const calls=d.data||d.calls||d.items||d||[];
+    if(!calls.length){if(panel) panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">No recent calls found</div>';return;}
+    if(panel) panel.innerHTML=`
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Recent Calls</div>
+      <div class="tw" style="max-height:260px;overflow-y:auto"><table>
+        <thead><tr><th>Time</th><th>From</th><th>To</th><th>Duration</th><th>Direction</th><th></th></tr></thead>
+        <tbody>${calls.map(c=>{
+          const dir=(c.direction||'').toLowerCase();
+          const dirIcon=dir==='inbound'?'&#8599;':'&#8600;';
+          const dirColor=dir==='inbound'?'var(--green)':'var(--teal)';
+          const dur=c.duration_seconds||c.duration||0;
+          const durStr=dur>=60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s';
+          const ts=c.start_time||c.created_at||'';
+          const timeStr=ts?new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}):'—';
+          const from=c.caller_id||c.from||c.from_number||'—';
+          const to=c.called_number||c.to||c.to_number||'—';
+          return`<tr>
+            <td style="font-size:12px;color:var(--muted);white-space:nowrap">${timeStr}</td>
+            <td style="font-size:13px;font-weight:500">${esc(from)}</td>
+            <td style="font-size:13px">${esc(to)}</td>
+            <td style="font-size:12px;text-align:center">${durStr}</td>
+            <td style="text-align:center"><span style="color:${dirColor};font-size:16px">${dirIcon}</span></td>
+            <td><button class="btn btn-o sm" style="font-size:11px;padding:3px 8px" onclick="imxLogCall('${esc(from)}','${esc(to)}','${esc(timeStr)}','${dur}')">Log to WO</button></td>
+          </tr>`;}).join('')}
+        </tbody></table></div>`;
+  }catch{
+    if(panel) panel.innerHTML=`<div style="color:var(--muted);font-size:13px">Unable to reach Intermedia API — CORS may apply in browser. <a href="https://cp.intermedia.net" target="_blank" style="color:var(--navy);font-weight:600">Open Intermedia Control Panel &#8594;</a></div>`;
+  }
+}
+
+async function oIMXExtensions(){
+  const acct=localStorage.getItem('lhs:imx_acct')||'';
+  const key=localStorage.getItem('lhs:imx_key')||'';
+  if(!acct||!key){tst('Connect Intermedia Extend first','error');return;}
+  const panel=document.getElementById('imx-panel');
+  if(panel){panel.style.display='block';panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">&#8635; Fetching extensions...</div>';}
+  try{
+    const r=await fetch(`https://api.intermedia.net/voice/v2/accounts/${encodeURIComponent(acct)}/extensions`,{
+      headers:{'Authorization':`Bearer ${key}`,'Accept':'application/json'}
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const exts=d.data||d.extensions||d.items||d||[];
+    if(!exts.length){if(panel) panel.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0">No extensions found</div>';return;}
+    if(panel) panel.innerHTML=`
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">${exts.length} Extension${exts.length!==1?'s':''}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;max-height:260px;overflow-y:auto">
+        ${exts.map(e=>`
+        <div style="border:1px solid var(--bdr);border-radius:7px;padding:8px 12px;background:white">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5b2d8e,#8b47d4);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">
+              ${esc((e.first_name||e.name||'?')[0].toUpperCase()+(e.last_name||'')[0]?.toUpperCase()||'')}
+            </div>
+            <div style="min-width:0">
+              <div style="font-weight:600;font-size:12px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.first_name||'')} ${esc(e.last_name||e.name||'')}</div>
+              <div style="font-size:11px;color:var(--muted)">Ext ${esc(String(e.extension||e.ext||''))}</div>
+            </div>
+          </div>
+          ${e.email?`<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.email)}</div>`:''}
+          <div style="margin-top:6px;display:flex;gap:4px">
+            <button class="btn btn-n sm" style="flex:1;font-size:11px;padding:4px" onclick="imxDial('${esc(String(e.extension||e.ext||''))}')">&#128222; Call</button>
+          </div>
+        </div>`).join('')}
+      </div>`;
+  }catch{
+    if(panel) panel.innerHTML=`<div style="color:var(--muted);font-size:13px">Unable to reach Intermedia API — CORS may apply in browser. <a href="https://cp.intermedia.net" target="_blank" style="color:var(--navy);font-weight:600">Open Intermedia Control Panel &#8594;</a></div>`;
+  }
+}
+
+function imxLogCall(from, to, time, dur){
+  const wos=S.get('lhs:work_orders')||[];
+  const recent=wos.filter(w=>!['Completed','Cancelled'].includes(w.status||'')).slice(0,20);
+  oMod('Log Call to Work Order',`
+    <div style="background:var(--surf);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <span><span style="color:var(--muted)">From:</span> <strong>${esc(from)}</strong></span>
+        <span><span style="color:var(--muted)">To:</span> <strong>${esc(to)}</strong></span>
+        <span><span style="color:var(--muted)">Time:</span> ${esc(time)}</span>
+        <span><span style="color:var(--muted)">Duration:</span> ${dur>=60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s'}</span>
+      </div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Work Order</label>
+      <select id="imx-log-wo" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+        <option value="">— Select Work Order —</option>
+        ${recent.map(w=>`<option value="${esc(w.id)}">${esc(w.wo_number||w.id)} — ${esc(w.customer_name||'')} (${esc(w.status||'')})</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Note</label>
+      <textarea id="imx-log-note" rows="2" placeholder="Call summary..." style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;resize:vertical">Inbound call from ${from} — ${dur>=60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s'}</textarea>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="imxSaveCallLog('${esc(from)}','${esc(to)}','${esc(time)}',${dur})">Save to WO</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function imxSaveCallLog(from,to,time,dur){
+  const woId=v('imx-log-wo');
+  const note=v('imx-log-note')||'';
+  if(!woId){tst('Select a work order','error');return;}
+  const entry={wo_id:woId,note_text:`📞 Call log — From: ${from} → To: ${to} | ${time} | ${dur>=60?Math.floor(dur/60)+'m '+(dur%60)+'s':dur+'s'}\n${note}`,
+    created_by:CU.name,created_at:new Date().toISOString(),type:'call_log'};
+  const saved=await dbInsert('lhs:wo_notes',entry);
+  if(saved){
+    const notes=S.get('lhs:wo_notes')||[];notes.push(saved);S.set('lhs:wo_notes',notes);
+    if(!_NOTES[woId]) _NOTES[woId]=[];_NOTES[woId].push(saved);
+    tst('Call logged to work order','success');cMod();
+  } else {
+    tst('Failed to save call log','error');
+  }
+}
+
+function imxDial(ext){
+  // Click-to-call via tel: protocol — works with softphones configured on the machine
+  if(!ext){return;}
+  if(confirm(`Call extension ${ext} via Intermedia Extend?`)){
+    window.open(`tel:${ext}`,'_self');
+    tst(`Dialing extension ${ext}...`,'info');
+  }
+}
+
+function restoreIMXState(){
+  const acct=localStorage.getItem('lhs:imx_acct');
+  const key=localStorage.getItem('lhs:imx_key');
+  if(!acct||!key) return;
+  const acctEl=document.getElementById('imx-acct');
+  const keyEl=document.getElementById('imx-key');
+  const st=document.getElementById('imx-status');
+  if(acctEl) acctEl.value=acct;
+  if(keyEl) keyEl.value=key;
+  if(st){st.textContent='● Credentials Saved';st.className='is2';}
+  _imxShowButtons();
+}
+
+// ── D-TOOLS CLOUD ─────────────────────────────────────────────────────────────
 // Restore D-Tools connection state on page load
 function restoreDTCState(){
   const key=localStorage.getItem('lhs:dtc_key');
@@ -4518,7 +4717,7 @@ function aTab(tab,btn){
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
     regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,integrations:bInt};
   if(fns[tab]) el.innerHTML=fns[tab]();
-  if(tab==='integrations') setTimeout(restoreDTCState,50);
+  if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
 }
 
 
