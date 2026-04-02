@@ -5232,8 +5232,8 @@ function ntLoadCounties(preSelected=[]){
   const sel=new Set(preSelected.map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim()));
   wrap.innerHTML=counties.map(c=>{
     const key=c.toLowerCase().replace(/\s*county\s*$/i,'').trim();
-    return`<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:13px;cursor:pointer">
-      <input type="checkbox" value="${esc(c)}"${sel.has(key)?' checked':''}> ${esc(c)} County</label>`;
+    return`<label style="display:block;padding:3px 0;font-size:13px;cursor:pointer;line-height:1.6">
+      <input type="checkbox" style="margin-right:6px;vertical-align:middle" value="${esc(c)}"${sel.has(key)?' checked':''}>${esc(c)} County</label>`;
   }).join('');
 }
 
