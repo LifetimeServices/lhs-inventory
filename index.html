@@ -9801,6 +9801,30 @@ async function svAptDetail(aptId, woId){
   cMod();tst('Appointment updated','success');openWO(woId);
 }
 
+// ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
+// Resizes and compresses a photo before upload so it stays under Supabase's
+// 2 MB REST API limit even when falling back to base64 storage.
+async function compressImage(file,maxDim=1280,quality=0.82){
+  return new Promise(resolve=>{
+    const img=new Image();
+    const objUrl=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(objUrl);
+      let w=img.width,h=img.height;
+      if(w>maxDim||h>maxDim){
+        if(w>=h){h=Math.round(h*maxDim/w);w=maxDim;}
+        else{w=Math.round(w*maxDim/h);h=maxDim;}
+      }
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>resolve(blob||file),'image/jpeg',quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(objUrl);resolve(file);};
+    img.src=objUrl;
+  });
+}
+
 async function aptUploadPhotos(aptId,woId,input){
   const files=Array.from(input.files);
   if(!files.length) return;
@@ -9810,19 +9834,20 @@ async function aptUploadPhotos(aptId,woId,input){
 
   for(let i=0;i<files.length;i++){
     const file=files[i];
+    tst(`Processing ${i+1}/${files.length}...`,'info');
+    // Compress to ≤1280px JPEG so base64 fallback stays under 2 MB API limit
+    const compressed=await compressImage(file);
     const photoNum=existing+i+1;
     const ts=Date.now();
-    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const safeName=(file.name||'photo.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
     const storagePath=`photos/${woId}/${aptId}/${ts}_${safeName}`;
-    tst(`Uploading ${i+1}/${files.length}...`,'info');
 
     let photoUrl=null,storagePath2=null,bucket=null;
 
-    // 1. Try Supabase Storage (needs 'wo-photos' bucket created in dashboard)
+    // 1. Try Supabase Storage (set up wo-photos bucket via supabase-photos-bucket.sql)
     try{
-      const{data:upData,error:upErr}=await DB.storage.from('wo-photos').upload(storagePath,file,{
-        cacheControl:'31536000',upsert:false,contentType:file.type||'image/jpeg'
-      });
+      const{data:upData,error:upErr}=await DB.storage.from('wo-photos').upload(
+        storagePath,compressed,{cacheControl:'31536000',upsert:false,contentType:'image/jpeg'});
       if(!upErr){
         const{data:urlData}=DB.storage.from('wo-photos').getPublicUrl(storagePath);
         photoUrl=urlData?.publicUrl;
@@ -9830,13 +9855,13 @@ async function aptUploadPhotos(aptId,woId,input){
       }
     }catch(e){console.warn('Storage upload:',e.message);}
 
-    // 2. Fallback: base64 in cache (limited by localStorage ~5MB)
+    // 2. Fallback: compressed base64 (~200–600 KB — well under Supabase 2 MB limit)
     if(!photoUrl){
       photoUrl=await new Promise(res=>{
         const r=new FileReader();
         r.onload=e=>res(e.target.result);
         r.onerror=()=>res(null);
-        r.readAsDataURL(file);
+        r.readAsDataURL(compressed);
       });
     }
     if(!photoUrl){failed++;continue;}
@@ -9846,20 +9871,21 @@ async function aptUploadPhotos(aptId,woId,input){
       wo_id:woId,appointment_id:aptId,photo_url:photoUrl,
       storage_path:storagePath2,storage_bucket:bucket,
       photo_number:photoNum,file_name:file.name,
-      file_size:file.size,mime_type:file.type,
+      file_size:compressed.size,mime_type:'image/jpeg',
       uploaded_by:CU.name,uploaded_at:new Date().toISOString(),flags:[],
     };
 
-    // Save row to Supabase DB
+    // Save row to Supabase DB — syncs photo to all users
     try{
       const{data:dbData,error:dbErr}=await DB.from('lhs_wo_photos').insert({
         wo_id:woId,appointment_id:aptId,photo_url:photoUrl,
         storage_path:storagePath2,storage_bucket:bucket,
         photo_number:photoNum,file_name:file.name,
-        file_size:file.size,mime_type:file.type,
+        file_size:photo.file_size,mime_type:'image/jpeg',
         uploaded_by:CU.name,uploaded_at:photo.uploaded_at,
       }).select().single();
       if(!dbErr&&dbData) photo.id=dbData.id;
+      else if(dbErr) console.error('Photo DB insert failed:',dbErr.message);
     }catch(e){console.warn('Photo DB:',e.message);}
 
     photos.push(photo);
@@ -9868,7 +9894,7 @@ async function aptUploadPhotos(aptId,woId,input){
   S.set('lhs:wo_photos',photos);
   refreshPhotoList(aptId,woId,photos);
   if(failed) tst(`${uploaded} uploaded, ${failed} failed`,'warning');
-  else tst(`${uploaded} photo${uploaded!==1?'s':''} saved${usedStorage?' to cloud':' locally'}`,uploaded?'success':'error');
+  else tst(`${uploaded} photo${uploaded!==1?'s':''} saved${usedStorage?' to cloud':' (synced to all users)'}`,uploaded?'success':'error');
 }
 
 // ── WO LEVEL PHOTO CHECKLIST ──────────────────────────────────────────────────
@@ -9879,36 +9905,39 @@ async function woPhotoUpload(woId,labelId,labelText,input){
   const existing=photos.filter(p=>p.wo_id===woId&&p.wo_label_id===labelId);
   let added=0;
   for(const file of files){
+    tst('Processing photo...','info');
+    // Compress before upload — keeps base64 under Supabase 2 MB API limit
+    const compressed=await compressImage(file);
     const photoId='wph_'+Date.now()+'_'+Math.random().toString(36).slice(2);
     let url='';
-    // Try Supabase Storage
+    // Try Supabase Storage first
     try{
-      const ext=file.name.split('.').pop();
-      const path=`wo-photos/${woId}/${photoId}.${ext}`;
-      const{data:upData,error:upErr}=await DB.storage.from('wo-photos').upload(path,file,{upsert:true});
+      const path=`wo-photos/${woId}/${photoId}.jpg`;
+      const{data:upData,error:upErr}=await DB.storage.from('wo-photos').upload(
+        path,compressed,{upsert:true,contentType:'image/jpeg'});
       if(!upErr&&upData){
         const{data:urlData}=DB.storage.from('wo-photos').getPublicUrl(path);
         url=urlData?.publicUrl||'';
       }
     }catch{}
-    // Fallback to base64
+    // Compressed base64 fallback (~200–600 KB)
     if(!url){
-      url=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+      url=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(compressed);});
     }
     const photoRow={id:photoId,wo_id:woId,appointment_id:null,wo_label_id:labelId,
       label_text:labelText,photo_url:url,file_name:file.name,
       photo_number:existing.length+added+1,uploaded_by:CU?.name||'',
       uploaded_at:new Date().toISOString(),flags:[],review_notes:'',safety:'',safety_notes:''};
-    // Save to Supabase DB so other users can see it
+    // Save to Supabase so all users see it
     try{
       const{data:dbData,error:dbErr}=await DB.from('lhs_wo_photos').insert({
         wo_id:woId,appointment_id:null,wo_label_id:labelId,
         label_text:labelText,photo_url:url,file_name:file.name,
         photo_number:photoRow.photo_number,uploaded_by:photoRow.uploaded_by,
-        uploaded_at:photoRow.uploaded_at
+        uploaded_at:photoRow.uploaded_at,file_size:compressed.size,mime_type:'image/jpeg'
       }).select().single();
       if(!dbErr&&dbData){photoRow.id=dbData.id;}
-      else if(dbErr) console.error('Photo DB insert failed:',dbErr.message,'— run supabase-photos.sql to fix');
+      else if(dbErr) console.error('Photo DB insert failed:',dbErr.message,'— check supabase-photos.sql');
     }catch(e){console.warn('Photo DB:',e.message);}
     photos.push(photoRow);
     added++;
