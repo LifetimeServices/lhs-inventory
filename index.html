@@ -1304,6 +1304,7 @@ const TBL={
   'lhs:props':'lhs_properties',
   'lhs:receipts':'lhs_receipts',
   'lhs:accounting_codes':'lhs_accounting_codes',
+  'lhs:grey_blocks':'lhs_grey_blocks',
 };
 
 // Pull all data from Supabase into cache on login
@@ -7424,7 +7425,7 @@ function renderDispBoard(){
   const allApts=S.get('lhs:appointments')||[];
   const allTechs=S.get('lhs:apt_techs')||[];
   const allWOs=S.get('lhs:work_orders')||[];
-  let greyBlocks=[];try{greyBlocks=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');}catch{}
+  let greyBlocks=S.get('lhs:grey_blocks')||[];
 
   // Filter by region
   // Filter WOs by region - normalize state to 2-letter abbrev
@@ -7916,7 +7917,7 @@ function checkOverlap(techName, date, newStartMin, newDurMin, excludeAptId){
   const newEnd=newStartMin+newDurMin;
   const apts=S.get('lhs:appointments')||[];
   const techs=S.get('lhs:apt_techs')||[];
-  const grey=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');
+  const grey=S.get('lhs:grey_blocks')||[];
   const startHr=window._dispStartHr||6;
   // Check appointments
   for(const a of apts){
@@ -8136,7 +8137,7 @@ function gbTypeChange(type){
   if(noteEl) noteEl.style.display=(type==='PTO'||type==='UTO')?'block':'none';
 }
 
-function svAddGreyBlock(){
+async function svAddGreyBlock(){
   const type=v('gb-type')||'Other';
   const customLabel=v('gb-label');
   const label=customLabel||type;
@@ -8178,18 +8179,23 @@ function svAddGreyBlock(){
     }
   }
 
-  const blocks=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');
+  const blocks=S.get('lhs:grey_blocks')||[];
   const groupId='grp_'+Date.now();
+  const newBlocks=[];
   dates.forEach((date,i)=>{
-    blocks.push({
+    const blk={
       id:Date.now().toString()+'_'+i,
       group_id:groupId,
       label,type,tech,date,time,duration:dur,
       color:'#90A4AE',locked,is_pto:isPTO,
       created_by:CU?.name||'',
-    });
+    };
+    blocks.push(blk);
+    newBlocks.push(blk);
   });
-  try{localStorage.setItem('lms_grey_blocks',JSON.stringify(blocks));}catch{}
+  S.set('lhs:grey_blocks',blocks);
+  // Persist to Supabase so all users see the blocks
+  try{await DB.from('lhs_grey_blocks').insert(newBlocks);}catch(e){console.warn('grey_blocks insert failed',e?.message);}
   cMod();
   if(isPTO) tst(`${type} — ${dates.length} day${dates.length!==1?'s':''} added for ${tech} — flagged on timesheet`,'info');
   else tst(`${dates.length} task block${dates.length!==1?'s':''} added for ${tech}`,'success');
@@ -8197,7 +8203,7 @@ function svAddGreyBlock(){
 }
 
 function oEditGreyBlock(id){
-  const blocks=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');
+  const blocks=S.get('lhs:grey_blocks')||[];
   const b=blocks.find(x=>x.id===id); if(!b) return;
   const canDelete=!b.locked||BLOCK_LOCKED_ROLES.includes(CU?.role);
   const canEdit=!b.locked||BLOCK_LOCKED_ROLES.includes(CU?.role);
@@ -8240,8 +8246,8 @@ function oEditGreyBlock(id){
   </div>`);
 }
 
-function svEditGreyBlock(id){
-  const blocks=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');
+async function svEditGreyBlock(id){
+  const blocks=S.get('lhs:grey_blocks')||[];
   const i=blocks.findIndex(x=>x.id===id); if(i<0) return;
   const type=v('egb-type')||blocks[i].type||'Other';
   const customLabel=v('egb-label');
@@ -8250,17 +8256,21 @@ function svEditGreyBlock(id){
   // Get tech name without the division suffix
   const techRaw=v('egb-tech')||'';
   const tech=techRaw.includes(' (')?techRaw.split(' (')[0]:techRaw;
+  const dur=(()=>{const s=v('egb-time')||'08:00';const e=v('egb-end')||'09:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
   blocks[i]={...blocks[i],
     label:customLabel||type,type,tech,
     date:v('egb-date'),time:v('egb-time'),
-    duration:(()=>{const s=v('egb-time')||'08:00';const e=v('egb-end')||'09:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})(),
-    locked,is_pto:isPTO,color:'#90A4AE'};
-  try{localStorage.setItem('lms_grey_blocks',JSON.stringify(blocks));}catch{}
+    duration:dur,locked,is_pto:isPTO,color:'#90A4AE'};
+  S.set('lhs:grey_blocks',blocks);
+  try{await DB.from('lhs_grey_blocks').update({
+    label:blocks[i].label,type,tech,date:blocks[i].date,
+    time:blocks[i].time,duration:dur,locked,is_pto:isPTO
+  }).eq('id',id);}catch(e){console.warn('grey_blocks update failed',e?.message);}
   cMod(); tst('Block updated','success'); showPage('dispatch');
 }
 
-function delGreyBlock(id,deleteGroup=false){
-  const blocks=JSON.parse(localStorage.getItem('lms_grey_blocks')||'[]');
+async function delGreyBlock(id,deleteGroup=false){
+  const blocks=S.get('lhs:grey_blocks')||[];
   const b=blocks.find(x=>x.id===id);
   if(!b) return;
   if(b.locked&&!BLOCK_LOCKED_ROLES.includes(CU?.role)){
@@ -8268,25 +8278,30 @@ function delGreyBlock(id,deleteGroup=false){
     return;
   }
   const isGroup=b.group_id&&blocks.filter(x=>x.group_id===b.group_id).length>1;
+  let updated;
   if(deleteGroup&&isGroup){
     if(!confirm('Delete ALL '+blocks.filter(x=>x.group_id===b.group_id).length+' blocks in this series?')) return;
-    const updated=blocks.filter(x=>x.group_id!==b.group_id);
-    try{localStorage.setItem('lms_grey_blocks',JSON.stringify(updated));}catch{}
+    updated=blocks.filter(x=>x.group_id!==b.group_id);
+    S.set('lhs:grey_blocks',updated);
+    try{await DB.from('lhs_grey_blocks').delete().eq('group_id',b.group_id);}catch(e){console.warn('grey_blocks delete failed',e?.message);}
   } else {
     if(isGroup){
       const choice=confirm('This block is part of a multi-day series.\nOK = Delete just this day\nCancel = Delete entire series');
       if(choice===null) return;
       if(!choice){
-        const updated=blocks.filter(x=>x.group_id!==b.group_id);
-        try{localStorage.setItem('lms_grey_blocks',JSON.stringify(updated));}catch{}
+        updated=blocks.filter(x=>x.group_id!==b.group_id);
+        S.set('lhs:grey_blocks',updated);
+        try{await DB.from('lhs_grey_blocks').delete().eq('group_id',b.group_id);}catch(e){console.warn('grey_blocks delete failed',e?.message);}
       } else {
-        const updated=blocks.filter(x=>x.id!==id);
-        try{localStorage.setItem('lms_grey_blocks',JSON.stringify(updated));}catch{}
+        updated=blocks.filter(x=>x.id!==id);
+        S.set('lhs:grey_blocks',updated);
+        try{await DB.from('lhs_grey_blocks').delete().eq('id',id);}catch(e){console.warn('grey_blocks delete failed',e?.message);}
       }
     } else {
       if(!confirm('Delete this task block?')) return;
-      const updated=blocks.filter(x=>x.id!==id);
-      try{localStorage.setItem('lms_grey_blocks',JSON.stringify(updated));}catch{}
+      updated=blocks.filter(x=>x.id!==id);
+      S.set('lhs:grey_blocks',updated);
+      try{await DB.from('lhs_grey_blocks').delete().eq('id',id);}catch(e){console.warn('grey_blocks delete failed',e?.message);}
     }
   }
   cMod(); showPage('dispatch');
