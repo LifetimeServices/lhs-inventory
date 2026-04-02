@@ -1881,6 +1881,15 @@ function getUserPerms(){
   return DEFAULT_PERMS[role]||DEFAULT_PERMS['Van Tech'];
 }
 
+// Set dispatch wrap height = viewport height minus the top nav bar height
+function fixDispBoardHeight(){
+  const tb=document.querySelector('.tb');
+  const wrap=document.getElementById('disp-wrap');
+  if(!tb||!wrap) return;
+  wrap.style.height=(window.innerHeight-tb.offsetHeight)+'px';
+}
+window.addEventListener('resize',()=>{if(document.getElementById('disp-wrap')) fixDispBoardHeight();});
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb:not(.nb-back)').forEach(b=>b.classList.remove('active'));
@@ -1892,6 +1901,8 @@ function showPage(id){
   if(id==='chatter'){_chatUnread=0;refreshChatBadge();setTimeout(()=>{const el=document.getElementById('chat-msgs');if(el) el.scrollTop=el.scrollHeight;},80);}
   // Render dashboard charts after DOM is painted
   if(id==='dashboard') setTimeout(renderDashCharts,80);
+  // Fix dispatch board height so toolbar never scrolls
+  if(id==='dispatch') setTimeout(fixDispBoardHeight,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
@@ -7365,56 +7376,58 @@ function bDispatch(){
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateLabel=`${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 
-  return`<div id="disp-sticky-bar" style="position:sticky;top:0;z-index:200;background:#f0ece3;margin:0 -28px;padding:12px 28px 10px;border-bottom:2px solid #e2e0db">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <button class="btn btn-o sm" onclick="dispNav(-1)">&#9664;</button>
-      <button class="btn btn-n sm" onclick="dispToday()">Today</button>
-      <button class="btn btn-o sm" onclick="dispNav(1)">&#9654;</button>
-      <div style="position:relative;display:inline-flex;align-items:center">
-        <button onclick="document.getElementById('disp-datepick').showPicker?document.getElementById('disp-datepick').showPicker():document.getElementById('disp-datepick').click()"
-          style="font-size:15px;font-weight:600;color:var(--navy);background:none;border:1px solid transparent;
-          border-radius:8px;padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;
-          transition:border-color .15s,background .15s"
-          onmouseover="this.style.borderColor='var(--bdr)';this.style.background='var(--surf)'"
-          onmouseout="this.style.borderColor='transparent';this.style.background='none'"
-          title="Click to pick a date">
-          ${dateLabel} <span style="font-size:11px;opacity:.5">&#128197;</span>
+  return`<div id="disp-wrap" style="display:flex;flex-direction:column;margin:-28px -28px -28px;height:600px">
+  <!-- Toolbar — never scrolls, always visible -->
+  <div id="disp-toolbar" style="flex-shrink:0;background:#f0ece3;padding:12px 28px 10px;border-bottom:2px solid #e2e0db;z-index:10">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-o sm" onclick="dispNav(-1)">&#9664;</button>
+        <button class="btn btn-n sm" onclick="dispToday()">Today</button>
+        <button class="btn btn-o sm" onclick="dispNav(1)">&#9654;</button>
+        <div style="position:relative;display:inline-flex;align-items:center">
+          <button onclick="document.getElementById('disp-datepick').showPicker?document.getElementById('disp-datepick').showPicker():document.getElementById('disp-datepick').click()"
+            style="font-size:15px;font-weight:600;color:var(--navy);background:none;border:1px solid transparent;
+            border-radius:8px;padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;
+            transition:border-color .15s,background .15s"
+            onmouseover="this.style.borderColor='var(--bdr)';this.style.background='var(--surf)'"
+            onmouseout="this.style.borderColor='transparent';this.style.background='none'"
+            title="Click to pick a date">
+            ${dateLabel} <span style="font-size:11px;opacity:.5">&#128197;</span>
+          </button>
+          <input type="date" id="disp-datepick" value="${_dispDate}"
+            onchange="dispSetDate(this.value)"
+            style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;pointer-events:none">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${['day','2day','3day'].map(v=>`<button class="btn sm ${_dispView===v?'btn-n':'btn-o'}" onclick="dispSetView('${v}')">${v==='day'?'Day':v==='2day'?'2 Day':'3 Day'}</button>`).join('')}
+        <span style="color:var(--bdr)">|</span>
+        <button class="btn sm btn-o" onclick="dispSetRegion('all')" style="${_dispRegion==='all'?'background:var(--navy);color:var(--teal)':''}">All</button>
+        ${Object.keys(REGIONS).map(r=>`<button class="btn sm btn-o" onclick="dispSetRegion('${r}')"
+          style="${_dispRegion===r?`background:${REGIONS[r].color};color:white`:`border-color:${REGIONS[r].color};color:${REGIONS[r].color}`}">${r}</button>`).join('')}
+        <span style="color:var(--bdr)">|</span>
+        <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
+          style="${Object.keys(_dispPinned).length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
+          title="${Object.keys(_dispPinned).length>0?'Click to unpin all divisions':'Click to pin and save current order'}">
+          &#128204; ${Object.keys(_dispPinned).length>0?'Unpin All':'Pin All'}
         </button>
-        <input type="date" id="disp-datepick" value="${_dispDate}"
-          onchange="dispSetDate(this.value)"
-          style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;pointer-events:none">
+        <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      ${['day','2day','3day'].map(v=>`<button class="btn sm ${_dispView===v?'btn-n':'btn-o'}" onclick="dispSetView('${v}')">${v==='day'?'Day':v==='2day'?'2 Day':'3 Day'}</button>`).join('')}
-      <span style="color:var(--bdr)">|</span>
-      <button class="btn sm btn-o" onclick="dispSetRegion('all')" style="${_dispRegion==='all'?'background:var(--navy);color:var(--teal)':''}">All</button>
-      ${Object.keys(REGIONS).map(r=>`<button class="btn sm btn-o" onclick="dispSetRegion('${r}')"
-        style="${_dispRegion===r?`background:${REGIONS[r].color};color:white`:`border-color:${REGIONS[r].color};color:${REGIONS[r].color}`}">${r}</button>`).join('')}
-      <span style="color:var(--bdr)">|</span>
-      <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
-        style="${Object.keys(_dispPinned).length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
-        title="${Object.keys(_dispPinned).length>0?'Click to unpin all divisions':'Click to pin and save current order'}">
-        &#128204; ${Object.keys(_dispPinned).length>0?'Unpin All':'Pin All'}
-      </button>
-      <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
+    <!-- Color legend -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Job Type:</span>
+      ${Object.entries(JOB_TYPES).map(([t,c])=>`<span style="background:${c};color:white;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">${t}</span>`).join('')}
+      <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-left:8px">Flexibility:</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:var(--green);border-radius:2px;display:inline-block"></span>Flexible</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:#E53935;border-radius:2px;display:inline-block"></span>Fixed</span>
     </div>
   </div>
-  <!-- Color legend -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Job Type:</span>
-    ${Object.entries(JOB_TYPES).map(([t,c])=>`<span style="background:${c};color:white;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">${t}</span>`).join('')}
-    <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-left:8px">Flexibility:</span>
-    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:var(--green);border-radius:2px;display:inline-block"></span>Flexible</span>
-    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:20px;height:4px;background:#E53935;border-radius:2px;display:inline-block"></span>Fixed</span>
-  </div>
-</div>
-
-  <!-- Board -->
-  <div style="overflow-x:auto;padding-top:12px">
+  <!-- Board — this part scrolls, toolbar above never moves -->
+  <div id="disp-board-wrap" style="flex:1;min-height:0;overflow:auto;padding:12px 28px 28px">
     ${(()=>{try{return renderDispBoard();}catch(e){console.error('Dispatch board error:',e);return`<div class="card" style="text-align:center;padding:32px;color:var(--red)">Dispatch board error: ${esc(e.message)}<br><small>Check browser console for details</small></div>`;}})()}
-  </div>`;
+  </div>
+</div>`;
 }
 
 function renderDispBoard(){
@@ -8206,25 +8219,22 @@ document.addEventListener('mouseup',async e=>{
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
 
-// Time input with datalist — dropdown suggestions + free manual entry
-// Returns the full <input> + <datalist> HTML for a given field id and pre-selected value
+// Time input with datalist — dropdown list of 15-min increments + free manual digit editing
+// Values are clean 24-hr "HH:MM" so user can pick then edit any digit directly
 function mkDispTimeInput(id, selected, disabled){
   const opts=[];
   for(let h=5;h<23;h++){
     for(let m=0;m<60;m+=15){
-      const hh=String(h).padStart(2,'0');
-      const mm=String(m).padStart(2,'0');
-      const val=`${hh}:${mm}`;
-      const ap=h>=12?'PM':'AM';
-      const dh=h>12?h-12:h===0?12:h;
-      opts.push(`<option value="${val}">${dh}:${mm} ${ap}</option>`);
+      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+      opts.push(`<option value="${val}">`);
     }
   }
   const dis=disabled?'disabled':'';
   return`<input type="text" id="${id}" value="${selected||''}" list="${id}-dl"
-    placeholder="e.g. 08:00" autocomplete="off" ${dis}
+    placeholder="08:00" autocomplete="off" spellcheck="false" ${dis}
     style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;
-    font-size:13px;font-family:inherit;background:${disabled?'var(--surf)':'white'}">
+    font-size:13px;font-family:'DM Mono',monospace;letter-spacing:.03em;
+    background:${disabled?'var(--surf)':'white'}">
   <datalist id="${id}-dl">${opts.join('')}</datalist>`;
 }
 // Legacy alias used in save functions — parse HH:MM from either "08:00" or "8:00 AM" style
