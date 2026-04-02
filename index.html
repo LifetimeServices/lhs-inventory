@@ -5355,7 +5355,9 @@ function lookupTerritory(state,county){
       });
     }
     // old format: state field + plain county names
-    if(t.state&&t.state.toUpperCase()!==st) return false;
+    // state field may be comma-separated for multi-state territories
+    const tStates=(t.state||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    if(tStates.length&&!tStates.includes(st)) return false;
     return counties.map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim()).includes(co);
   });
   return match?match.name:'';
@@ -5436,7 +5438,8 @@ function buildTerritory(editId=null){
       _TB.name=t.name||'';
       _TB.region=t.region||'';
       _TB.color=t.color||'#3ABFBF';
-      _TB.selectedStates=t.states||[t.state].filter(Boolean);
+      // state field may be comma-separated "WI,MN" for multi-state territories
+      _TB.selectedStates=(t.state||'').split(',').map(s=>s.trim()).filter(Boolean);
       _TB.selectedCounties={};
       (t.counties||[]).forEach(c=>{
         if(c.includes(':')){
@@ -5704,9 +5707,9 @@ async function saveTerritoryMap(){
   _TB.selectedStates.forEach(st=>{
     (_TB.selectedCounties[st]||new Set()).forEach(cn=>counties.push(st+':'+cn));
   });
+  // Store multi-state as comma-separated in existing 'state' text column (no schema change needed)
   const obj={name,region,color,active:true,
-    states:_TB.selectedStates,
-    state:_TB.selectedStates[0]||'',// keep old field for compatibility
+    state:_TB.selectedStates.join(','),
     counties};
   let saved;
   if(_TB.editId){
