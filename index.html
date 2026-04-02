@@ -3672,18 +3672,16 @@ async function loadRegionMap(){
   const el=g('region-map-svg');
   if(!el) return;
   try{
-    const resp=await fetch('https://upload.wikimedia.org/wikipedia/commons/9/96/Blank_US_Map_(states_only).svg',{mode:'cors'});
+    const resp=await fetch('us-map.svg');
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     const text=await resp.text();
     const parser=new DOMParser();
     const doc=parser.parseFromString(text,'image/svg+xml');
     const svg=doc.documentElement;
-    // Color each state path — Wikipedia uses 2-letter IDs like "AL", "AK", etc.
-    svg.querySelectorAll('path[id],g[id]').forEach(p=>{
-      const raw=p.id||'';
-      const abbr=raw.replace(/^US-/,'').toUpperCase();
-      const fill=stateColor[abbr]||'#CBD5E1';
-      p.setAttribute('fill',fill);
+    // Color each state path by 2-letter ID
+    svg.querySelectorAll('path[id]').forEach(p=>{
+      const abbr=(p.id||'').toUpperCase();
+      p.setAttribute('fill',stateColor[abbr]||'#CBD5E1');
       p.setAttribute('stroke','white');
       p.setAttribute('stroke-width','1.5');
     });
