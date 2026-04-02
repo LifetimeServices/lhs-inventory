@@ -8795,25 +8795,33 @@ async function svCreateWO(){
     const custs=S.get('lhs:customers')||[]; custs.push(cust); S.set('lhs:customers',custs);
   }
 
-  // Generate WO number using the appointment year (not current year)
+  // Generate WO number: YEAR-DIVCODE-STATE-NNNNN
+  // Year comes from the scheduled appointment date (not today's date)
   const aptDateVal=v('woc-adate')||new Date().toISOString().split('T')[0];
   const woYear=parseInt(aptDateVal.split('-')[0])||new Date().getFullYear();
   const code=DIV_CODES[div]||'XX';
+  // State from job site — use customer state, 2-letter uppercase, fallback XX
+  const woState=((cust.state||'').trim().toUpperCase().replace(/[^A-Z]/g,'')||'XX').slice(0,2);
   let seq=1;
   try{
-    const{data}=await DB.rpc('get_next_wo_seq',{p_year:woYear,p_code:code});
+    // Pass state to the Supabase sequence function
+    const{data}=await DB.rpc('get_next_wo_seq',{p_year:woYear,p_code:code,p_state:woState});
     if(data) seq=data;
   }catch{
-    seq=(S.get('lhs:wo_seq_'+woYear+'_'+code)||0)+1;
-    S.set('lhs:wo_seq_'+woYear+'_'+code,seq);
+    // Local fallback: sequence keyed by year+code+state
+    const localKey='lhs:wo_seq_'+woYear+'_'+code+'_'+woState;
+    seq=(S.get(localKey)||0)+1;
+    S.set(localKey,seq);
   }
-  const woNum=`${woYear}-${code}-${String(seq).padStart(5,'0')}`;
+  // 5 digits now; naturally extends to 6 when seq reaches 100,000
+  const seqDigits=seq>=100000?6:5;
+  const woNum=`${woYear}-${code}-${woState}-${String(seq).padStart(seqDigits,'0')}`;
 
   const totalPrice=parseFloat(document.getElementById('woc-price')?.value)||0;
   const deposit=parseFloat(document.getElementById('woc-deposit')?.value)||0;
 
   const wo={
-    wo_number:woNum, wo_year:woYear,
+    wo_number:woNum, wo_year:woYear, wo_state:woState,
     customer_id:cust.id,
     customer_name:`${cust.first_name} ${cust.last_name}${cust.company?' ('+cust.company+')':''}`,
     customer_phone:cust.phone||'',
