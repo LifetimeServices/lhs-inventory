@@ -5556,14 +5556,15 @@ function tbRenderStateMap(stAbbr,container){
     return;
   }
 
-  // Build SVG
-  const W=780, H=560;
-  const projection=d3.geoMercator().fitSize([W,H],stateCounties);
+  // Build SVG — pad 40px on each side so edge county labels aren't clipped
+  const PAD=40, W=860, H=620;
+  const projection=d3.geoMercator().fitExtent([[PAD,PAD],[W-PAD,H-PAD]],stateCounties);
   const path=d3.geoPath().projection(projection);
   const ns='http://www.w3.org/2000/svg';
   const svg=document.createElementNS(ns,'svg');
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.style.cssText=`width:100%;max-width:${W}px;height:auto;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC`;
+  svg.setAttribute('overflow','visible');
+  svg.style.cssText=`width:100%;max-width:${W}px;height:auto;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC;overflow:visible`;
 
   stateCounties.features.forEach(f=>{
     const countyName=(f.properties&&(f.properties.name||f.properties.NAME))||'';
@@ -5596,9 +5597,13 @@ function tbRenderStateMap(stAbbr,container){
       txt.setAttribute('x',centroid[0]);
       txt.setAttribute('y',centroid[1]+4);
       txt.setAttribute('text-anchor','middle');
-      txt.setAttribute('font-size','10');
-      txt.setAttribute('font-weight','500');
-      txt.setAttribute('fill',isSelected?'white':'#333');
+      txt.setAttribute('font-size','9');
+      txt.setAttribute('font-weight','600');
+      txt.setAttribute('fill',isSelected?'white':'#222');
+      txt.setAttribute('paint-order','stroke');
+      txt.setAttribute('stroke','rgba(248,250,252,0.85)');
+      txt.setAttribute('stroke-width','2.5');
+      txt.setAttribute('stroke-linejoin','round');
       txt.setAttribute('pointer-events','none');
       txt.textContent=countyName;
       svg.appendChild(txt);
