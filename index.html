@@ -429,7 +429,7 @@ const ROLES=['God View','Admin','Director','Regional Manager','Operations Manage
   'Dispatcher','Location Manager','Van Tech','Sales Rep'];
 
 // ── REGIONS ──────────────────────────────────────────────────────────────────
-const REGIONS={
+let REGIONS={
   'West':        {color:'#1565C0', light:'#E3F2FD', states:['CO','UT','OR','WA']},
   'Midwest':     {color:'#E65100', light:'#FFF3E0', states:['WI','IL','MN','IA','MO','NE','KS']},
   'Central Valley':{color:'#AD1457', light:'#FCE4EC', states:['MI','IN','OH','KY']},
@@ -437,6 +437,11 @@ const REGIONS={
   'Mid-Atlantic':{color:'#6A1B9A', light:'#F3E5F5', states:['PA','WV','VA','DE','MD','DC']},
   'Northeast':   {color:'#C62828', light:'#FFEBEE', states:['NY','VT','NJ','NH','ME','MA','CT','RI']},
 };
+// Load saved region state assignments (admin-editable)
+try{
+  const saved=JSON.parse(localStorage.getItem('lhs_region_states')||'null');
+  if(saved) Object.entries(saved).forEach(([r,states])=>{if(REGIONS[r]) REGIONS[r].states=states;});
+}catch(e){}
 
 const STATES_BY_REGION={
   'West':['CO','UT','OR','WA'],
@@ -3644,6 +3649,8 @@ function svUpdTest(i){
 // ─── ADMIN: REGIONS ──────────────────────────────────────────────────────────
 function aRegions(){
   setTimeout(loadRegionMap,80);
+  const assignedStates=new Set(Object.values(REGIONS).flatMap(r=>r.states));
+  const unassigned=Object.keys(STATE_NAMES).filter(s=>!assignedStates.has(s)).sort();
   const legend=Object.entries(REGIONS).map(([name,r])=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:${r.color}"><span style="width:16px;height:16px;border-radius:3px;background:${r.color};display:inline-block;flex-shrink:0"></span>${name}</span>`).join('')+`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#6B7280"><span style="width:16px;height:16px;border-radius:3px;background:#CBD5E1;display:inline-block;flex-shrink:0"></span>Unassigned</span>`;
   return`<div class="sh"><h3>Region Management</h3></div>
   <div style="background:white;border:1px solid var(--bdr);border-radius:12px;padding:20px;margin-bottom:20px">
@@ -3655,14 +3662,30 @@ function aRegions(){
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
     ${Object.entries(REGIONS).map(([name,r])=>`
     <div class="card" style="border-left:4px solid ${r.color}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="width:16px;height:16px;background:${r.color};border-radius:3px"></div>
-        <div style="font-weight:700;font-size:15px;color:var(--navy)">${name}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:16px;height:16px;background:${r.color};border-radius:3px;flex-shrink:0"></div>
+          <div style="font-weight:700;font-size:15px;color:var(--navy)">${name}</div>
+        </div>
+        <button class="btn btn-o sm" onclick="oEditRegion('${name}')">Edit</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${r.states.map(s=>`<span style="background:${r.light};color:${r.color};padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600">${s}</span>`).join('')}
+        ${r.states.map(s=>`<span style="background:${r.light};color:${r.color};padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600">${s} <span style="font-size:10px;opacity:.7">${STATE_NAMES[s]||''}</span></span>`).join('')}
       </div>
     </div>`).join('')}
+    <!-- Unassigned Box -->
+    <div class="card" style="border-left:4px solid #9CA3AF">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:16px;height:16px;background:#9CA3AF;border-radius:3px;flex-shrink:0"></div>
+          <div style="font-weight:700;font-size:15px;color:var(--navy)">Unassigned</div>
+        </div>
+        <span style="font-size:11px;color:var(--muted)">${unassigned.length} states</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${unassigned.length?unassigned.map(s=>`<span style="background:#F3F4F6;color:#374151;padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600">${s} <span style="font-size:10px;opacity:.7">${STATE_NAMES[s]||''}</span></span>`).join(''):'<span style="font-size:13px;color:var(--muted)">All states assigned</span>'}
+      </div>
+    </div>
   </div>`;
 }
 
@@ -3685,6 +3708,50 @@ function lhsLoadScript(src){
     s.src=src; s.onload=resolve; s.onerror=reject;
     document.head.appendChild(s);
   });
+}
+
+function oEditRegion(name){
+  const r=REGIONS[name]; if(!r) return;
+  // All states grouped: assigned to this region, assigned elsewhere, unassigned
+  const assignedHere=new Set(r.states);
+  const assignedElsewhere=new Set(Object.entries(REGIONS).filter(([n])=>n!==name).flatMap(([,rx])=>rx.states));
+  const allStates=Object.keys(STATE_NAMES).sort();
+  const rows=allStates.map(s=>{
+    const inRegion=assignedHere.has(s);
+    const elsewhere=!inRegion&&assignedElsewhere.has(s);
+    const elseRegion=elsewhere?Object.entries(REGIONS).find(([,rx])=>rx.states.includes(s))?.[0]:'';
+    return`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer;border-bottom:1px solid var(--bdr)">
+      <input type="checkbox" value="${s}"${inRegion?' checked':''} style="width:15px;height:15px;flex-shrink:0">
+      <span style="font-weight:600;min-width:30px">${s}</span>
+      <span style="color:var(--muted);flex:1">${STATE_NAMES[s]||''}</span>
+      ${elsewhere?`<span style="font-size:10px;background:${REGIONS[elseRegion]?.light||'#eee'};color:${REGIONS[elseRegion]?.color||'#666'};padding:1px 6px;border-radius:8px;font-weight:600">Currently: ${elseRegion}</span>`:''}
+    </label>`;
+  }).join('');
+  oMod(`Edit Region — ${name}`,`
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Check states to include in <strong>${name}</strong>. States currently in another region are labeled — adding them here will remove them from their current region.</div>
+    <div style="max-height:380px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px 12px">${rows}</div>
+    <div class="br2" style="margin-top:16px">
+      <button class="btn btn-n" onclick="svRegionEdit('${name}')">Save Changes</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+function svRegionEdit(name){
+  const r=REGIONS[name]; if(!r) return;
+  const checked=[...document.querySelectorAll(`#mod input[type=checkbox]:checked`)].map(x=>x.value);
+  // Remove these states from any other region first
+  Object.entries(REGIONS).forEach(([rn,rx])=>{
+    if(rn!==name) rx.states=rx.states.filter(s=>!checked.includes(s));
+  });
+  // Set this region's states
+  r.states=checked;
+  // Persist to localStorage so it survives refresh
+  const toSave={};
+  Object.entries(REGIONS).forEach(([rn,rx])=>{toSave[rn]=rx.states;});
+  localStorage.setItem('lhs_region_states',JSON.stringify(toSave));
+  cMod();
+  tst(`${name} region updated`,'success');
+  g('atab').innerHTML=aRegions();
 }
 
 async function loadRegionMap(){
