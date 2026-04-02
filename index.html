@@ -1924,9 +1924,10 @@ const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')
 
 // ─── ITEM PICKER ─────────────────────────────────────────────────────────────
 window._pickerCb={};
-function mkItemPicker(id, selectedSku){
+function mkItemPicker(id, selectedSku, onchangeExpr){
   const items=S.get('lhs:items')||[];
   const sel=items.find(i=>i.sku===(selectedSku||''));
+  const hiddenVal=sel?(esc(sel.sku)+'|'+esc(sel.name)+'|'+(sel.unit_cost||sel.cost||0)):'';
   return`<div class="ipw" id="ipw-${id}">
     <input class="ipt" id="ipt-${id}" placeholder="Search items..." autocomplete="off"
       value="${sel?esc(sel.name):''}"
@@ -1934,7 +1935,7 @@ function mkItemPicker(id, selectedSku){
       onfocus="pickerOpen('${id}')"
       onblur="setTimeout(()=>pickerClose('${id}'),220)">
     <div class="ipd" id="ipd-${id}"></div>
-    <input type="hidden" id="ips-${id}" value="${sel?(esc(sel.sku)+'|'+esc(sel.name)+'|'+(sel.unit_cost||sel.cost||0)):''}">
+    <input type="hidden" id="ips-${id}" value="${hiddenVal}"${onchangeExpr?` onchange="${onchangeExpr}"`:''}">
   </div>`;
 }
 
@@ -1970,7 +1971,7 @@ function pickerSelect(id,sku,name,cost){
   const inp=document.getElementById('ipt-'+id);
   const hid=document.getElementById('ips-'+id);
   if(inp) inp.value=name;
-  if(hid) hid.value=`${sku}|${name}|${cost}`;
+  if(hid){hid.value=`${sku}|${name}|${cost}`;hid.dispatchEvent(new Event('change'));}
   pickerClose(id);
   if(window._pickerCb[id]) window._pickerCb[id](sku,name,cost);
 }
@@ -3801,10 +3802,9 @@ function renderMatPresetsAdmin(){
             onchange="updatePresetRowField('${esc(key)}',${i},'question_label',this.value)">
         </td>
         <td style="padding:6px 8px;min-width:200px">
-          <div id="preset-item-wrap-${safeKey}-${i}" style="width:100%">
-            ${mkItemPicker(`preset-item-${safeKey}-${i}`, row.sku||'')}
+          <div style="width:100%">
+            ${mkItemPicker(`preset-item-${safeKey}-${i}`, row.sku||'', `updatePresetRowField('${esc(key)}',${i},'item',this.value)`)}
           </div>
-          <script>window._pickerCb['preset-item-${safeKey}-${i}']=(sku,name,cost)=>{updatePresetRowField('${esc(key)}',${i},'item',sku+'|'+name+'|'+cost);};</script>
         </td>
         <td style="padding:6px 8px;width:80px">
           <input type="number" value="${row.default_qty||0}" min="0"
