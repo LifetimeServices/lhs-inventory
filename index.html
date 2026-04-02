@@ -3713,6 +3713,9 @@ const FIPS_TO_STATE={
   '47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV',
   '55':'WI','56':'WY'
 };
+// state abbreviation → FIPS code (reverse lookup for county map filtering)
+const STATE_FIPS_MAP={};
+Object.entries(FIPS_TO_STATE).forEach(([fips,abbr])=>{STATE_FIPS_MAP[abbr]=fips;});
 
 function lhsLoadScript(src){
   return new Promise((resolve,reject)=>{
@@ -5334,6 +5337,8 @@ function delUser(i){
 }
 
 // ─── TERRITORIES ──────────────────────────────────────────────────────────────
+
+// lookupTerritory: supports both old (state+counties[]) and new (states[]+counties as "ST:County") formats
 function lookupTerritory(state,county){
   if(!state&&!county) return '';
   const st=(state||'').toUpperCase().trim();
@@ -5341,9 +5346,17 @@ function lookupTerritory(state,county){
   const terrs=S.get('lhs:territories')||[];
   const match=terrs.find(t=>{
     if(t.active===false) return false;
+    const counties=t.counties||[];
+    // new format: "WI:Brown" style
+    if(counties.length&&counties[0].includes(':')){
+      return counties.some(c=>{
+        const [cs,cc]=c.split(':');
+        return cs.toUpperCase()===st && cc.toLowerCase().replace(/\s*county\s*$/i,'').trim()===co;
+      });
+    }
+    // old format: state field + plain county names
     if(t.state&&t.state.toUpperCase()!==st) return false;
-    const counties=(t.counties||[]).map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim());
-    return counties.includes(co);
+    return counties.map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim()).includes(co);
   });
   return match?match.name:'';
 }
@@ -5356,108 +5369,302 @@ function wocAutoTerritory(){
   if(el) el.textContent=terr?'Territory: '+terr:'';
 }
 
+// ── Territory accordion list ──────────────────────────────────────────────────
 function aTerritories(){
-  const terrs=S.get('lhs:territories')||[];
-  const byRegion={};
-  terrs.forEach(t=>{
-    const r=t.region||'Unassigned';
-    if(!byRegion[r]) byRegion[r]=[];
-    byRegion[r].push(t);
-  });
-  const regionKeys=Object.keys(byRegion).sort();
-  return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddTerritory()">+ Add Territory</button></div>
-  ${!terrs.length?`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No territories yet. Click <strong>+ Add Territory</strong> to get started.</div>`:''}
-  ${regionKeys.map(rg=>`
-    <div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);padding-bottom:6px;border-bottom:2px solid var(--bdr);margin-bottom:10px">${esc(rg)}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
-        ${byRegion[rg].map(t=>`<div style="background:white;border:1.5px solid ${t.color||'var(--bdr)'};border-radius:10px;padding:14px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <div style="font-weight:700;font-size:14px;color:var(--navy)">${esc(t.name)}</div>
-            <div style="display:flex;gap:6px">
-              <button class="btn sm btn-o" onclick="oEditTerritory('${t.id}')">Edit</button>
-              <button class="btn sm btn-r" onclick="delTerritory('${t.id}')">&#215;</button>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${esc(t.state||'')} ${t.region?'· '+esc(t.region):''}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px">${(t.counties||[]).map(c=>`<span style="background:${t.color||'var(--surf)'};opacity:.85;color:white;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${esc(c)}</span>`).join('')}</div>
-          ${!t.active?`<div style="margin-top:6px"><span style="background:#EEE;color:#999;font-size:11px;padding:2px 8px;border-radius:8px">Inactive</span></div>`:''}
-        </div>`).join('')}
+  const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false);
+  const all=S.get('lhs:territories')||[];
+  return`
+  <div class="sh" style="margin-bottom:16px">
+    <div style="font-size:13px;color:var(--muted)">${terrs.length} active territor${terrs.length===1?'y':'ies'}</div>
+    <button class="btn btn-n" onclick="buildTerritory()">+ New Territory</button>
+  </div>
+  <div id="terr-builder-wrap"></div>
+  ${!all.length?`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No territories yet. Click <strong>+ New Territory</strong> to get started.</div>`:''}
+  <div id="terr-accordion">
+  ${all.map(t=>{
+    const stateList=(t.states||[t.state]).filter(Boolean);
+    const counties=t.counties||[];
+    const countyCount=counties.length;
+    const stateDisplay=stateList.join(', ');
+    return`<div class="terr-row" id="trow-${t.id}" style="border:1.5px solid ${t.color||'#CBD5E1'};border-radius:10px;margin-bottom:8px;overflow:hidden">
+      <div onclick="toggleTerrRow('${t.id}')" style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;background:white;user-select:none">
+        <div style="width:14px;height:14px;border-radius:3px;background:${t.color||'#3ABFBF'};flex-shrink:0"></div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px;color:var(--navy)">${esc(t.name)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(stateDisplay)} · ${countyCount} count${countyCount===1?'y':'ies'}${t.region?' · '+esc(t.region):''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn sm btn-o" onclick="event.stopPropagation();buildTerritory('${t.id}')">Edit</button>
+          <button class="btn sm btn-r" onclick="event.stopPropagation();delTerritory('${t.id}')">&#215;</button>
+          <span id="trow-chevron-${t.id}" style="color:var(--muted);font-size:16px;transition:transform .2s">▼</span>
+        </div>
       </div>
-    </div>`).join('')}`;
+      <div id="trow-body-${t.id}" style="display:none;padding:12px 16px;background:#FAFBFC;border-top:1px solid var(--bdr)">
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${counties.map(c=>{
+            const label=c.includes(':')?c.split(':')[1]:c;
+            return`<span style="background:${t.color||'#3ABFBF'};color:white;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600">${esc(label)}</span>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('')}
+  </div>`;
 }
 
-function oAddTerritory(){
-  const regionOpts=Object.keys(REGIONS).map(r=>`<option>${r}</option>`).join('');
-  const stateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}">${s} - ${STATE_NAMES[s]}</option>`).join('');
-  oMod('Add Territory',`
-    <div class="fr">
-      <div class="fl"><label>Territory Name</label><input id="nt-name" placeholder="e.g. Green Bay"></div>
-      <div class="fl"><label>Region</label><select id="nt-region"><option value="">— Select —</option>${regionOpts}</select></div>
-    </div>
-    <div class="fr">
-      <div class="fl"><label>State</label><select id="nt-state" onchange="ntLoadCounties()"><option value="">— Select —</option>${stateOpts}</select></div>
-      <div class="fl"><label>Color</label><input type="color" id="nt-color" value="#3ABFBF" style="height:38px;padding:2px 6px"></div>
-    </div>
-    <div class="fl" style="margin-bottom:12px"><label>Counties (select all that apply)</label>
-      <div id="nt-county-wrap" style="border:1px solid var(--bdr);border-radius:8px;padding:8px;max-height:200px;overflow-y:auto;min-height:60px;color:var(--muted);font-size:13px">Select a state first</div>
-    </div>
-    <div class="br2"><button class="btn btn-n" onclick="svTerritory()">Save Territory</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+function toggleTerrRow(id){
+  const body=g('trow-body-'+id);
+  const chev=g('trow-chevron-'+id);
+  if(!body) return;
+  const open=body.style.display==='none';
+  body.style.display=open?'block':'none';
+  if(chev) chev.style.transform=open?'rotate(180deg)':'';
 }
 
-function oEditTerritory(id){
-  const t=(S.get('lhs:territories')||[]).find(x=>x.id===id);
-  if(!t){tst('Territory not found','error');return}
-  const regionOpts=Object.keys(REGIONS).map(r=>`<option${t.region===r?' selected':''}>${r}</option>`).join('');
-  const stateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}"${t.state===s?' selected':''}>${s} - ${STATE_NAMES[s]}</option>`).join('');
-  oMod('Edit Territory',`
-    <input type="hidden" id="nt-id" value="${esc(id)}">
-    <div class="fr">
-      <div class="fl"><label>Territory Name</label><input id="nt-name" value="${esc(t.name||'')}"></div>
-      <div class="fl"><label>Region</label><select id="nt-region"><option value="">— Select —</option>${regionOpts}</select></div>
-    </div>
-    <div class="fr">
-      <div class="fl"><label>State</label><select id="nt-state" onchange="ntLoadCounties()"><option value="">— Select —</option>${stateOpts}</select></div>
-      <div class="fl"><label>Color</label><input type="color" id="nt-color" value="${esc(t.color||'#3ABFBF')}" style="height:38px;padding:2px 6px"></div>
-    </div>
-    <div class="fl" style="margin-bottom:12px"><label>Counties (select all that apply)</label>
-      <div id="nt-county-wrap" style="border:1px solid var(--bdr);border-radius:8px;padding:8px;max-height:200px;overflow-y:auto;min-height:60px">Loading…</div>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px"><input type="checkbox" id="nt-active"${t.active!==false?' checked':''}> Active</label>
-    <div class="br2"><button class="btn btn-n" onclick="svTerritory()">Save Changes</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
-  setTimeout(()=>ntLoadCounties(t.counties||[]),80);
-}
+// ── Territory Builder (inline panel) ─────────────────────────────────────────
+// tbState = { editId, selectedStates, selectedCounties:{}, color, name, region, topoData }
+let _TB={editId:null,selectedStates:[],selectedCounties:{},color:'#3ABFBF',name:'',region:'',topoData:null};
 
-function ntLoadCounties(preSelected=[]){
-  const st=(g('nt-state')?.value||'').trim();
-  const wrap=g('nt-county-wrap');
+function buildTerritory(editId=null){
+  const wrap=g('terr-builder-wrap');
   if(!wrap) return;
-  const counties=COUNTIES_BY_STATE[st]||[];
-  if(!counties.length){wrap.innerHTML='<span style="color:var(--muted);font-size:13px">No county data for this state</span>';return;}
-  const sel=new Set(preSelected.map(c=>c.toLowerCase().replace(/\s*county\s*$/i,'').trim()));
-  wrap.innerHTML=counties.map(c=>{
-    const key=c.toLowerCase().replace(/\s*county\s*$/i,'').trim();
-    return`<label style="display:block;padding:3px 0;font-size:13px;cursor:pointer;line-height:1.6">
-      <input type="checkbox" style="margin-right:6px;vertical-align:middle" value="${esc(c)}"${sel.has(key)?' checked':''}>${esc(c)} County</label>`;
-  }).join('');
+  // Pre-fill if editing
+  _TB={editId,selectedStates:[],selectedCounties:{},color:'#3ABFBF',name:'',region:'',topoData:null};
+  if(editId){
+    const t=(S.get('lhs:territories')||[]).find(x=>x.id===editId);
+    if(t){
+      _TB.name=t.name||'';
+      _TB.region=t.region||'';
+      _TB.color=t.color||'#3ABFBF';
+      _TB.selectedStates=t.states||[t.state].filter(Boolean);
+      _TB.selectedCounties={};
+      (t.counties||[]).forEach(c=>{
+        if(c.includes(':')){
+          const [st,cn]=c.split(':');
+          if(!_TB.selectedCounties[st]) _TB.selectedCounties[st]=new Set();
+          _TB.selectedCounties[st].add(cn);
+        } else {
+          const st=(t.states||[])[0]||t.state||'';
+          if(st){
+            if(!_TB.selectedCounties[st]) _TB.selectedCounties[st]=new Set();
+            _TB.selectedCounties[st].add(c);
+          }
+        }
+      });
+    }
+  }
+  const regionOpts=Object.keys(REGIONS).map(r=>`<option value="${r}"${_TB.region===r?' selected':''}>${r}</option>`).join('');
+  const stateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}">${s} – ${STATE_NAMES[s]}</option>`).join('');
+  wrap.innerHTML=`
+  <div id="terr-builder" style="background:white;border:2px solid var(--navy);border-radius:12px;padding:20px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-weight:700;font-size:16px;color:var(--navy)">${editId?'Edit Territory':'New Territory'}</div>
+      <button class="btn sm btn-o" onclick="cancelBuildTerritory()">Cancel</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px">
+      <div class="fl" style="margin:0"><label>Territory Name</label><input id="tb-name" value="${esc(_TB.name)}" placeholder="e.g. Green Bay Area"></div>
+      <div class="fl" style="margin:0"><label>Region</label><select id="tb-region"><option value="">— Select —</option>${regionOpts}</select></div>
+      <div class="fl" style="margin:0"><label>Color</label><input type="color" id="tb-color" value="${_TB.color}" style="height:38px;width:100%;padding:2px 4px"></div>
+      <div></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:8px">Select States</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="tb-state-btns">
+        ${Object.keys(STATE_NAMES).sort().map(s=>{
+          const sel=_TB.selectedStates.includes(s);
+          return`<button id="tbsb-${s}" onclick="tbToggleState('${s}')" style="padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;border:1.5px solid ${sel?'var(--navy)':'var(--bdr)'};background:${sel?'var(--navy)':'white'};color:${sel?'white':'var(--navy)'};cursor:pointer">${s}</button>`;
+        }).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button class="btn btn-n" id="tb-load-btn" onclick="tbLoadMaps()">Load County Maps</button>
+    </div>
+    <div id="tb-maps-area" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"></div>
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="btn btn-n" onclick="saveTerritoryMap()">Save Territory</button>
+      <button class="btn btn-o" onclick="cancelBuildTerritory()">Cancel</button>
+    </div>
+  </div>`;
+  // If editing and has states, auto-load maps
+  if(_TB.selectedStates.length>0) setTimeout(tbLoadMaps,120);
 }
 
-async function svTerritory(){
-  const id=v('nt-id');
-  const name=v('nt-name').trim();
-  const region=v('nt-region');
-  const state=v('nt-state');
-  const color=v('nt-color')||'#3ABFBF';
-  const active=g('nt-active')?g('nt-active').checked:true;
-  if(!name){tst('Territory name required','error');return}
-  const checked=[...document.querySelectorAll('#nt-county-wrap input[type=checkbox]:checked')].map(x=>x.value);
-  const obj={name,region,state,counties:checked,color,active};
+function cancelBuildTerritory(){
+  const wrap=g('terr-builder-wrap');
+  if(wrap) wrap.innerHTML='';
+}
+
+function tbToggleState(s){
+  const idx=_TB.selectedStates.indexOf(s);
+  if(idx>=0) _TB.selectedStates.splice(idx,1);
+  else _TB.selectedStates.push(s);
+  const btn=g('tbsb-'+s);
+  if(btn){
+    const sel=_TB.selectedStates.includes(s);
+    btn.style.background=sel?'var(--navy)':'white';
+    btn.style.color=sel?'white':'var(--navy)';
+    btn.style.borderColor=sel?'var(--navy)':'var(--bdr)';
+  }
+}
+
+// Gather existing territory counties for "already claimed" display
+function _tbGetClaimed(excludeId){
+  const terrs=S.get('lhs:territories')||[];
+  const claimed={};// "ST:County" → {name,color}
+  terrs.filter(t=>t.id!==excludeId&&t.active!==false).forEach(t=>{
+    (t.counties||[]).forEach(c=>{
+      let key;
+      if(c.includes(':')) key=c;
+      else key=(t.states?t.states[0]:t.state||'')+':'+c;
+      claimed[key]={name:t.name,color:t.color||'#888'};
+    });
+  });
+  return claimed;
+}
+
+async function tbLoadMaps(){
+  const area=g('tb-maps-area');
+  if(!area) return;
+  if(!_TB.selectedStates.length){tst('Select at least one state','error');return;}
+  area.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:20px">Loading county maps…</div>`;
+  try{
+    await lhsLoadScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
+    await lhsLoadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
+    if(!_TB.topoData){
+      _TB.topoData=await d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json');
+    }
+    area.innerHTML='';
+    _TB.selectedStates.forEach(st=>tbRenderStateMap(st,area));
+  }catch(e){
+    area.innerHTML=`<div style="color:red;font-size:13px">Failed to load map data. Check internet connection.</div>`;
+  }
+}
+
+function tbRenderStateMap(stAbbr,container){
+  const fips=STATE_FIPS_MAP[stAbbr];
+  if(!fips){container.insertAdjacentHTML('beforeend',`<div style="color:red;font-size:12px">Unknown state: ${stAbbr}</div>`);return;}
+  const claimed=_tbGetClaimed(_TB.editId);
+  if(!_TB.selectedCounties[stAbbr]) _TB.selectedCounties[stAbbr]=new Set();
+  const sel=_TB.selectedCounties[stAbbr];
+
+  // Filter counties belonging to this state (FIPS starts with state FIPS)
+  const allCounties=topojson.feature(_TB.topoData,_TB.topoData.objects.counties);
+  const stateCounties={type:'FeatureCollection',features:allCounties.features.filter(f=>String(f.id).padStart(5,'0').startsWith(fips))};
+
+  if(!stateCounties.features.length){
+    container.insertAdjacentHTML('beforeend',`<div style="color:var(--muted);font-size:12px">No county data for ${stAbbr}</div>`);
+    return;
+  }
+
+  // Build SVG
+  const W=340, H=260;
+  const projection=d3.geoMercator().fitSize([W,H],stateCounties);
+  const path=d3.geoPath().projection(projection);
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.style.cssText=`width:${W}px;height:${H}px;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC`;
+
+  stateCounties.features.forEach(f=>{
+    const countyName=(f.properties&&(f.properties.name||f.properties.NAME))||'';
+    const key=stAbbr+':'+countyName;
+    const isSelected=sel.has(countyName);
+    const claimInfo=claimed[key];
+
+    const p=document.createElementNS(ns,'path');
+    p.setAttribute('d',path(f));
+    p.setAttribute('data-county',countyName);
+    p.setAttribute('data-state',stAbbr);
+    let fill='#EEF2F7';
+    if(isSelected) fill=_TB.color||'#3ABFBF';
+    else if(claimInfo) fill=claimInfo.color;
+    p.setAttribute('fill',fill);
+    p.setAttribute('stroke','white');
+    p.setAttribute('stroke-width','0.5');
+    p.style.cursor=claimInfo?'not-allowed':'pointer';
+    p.title=countyName+(claimInfo?' ('+claimInfo.name+')':'');
+    if(!claimInfo){
+      p.addEventListener('click',()=>tbClickCounty(p,stAbbr,countyName));
+      p.addEventListener('mouseenter',()=>{if(!sel.has(countyName)) p.setAttribute('fill','#B0C4DE');});
+      p.addEventListener('mouseleave',()=>{if(!sel.has(countyName)) p.setAttribute('fill','#EEF2F7');});
+    }
+    svg.appendChild(p);
+    // County label for larger counties
+    const centroid=path.centroid(f);
+    if(centroid&&!isNaN(centroid[0])&&countyName.length<=10){
+      const txt=document.createElementNS(ns,'text');
+      txt.setAttribute('x',centroid[0]);
+      txt.setAttribute('y',centroid[1]+3);
+      txt.setAttribute('text-anchor','middle');
+      txt.setAttribute('font-size','6');
+      txt.setAttribute('fill',isSelected?'white':'#555');
+      txt.setAttribute('pointer-events','none');
+      txt.textContent=countyName;
+      svg.appendChild(txt);
+    }
+  });
+
+  // Wrapper div per state
+  const div=document.createElement('div');
+  div.style.cssText='display:inline-flex;flex-direction:column;align-items:center;gap:6px';
+  const lbl=document.createElement('div');
+  lbl.style.cssText='font-weight:700;font-size:13px;color:var(--navy)';
+  lbl.textContent=stAbbr+' – '+STATE_NAMES[stAbbr];
+  div.appendChild(lbl);
+  div.appendChild(svg);
+  // Selected count badge
+  const badge=document.createElement('div');
+  badge.id='tb-badge-'+stAbbr;
+  badge.style.cssText='font-size:12px;color:var(--muted)';
+  badge.textContent=sel.size+' counties selected';
+  div.appendChild(badge);
+  container.appendChild(div);
+}
+
+function tbClickCounty(pathEl,stAbbr,countyName){
+  if(!_TB.selectedCounties[stAbbr]) _TB.selectedCounties[stAbbr]=new Set();
+  const sel=_TB.selectedCounties[stAbbr];
+  const color=g('tb-color')?.value||_TB.color||'#3ABFBF';
+  _TB.color=color;
+  if(sel.has(countyName)){
+    sel.delete(countyName);
+    pathEl.setAttribute('fill','#EEF2F7');
+    pathEl.addEventListener('mouseenter',()=>pathEl.setAttribute('fill','#B0C4DE'));
+    pathEl.addEventListener('mouseleave',()=>pathEl.setAttribute('fill','#EEF2F7'));
+    // update labels
+    const svg=pathEl.parentElement;
+    if(svg) svg.querySelectorAll('text').forEach(t=>{if(t.textContent===countyName) t.setAttribute('fill','#555');});
+  } else {
+    sel.add(countyName);
+    pathEl.setAttribute('fill',color);
+    const svg=pathEl.parentElement;
+    if(svg) svg.querySelectorAll('text').forEach(t=>{if(t.textContent===countyName) t.setAttribute('fill','white');});
+  }
+  const badge=g('tb-badge-'+stAbbr);
+  if(badge) badge.textContent=sel.size+' counties selected';
+}
+
+async function saveTerritoryMap(){
+  const name=(g('tb-name')?.value||'').trim();
+  const region=g('tb-region')?.value||'';
+  const color=g('tb-color')?.value||'#3ABFBF';
+  if(!name){tst('Territory name required','error');return;}
+  if(!_TB.selectedStates.length){tst('Select at least one state','error');return;}
+  // Build counties array as "ST:County"
+  const counties=[];
+  _TB.selectedStates.forEach(st=>{
+    (_TB.selectedCounties[st]||new Set()).forEach(cn=>counties.push(st+':'+cn));
+  });
+  const obj={name,region,color,active:true,
+    states:_TB.selectedStates,
+    state:_TB.selectedStates[0]||'',// keep old field for compatibility
+    counties};
   let saved;
-  if(id){
-    saved=await dbUpdate('lhs:territories',id,obj);
-    if(!saved){tst('Save failed','error');return}
+  if(_TB.editId){
+    saved=await dbUpdate('lhs:territories',_TB.editId,obj);
+    if(!saved){tst('Save failed','error');return;}
     const all=S.get('lhs:territories')||[];
-    const idx=all.findIndex(x=>x.id===id);
+    const idx=all.findIndex(x=>x.id===_TB.editId);
     if(idx>=0) all[idx]={...all[idx],...obj};
     S.set('lhs:territories',all);
     tst('Territory updated','success');
@@ -5465,13 +5672,13 @@ async function svTerritory(){
     obj.created_at=new Date().toISOString();
     obj.created_by=CU?.name||'';
     saved=await dbInsert('lhs:territories',obj);
-    if(!saved){tst('Save failed','error');return}
+    if(!saved){tst('Save failed','error');return;}
     const all=S.get('lhs:territories')||[];
     all.push(saved);
     S.set('lhs:territories',all);
     tst('Territory created','success');
   }
-  cMod();
+  cancelBuildTerritory();
   g('atab').innerHTML=aTerritories();
 }
 
