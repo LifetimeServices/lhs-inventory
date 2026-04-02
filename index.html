@@ -5479,7 +5479,8 @@ function buildTerritory(editId=null){
     <div style="display:flex;gap:10px;margin-bottom:14px">
       <button class="btn btn-n" id="tb-load-btn" onclick="tbLoadMaps()">Load County Maps</button>
     </div>
-    <div style="overflow-x:auto;width:100%"><div id="tb-maps-area" style="display:flex;flex-direction:column;gap:32px;padding-bottom:8px"></div></div>
+    <div style="overflow-x:auto;width:100%;position:relative"><div id="tb-maps-area" style="display:flex;flex-direction:column;gap:32px;padding-bottom:8px"></div></div>
+    <div id="tb-tooltip" style="display:none;position:fixed;background:#1a1a2e;color:white;font-size:13px;font-weight:600;padding:6px 12px;border-radius:6px;pointer-events:none;z-index:9999;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25)"></div>
     <div style="margin-top:16px;display:flex;gap:10px">
       <button class="btn btn-n" onclick="saveTerritoryMap()">Save Territory</button>
       <button class="btn btn-o" onclick="cancelBuildTerritory()">Cancel</button>
@@ -5584,11 +5585,32 @@ function tbRenderStateMap(stAbbr,container){
     p.setAttribute('stroke','white');
     p.setAttribute('stroke-width','0.5');
     p.style.cursor=claimInfo?'not-allowed':'pointer';
-    p.title=countyName+(claimInfo?' ('+claimInfo.name+')':'');
+    const tipLabel=countyName+' County'+(claimInfo?' — '+claimInfo.name:'');
     if(!claimInfo){
       p.addEventListener('click',()=>tbClickCounty(p,stAbbr,countyName));
-      p.addEventListener('mouseenter',()=>{if(!sel.has(countyName)) p.setAttribute('fill','#B0C4DE');});
-      p.addEventListener('mouseleave',()=>{if(!sel.has(countyName)) p.setAttribute('fill','#EEF2F7');});
+      p.addEventListener('mouseenter',e=>{
+        if(!sel.has(countyName)) p.setAttribute('fill','#B0C4DE');
+        const tip=g('tb-tooltip');
+        if(tip){tip.textContent=tipLabel;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
+      });
+      p.addEventListener('mousemove',e=>{
+        const tip=g('tb-tooltip');
+        if(tip){tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
+      });
+      p.addEventListener('mouseleave',()=>{
+        if(!sel.has(countyName)) p.setAttribute('fill','#EEF2F7');
+        const tip=g('tb-tooltip');if(tip) tip.style.display='none';
+      });
+    } else {
+      p.addEventListener('mouseenter',e=>{
+        const tip=g('tb-tooltip');
+        if(tip){tip.textContent=tipLabel;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
+      });
+      p.addEventListener('mousemove',e=>{
+        const tip=g('tb-tooltip');
+        if(tip){tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
+      });
+      p.addEventListener('mouseleave',()=>{const tip=g('tb-tooltip');if(tip) tip.style.display='none';});
     }
     svg.appendChild(p);
     // County label for larger counties
