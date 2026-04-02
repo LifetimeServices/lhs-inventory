@@ -1725,6 +1725,7 @@ async function startApp(){
   if(CU?.dispatch_pins&&Object.keys(CU.dispatch_pins).length>0){
     _dispPinned=CU.dispatch_pins;
     try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
+    if(_dispPinned['__region__']) _dispRegion=_dispPinned['__region__'];
   }
   // Restore page divs
   document.querySelector('.main').innerHTML=`
@@ -8138,6 +8139,8 @@ let _dragApt=null;
 let _dragGreyBlock=null;
 let _dispGreyResize=null;
 try{_dispPinned=JSON.parse(localStorage.getItem('lms_disp_pin')||'{}');}catch{}
+// Restore pinned region filter
+if(_dispPinned['__region__']) _dispRegion=_dispPinned['__region__'];
 try{_dispCollapsed=JSON.parse(localStorage.getItem('lms_disp_collapsed')||'[]');}catch{}
 // Restore saved division order
 try{
@@ -8186,9 +8189,9 @@ function bDispatch(){
         ${(()=>{const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));if(!terrs.length)return'';return`<select onchange="dispSetTerritory(this.value)" style="padding:4px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;background:white"><option value="all"${_dispTerritory==='all'?' selected':''}>All Territories</option>${terrs.map(t=>`<option value="${esc(t.id)}"${_dispTerritory===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`;})()}
         <span style="color:var(--bdr)">|</span>
         <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
-          style="${Object.keys(_dispPinned).length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
-          title="${Object.keys(_dispPinned).length>0?'Click to unpin all divisions':'Click to pin and save current order'}">
-          &#128204; ${Object.keys(_dispPinned).length>0?'Unpin All':'Pin All'}
+          style="${Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
+          title="${Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0?'Click to unpin all divisions':'Click to pin and save current order'}">
+          &#128204; ${Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0?'Unpin All':'Pin All'}
         </button>
         <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
       </div>
@@ -8621,6 +8624,9 @@ function dispToggleDiv(div){
 
 async function dispPin(div){
   if(_dispPinned[div]) delete _dispPinned[div]; else _dispPinned[div]=true;
+  // Save active region so it restores when returning to the board
+  if(_dispRegion&&_dispRegion!=='all') _dispPinned['__region__']=_dispRegion;
+  else delete _dispPinned['__region__'];
   try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
   // Save to Supabase so pins persist across devices/browsers
   if(CU?.id){
@@ -8631,17 +8637,21 @@ async function dispPin(div){
 }
 
 async function dispPinAll(){
-  const isCurrentlyPinned=Object.keys(_dispPinned).length>0;
+  const isCurrentlyPinned=Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0;
   if(isCurrentlyPinned){
-    // Unpin all
+    // Unpin all — also clear saved region
     _dispPinned={};
+    _dispRegion='all';
     try{localStorage.setItem('lms_disp_pin','{}');}catch{}
     tst('All divisions unpinned — order reset','info');
   } else {
-    // Pin all in current order
+    // Pin all in current order + save active region
     DIVS.forEach((d,i)=>{ _dispPinned[d]=true; });
+    if(_dispRegion&&_dispRegion!=='all') _dispPinned['__region__']=_dispRegion;
+    else delete _dispPinned['__region__'];
     try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
-    tst('Division order pinned as your default','success');
+    const regionMsg=_dispRegion&&_dispRegion!=='all'?` (${_dispRegion} region)`:'';
+    tst(`Division order pinned as your default${regionMsg}`,'success');
   }
   // Save to Supabase so pins persist across devices/browsers
   if(CU?.id){
