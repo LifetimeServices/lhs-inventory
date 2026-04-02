@@ -499,10 +499,22 @@ function regionOpts(selected=''){
 const JOB_TYPES={
   'Install':              '#FF8A50',
   'Standard Service Call':'#1565C0',
-  'Do Not Move':          '#C62828',
   'Estimates / Consults': '#2E7D32',
   'Difficult Service Call':'#F9A825',
 };
+
+// Determine WO block color from job_type + subtype/classification
+function woDispColor(wo){
+  if(wo.job_type==='Installation') return JOB_TYPES['Install'];
+  if(wo.job_type==='Design/Consultation') return JOB_TYPES['Estimates / Consults'];
+  if(wo.job_type==='Service Call'){
+    const sub=(wo.job_subtype||wo.job_classification||'').toLowerCase();
+    if(sub.includes('difficult')) return JOB_TYPES['Difficult Service Call'];
+    return JOB_TYPES['Standard Service Call'];
+  }
+  // Warranty and others fall back to standard service call blue
+  return JOB_TYPES['Standard Service Call'];
+}
 
 // ── JOB TYPE HIERARCHY ────────────────────────────────────────────────────────
 // Fixed job types (never change): Installation, Design/Consultation, Warranty, Service Call
@@ -7328,6 +7340,8 @@ let _dispRegion='all';
 let _dispPinned={};
 let _dispCollapsed=[];
 let _dragApt=null;
+let _dragGreyBlock=null;
+let _dispGreyResize=null;
 try{_dispPinned=JSON.parse(localStorage.getItem('lms_disp_pin')||'{}');}catch{}
 try{_dispCollapsed=JSON.parse(localStorage.getItem('lms_disp_collapsed')||'[]');}catch{}
 // Restore saved division order
@@ -7427,15 +7441,14 @@ function renderDispBoard(){
   const allWOs=S.get('lhs:work_orders')||[];
   let greyBlocks=S.get('lhs:grey_blocks')||[];
 
-  // Filter by region
-  // Filter WOs by region - normalize state to 2-letter abbrev
-  const filteredWOs=_dispRegion==='all'?allWOs:
+  // Filter by region — also exclude Cancelled WOs from the board
+  const filteredWOs=(_dispRegion==='all'?allWOs:
     allWOs.filter(w=>{
       const raw=(w.customer_state||'').trim();
       if(!raw) return true; // no state = show in all regions
       const state=raw.length<=3?raw.toUpperCase():raw.toUpperCase().slice(0,2);
       return REGIONS[_dispRegion]?.states.includes(state);
-    });
+    })).filter(w=>w.status!=='Cancelled');
   const filteredWOIds=new Set(filteredWOs.map(w=>w.id));
 
   // Group techs by division
@@ -7594,10 +7607,7 @@ function renderDispBoard(){
         const leftPx=Math.max(0,(startMin/60)*pxPerHr);
         const widthPx=Math.max(60,(durMin/60)*pxPerHr-2);
         const isCrossDiv=wo.division!==div;
-        const jobTypeColor=wo.job_type==='Installation'?JOB_TYPES['Install']:
-          wo.job_type==='Design/Consultation'?JOB_TYPES['Estimates / Consults']:
-          wo.job_type==='Service Call'?JOB_TYPES['Standard Service Call']:
-          wo.job_type==='Warranty'?JOB_TYPES['Do Not Move']:'#607D8B';
+        const jobTypeColor=woDispColor(wo);
         const flexColor=wo.is_flexible?'var(--green)':'#E53935';
         const techStatus=allTechs.find(t=>t.appointment_id===apt.id&&t.tech_name===techName);
         const statusAlpha=techStatus?.arrived_at?'ff':techStatus?.dispatched_at?'cc':'99';
@@ -7626,11 +7636,23 @@ function renderDispBoard(){
         const startMin=(hh-startHr)*60+mm;
         const leftPx=Math.max(0,(startMin/60)*pxPerHr);
         const widthPx=Math.max(60,(b.duration/60)*pxPerHr-2);
-        return`<div onclick="oEditGreyBlock('${b.id}')"
+        const isMgr=BLOCK_LOCKED_ROLES.includes(CU?.role);
+        const lockIcon=b.locked?'🔒 ':'';
+        return`<div
+          draggable="${isMgr?'true':'false'}"
+          ondragstart="${isMgr?`greyBlockDragStart(event,'${b.id}','${b.tech}')`:''}"
+          ondragend="${isMgr?`greyBlockDragEnd(event)`:''}"
+          onclick="oEditGreyBlock('${b.id}')"
           style="position:absolute;left:${leftPx}px;width:${widthPx}px;top:3px;bottom:3px;
-          background:#607D8B;border-radius:6px;cursor:pointer;overflow:hidden;opacity:.85"
-          title="${b.label}">
-          <div style="padding:3px 6px;font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.label}</div>
+          background:#90A4AE;border-radius:6px;cursor:pointer;overflow:hidden;opacity:.9"
+          title="${lockIcon}${b.label} — ${b.tech}">
+          ${isMgr?`<div onmousedown="greyBlockResizeStart(event,'${b.id}','left')" onclick="event.stopPropagation()"
+            style="position:absolute;left:0;top:0;bottom:0;width:8px;cursor:w-resize;z-index:5;
+            background:rgba(0,0,0,.15);border-radius:6px 0 0 6px"></div>`:''}
+          <div style="padding:3px ${isMgr?'10px':'6px'};font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lockIcon}${b.label}</div>
+          ${isMgr?`<div onmousedown="greyBlockResizeStart(event,'${b.id}','right')" onclick="event.stopPropagation()"
+            style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:e-resize;z-index:5;
+            background:rgba(0,0,0,.15);border-radius:0 6px 6px 0"></div>`:''}
           <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,.3)"></div>
         </div>`;
       })].join('');
@@ -7648,10 +7670,7 @@ function renderDispBoard(){
           const leftPx=Math.max(0,(startMin/60)*pxPerHr);
           const widthPx=Math.max(40,(durMin/60)*pxPerHr-2);
           const isCrossDiv=wo.division!==div;
-          const jobTypeColor=wo.job_type==='Installation'?JOB_TYPES['Install']:
-            wo.job_type==='Design/Consultation'?JOB_TYPES['Estimates / Consults']:
-            wo.job_type==='Service Call'?JOB_TYPES['Standard Service Call']:
-            wo.job_type==='Warranty'?JOB_TYPES['Do Not Move']:'#607D8B';
+          const jobTypeColor=woDispColor(wo);
           const flexColor=wo.is_flexible?'var(--green)':'#E53935';
           const techStatus=allTechs.find(t=>t.appointment_id===apt.id&&t.tech_name===techName);
           return`<div
@@ -7692,12 +7711,24 @@ function renderDispBoard(){
           const widthPx=Math.max(40,(b.duration/60)*pxPerHr-2);
           const lockIcon=b.locked?'🔒 ':'';
           const ptoIcon=b.is_pto?'📅 ':'';
-          return`<div onclick="oEditGreyBlock('${b.id}')"
+          const isMgr=BLOCK_LOCKED_ROLES.includes(CU?.role);
+          const pad=isMgr?'3px 10px':'3px 5px';
+          return`<div
+            draggable="${isMgr?'true':'false'}"
+            ondragstart="${isMgr?`greyBlockDragStart(event,'${b.id}','${b.tech}')`:''}"
+            ondragend="${isMgr?`greyBlockDragEnd(event)`:''}"
+            onclick="oEditGreyBlock('${b.id}')"
             style="position:absolute;left:${leftPx}px;width:${widthPx}px;top:3px;bottom:3px;
             background:#90A4AE;border-radius:6px;cursor:pointer;overflow:hidden;
             box-shadow:0 1px 3px rgba(0,0,0,.2)"
             title="${lockIcon}${ptoIcon}${b.label} — ${b.tech}">
-            <div style="padding:3px 5px;font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lockIcon}${b.label}</div>
+            ${isMgr?`<div onmousedown="greyBlockResizeStart(event,'${b.id}','left')" onclick="event.stopPropagation()"
+              style="position:absolute;left:0;top:0;bottom:0;width:8px;cursor:w-resize;z-index:5;
+              background:rgba(0,0,0,.15);border-radius:6px 0 0 6px" title="Drag to move start"></div>`:''}
+            <div style="padding:${pad};font-size:10px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lockIcon}${b.label}</div>
+            ${isMgr?`<div onmousedown="greyBlockResizeStart(event,'${b.id}','right')" onclick="event.stopPropagation()"
+              style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:e-resize;z-index:5;
+              background:rgba(0,0,0,.15);border-radius:0 6px 6px 0" title="Drag to extend"></div>`:''}
             ${widthPx>60&&b.is_pto?`<div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:#FFB300"></div>`:''}
           </div>`;
         })).join('');
@@ -7843,8 +7874,55 @@ function dispDragStart(e,aptId,woId,techName){
 }
 function dispDragEnd(e){ if(e.target) e.target.style.opacity='1'; _dragApt=null; window._dragOffsetX=0; }
 
+// Grey block drag — managers only
+function greyBlockDragStart(e,blockId,techName){
+  if(!BLOCK_LOCKED_ROLES.includes(CU?.role)){e.preventDefault();return;}
+  _dragApt=null;
+  _dragGreyBlock={blockId,techName};
+  e.dataTransfer.effectAllowed='move';
+  const rect=e.currentTarget.getBoundingClientRect();
+  window._dragOffsetX=e.clientX-rect.left;
+  setTimeout(()=>{if(e.target)e.target.style.opacity='0.5';},0);
+}
+function greyBlockDragEnd(e){if(e.target)e.target.style.opacity='1';_dragGreyBlock=null;window._dragOffsetX=0;}
+
+// Grey block resize — managers only
+function greyBlockResizeStart(e,blockId,side){
+  if(!BLOCK_LOCKED_ROLES.includes(CU?.role)) return;
+  e.stopPropagation(); e.preventDefault();
+  const blocks=S.get('lhs:grey_blocks')||[];
+  const b=blocks.find(x=>x.id===blockId); if(!b) return;
+  _dispGreyResize={blockId,side,startX:e.clientX,origTime:b.time||'08:00',origDur:b.duration||60};
+  document.body.style.cursor=side==='left'?'w-resize':'e-resize';
+  document.body.style.userSelect='none';
+  const bar=document.getElementById('disp-resize-bar');
+  if(bar){bar.style.left=e.clientX+'px';bar.style.display='block';}
+}
+
 async function dispDrop(e,newTech,newDiv){
   e.preventDefault();
+  // Handle grey block drag-drop
+  if(_dragGreyBlock){
+    const {blockId,techName:origTech}=_dragGreyBlock; _dragGreyBlock=null;
+    const pxPerHr=window._dispPxPerHr||80;
+    const startHr=window._dispStartHr||6;
+    const endHr=startHr+(window._dispTotalHrs||14);
+    const panelRect=e.currentTarget.getBoundingClientRect();
+    const relX=Math.max(0,(e.clientX-(window._dragOffsetX||0))-panelRect.left);
+    const newHrFloat=Math.min(endHr-0.25,startHr+(relX/pxPerHr));
+    const hrs=Math.floor(newHrFloat);
+    const mins=Math.round((newHrFloat-hrs)*60/15)*15;
+    const fH=mins>=60?hrs+1:hrs; const fM=mins>=60?0:mins;
+    const finalTime=`${String(fH).padStart(2,'0')}:${String(fM).padStart(2,'0')}`;
+    const blocks=S.get('lhs:grey_blocks')||[];
+    const b=blocks.find(x=>x.id===blockId); if(!b) return;
+    b.time=finalTime;
+    if(newTech&&newTech!==origTech) b.tech=newTech;
+    S.set('lhs:grey_blocks',blocks);
+    try{await DB.from('lhs_grey_blocks').update({time:finalTime,tech:b.tech}).eq('id',blockId);}catch(err){console.warn('grey block move failed',err?.message);}
+    tst(`Block moved to ${finalTime}`,'success');
+    showPage('dispatch'); return;
+  }
   if(!_dragApt) return;
   const {aptId,woId,techName}=_dragApt;
 
@@ -8028,6 +8106,39 @@ document.addEventListener('mousemove',e=>{
 });
 
 document.addEventListener('mouseup',async e=>{
+  // Grey block resize
+  if(_dispGreyResize){
+    const {blockId,side,startX,origTime,origDur}=_dispGreyResize;
+    _dispGreyResize=null;
+    document.body.style.cursor='';
+    document.body.style.userSelect='';
+    const bar=document.getElementById('disp-resize-bar');
+    if(bar) bar.style.display='none';
+    const pxPerHr=window._dispPxPerHr||80;
+    const startHr=window._dispStartHr||6;
+    const deltaX=e.clientX-startX;
+    const deltaMin=Math.round((deltaX/pxPerHr)*60/15)*15;
+    if(Math.abs(deltaMin)<15) return;
+    const [oh,om]=(origTime+':00').split(':').map(Number);
+    const origStartMin=oh*60+om;
+    let newStartMin=origStartMin, newDur=origDur;
+    if(side==='left'){
+      newStartMin=Math.max(startHr*60,Math.min(origStartMin+origDur-15,origStartMin+deltaMin));
+      newDur=origDur-(newStartMin-origStartMin);
+    } else {
+      newDur=Math.max(15,origDur+deltaMin);
+    }
+    const newH=Math.floor(newStartMin/60), newM=newStartMin%60;
+    const newTime=`${String(newH).padStart(2,'0')}:${String(newM).padStart(2,'0')}`;
+    const blocks=S.get('lhs:grey_blocks')||[];
+    const b=blocks.find(x=>x.id===blockId); if(!b) return;
+    b.time=newTime; b.duration=newDur;
+    S.set('lhs:grey_blocks',blocks);
+    try{await DB.from('lhs_grey_blocks').update({time:newTime,duration:newDur}).eq('id',blockId);}catch(err){console.warn('grey block resize failed',err?.message);}
+    const d2h=Math.floor(newDur/60),d2m=newDur%60;
+    tst(`Block: ${newTime} · ${d2h>0?d2h+'h ':''}${d2m>0?d2m+'m':''}`.trim(),'success');
+    showPage('dispatch'); return;
+  }
   if(!_dispResize) return;
   const {aptId,side,startX,origTime,origDur}=_dispResize;
   _dispResize=null;
