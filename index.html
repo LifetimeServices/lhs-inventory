@@ -5083,7 +5083,13 @@ async function sendChatMsg(){
     const m2=S.get('lhs:messages')||[];
     const idx=m2.findIndex(x=>x.id===tempId);
     if(idx>=0) m2[idx]=saved;
+    else m2.push(saved);
     S.set('lhs:messages',m2);
+    // Update last-seen time so poll doesn't re-process our own message
+    if(!_chatLastMsgTime||saved.created_at>_chatLastMsgTime) _chatLastMsgTime=saved.created_at;
+  } else {
+    console.error('❌ Message failed to save to Supabase — check lhs_messages table + RLS policies');
+    tst('Message may not reach others — database error','error');
   }
   // Seed chat poller timestamp so we don't re-show our own message as a toast
   if(!_chatLastMsgTime||new Date().toISOString()>_chatLastMsgTime)
@@ -14579,57 +14585,69 @@ function startNotifPolling(){
 async function pollChatMessages(){
   if(!CU?.email) return;
   try{
-    let q=DB.from('lhs_messages').select('*').order('created_at',{ascending:true}).limit(80);
-    if(_chatLastMsgTime) q=q.gt('created_at',_chatLastMsgTime);
+    // Always fetch the last 200 messages, ordered newest-first then reverse
+    // Using created_at > last known time if we have it, else last 200
+    let q=DB.from('lhs_messages').select('*').order('created_at',{ascending:false}).limit(200);
+    if(_chatLastMsgTime) q=DB.from('lhs_messages').select('*').gt('created_at',_chatLastMsgTime).order('created_at',{ascending:true}).limit(100);
     const{data,error}=await q;
-    if(error||!data?.length) return;
+    if(error){console.warn('Chat poll error:',error.message);return;}
+    if(!data?.length) return;
 
     const msgs=S.get('lhs:messages')||[];
     let newForMe=[];
+
+    // On first poll (no lastMsgTime), seed the cache with all fetched messages
+    // and mark anything newer than 10 seconds as "new for me"
+    const tenSecsAgo=new Date(Date.now()-10000).toISOString();
+
     data.forEach(m=>{
-      if(!msgs.find(x=>x.id===m.id)){
+      const existing=msgs.find(x=>x.id===m.id||( x.id&&x.id.startsWith('tmp_')&&x.body===m.body&&x.sender_email===m.sender_email&&x.channel===m.channel));
+      if(!existing){
         msgs.push(m);
-        // Count as unread if sent by someone else
-        if(m.sender_email!==CU.email) newForMe.push(m);
+        if(m.sender_email!==CU.email&&(_chatLastMsgTime?true:m.created_at>tenSecsAgo)) newForMe.push(m);
+      } else if(existing.id&&existing.id.startsWith('tmp_')){
+        // Replace temp record with real one
+        const idx=msgs.indexOf(existing);
+        if(idx>=0) msgs[idx]=m;
       }
     });
     S.set('lhs:messages',msgs);
-    // Update last-seen timestamp
-    _chatLastMsgTime=data[data.length-1].created_at;
+
+    // Update timestamp to newest we've seen
+    const allTimes=data.map(m=>m.created_at);
+    const newest=allTimes.sort().pop();
+    if(newest>(_chatLastMsgTime||'')) _chatLastMsgTime=newest;
 
     if(!newForMe.length) return;
 
-    // Update chat badge
     const onChatPage=document.getElementById('p-chatter')?.classList.contains('active');
     if(!onChatPage){
       _chatUnread+=newForMe.length;
       refreshChatBadge();
     }
-
-    // Refresh message pane if user is looking at chatter
     if(onChatPage){
-      // Re-render just the message list without full page rebuild
       const relevant=newForMe.filter(m=>m.channel===(_chatChannel||'all'));
       if(relevant.length) refreshChatMsgs();
     }
 
-    // Show Teams-style toast for each new message (max 3)
+    // Teams-style toast (max 3)
     newForMe.slice(0,3).forEach(m=>showChatToast(m));
 
-    // Also push a persistent notification for DMs addressed to me
+    // Persistent notification for DMs where I am a participant
     newForMe.forEach(async m=>{
-      if(m.channel&&m.channel.startsWith('dm-')&&m.channel.includes(CU.name.replace(/\s+/g,'-').toLowerCase())){
+      const mySlug=CU.name.replace(/\s+/g,'-').toLowerCase();
+      if(m.channel&&m.channel.startsWith('dm-')&&m.channel.includes(mySlug)){
+        const all=S.get('lhs:notifications')||[];
+        // Don't double-notify
+        const already=all.find(n=>n.type==='chat'&&n.from_user===m.sender_name&&n.body===(m.body||'').slice(0,120)&&!n.is_read);
+        if(already) return;
         const notif={user_email:CU.email,type:'chat',
-          title:`New message from ${m.sender_name||'Someone'}`,
+          title:`💬 ${m.sender_name||'Someone'} sent you a message`,
           body:(m.body||'').slice(0,120),
           from_user:m.sender_name||'',
           is_read:false,created_at:m.created_at};
         const saved=await dbInsert('lhs:notifications',notif);
-        if(saved){
-          const all=S.get('lhs:notifications')||[];
-          all.push(saved);S.set('lhs:notifications',all);
-          refreshNotifBadge();
-        }
+        if(saved){all.push(saved);S.set('lhs:notifications',all);refreshNotifBadge();}
       }
     });
   }catch(e){console.warn('Chat poll error:',e.message);}
