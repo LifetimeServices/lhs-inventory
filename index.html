@@ -5467,7 +5467,23 @@ function buildTerritory(editId=null){
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px">
       <div class="fl" style="margin:0"><label>Territory Name</label><input id="tb-name" value="${esc(_TB.name)}" placeholder="e.g. Green Bay Area"></div>
       <div class="fl" style="margin:0"><label>Region</label><select id="tb-region"><option value="">— Select —</option>${regionOpts}</select></div>
-      <div class="fl" style="margin:0"><label>Territory Color</label><input type="color" id="tb-color" value="${_TB.color}" oninput="tbColorChanged(this.value)" style="height:80px;width:100%;min-width:120px;padding:4px 6px;cursor:pointer;border-radius:8px;border:1.5px solid var(--bdr)"></div>
+      <div class="fl" style="margin:0;position:relative"><label>Territory Color</label>
+        <div id="tb-color-swatch" onclick="tbToggleColorPicker()" style="height:38px;width:120px;border-radius:8px;border:2px solid var(--bdr);cursor:pointer;background:${_TB.color};box-shadow:inset 0 0 0 2px rgba(255,255,255,.3)"></div>
+        <input type="hidden" id="tb-color" value="${_TB.color}">
+        <div id="tb-color-picker" style="display:none;position:absolute;top:46px;left:0;z-index:999;background:white;border:1.5px solid var(--bdr);border-radius:12px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:260px">
+          <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:10px">
+            ${['#C62828','#E53935','#F4511E','#EF6C00','#F9A825','#FDD835','#7CB342','#2E7D32',
+               '#00897B','#00ACC1','#1565C0','#1E88E5','#3949AB','#5E35B1','#8E24AA','#D81B60',
+               '#6D4C41','#546E7A','#37474F','#263238','#FF7043','#FFCA28','#66BB6A','#26C6DA',
+               '#42A5F5','#7E57C2','#EC407A','#AB47BC','#26A69A','#78909C','#FF8A65','#A5D6A7',
+               '#80DEEA','#90CAF9','#CE93D8','#F48FB1','#BCAAA4','#B0BEC5','#3ABFBF','#1a1a2e'].map(c=>`<div onclick="tbPickColor('${c}')" title="${c}" style="width:100%;aspect-ratio:1;border-radius:5px;background:${c};cursor:pointer;border:2px solid ${c===_TB.color?'var(--navy)':'transparent'};box-sizing:border-box;transition:transform .1s" onmouseenter="this.style.transform='scale(1.18)'" onmouseleave="this.style.transform='scale(1)'"></div>`).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--bdr);padding-top:10px">
+            <span style="font-size:12px;color:var(--muted);flex-shrink:0">Custom:</span>
+            <input type="color" id="tb-color-custom" value="${_TB.color}" oninput="tbPickColor(this.value)" style="height:32px;flex:1;cursor:pointer;border-radius:6px;border:1px solid var(--bdr);padding:2px 4px">
+          </div>
+        </div>
+      </div>
       <div></div>
     </div>
     <div style="margin-bottom:12px">
@@ -5667,6 +5683,32 @@ function tbRefreshMaps(){
   if(!area) return;
   area.innerHTML='';
   _TB.selectedStates.forEach(st=>tbRenderStateMap(st,area));
+}
+function tbToggleColorPicker(){
+  const p=g('tb-color-picker');
+  if(!p) return;
+  const open=p.style.display==='none';
+  p.style.display=open?'block':'none';
+  if(open){
+    // close on outside click
+    setTimeout(()=>{
+      const handler=e=>{if(!p.contains(e.target)&&e.target.id!=='tb-color-swatch'){p.style.display='none';document.removeEventListener('click',handler);}};
+      document.addEventListener('click',handler);
+    },10);
+  }
+}
+function tbPickColor(color){
+  _TB.color=color;
+  const hidden=g('tb-color');if(hidden) hidden.value=color;
+  const swatch=g('tb-color-swatch');if(swatch) swatch.style.background=color;
+  const custom=g('tb-color-custom');if(custom) custom.value=color;
+  // Update border highlights in palette
+  const picker=g('tb-color-picker');
+  if(picker) picker.querySelectorAll('[onclick^="tbPickColor"]').forEach(el=>{
+    const c=el.getAttribute('onclick').match(/'([^']+)'/)?.[1];
+    el.style.borderColor=c===color?'var(--navy)':'transparent';
+  });
+  tbRefreshMaps();
 }
 function tbColorChanged(color){
   _TB.color=color;
