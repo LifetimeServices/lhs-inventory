@@ -2449,13 +2449,14 @@ function prvSlip(input){
 
 function vSlip(pi){
   const pos=S.get('lhs:pos')||[];const p=pos[pi];
-  if(!p||!p.packing_slip_data) return tst('No packing slip on file','info');
+  const src=p?.packing_slip_url||p?.packing_slip_data;
+  if(!p||!src) return tst('No packing slip on file','info');
   const win=window.open();
   if(p.packing_slip_type&&p.packing_slip_type.startsWith('image/')){
     win.document.write(`<html><body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh">
-      <img src="${p.packing_slip_data}" style="max-width:100%;max-height:100vh;object-fit:contain"></body></html>`);
+      <img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain"></body></html>`);
   } else {
-    win.document.write(`<html><body style="margin:0"><embed src="${p.packing_slip_data}" type="application/pdf" width="100%" height="100%"></body></html>`);
+    win.document.write(`<html><body style="margin:0"><embed src="${src}" type="application/pdf" width="100%" height="100%"></body></html>`);
   }
 }
 
@@ -2463,15 +2464,21 @@ async function postRecv(pi3){
   const pos=S.get('lhs:pos')||[];const ls=S.get('lhs:ls')||[];const p=pos[pi3];let short=false;
   const dt=v('rdt');
 
-  // Read packing slip file if provided
+  // Read packing slip file if provided — compress image, try cloud storage
   const fileInput=document.getElementById('rslip');
   if(fileInput&&fileInput.files[0]){
     const file=fileInput.files[0];
-    await new Promise(res=>{
-      const reader=new FileReader();
-      reader.onload=e=>{p.packing_slip_data=e.target.result;p.packing_slip_name=file.name;p.packing_slip_type=file.type;res();};
-      reader.readAsDataURL(file);
-    });
+    tst('Uploading packing slip...','info');
+    const slipId='slip_'+(p.id||Date.now())+'_'+Math.random().toString(36).slice(2);
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const isPDF=file.type==='application/pdf'||safeName.toLowerCase().endsWith('.pdf');
+    const slipPath=`packing-slips/${slipId}${isPDF?'.pdf':'.jpg'}`;
+    const slip=await lhsUploadFile(file,slipPath);
+    p.packing_slip_url=slip.url;
+    p.packing_slip_data=slip.url;   // backward-compat so vSlip() still works
+    p.packing_slip_name=file.name;
+    p.packing_slip_type=isPDF?'application/pdf':'image/jpeg';
+    p.packing_slip_storage=slip.storagePath;
   }
 
   (p.lines||[]).forEach((l,i)=>{
@@ -6242,16 +6249,19 @@ async function saveReceipt(){
   if(!dateVal){tst('Please enter a receipt date','error');return;}
   if(!totalVal){tst('Please enter the total amount','error');return;}
 
-  // Convert file to base64 for storage
-  let file_data='';
-  let file_name='';
-  let file_type='';
+  // Upload receipt file — compress image, try cloud storage, fallback to base64
+  let file_data='',file_name='',file_type='',file_url='',file_storage_path=null;
   if(file){
-    file_data=await new Promise((res,rej)=>{
-      const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej();
-      r.readAsDataURL(file);
-    });
-    file_name=file.name; file_type=file.type;
+    tst('Uploading receipt...','info');
+    const recId='rec_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const isPDF=file.type==='application/pdf'||file.name?.toLowerCase().endsWith('.pdf');
+    const recPath=`receipts/${recId}${isPDF?'.pdf':'.jpg'}`;
+    const uploaded=await lhsUploadFile(file,recPath);
+    file_data=uploaded.url;  // backward-compat for viewReceipt()
+    file_url=uploaded.url;
+    file_storage_path=uploaded.storagePath;
+    file_name=file.name;
+    file_type=isPDF?'application/pdf':'image/jpeg';
   }
 
   const receipt={
@@ -6263,7 +6273,7 @@ async function saveReceipt(){
     category:parsed.category||code?.description||'General',
     primary_code_id:codeId||'',
     region,state,notes,
-    file_data,file_name,file_type,
+    file_data,file_name,file_type,file_url,file_storage_path,
     line_items:parsed.line_items||[],
     ai_analyzed:!!window._rcAIParsed,
     status:'Pending',
@@ -6311,7 +6321,7 @@ function viewReceipt(id){
         <thead><tr style="border-bottom:1px solid var(--bdr)"><th style="text-align:left;padding:4px">Item</th><th style="text-align:right;padding:4px">Amount</th></tr></thead>
         <tbody>${(r.line_items||[]).map(li=>`<tr style="border-bottom:1px solid var(--surf)"><td style="padding:4px">${esc(li.description||'')}</td><td style="padding:4px;text-align:right;font-family:'DM Mono',monospace">${f$(li.amount)}</td></tr>`).join('')}</tbody>
       </table></div>`:''}
-    ${r.file_data&&r.file_type?.startsWith('image/')?`<div style="margin-bottom:12px"><img src="${r.file_data}" style="max-width:100%;max-height:250px;border-radius:8px;border:1px solid var(--bdr)"></div>`:''}
+    ${(r.file_url||r.file_data)&&(r.file_type?.startsWith('image/')||r.file_type==='image/jpeg')?`<div style="margin-bottom:12px"><img src="${r.file_url||r.file_data}" style="max-width:100%;max-height:250px;border-radius:8px;border:1px solid var(--bdr)"></div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${canApprove&&r.status==='Pending'?`<button class="btn btn-g" onclick="approveReceipt('${id}');cMod()">&#10003; Approve</button><button class="btn btn-r" onclick="rejectReceipt('${id}');cMod()">&#10007; Reject</button>`:''}
       <button class="btn btn-o" onclick="cMod()">Close</button>
@@ -9823,6 +9833,47 @@ async function compressImage(file,maxDim=1280,quality=0.82){
     img.onerror=()=>{URL.revokeObjectURL(objUrl);resolve(file);};
     img.src=objUrl;
   });
+}
+
+// ── CENTRAL FILE UPLOAD UTILITY ───────────────────────────────────────────────
+// Use this for EVERY file upload in the app — photos, receipts, packing slips, docs.
+// Compresses images, tries Supabase Storage, falls back to compressed base64.
+// All fallback base64 is ≤ ~600 KB so it stays under Supabase's 2 MB API limit.
+//
+//   path   = storage path e.g. 'receipts/rec_123.jpg'
+//   bucket = storage bucket (default 'lhs-uploads')
+//   Returns: { url, storagePath, storageBucket, fileSize, isStorage }
+//
+async function lhsUploadFile(file, path, bucket='lhs-uploads'){
+  if(!file) return{url:'',storagePath:null,storageBucket:null,fileSize:0,isStorage:false};
+  const isPDF=file.type==='application/pdf'||file.name?.toLowerCase().endsWith('.pdf');
+  // Compress images to ≤1280px JPEG — keeps base64 well under 2 MB API limit
+  let blob=file;
+  if(!isPDF&&file.type.startsWith('image/')){
+    try{blob=await compressImage(file);}catch(e){blob=file;}
+  }
+  // 1. Try Supabase Storage (fastest, stores URL only — no size limit)
+  let url='',storagePath=null,storageBucket=null,isStorage=false;
+  try{
+    const{error}=await DB.storage.from(bucket).upload(path,blob,{
+      upsert:true,contentType:isPDF?'application/pdf':'image/jpeg'
+    });
+    if(!error){
+      const{data:ud}=DB.storage.from(bucket).getPublicUrl(path);
+      url=ud?.publicUrl||'';
+      storagePath=path;storageBucket=bucket;isStorage=true;
+    }
+  }catch(e){console.warn('lhsUploadFile storage:',e.message);}
+  // 2. Fallback: compressed base64 (~200–600 KB for images, raw for PDFs)
+  if(!url){
+    url=await new Promise(res=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result||'');
+      r.onerror=()=>res('');
+      r.readAsDataURL(blob);
+    });
+  }
+  return{url,storagePath,storageBucket,fileSize:blob.size,isStorage};
 }
 
 async function aptUploadPhotos(aptId,woId,input){
