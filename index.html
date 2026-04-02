@@ -1945,7 +1945,7 @@ window._pickerCb={};
 function mkItemPicker(id, selectedSku, onchangeExpr){
   const items=S.get('lhs:items')||[];
   const sel=items.find(i=>i.sku===(selectedSku||''));
-  const hiddenVal=sel?(esc(sel.sku)+'|'+esc(sel.name)+'|'+(sel.unit_cost||sel.cost||0)):'';
+  const hiddenVal=sel?(esc(sel.sku)+'|'+esc(sel.name)+'|'+(sel.unit_cost||sel.cost||0)+'|'+(sel.customer_cost||0)):'';
   return`<div class="ipw" id="ipw-${id}">
     <input class="ipt" id="ipt-${id}" placeholder="Search items..." autocomplete="off"
       value="${sel?esc(sel.name):''}"
@@ -1962,10 +1962,12 @@ function _pickerRows(id, q){
   const lq=(q||'').toLowerCase();
   const filtered=lq?items.filter(i=>(i.name||'').toLowerCase().includes(lq)||(i.sku||'').toLowerCase().includes(lq)):items;
   if(!filtered.length) return'<div class="ip-none">No items found</div>';
-  return filtered.slice(0,60).map(i=>`<div class="ipi" onmousedown="pickerSelect('${id}','${esc(i.sku)}','${esc(i.name).replace(/'/g,"\\'")}',${i.unit_cost||i.cost||0})">
+  const isGod=CU?.role==='God View';
+  return filtered.slice(0,60).map(i=>`<div class="ipi" onmousedown="pickerSelect('${id}','${esc(i.sku)}','${esc(i.name).replace(/'/g,"\\'")}',${i.unit_cost||i.cost||0},${i.customer_cost||0})">
     <span class="ip-name">${esc(i.name)}</span>
     <span class="ip-sku">${esc(i.sku)}</span>
-    <span class="ip-cost">${f$(i.unit_cost||i.cost||0)}</span>
+    <span class="ip-cost">${f$(i.customer_cost||0)}</span>
+    ${isGod?`<span style="font-size:10px;color:var(--muted);margin-left:4px">(co: ${f$(i.unit_cost||i.cost||0)})</span>`:''}
   </div>`).join('');
 }
 
@@ -1985,13 +1987,13 @@ function pickerClose(id){
   if(dd) dd.classList.remove('open');
 }
 
-function pickerSelect(id,sku,name,cost){
+function pickerSelect(id,sku,name,cost,custCost){
   const inp=document.getElementById('ipt-'+id);
   const hid=document.getElementById('ips-'+id);
   if(inp) inp.value=name;
-  if(hid){hid.value=`${sku}|${name}|${cost}`;hid.dispatchEvent(new Event('change'));}
+  if(hid){hid.value=`${sku}|${name}|${cost}|${custCost||0}`;hid.dispatchEvent(new Event('change'));}
   pickerClose(id);
-  if(window._pickerCb[id]) window._pickerCb[id](sku,name,cost);
+  if(window._pickerCb[id]) window._pickerCb[id](sku,name,cost,custCost||0);
 }
 
 function pickerGetValue(id){
@@ -8590,6 +8592,7 @@ function openWO(woId){
   }).catch(()=>{});
   const balance=(wo.total_price||0)-(wo.total_paid||0);
   const matTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.unit_cost||0),0);
+  const matCustTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.customer_cost||0),0);
   const isTech=CU?.role==='Van Tech';
   const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
   const canSeeCost=['God View','Regional Manager'].includes(CU?.role);
@@ -8679,7 +8682,7 @@ function openWO(woId){
         <div style="${labelStyle}">Balance Due</div>
         <div style="${numStyle(balance>0?'var(--red)':'var(--green)')}">${balance>0?fmt(balance):'Paid ✓'}</div>
       </div>
-      ${canSeeCost?`<div style="${cardStyle}"><div style="${labelStyle}">Material Cost</div><div style="${numStyle('var(--amber)')}">${fmt(matTotal)}</div></div>`:''}
+      <div style="${cardStyle}"><div style="${labelStyle}">Material Cost</div><div style="font-size:13px;font-weight:600">${fmt(matCustTotal)}</div>${CU?.role==='God View'?`<div style="font-size:10px;color:var(--muted)">Co: ${fmt(matTotal)}</div>`:''}</div>
     </div>`;
   })()}
 
@@ -9018,18 +9021,31 @@ function matRowHTML(m, aptId, woId){
     }
   }
 
+  const custExt=fN(qty*(m.customer_cost||0));
+  const isGod=CU?.role==='God View';
   return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;overflow:hidden">
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;flex-wrap:wrap;background:${isPreset?'var(--surf)':'white'}">
-      ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);min-width:150px;flex-shrink:0">${esc(ql)}</span>`:''}
-      <div style="flex:1;min-width:150px;max-width:240px;flex-shrink:0" id="mat-item-wrap-${safeId}">
+    <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;flex-wrap:wrap;background:${isPreset?'var(--surf)':'white'}">
+      ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);min-width:120px;flex-shrink:0">${esc(ql)}</span>`:''}
+      <div style="flex:1;min-width:140px;max-width:220px;flex-shrink:0">
         ${mkItemPicker('mat-item-'+safeId, m.sku||'')}
       </div>
-      <span style="font-size:12px;color:var(--muted);flex-shrink:0">Qty:</span>
-      <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
-        style="width:54px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center;flex-shrink:0">
-      ${(['God View','Regional Manager'].includes(CU?.role))?`<span style="font-family:'DM Mono',monospace;font-size:12px;min-width:46px;text-align:right;color:var(--muted);flex-shrink:0">$${ext}</span>`:''}
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted)">Qty</span>
+        <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
+          style="width:48px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center">
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted)">Cust&nbsp;$</span>
+        <input type="number" id="mat-ccost-${safeId}" value="${m.customer_cost||0}" min="0" step="0.01"
+          style="width:68px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right">
+      </div>
+      ${isGod?`<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted)">Co&nbsp;$</span>
+        <input type="number" id="mat-ucost-${safeId}" value="${m.unit_cost||0}" min="0" step="0.01"
+          style="width:68px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right;background:#fff8f0;border-color:#e8b87a">
+      </div>`:''}
       <button onclick="saveMatRow('${safeId}','${safeApt}','${safeWo}')"
-        style="background:var(--navy);color:white;border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Add</button>
+        style="background:var(--navy);color:white;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Save</button>
       <button onclick="deleteMaterial('${safeId}','${safeApt}','${safeWo}')"
         style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:12px;flex-shrink:0">&#215;</button>
     </div>
@@ -9050,14 +9066,19 @@ async function saveMatRow(matId, aptId, woId){
   if(!qtyEl){tst('Row not found','error');return;}
   const qty=Math.max(0,parseInt(qtyEl.value)||0);
   const val=pickerGetValue('mat-item-'+matId);
+  const custCostEl=document.getElementById('mat-ccost-'+matId);
+  const compCostEl=document.getElementById('mat-ucost-'+matId);
   const mats=S.get('lhs:wo_materials')||[];
   const m=mats.find(x=>x.id===matId);
   if(!m){tst('Material not found','error');return;}
   // Update item if selection changed
   if(val){
-    const [sku,name,cost]=val.split('|');
+    const [sku,name,cost,cCost]=val.split('|');
     m.sku=sku; m.item_name=name; m.unit_cost=parseFloat(cost)||0;
+    if(!custCostEl?.value) m.customer_cost=parseFloat(cCost)||0;
   }
+  if(custCostEl) m.customer_cost=parseFloat(custCostEl.value)||0;
+  if(compCostEl) m.unit_cost=parseFloat(compCostEl.value)||0;
   m.qty_used=qty;
   S.set('lhs:wo_materials',mats);
   // Update WO material cost total
@@ -9070,7 +9091,7 @@ async function saveMatRow(matId, aptId, woId){
   }
   if(matId&&!matId.startsWith('mat_')){
     await dbUpdate('lhs:wo_materials',matId,{
-      sku:m.sku, item_name:m.item_name, unit_cost:m.unit_cost, qty_used:m.qty_used
+      sku:m.sku, item_name:m.item_name, unit_cost:m.unit_cost, customer_cost:m.customer_cost||0, qty_used:m.qty_used
     });
   }
   await logWOAudit(woId,'Material Updated',`${m.question_label||m.item_name||m.sku}: qty→${qty}`);
@@ -9093,11 +9114,12 @@ function refreshMatList(aptId, woId){
 async function aptAddMaterial(aptId, woId){
   const val=pickerGetValue('aptd-msku');
   if(!val){tst('Select an item','error');return;}
-  const [sku,name,cost]=val.split('|');
+  const [sku,name,cost,cCost]=val.split('|');
   const qty=parseInt(document.getElementById('aptd-mqty')?.value)||1;
   const unitCost=parseFloat(cost)||0;
+  const customerCost=parseFloat(cCost)||0;
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
-    qty_used:qty,unit_cost:unitCost,pulled_from:CU.loc||'',
+    qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:CU.loc||'',
     entered_by:CU.name,created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:wo_materials',mat);
   if(!saved){tst('Failed to save material','error');return;}
@@ -11246,7 +11268,7 @@ function bInv(){
     </div>
   </div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>SKU</th><th>Item Name</th><th>Division</th><th>Unit</th><th>Vendor</th><th>Cost</th><th>Min</th><th>Max</th><th></th></tr></thead>
+  <thead><tr><th>SKU</th><th>Item Name</th><th>Division</th><th>Unit</th><th>Vendor</th><th>Customer Price</th>${CU?.role==='God View'?'<th>Company Cost</th>':''}<th>Min</th><th>Max</th><th></th></tr></thead>
   <tbody id="inv-tbody">${invTableRows(it,_fDiv,'')}</tbody>
   </table></div></div>`;
 }
@@ -11270,7 +11292,8 @@ function invTableRows(items, divFilter, search){
     <td>${bx(item.division||'—')}</td>
     <td style="font-size:13px">${esc(item.unit||'—')}</td>
     <td style="color:var(--muted);font-size:12px">${esc(item.vendor||'—')}</td>
-    <td style="font-family:'DM Mono',monospace">${f$(item.cost)}</td>
+    <td style="font-family:'DM Mono',monospace">${f$(item.customer_cost||0)}</td>
+    ${CU?.role==='God View'?`<td style="font-family:'DM Mono',monospace;color:var(--muted)">${f$(item.cost)}</td>`:''}
     <td style="text-align:center">${item.min||0}</td>
     <td style="text-align:center">${item.max||0}</td>
     <td><button class="btn btn-o sm" onclick="oEditItem('${esc(item.id||item.sku)}')">Edit</button></td>
@@ -11310,7 +11333,12 @@ function oAddItem(){
         ${(S.get('lhs:vens')||[]).map(v=>{const n=typeof v==='string'?v:v.name;return`<option>${n}</option>`;}).join('')}
       </select>
     </div>
-    <div class="fl"><label>Unit Cost $</label><input type="number" id="ai-cost" step="0.01" placeholder="0.00"></div>
+    <div class="fl"><label>Company Cost $</label>
+      <input type="number" id="ai-cost" step="0.01" placeholder="0.00">
+    </div>
+    <div class="fl"><label>Customer Price $</label>
+      <input type="number" id="ai-custcost" step="0.01" placeholder="0.00">
+    </div>
   </div>
   <div class="fr">
     <div class="fl"><label>Min Qty</label><input type="number" id="ai-min" value="0" min="0"></div>
@@ -11330,6 +11358,7 @@ async function svAddItem(){
   if(items.find(i=>i.sku===sku)){tst('SKU already exists','error');return}
   const item={sku,name,division:v('ai-div'),unit:v('ai-unit')||'Each',
     vendor:v('ai-vendor'),cost:parseFloat(v('ai-cost'))||0,
+    customer_cost:parseFloat(v('ai-custcost'))||0,
     min:parseInt(v('ai-min'))||0,max:parseInt(v('ai-max'))||0,
     created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:items',item);
@@ -11372,8 +11401,11 @@ function oEditItem(itemId){
         ${vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option${(typeof v==='string'?v:v.name)===(item.vendor||'')?'  selected':''}>${n}</option>`;}).join('')}
       </select>
     </div>
-    <div class="fl"><label>Unit Cost $</label>
+    <div class="fl"><label>Company Cost $</label>
       <input type="number" id="ei-cost" step="0.01" value="${esc((item.cost||0).toFixed(2))}">
+    </div>
+    <div class="fl"><label>Customer Price $</label>
+      <input type="number" id="ei-custcost" step="0.01" value="${esc((item.customer_cost||0).toFixed(2))}">
     </div>
   </div>
   <div class="fr">
@@ -11413,13 +11445,14 @@ async function svEditItem(){
   item.unit=v('ei-unit')||'Each';
   item.vendor=v('ei-vendor');
   item.cost=parseFloat(v('ei-cost'))||0;
+  item.customer_cost=parseFloat(v('ei-custcost'))||0;
   item.min=parseInt(v('ei-min'))||0;
   item.max=parseInt(v('ei-max'))||0;
   S.set('lhs:items',items);
   if(item.id){
     await dbUpdate('lhs:items',item.id,{
       sku:item.sku,name:item.name,division:item.division,unit:item.unit,
-      vendor:item.vendor,cost:item.cost,min:item.min,max:item.max
+      vendor:item.vendor,cost:item.cost,customer_cost:item.customer_cost||0,min:item.min,max:item.max
     });
   } else {
     // Item has no Supabase id — insert it now and store the returned id
