@@ -11285,17 +11285,18 @@ function invTableRows(items, divFilter, search){
   );
   const ps=document.getElementById('inv-ps');
   if(ps) ps.textContent=`${items.length} SKUs total · ${filtered.length} shown`;
-  if(!filtered.length) return`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No items match — try a different filter</td></tr>`;
+  const cols=CU?.role==='God View'?10:9;
+  if(!filtered.length) return`<tr><td colspan="${cols}" style="text-align:center;padding:32px;color:var(--muted)">No items match — try a different filter</td></tr>`;
   return filtered.map(item=>`<tr>
-    <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)">${esc(item.sku)}</td>
+    <td style="font-size:12px;font-weight:700;color:var(--navy)">${esc(item.sku)}</td>
     <td style="font-weight:500">${esc(item.name)}</td>
     <td>${bx(item.division||'—')}</td>
     <td style="font-size:13px">${esc(item.unit||'—')}</td>
     <td style="color:var(--muted);font-size:12px">${esc(item.vendor||'—')}</td>
-    <td style="font-family:'DM Mono',monospace">${f$(item.customer_cost||0)}</td>
-    ${CU?.role==='God View'?`<td style="font-family:'DM Mono',monospace;color:var(--muted)">${f$(item.cost)}</td>`:''}
-    <td style="text-align:center">${item.min||0}</td>
-    <td style="text-align:center">${item.max||0}</td>
+    <td style="font-weight:600;color:var(--navy)">${f$(item.customer_cost||0)}</td>
+    ${CU?.role==='God View'?`<td style="font-weight:600;color:var(--muted)">${f$(item.cost)}</td>`:''}
+    <td style="text-align:center;color:var(--muted)">${item.min||0}</td>
+    <td style="text-align:center;color:var(--muted)">${item.max||0}</td>
     <td><button class="btn btn-o sm" onclick="oEditItem('${esc(item.id||item.sku)}')">Edit</button></td>
   </tr>`).join('');
 }
