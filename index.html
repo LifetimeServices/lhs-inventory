@@ -5721,6 +5721,7 @@ async function saveTerritoryMap(){
     S.set('lhs:territories',all);
     tst('Territory updated','success');
   } else {
+    obj.id=crypto.randomUUID();
     obj.created_at=new Date().toISOString();
     obj.created_by=CU?.name||'';
     saved=await dbInsert('lhs:territories',obj);
