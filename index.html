@@ -8219,39 +8219,22 @@ document.addEventListener('mouseup',async e=>{
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
 
-// Time input with datalist — dropdown list of 15-min increments + free manual digit editing
-// Values are clean 24-hr "HH:MM" so user can pick then edit any digit directly
+// Native time input — click any segment (hours/minutes/AM-PM) and type directly,
+// or use arrow keys. Works in all browsers. Supports both picking and digit-level editing.
 function mkDispTimeInput(id, selected, disabled){
-  const opts=[];
-  for(let h=5;h<23;h++){
-    for(let m=0;m<60;m+=15){
-      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-      opts.push(`<option value="${val}">`);
-    }
-  }
   const dis=disabled?'disabled':'';
-  return`<input type="text" id="${id}" value="${selected||''}" list="${id}-dl"
-    placeholder="08:00" autocomplete="off" spellcheck="false" ${dis}
+  return`<input type="time" id="${id}" value="${selected||''}" ${dis}
     style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;
-    font-size:13px;font-family:'DM Mono',monospace;letter-spacing:.03em;
-    background:${disabled?'var(--surf)':'white'}">
-  <datalist id="${id}-dl">${opts.join('')}</datalist>`;
+    font-size:13px;font-family:inherit;background:${disabled?'var(--surf)':'white'};
+    color:var(--text)">`;
 }
-// Legacy alias used in save functions — parse HH:MM from either "08:00" or "8:00 AM" style
+// Parse time value from input — type="time" always returns clean HH:MM
 function parseDispTime(val){
   if(!val) return '08:00';
   val=val.trim();
-  // Already 24-hr format
-  if(/^\d{1,2}:\d{2}$/.test(val)){
-    const[h,m]=val.split(':').map(Number);
-    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-  }
-  // 12-hr format e.g. "8:30 AM" or "1:15 PM"
-  const pm=/pm/i.test(val); const am=/am/i.test(val);
-  const nums=val.replace(/[^0-9:]/g,'');
-  const[h,m]=(nums+':00').split(':').map(Number);
-  let h24=h; if(pm&&h<12) h24=h+12; if(am&&h===12) h24=0;
-  return String(h24).padStart(2,'0')+':'+String(m||0).padStart(2,'0');
+  if(/^\d{2}:\d{2}$/.test(val)) return val;
+  const[h,m]=(val+':00').split(':').map(Number);
+  return String(h||0).padStart(2,'0')+':'+String(m||0).padStart(2,'0');
 }
 const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
 
