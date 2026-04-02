@@ -3643,7 +3643,15 @@ function svUpdTest(i){
 
 // ─── ADMIN: REGIONS ──────────────────────────────────────────────────────────
 function aRegions(){
+  setTimeout(loadRegionMap,80);
+  const legend=Object.entries(REGIONS).map(([name,r])=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:${r.color}"><span style="width:16px;height:16px;border-radius:3px;background:${r.color};display:inline-block;flex-shrink:0"></span>${name}</span>`).join('')+`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#6B7280"><span style="width:16px;height:16px;border-radius:3px;background:#CBD5E1;display:inline-block;flex-shrink:0"></span>Unassigned</span>`;
   return`<div class="sh"><h3>Region Management</h3></div>
+  <div style="background:white;border:1px solid var(--bdr);border-radius:12px;padding:20px;margin-bottom:20px">
+    <div id="region-map-svg" style="width:100%;min-height:320px;display:flex;align-items:center;justify-content:center">
+      <div style="color:var(--muted);font-size:13px">Loading map…</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">${legend}</div>
+  </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
     ${Object.entries(REGIONS).map(([name,r])=>`
     <div class="card" style="border-left:4px solid ${r.color}">
@@ -3654,9 +3662,42 @@ function aRegions(){
       <div style="display:flex;flex-wrap:wrap;gap:6px">
         ${r.states.map(s=>`<span style="background:${r.light};color:${r.color};padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600">${s}</span>`).join('')}
       </div>
-      <button class="btn btn-o sm" style="margin-top:12px" onclick="tst('State management — edit regions in a future update','info')">Manage States</button>
     </div>`).join('')}
   </div>`;
+}
+
+async function loadRegionMap(){
+  const stateColor={};
+  Object.entries(REGIONS).forEach(([,r])=>r.states.forEach(s=>{stateColor[s]=r.color;}));
+  const el=g('region-map-svg');
+  if(!el) return;
+  try{
+    const resp=await fetch('https://upload.wikimedia.org/wikipedia/commons/9/96/Blank_US_Map_(states_only).svg',{mode:'cors'});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const text=await resp.text();
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(text,'image/svg+xml');
+    const svg=doc.documentElement;
+    // Color each state path — Wikipedia uses 2-letter IDs like "AL", "AK", etc.
+    svg.querySelectorAll('path[id],g[id]').forEach(p=>{
+      const raw=p.id||'';
+      const abbr=raw.replace(/^US-/,'').toUpperCase();
+      const fill=stateColor[abbr]||'#CBD5E1';
+      p.setAttribute('fill',fill);
+      p.setAttribute('stroke','white');
+      p.setAttribute('stroke-width','1.5');
+    });
+    svg.setAttribute('width','100%');
+    svg.removeAttribute('height');
+    svg.style.display='block';
+    svg.style.maxWidth='900px';
+    svg.style.margin='0 auto';
+    el.innerHTML='';
+    el.appendChild(document.importNode(svg,true));
+  }catch(e){
+    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Map unavailable — check internet connection.</div>`;
+    console.warn('Region map failed:',e);
+  }
 }
 
 // ─── ADMIN: PERMISSIONS ───────────────────────────────────────────────────────
@@ -5323,10 +5364,7 @@ function aDivs(){
     <td><button class="btn sm btn-r" onclick="delDiv(${i})">&#215;</button></td>
   </tr>`).join('')}
   </tbody></table></div></div>
-  <div style="margin-top:24px">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Regional Map</div>
-    ${renderRegionMap()}
-  </div>`;
+  `;
 }
 function oAddDiv(){
   oMod('Add Division',`<div class="fr">
