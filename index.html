@@ -74,6 +74,22 @@ body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-h
 .sv{font-size:32px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
 .num{font-variant-numeric:tabular-nums;font-weight:600}
 .ss{font-size:12px;color:var(--muted);margin-top:4px}
+/* COLLAPSIBLE DETAILS */
+details summary{user-select:none}
+details[open]>summary span:first-child{display:inline-block;transform:rotate(90deg)}
+/* ITEM PICKER */
+.ipw{position:relative;width:100%}
+.ipt{width:100%;padding:6px 10px 6px 30px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;background:white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") 8px center/14px no-repeat}
+.ipt:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 2px rgba(58,191,191,.15)}
+.ipd{display:none;position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:999;background:white;border:1px solid var(--bdr);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto}
+.ipd.open{display:block}
+.ipi{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--surf);display:flex;align-items:center;gap:8px}
+.ipi:last-child{border-bottom:none}
+.ipi:hover{background:var(--surf)}
+.ipi .ip-name{font-weight:500;flex:1}
+.ipi .ip-sku{font-size:11px;color:var(--muted)}
+.ipi .ip-cost{font-size:11px;color:var(--green);font-weight:600}
+.ip-none{padding:10px 12px;color:var(--muted);font-size:13px;text-align:center}
 /* TABLE */
 .tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bdr)}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -1906,6 +1922,64 @@ const fBal=(b,html=true)=>{const v=Math.max(0,Number(b||0));return v>0?(html?`<s
 const bx=(s,c='bn')=>`<span class="bx ${c}">${s}</span>`;
 const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')?'ba':'bgr';
 
+// ─── ITEM PICKER ─────────────────────────────────────────────────────────────
+window._pickerCb={};
+function mkItemPicker(id, selectedSku){
+  const items=S.get('lhs:items')||[];
+  const sel=items.find(i=>i.sku===(selectedSku||''));
+  return`<div class="ipw" id="ipw-${id}">
+    <input class="ipt" id="ipt-${id}" placeholder="Search items..." autocomplete="off"
+      value="${sel?esc(sel.name):''}"
+      oninput="pickerFilter('${id}',this.value)"
+      onfocus="pickerOpen('${id}')"
+      onblur="setTimeout(()=>pickerClose('${id}'),220)">
+    <div class="ipd" id="ipd-${id}"></div>
+    <input type="hidden" id="ips-${id}" value="${sel?(esc(sel.sku)+'|'+esc(sel.name)+'|'+(sel.unit_cost||sel.cost||0)):''}">
+  </div>`;
+}
+
+function _pickerRows(id, q){
+  const items=S.get('lhs:items')||[];
+  const lq=(q||'').toLowerCase();
+  const filtered=lq?items.filter(i=>(i.name||'').toLowerCase().includes(lq)||(i.sku||'').toLowerCase().includes(lq)):items;
+  if(!filtered.length) return'<div class="ip-none">No items found</div>';
+  return filtered.slice(0,60).map(i=>`<div class="ipi" onmousedown="pickerSelect('${id}','${esc(i.sku)}','${esc(i.name).replace(/'/g,"\\'")}',${i.unit_cost||i.cost||0})">
+    <span class="ip-name">${esc(i.name)}</span>
+    <span class="ip-sku">${esc(i.sku)}</span>
+    <span class="ip-cost">${f$(i.unit_cost||i.cost||0)}</span>
+  </div>`).join('');
+}
+
+function pickerFilter(id,q){
+  const dd=document.getElementById('ipd-'+id);
+  if(dd){dd.innerHTML=_pickerRows(id,q);dd.classList.add('open');}
+}
+
+function pickerOpen(id){
+  const dd=document.getElementById('ipd-'+id);
+  const inp=document.getElementById('ipt-'+id);
+  if(dd){dd.innerHTML=_pickerRows(id,inp?inp.value:'');dd.classList.add('open');}
+}
+
+function pickerClose(id){
+  const dd=document.getElementById('ipd-'+id);
+  if(dd) dd.classList.remove('open');
+}
+
+function pickerSelect(id,sku,name,cost){
+  const inp=document.getElementById('ipt-'+id);
+  const hid=document.getElementById('ips-'+id);
+  if(inp) inp.value=name;
+  if(hid) hid.value=`${sku}|${name}|${cost}`;
+  pickerClose(id);
+  if(window._pickerCb[id]) window._pickerCb[id](sku,name,cost);
+}
+
+function pickerGetValue(id){
+  const hid=document.getElementById('ips-'+id);
+  return hid?hid.value:'';
+}
+
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 // ─── PO ──────────────────────────────────────────────────────────────────────
@@ -3727,11 +3801,10 @@ function renderMatPresetsAdmin(){
             onchange="updatePresetRowField('${esc(key)}',${i},'question_label',this.value)">
         </td>
         <td style="padding:6px 8px;min-width:200px">
-          <select style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"
-            onchange="updatePresetRowField('${esc(key)}',${i},'item',this.value)">
-            <option value="">— Select item —</option>
-            ${items.map(it=>`<option value="${esc(it.sku)}|${esc(it.name)}|${it.cost||0}"${it.sku===row.sku?' selected':''}>` +esc(it.name)+' ('+esc(it.sku)+')</option>').join('')}
-          </select>
+          <div id="preset-item-wrap-${safeKey}-${i}" style="width:100%">
+            ${mkItemPicker(`preset-item-${safeKey}-${i}`, row.sku||'')}
+          </div>
+          <script>window._pickerCb['preset-item-${safeKey}-${i}']=(sku,name,cost)=>{updatePresetRowField('${esc(key)}',${i},'item',sku+'|'+name+'|'+cost);};</script>
         </td>
         <td style="padding:6px 8px;width:80px">
           <input type="number" value="${row.default_qty||0}" min="0"
@@ -8624,10 +8697,14 @@ function openWO(woId){
         </div>
 
         <!-- Materials -->
-        ${aptMats.length?`<div style="margin-bottom:8px">
-          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Materials Used</div>
-          ${aptMats.map(m=>matRowHTML(m,apt.id,woId)).join('')}
-        </div>`:''}
+        <details style="margin-bottom:8px;border:1px solid var(--bdr);border-radius:7px;overflow:hidden">
+          <summary style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;background:var(--surf);list-style:none;display:flex;align-items:center;gap:6px;user-select:none">
+            <span>&#9654;</span> Materials Used <span style="font-weight:400;margin-left:2px">(${aptMats.length})</span>
+          </summary>
+          <div style="padding:8px 10px">
+            ${aptMats.length?aptMats.map(m=>matRowHTML(m,apt.id,woId)).join(''):`<div style="font-size:12px;color:var(--muted);padding:4px 0">No materials logged</div>`}
+          </div>
+        </details>
 
         <!-- Stats row -->
         <div style="display:flex;gap:16px;font-size:12px;color:var(--muted)">
@@ -8799,22 +8876,26 @@ function oAptDetail(aptId, woId){
     <textarea id="aptd-notes" rows="3" placeholder="What was completed, any issues...">${apt.completion_notes||''}</textarea>
   </div>
 
-  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Materials Used</div>
-  <div class="fr">
-    <div class="fl"><label>Item</label>
-      <select id="aptd-msku">
-        <option value="">— Select Item —</option>
-        ${(S.get('lhs:items')||[]).map(i=>`<option value="${i.sku}|${i.name}|${i.unit_cost||i.cost||0}">${i.name} (${i.sku})</option>`).join('')}
-      </select>
+  <details id="aptd-matsec" style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:8px;overflow:hidden" ${(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId).length?'open':''}>
+    <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);list-style:none;display:flex;align-items:center;gap:6px">
+      <span style="font-size:14px">&#9654;</span> Materials Used
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">(${(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId).length} items)</span>
+    </summary>
+    <div style="padding:12px 14px">
+      <div class="fr" style="margin-bottom:10px">
+        <div class="fl"><label>Search Item</label>
+          ${mkItemPicker('aptd-msku','')}
+        </div>
+        <div class="fl"><label>Qty</label><input type="number" id="aptd-mqty" value="1" min="1" style="width:80px"></div>
+        <div class="fl" style="display:flex;align-items:flex-end">
+          <button class="btn btn-n sm" onclick="aptAddMaterial('${aptId}','${woId}')">Add Material</button>
+        </div>
+      </div>
+      <div id="aptd-matlist">
+        ${matListHTML(aptId,woId)}
+      </div>
     </div>
-    <div class="fl"><label>Qty</label><input type="number" id="aptd-mqty" value="1" min="1" style="width:80px"></div>
-    <div class="fl" style="display:flex;align-items:flex-end">
-      <button class="btn btn-n sm" onclick="aptAddMaterial('${aptId}','${woId}')">Add Material</button>
-    </div>
-  </div>
-  <div id="aptd-matlist" style="margin-bottom:12px">
-    ${matListHTML(aptId,woId)}
-  </div>
+  </details>
 
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Photos</div>
   <div style="margin-bottom:12px">
@@ -8849,7 +8930,6 @@ function matRowHTML(m, aptId, woId){
   const ext=fN(qty*(m.unit_cost||0));
   const ql=(m.question_label||'').trim();
   const isPreset=!!(ql||m.pulled_from==='preset');
-  const items=S.get('lhs:items')||[];
 
   // Parse custom fields
   let customFields=[];
@@ -8863,17 +8943,12 @@ function matRowHTML(m, aptId, woId){
     }
   }
 
-  // Item dropdown — pre-selects current sku, always visible
-  const itemOpts=items.map(it=>`<option value="${esc(it.sku)}|${esc(it.name)}|${it.cost||0}"${it.sku===m.sku?' selected':''}>${esc(it.name)} (${esc(it.sku)})</option>`).join('');
-
   return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;flex-wrap:wrap;background:${isPreset?'var(--surf)':'white'}">
       ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);min-width:150px;flex-shrink:0">${esc(ql)}</span>`:''}
-      <select id="mat-item-${safeId}"
-        style="flex:1;min-width:150px;max-width:240px;padding:4px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px">
-        <option value="">— Select Item —</option>
-        ${itemOpts}
-      </select>
+      <div style="flex:1;min-width:150px;max-width:240px;flex-shrink:0" id="mat-item-wrap-${safeId}">
+        ${mkItemPicker('mat-item-'+safeId, m.sku||'')}
+      </div>
       <span style="font-size:12px;color:var(--muted);flex-shrink:0">Qty:</span>
       <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
         style="width:54px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center;flex-shrink:0">
@@ -8896,11 +8971,10 @@ function matRowHTML(m, aptId, woId){
 
 // Save a preset row — reads item dropdown + qty input by matId, updates Supabase
 async function saveMatRow(matId, aptId, woId){
-  const itemSel=document.getElementById('mat-item-'+matId);
   const qtyEl=document.getElementById('mat-qty-'+matId);
-  if(!itemSel||!qtyEl){tst('Row not found','error');return;}
+  if(!qtyEl){tst('Row not found','error');return;}
   const qty=Math.max(0,parseInt(qtyEl.value)||0);
-  const val=itemSel.value;
+  const val=pickerGetValue('mat-item-'+matId);
   const mats=S.get('lhs:wo_materials')||[];
   const m=mats.find(x=>x.id===matId);
   if(!m){tst('Material not found','error');return;}
@@ -8942,9 +9016,9 @@ function refreshMatList(aptId, woId){
 }
 
 async function aptAddMaterial(aptId, woId){
-  const sel=document.getElementById('aptd-msku');
-  if(!sel?.value){tst('Select an item','error');return;}
-  const [sku,name,cost]=sel.value.split('|');
+  const val=pickerGetValue('aptd-msku');
+  if(!val){tst('Select an item','error');return;}
+  const [sku,name,cost]=val.split('|');
   const qty=parseInt(document.getElementById('aptd-mqty')?.value)||1;
   const unitCost=parseFloat(cost)||0;
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
@@ -8967,10 +9041,14 @@ async function aptAddMaterial(aptId, woId){
   const wo=wos.find(w=>w.id===woId);
   if(wo){wo.material_cost=(wo.material_cost||0)+(qty*unitCost);S.set('lhs:work_orders',wos);}
   // Reset the add form
-  sel.value='';
+  const inpEl=document.getElementById('ipt-aptd-msku');if(inpEl) inpEl.value='';
+  const hidEl=document.getElementById('ips-aptd-msku');if(hidEl) hidEl.value='';
   const qtyEl=document.getElementById('aptd-mqty');if(qtyEl) qtyEl.value='1';
   // Refresh list using shared helper — always shows full editable rows
   refreshMatList(aptId,woId);
+  // Update count badge in summary
+  const sec=document.getElementById('aptd-matsec');
+  if(sec){const cnt=sec.querySelector('summary span[style*="muted"]');if(cnt) cnt.textContent=`(${(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId).length} items)`;}
 }
 
 async function applyPresetsToApt(aptId, woId){
