@@ -8219,28 +8219,83 @@ document.addEventListener('mouseup',async e=>{
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
 
-// Time input with dropdown suggestions + direct cursor editing
-// <input type="time" list="..."> shows a native time picker with a datalist dropdown
+// Custom time picker — works in all browsers including Safari
+// Shows a text input + dropdown arrow; clicking opens a list of 15-min increments;
+// user can also type any time directly (e.g. "8:47 AM" or "08:47")
 function mkDispTimeInput(id, selected, disabled){
-  const opts=[];
+  const times=[];
   for(let h=5;h<23;h++){
     for(let m=0;m<60;m+=15){
-      opts.push(`<option value="${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}"></option>`);
+      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+      const ap=h>=12?'PM':'AM';
+      const dh=h>12?h-12:(h===0?12:h);
+      times.push({val,label:`${dh}:${String(m).padStart(2,'0')} ${ap}`});
     }
   }
+  const selT=times.find(t=>t.val===selected);
+  const displayVal=selT?selT.label:(selected||'');
   const dis=disabled?'disabled':'';
-  return`<input type="time" id="${id}" value="${selected||''}" list="${id}-dl" ${dis}
-    style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;
-    font-size:13px;font-family:inherit;background:${disabled?'var(--surf)':'white'};color:var(--text)">
-  <datalist id="${id}-dl">${opts.join('')}</datalist>`;
+  const bg=disabled?'var(--surf)':'white';
+  return`<div style="position:relative" id="tpw-${id}">
+    <div style="display:flex;border:1px solid var(--bdr);border-radius:8px;background:${bg};overflow:visible">
+      <input type="text" id="${id}" value="${displayVal}" placeholder="e.g. 8:00 AM"
+        autocomplete="off" ${dis}
+        style="flex:1;padding:8px 10px;border:none;outline:none;font-size:13px;
+               font-family:inherit;background:${bg};border-radius:8px 0 0 8px"
+        oninput="dispTpFilter('${id}',this.value)"
+        onfocus="dispTpOpen('${id}')"
+        onkeydown="if(event.key==='Escape'||event.key==='Tab')dispTpClose('${id}')">
+      <button type="button" tabindex="-1" ${dis}
+        onmousedown="event.preventDefault();dispTpToggle('${id}')"
+        style="padding:0 10px;background:${bg};border:none;border-left:1px solid var(--bdr);
+               cursor:pointer;color:var(--muted);font-size:10px;border-radius:0 8px 8px 0">&#9660;</button>
+    </div>
+    <div id="tpd-${id}" style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+      background:white;border:1px solid var(--bdr);border-radius:8px;
+      max-height:220px;overflow-y:auto;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.15)">
+      ${times.map(t=>`<div tabindex="-1"
+        onmousedown="event.preventDefault();dispTpSelect('${id}','${t.label}')"
+        style="padding:8px 14px;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--surf)'"
+        onmouseout="this.style.background=''">${t.label}</div>`).join('')}
+    </div>
+  </div>`;
 }
-// Parse time value from input — type="time" always returns clean HH:MM
+function dispTpOpen(id){
+  // Re-show all options when re-opening
+  const d=document.getElementById('tpd-'+id);
+  if(!d) return;
+  [...d.children].forEach(el=>el.style.display='');
+  d.style.display='block';
+}
+function dispTpClose(id){const d=document.getElementById('tpd-'+id);if(d)d.style.display='none';}
+function dispTpToggle(id){const d=document.getElementById('tpd-'+id);if(d){if(d.style.display==='none')dispTpOpen(id);else dispTpClose(id);}}
+function dispTpFilter(id,q){
+  const d=document.getElementById('tpd-'+id);if(!d)return;
+  d.style.display='block';
+  [...d.children].forEach(el=>{el.style.display=q&&!el.textContent.toLowerCase().includes(q.toLowerCase())?'none':'';});
+}
+function dispTpSelect(id,label){
+  const inp=document.getElementById(id);if(inp)inp.value=label;
+  dispTpClose(id);
+}
+// Close any open time picker when clicking outside
+document.addEventListener('mousedown',function(e){
+  document.querySelectorAll('[id^="tpw-"]').forEach(w=>{
+    if(!w.contains(e.target)) dispTpClose(w.id.replace('tpw-',''));
+  });
+});
+// Parse display value ("8:47 AM", "08:47", "8:47") → "HH:MM" for saving
 function parseDispTime(val){
   if(!val) return '08:00';
   val=val.trim();
   if(/^\d{2}:\d{2}$/.test(val)) return val;
-  const[h,m]=(val+':00').split(':').map(Number);
-  return String(h||0).padStart(2,'0')+':'+String(m||0).padStart(2,'0');
+  const pm=/pm/i.test(val); const am=/am/i.test(val);
+  const clean=val.replace(/[^0-9:]/g,'');
+  const parts=clean.split(':');
+  let h=parseInt(parts[0]||'8',10), m=parseInt(parts[1]||'0',10);
+  if(pm&&h<12) h+=12; if(am&&h===12) h=0;
+  return String(Math.min(h,23)).padStart(2,'0')+':'+String(Math.min(m,59)).padStart(2,'0');
 }
 const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
 
