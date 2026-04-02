@@ -3666,35 +3666,78 @@ function aRegions(){
   </div>`;
 }
 
+// FIPS code → state abbreviation (US Census standard)
+const FIPS_TO_STATE={
+  '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT',
+  '10':'DE','11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL',
+  '18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD',
+  '25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE',
+  '32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND',
+  '39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD',
+  '47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV',
+  '55':'WI','56':'WY'
+};
+
+function lhsLoadScript(src){
+  return new Promise((resolve,reject)=>{
+    if(document.querySelector(`script[src="${src}"]`)){resolve();return;}
+    const s=document.createElement('script');
+    s.src=src; s.onload=resolve; s.onerror=reject;
+    document.head.appendChild(s);
+  });
+}
+
 async function loadRegionMap(){
-  const stateColor={};
-  Object.entries(REGIONS).forEach(([,r])=>r.states.forEach(s=>{stateColor[s]=r.color;}));
   const el=g('region-map-svg');
   if(!el) return;
+  // Build color map from current REGIONS (auto-updates when regions change)
+  const stateColor={};
+  Object.entries(REGIONS).forEach(([,r])=>r.states.forEach(s=>{stateColor[s]=r.color;}));
   try{
-    const resp=await fetch('us-map.svg');
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const text=await resp.text();
-    const parser=new DOMParser();
-    const doc=parser.parseFromString(text,'image/svg+xml');
-    const svg=doc.documentElement;
-    // Color each state path by 2-letter ID
-    svg.querySelectorAll('path[id]').forEach(p=>{
-      const abbr=(p.id||'').toUpperCase();
-      p.setAttribute('fill',stateColor[abbr]||'#CBD5E1');
+    // Load D3 + TopoJSON from CDN
+    await lhsLoadScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
+    await lhsLoadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
+    // Fetch real US Census state boundaries (TopoJSON)
+    const us=await d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json');
+    const W=960,H=600;
+    const projection=d3.geoAlbersUsa().scale(1300).translate([W/2,H/2]);
+    const path=d3.geoPath().projection(projection);
+    const states=topojson.feature(us,us.objects.states);
+    // Build SVG
+    const ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+    svg.style.cssText='width:100%;height:auto;display:block;max-width:900px;margin:0 auto';
+    // Draw each state
+    states.features.forEach(f=>{
+      const fips=String(f.id).padStart(2,'0');
+      const abbr=FIPS_TO_STATE[fips]||'';
+      const fill=stateColor[abbr]||'#CBD5E1';
+      const p=document.createElementNS(ns,'path');
+      p.setAttribute('d',path(f)||'');
+      p.setAttribute('fill',fill);
       p.setAttribute('stroke','white');
-      p.setAttribute('stroke-width','1.5');
+      p.setAttribute('stroke-width','1');
+      p.setAttribute('data-abbr',abbr);
+      // Tooltip on hover
+      const title=document.createElementNS(ns,'title');
+      title.textContent=abbr+(Object.entries(REGIONS).find(([,r])=>r.states.includes(abbr))||[''])[0]?` — ${(Object.entries(REGIONS).find(([,r])=>r.states.includes(abbr))||[''])[0]}`:' — Unassigned';
+      p.appendChild(title);
+      svg.appendChild(p);
     });
-    svg.setAttribute('width','100%');
-    svg.removeAttribute('height');
-    svg.style.display='block';
-    svg.style.maxWidth='900px';
-    svg.style.margin='0 auto';
+    // State borders
+    const border=document.createElementNS(ns,'path');
+    border.setAttribute('d',path(topojson.mesh(us,us.objects.states,(a,b)=>a!==b))||'');
+    border.setAttribute('fill','none');
+    border.setAttribute('stroke','white');
+    border.setAttribute('stroke-width','0.8');
+    border.setAttribute('stroke-linejoin','round');
+    svg.appendChild(border);
     el.innerHTML='';
-    el.appendChild(document.importNode(svg,true));
+    el.appendChild(svg);
   }catch(e){
-    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Map unavailable — check internet connection.</div>`;
-    console.warn('Region map failed:',e);
+    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Map could not load — check internet connection.</div>`;
+    console.warn('Region map error:',e);
   }
 }
 
