@@ -74,6 +74,16 @@ body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-h
 .sv{font-size:32px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
 .num{font-variant-numeric:tabular-nums;font-weight:600}
 .ss{font-size:12px;color:var(--muted);margin-top:4px}
+/* CHAT TOAST (Teams-style) */
+.chat-toast{pointer-events:all;background:white;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.18);
+  border-left:4px solid var(--teal);padding:0;overflow:hidden;width:320px;
+  animation:ctSlideIn .25s ease;transition:opacity .3s,transform .3s}
+.chat-toast.hiding{opacity:0;transform:translateX(20px)}
+@keyframes ctSlideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.chat-toast-hd{background:var(--navy);padding:8px 12px;display:flex;align-items:center;gap:8px}
+.chat-toast-body{padding:10px 12px;font-size:13px;color:var(--text);line-height:1.4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.chat-toast-body:hover{background:var(--surf)}
 /* COLLAPSIBLE DETAILS */
 details summary{user-select:none}
 details[open]>summary span:first-child{display:inline-block;transform:rotate(90deg)}
@@ -247,10 +257,13 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px">
         <button onclick="showPage('chatter')"
-          style="background:rgba(58,191,191,.18);border:1px solid rgba(58,191,191,.4);color:var(--teal);
+          style="position:relative;background:rgba(58,191,191,.18);border:1px solid rgba(58,191,191,.4);color:var(--teal);
           border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;
           display:flex;align-items:center;gap:5px;white-space:nowrap">
           &#128172; Chatter
+          <span id="chat-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#e53e3e;color:white;
+            border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;
+            align-items:center;justify-content:center;padding:0 3px;line-height:1"></span>
         </button>
         <button onclick="showPage('tasks')"
           style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);
@@ -268,6 +281,9 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
 </div>
 
 <div id="tst"></div>
+
+<!-- Chat Toast Stack (Teams-style, bottom-right) -->
+<div id="chat-toasts" style="position:fixed;bottom:24px;right:24px;z-index:9000;display:flex;flex-direction:column-reverse;gap:10px;max-width:340px;pointer-events:none"></div>
 
 <!-- Notification Panel -->
 <div id="notif-panel" style="display:none;position:fixed;top:52px;right:12px;width:360px;max-height:500px;
@@ -1852,6 +1868,8 @@ function showPage(id){
   pg.classList.add('active');
   const b=document.querySelector(`.nb[data-p="${id}"]`); if(b) b.classList.add('active');
   pg.innerHTML=buildPage(id);
+  // Clear chat unread badge when opening chatter
+  if(id==='chatter'){_chatUnread=0;refreshChatBadge();setTimeout(()=>{const el=document.getElementById('chat-msgs');if(el) el.scrollTop=el.scrollHeight;},80);}
   // Render dashboard charts after DOM is painted
   if(id==='dashboard') setTimeout(renderDashCharts,80);
   // Persist current page so refresh restores it
@@ -4868,15 +4886,24 @@ function bChatter(){
 
       <!-- DMs -->
       <div style="padding:10px 10px 2px;font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;margin-top:4px">Direct</div>
-      ${dmUsers.slice(0,20).map(u=>{
+      ${dmUsers.slice(0,30).map(u=>{
         const dmId='dm-'+[CU?.name||'',u.name].sort().join('-').replace(/\s+/g,'-').toLowerCase();
-        return`<div onclick="window._chatChannel='${esc(dmId)}';window._chatShowNewGroup=false;showPage('chatter')"
-          style="padding:7px 12px;cursor:pointer;border-left:3px solid ${_chatChannel===dmId?'var(--teal)':'transparent'};
-          background:${_chatChannel===dmId?'rgba(255,255,255,.1)':'transparent'};display:flex;align-items:center;gap:7px">
-          <div style="width:22px;height:22px;border-radius:50%;background:var(--teal);color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">
-            ${u.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+        // Count unread DMs from this person
+        const allMsgs=S.get('lhs:messages')||[];
+        const lastRead=parseInt(localStorage.getItem('lhs:chatread:'+dmId)||'0');
+        const unreadCnt=allMsgs.filter(m=>m.channel===dmId&&m.sender_email!==CU?.email&&new Date(m.created_at).getTime()>lastRead).length;
+        const isActive=_chatChannel===dmId;
+        return`<div onclick="window._chatChannel='${esc(dmId)}';window._chatShowNewGroup=false;localStorage.setItem('lhs:chatread:${esc(dmId)}',Date.now());showPage('chatter')"
+          style="padding:7px 12px;cursor:pointer;border-left:3px solid ${isActive?'var(--teal)':'transparent'};
+          background:${isActive?'rgba(255,255,255,.1)':'transparent'};display:flex;align-items:center;gap:7px">
+          <div style="position:relative;flex-shrink:0">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--teal);color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">
+              ${u.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+            </div>
+            ${unreadCnt>0?`<div style="position:absolute;top:-3px;right:-3px;background:#e53e3e;border-radius:50%;width:8px;height:8px;border:1.5px solid var(--navy)"></div>`:''}
           </div>
-          <div style="font-size:12px;color:${_chatChannel===dmId?'var(--teal)':'rgba(255,255,255,.7)'};font-weight:${_chatChannel===dmId?'700':'400'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.name.split(' ')[0])} ${esc(u.name.split(' ')[1]||'')}</div>
+          <div style="font-size:12px;color:${isActive?'var(--teal)':unreadCnt>0?'white':'rgba(255,255,255,.7)'};font-weight:${isActive||unreadCnt>0?'700':'400'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">${esc(u.name.split(' ')[0])} ${esc(u.name.split(' ')[1]||'')}</div>
+          ${unreadCnt>0&&!isActive?`<div style="background:#e53e3e;color:white;border-radius:10px;min-width:16px;height:16px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;flex-shrink:0">${unreadCnt}</div>`:''}
         </div>`;
       }).join('')}
     </div>
@@ -5022,6 +5049,7 @@ function chatManageGroup(groupId){
 function setChatChannel(id){
   _chatChannel=id;
   window._chatChannel=id;
+  localStorage.setItem('lhs:chatread:'+id,Date.now());
   showPage('chatter');
   setTimeout(()=>{ const el=document.getElementById('chat-msgs'); if(el) el.scrollTop=el.scrollHeight; },80);
 }
@@ -5057,15 +5085,37 @@ async function sendChatMsg(){
     if(idx>=0) m2[idx]=saved;
     S.set('lhs:messages',m2);
   }
-  // Send notifications to @mentioned users
+  // Seed chat poller timestamp so we don't re-show our own message as a toast
+  if(!_chatLastMsgTime||new Date().toISOString()>_chatLastMsgTime)
+    _chatLastMsgTime=new Date().toISOString();
+
   const users=S.get('lhs:users')||[];
+
+  // Send notification to the DM recipient
+  if(_chatChannel.startsWith('dm-')){
+    const recipient=users.find(u=>{
+      const id='dm-'+[CU?.name||'',u.name].sort().join('-').replace(/\s+/g,'-').toLowerCase();
+      return id===_chatChannel;
+    });
+    if(recipient&&recipient.email){
+      await dbInsert('lhs:notifications',{
+        user_email:recipient.email,type:'chat',
+        title:`💬 ${CU.name} sent you a message`,
+        body:body.slice(0,120),
+        from_user:CU.name,
+        is_read:false,created_at:new Date().toISOString()
+      });
+    }
+  }
+
+  // Send notifications to @mentioned users in channels
   for(const name of mentions){
     const u=users.find(x=>x.name.toLowerCase().includes(name.toLowerCase()));
     if(u&&u.email!==CU.email){
       await dbInsert('lhs:notifications',{
         user_email:u.email,type:'mention',
         title:`${CU.name} mentioned you in Chatter`,
-        body:body.slice(0,100),
+        body:body.slice(0,120),
         from_user:CU.name,
         is_read:false,created_at:new Date().toISOString()
       });
@@ -14495,10 +14545,15 @@ async function markAllNotifsRead(){
   refreshNotifBadge();renderNotifList();
 }
 
-// Poll for new notifications every 60 seconds
+// ── CHAT + NOTIFICATION POLLING ───────────────────────────────────────────────
 let _notifPollInterval=null;
+let _chatPollInterval=null;
+let _chatLastMsgTime=null; // ISO timestamp of newest message we've seen
+let _chatUnread=0;         // unread message count for badge
+
 function startNotifPolling(){
   if(_notifPollInterval) return;
+  // Notification polling every 30 seconds
   _notifPollInterval=setInterval(async()=>{
     if(!CU?.email) return;
     try{
@@ -14507,13 +14562,149 @@ function startNotifPolling(){
         .order('created_at',{ascending:false}).limit(50);
       if(data?.length){
         const all=S.get('lhs:notifications')||[];
-        // Merge new ones
         data.forEach(n=>{if(!all.find(x=>x.id===n.id)) all.push(n);});
         S.set('lhs:notifications',all);
         refreshNotifBadge();
       }
     }catch{}
-  },60000);
+  },30000);
+  // Chat message polling every 6 seconds
+  if(_chatPollInterval) return;
+  // Seed the timestamp from the newest locally-cached message
+  const existing=S.get('lhs:messages')||[];
+  if(existing.length) _chatLastMsgTime=existing.reduce((best,m)=>m.created_at>best?m.created_at:best,'');
+  _chatPollInterval=setInterval(pollChatMessages,6000);
+}
+
+async function pollChatMessages(){
+  if(!CU?.email) return;
+  try{
+    let q=DB.from('lhs_messages').select('*').order('created_at',{ascending:true}).limit(80);
+    if(_chatLastMsgTime) q=q.gt('created_at',_chatLastMsgTime);
+    const{data,error}=await q;
+    if(error||!data?.length) return;
+
+    const msgs=S.get('lhs:messages')||[];
+    let newForMe=[];
+    data.forEach(m=>{
+      if(!msgs.find(x=>x.id===m.id)){
+        msgs.push(m);
+        // Count as unread if sent by someone else
+        if(m.sender_email!==CU.email) newForMe.push(m);
+      }
+    });
+    S.set('lhs:messages',msgs);
+    // Update last-seen timestamp
+    _chatLastMsgTime=data[data.length-1].created_at;
+
+    if(!newForMe.length) return;
+
+    // Update chat badge
+    const onChatPage=document.getElementById('p-chatter')?.classList.contains('active');
+    if(!onChatPage){
+      _chatUnread+=newForMe.length;
+      refreshChatBadge();
+    }
+
+    // Refresh message pane if user is looking at chatter
+    if(onChatPage){
+      // Re-render just the message list without full page rebuild
+      const relevant=newForMe.filter(m=>m.channel===(_chatChannel||'all'));
+      if(relevant.length) refreshChatMsgs();
+    }
+
+    // Show Teams-style toast for each new message (max 3)
+    newForMe.slice(0,3).forEach(m=>showChatToast(m));
+
+    // Also push a persistent notification for DMs addressed to me
+    newForMe.forEach(async m=>{
+      if(m.channel&&m.channel.startsWith('dm-')&&m.channel.includes(CU.name.replace(/\s+/g,'-').toLowerCase())){
+        const notif={user_email:CU.email,type:'chat',
+          title:`New message from ${m.sender_name||'Someone'}`,
+          body:(m.body||'').slice(0,120),
+          from_user:m.sender_name||'',
+          is_read:false,created_at:m.created_at};
+        const saved=await dbInsert('lhs:notifications',notif);
+        if(saved){
+          const all=S.get('lhs:notifications')||[];
+          all.push(saved);S.set('lhs:notifications',all);
+          refreshNotifBadge();
+        }
+      }
+    });
+  }catch(e){console.warn('Chat poll error:',e.message);}
+}
+
+function refreshChatBadge(){
+  const badge=document.getElementById('chat-badge');
+  if(!badge) return;
+  if(_chatUnread>0){badge.textContent=_chatUnread>99?'99+':_chatUnread;badge.style.display='flex';}
+  else badge.style.display='none';
+}
+
+function refreshChatMsgs(){
+  // Re-render only the message scroll area so the page doesn't flash
+  const container=document.getElementById('chat-msgs');
+  if(!container) return;
+  const allMsgs=(S.get('lhs:messages')||[])
+    .filter(m=>m.channel===(_chatChannel||'all'))
+    .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))
+    .slice(-100);
+  const users=S.get('lhs:users')||[];
+  const EMOJIS=['😀','😂','❤️','👍','🔥','🎉','✅','⚠️','📋','🚀','💡','🤝','👏','😎','🙏'];
+  container.innerHTML=!allMsgs.length
+    ?'<div style="text-align:center;color:var(--muted);padding:40px;font-size:14px">No messages yet — say hello! 👋</div>'
+    :allMsgs.map(m=>{
+      const isMe=m.sender_email===CU?.email||m.sender_name===CU?.name;
+      const initials=(m.sender_name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+      const time=new Date(m.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});
+      const body=esc(m.body||'').replace(/@(\w+)/g,'<span style="color:var(--teal);font-weight:600;background:rgba(58,191,191,.1);padding:0 2px;border-radius:3px">@$1</span>');
+      return`<div style="display:flex;gap:10px;align-items:flex-start${isMe?';flex-direction:row-reverse':''}">
+        <div style="width:32px;height:32px;border-radius:50%;background:${isMe?'var(--teal)':'var(--navy)'};color:${isMe?'var(--navy)':'var(--teal)'};
+          display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${initials}</div>
+        <div style="max-width:68%">
+          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px;${isMe?'flex-direction:row-reverse':''}">
+            <span style="font-size:12px;font-weight:600;color:var(--navy)">${esc(m.sender_name||'')}</span>
+            <span style="font-size:10px;color:var(--muted)">${time}</span>
+          </div>
+          <div style="background:${isMe?'var(--navy)':'var(--surf)'};color:${isMe?'white':'var(--text)'};
+            padding:8px 12px;border-radius:${isMe?'12px 2px 12px 12px':'2px 12px 12px 12px'};
+            font-size:13px;line-height:1.5;word-break:break-word">${body}</div>
+        </div>
+      </div>`;
+    }).join('');
+  container.scrollTop=container.scrollHeight;
+}
+
+function showChatToast(msg){
+  const stack=document.getElementById('chat-toasts');
+  if(!stack) return;
+  const initials=(msg.sender_name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+  const chanLabel=msg.channel==='all'?'# All LHS':
+    msg.channel.startsWith('dm-')?'💬 Direct Message':
+    msg.channel.startsWith('div-')?'🔧 '+msg.channel.replace('div-','').replace(/-/g,' '):
+    msg.channel.startsWith('grp-')?'👥 Group':'Chatter';
+  const toast=document.createElement('div');
+  toast.className='chat-toast';
+  toast.innerHTML=`
+    <div class="chat-toast-hd">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--teal);color:var(--navy);
+        display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(msg.sender_name||'')}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.55)">${chanLabel}</div>
+      </div>
+      <button onclick="this.closest('.chat-toast').remove()" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:16px;padding:0 0 0 8px;flex-shrink:0;line-height:1">&times;</button>
+    </div>
+    <div class="chat-toast-body" onclick="window._chatChannel='${esc(msg.channel)}';showPage('chatter');this.closest('.chat-toast').remove();_chatUnread=0;refreshChatBadge()">
+      ${esc((msg.body||'').slice(0,120))}
+    </div>`;
+  stack.appendChild(toast);
+  // Auto-dismiss after 6 seconds
+  setTimeout(()=>{
+    toast.classList.add('hiding');
+    setTimeout(()=>toast.remove(),350);
+  },6000);
 }
 
 // ── WO + APPOINTMENT COMPLETION BAR ──────────────────────────────────────────
