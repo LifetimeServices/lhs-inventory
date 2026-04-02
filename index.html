@@ -8219,29 +8219,20 @@ document.addEventListener('mouseup',async e=>{
 // Grey blocks (task blocks without a WO)
 const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'];
 
-// Compound time control: <select> dropdown for quick picking + <input type="time"> for manual edit
-// Selecting from dropdown pre-fills the time input; time input is editable and is what gets saved
+// Time input with dropdown suggestions + direct cursor editing
+// <input type="time" list="..."> shows a native time picker with a datalist dropdown
 function mkDispTimeInput(id, selected, disabled){
-  const opts=['<option value="">— quick pick —</option>'];
+  const opts=[];
   for(let h=5;h<23;h++){
     for(let m=0;m<60;m+=15){
-      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-      const ap=h>=12?'PM':'AM';
-      const dh=h>12?h-12:(h===0?12:h);
-      opts.push(`<option value="${val}"${val===selected?' selected':''}>${dh}:${String(m).padStart(2,'0')} ${ap}</option>`);
+      opts.push(`<option value="${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}"></option>`);
     }
   }
   const dis=disabled?'disabled':'';
-  const bg=disabled?'var(--surf)':'white';
-  return`<select ${dis}
-    style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px 8px 0 0;
-    font-size:13px;font-family:inherit;background:${bg};color:var(--text);margin-bottom:-1px;position:relative;z-index:1"
-    onchange="(function(s){var i=document.getElementById('${id}');if(i&&s.value)i.value=s.value;})(this)">
-    ${opts.join('')}
-  </select>
-  <input type="time" id="${id}" value="${selected||''}" ${dis}
-    style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-top:1px solid #d0cec9;
-    border-radius:0 0 8px 8px;font-size:13px;font-family:inherit;background:${bg};color:var(--text)">`;
+  return`<input type="time" id="${id}" value="${selected||''}" list="${id}-dl" ${dis}
+    style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;
+    font-size:13px;font-family:inherit;background:${disabled?'var(--surf)':'white'};color:var(--text)">
+  <datalist id="${id}-dl">${opts.join('')}</datalist>`;
 }
 // Parse time value from input — type="time" always returns clean HH:MM
 function parseDispTime(val){
