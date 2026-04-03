@@ -1343,15 +1343,15 @@ function getClassifications(division, jobType, subtype){
 // ── DEFAULT PERMISSIONS ───────────────────────────────────────────────────────
 // tabs: dashboard, dispatch, workorders, closeout, inventory, payroll, reports, admin
 const DEFAULT_PERMS={
-  'God View':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,properties:1},
-  'Admin':              {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,properties:1},
-  'Director':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,properties:1},
-  'Regional Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,properties:1},
-  'Operations Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1,properties:1},
-  'Dispatcher':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,properties:1},
-  'Location Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0,properties:1},
-  'Van Tech':           {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:0,inventory:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,properties:0},
-  'Sales Rep':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1,properties:1},
+  'God View':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Admin':              {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Director':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Regional Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Operations Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
+  'Dispatcher':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Location Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
+  'Van Tech':           {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Sales Rep':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
 };
 
 let WH=['Green Bay WI','Brookfield WI','Colorado'];
@@ -1767,14 +1767,31 @@ async function startApp(){
     <div class="page" id="p-reports"></div>
     <div class="page" id="p-operations"></div>
     <div class="page" id="p-admin"></div>
+    <div class="page" id="p-accounts"></div>
+    <div class="page" id="p-business"></div>
+    <div class="page" id="p-commercial"></div>
+    <div class="page" id="p-sales-accounts"></div>
+    <div class="page" id="p-sales-discounts"></div>
+    <div class="page" id="p-sales-followups"></div>
+    <div class="page" id="p-hr"></div>
+    <div class="page" id="p-hr-payroll"></div>
+    <div class="page" id="p-hr-employees"></div>
+    <div class="page" id="p-hr-state"></div>
+    <div class="page" id="p-hr-timeoff"></div>
+    <div class="page" id="p-hr-settings"></div>
+    <div class="page" id="p-sales-marketing"></div>
   `;
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
-  const _validPages=['dashboard','chatter','dispatch','workorders','customers','properties','sales',
-    'sales-leads','sales-opps','sales-estimates','sales-tasks','sales-activities','sales-marketing','sales-settings',
-    'tasks','mytasks','accounting','acct-dashboard','acct-receipts','acct-settings','closeout','inventory','inv-dashboard','po','receive','transfer','vans',
-    'locations','locstock','inv-reports','testers','tools','payroll','reports','operations','admin'];
+  const _validPages=['dashboard','chatter','dispatch','workorders','closeout',
+    'accounts','customers','properties','business','commercial',
+    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings',
+    'tasks','mytasks',
+    'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
+    'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
+    'payroll','accounting','acct-dashboard','acct-receipts','acct-settings',
+    'reports','operations','admin'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -1782,7 +1799,19 @@ async function startApp(){
   // Also check URL hash directly on load
   const _hash=(window.location.hash||'').replace('#','');
   if(_hash.startsWith('confirm-po-')){ confirmPOByToken(_hash.replace('confirm-po-','')); }
-  showPage(_validPages.includes(_lastPage)?_lastPage:'dashboard');
+  // Activate the correct sub-nav if restoring to a sub-section page
+  const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
+  const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
+  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
+  const _acctPgs=['acct-dashboard','acct-receipts','acct-settings'];
+  const _acctsPgs=['customers','properties','business','commercial'];
+  const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
+  if(_invPgs.includes(_restorePage)) renderInvNav();
+  else if(_salesPgs.includes(_restorePage)) renderSalesNav();
+  else if(_acctPgs.includes(_restorePage)) renderAcctNav();
+  else if(_acctsPgs.includes(_restorePage)) renderAccountsNav();
+  else if(_hrPgs.includes(_restorePage)) renderHRNav();
+  showPage(_restorePage);
   // Load notifications from Supabase
   try{
     const{data}=await DB.from('lhs_notifications')
@@ -1803,14 +1832,12 @@ const MAIN_NAV=[
   {id:'dispatch',    l:'Dispatch'},
   {id:'workorders',  l:'Work Orders'},
   {id:'closeout',    l:'Closeout'},
-  {id:'customers',   l:'Customers'},
-  {id:'properties',  l:'Properties'},
+  {id:'accounts',    l:'Accounts'},
   {id:'sales',       l:'Sales'},
   {id:'inventory',   l:'Inventory'},
-  {id:'payroll',     l:'Payroll'},
+  {id:'hr',          l:'HR'},
   {id:'accounting',  l:'Accounting'},
   {id:'reports',     l:'Reports'},
-  {id:'operations',  l:'Operations'},
   {id:'admin',       l:'Admin'},
 ];
 
@@ -1870,18 +1897,35 @@ const INV_NAV=[
   {id:'testers',      l:'Testers'},
   {id:'tools',        l:'Tool Management'},
 ];
-const SALES_NAV=[
-  {id:'sales-leads',      l:'Leads'},
-  {id:'sales-opps',       l:'Opportunities'},
-  {id:'sales-estimates',  l:'Estimates'},
-  {id:'sales-tasks',      l:'Follow-ups & Tasks'},
-  {id:'sales-activities', l:'Activities'},
-  {id:'sales-marketing',  l:'Marketing'},
-  {id:'sales-settings',   l:'Sales Settings'},
+const ACCOUNTS_NAV=[
+  {id:'customers',         l:'Customers'},
+  {id:'properties',        l:'Properties'},
+  {id:'business',          l:'Business'},
+  {id:'commercial',        l:'Commercial'},
 ];
 
-function renderSalesNav(){
-  _navMode='sales';
+const SALES_NAV=[
+  {id:'sales-leads',       l:'Leads'},
+  {id:'sales-accounts',    l:'Accounts'},
+  {id:'sales-opps',        l:'Opportunities'},
+  {id:'sales-estimates',   l:'Estimates'},
+  {id:'sales-followups',   l:'Follow Ups'},
+  {id:'sales-activities',  l:'Activities'},
+  {id:'sales-marketing',   l:'Marketing'},
+  {id:'sales-discounts',   l:'Discounts &amp; Promotions'},
+  {id:'sales-settings',    l:'Sales Settings'},
+];
+
+const HR_NAV=[
+  {id:'hr-payroll',        l:'Payroll'},
+  {id:'hr-employees',      l:'Employee Info'},
+  {id:'hr-state',          l:'State Settings'},
+  {id:'hr-timeoff',        l:'Time Off Requests'},
+  {id:'hr-settings',       l:'HR Settings'},
+];
+
+function _renderSubNav(navMode, navArr, defaultPage){
+  _navMode=navMode;
   const c=document.getElementById('tnav'); c.innerHTML='';
   const back=document.createElement('button');
   back.className='nb nb-back'; back.innerHTML='&#8592; Main Menu';
@@ -1890,14 +1934,18 @@ function renderSalesNav(){
   const sep=document.createElement('span');
   sep.style.cssText='color:rgba(255,255,255,.25);margin:0 2px;font-size:16px';
   sep.textContent='|'; c.appendChild(sep);
-  SALES_NAV.forEach(n=>{
+  navArr.forEach(n=>{
     const b=document.createElement('button');
     b.className='nb'; b.innerHTML=n.l; b.dataset.p=n.id;
     b.onclick=()=>showPage(n.id); c.appendChild(b);
   });
-  showPage('sales-leads');
+  showPage(defaultPage);
   setTimeout(updateNavArrows,50);
 }
+
+function renderAccountsNav(){ _renderSubNav('accounts', ACCOUNTS_NAV, 'customers'); }
+function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-leads'); }
+function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
 
 const ACCT_NAV=[
   {id:'acct-dashboard', l:'&#128200; Dashboard'},
@@ -1905,24 +1953,7 @@ const ACCT_NAV=[
   {id:'acct-settings',  l:'&#9881;&#65039; Settings'},
 ];
 
-function renderAcctNav(){
-  _navMode='accounting';
-  const c=document.getElementById('tnav'); c.innerHTML='';
-  const back=document.createElement('button');
-  back.className='nb nb-back'; back.innerHTML='&#8592; Main Menu';
-  back.onclick=()=>{ renderMainNav(); showPage('dashboard'); };
-  c.appendChild(back);
-  const sep=document.createElement('span');
-  sep.style.cssText='color:rgba(255,255,255,.25);margin:0 2px;font-size:16px';
-  sep.textContent='|'; c.appendChild(sep);
-  ACCT_NAV.forEach(n=>{
-    const b=document.createElement('button');
-    b.className='nb'; b.innerHTML=n.l; b.dataset.p=n.id;
-    b.onclick=()=>showPage(n.id); c.appendChild(b);
-  });
-  showPage('acct-dashboard');
-  setTimeout(updateNavArrows,50);
-}
+function renderAcctNav(){ _renderSubNav('accounting', ACCT_NAV, 'acct-dashboard'); }
 
 function buildNav(){ renderMainNav(); setTimeout(updateNavArrows,100); }
 
@@ -1950,7 +1981,13 @@ function renderMainNav(){
     if(n.id!=='dashboard'&&!perms[n.id]) return;
     const b=document.createElement('button');
     b.className='nb'; b.innerHTML=n.l; b.dataset.p=n.id;
-    b.onclick=()=>{ if(n.id==='inventory') renderInvNav(); else if(n.id==='sales') renderSalesNav(); else showPage(n.id); };
+    b.onclick=()=>{
+      if(n.id==='inventory') renderInvNav();
+      else if(n.id==='sales') renderSalesNav();
+      else if(n.id==='accounts') renderAccountsNav();
+      else if(n.id==='hr') renderHRNav();
+      else showPage(n.id);
+    };
     c.appendChild(b);
   });
 }
@@ -2031,12 +2068,16 @@ window.addEventListener('popstate',e=>{
   if(!CU){ window.history.replaceState({lmsPage:'dashboard'},'','#dashboard'); return; }
   // Re-render the correct nav mode for this page
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const salesPages=['sales-leads','sales-opps','sales-estimates','sales-tasks','sales-activities','sales-settings'];
+  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
   const acctPages=['acct-dashboard','acct-receipts','acct-settings'];
+  const accountsPages=['customers','properties','business','commercial'];
+  const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
   if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
   else if(salesPages.includes(id)&&_navMode!=='sales') renderSalesNav();
   else if(acctPages.includes(id)&&_navMode!=='accounting') renderAcctNav();
-  else if(!invPages.includes(id)&&!salesPages.includes(id)&&!acctPages.includes(id)&&_navMode!=='main') renderMainNav();
+  else if(accountsPages.includes(id)&&_navMode!=='accounts') renderAccountsNav();
+  else if(hrPages.includes(id)&&_navMode!=='hr') renderHRNav();
+  else if(!invPages.includes(id)&&!salesPages.includes(id)&&!acctPages.includes(id)&&!accountsPages.includes(id)&&!hrPages.includes(id)&&_navMode!=='main') renderMainNav();
   // Show the page without pushing another history entry
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb:not(.nb-back)').forEach(b=>b.classList.remove('active'));
@@ -2049,15 +2090,29 @@ window.addEventListener('popstate',e=>{
 function buildPage(id){
   const pages={
     dashboard:bDash, chatter:bChatter, dispatch:bDispatch, workorders:bWorkOrders, customers:bCustomers, properties:bProperties,
+    accounts:()=>bPlaceholder('Accounts'),
+    business:()=>bPlaceholder('Business Accounts'),
+    commercial:()=>bPlaceholder('Commercial Accounts'),
     sales:bSales,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
-    'sales-estimates':bSalesEstimates,'sales-tasks':bSalesTasks,'sales-activities':bSalesActivities,
+    'sales-accounts':bCustomers,
+    'sales-estimates':bSalesEstimates,
+    'sales-tasks':bSalesTasks,'sales-followups':bSalesTasks,
+    'sales-activities':bSalesActivities,
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
+    'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
     tasks:bTasks, mytasks:bMyTasks,
     accounting:bAccounting,'acct-dashboard':bAcctDashboard,'acct-receipts':bAcctReceipts,'acct-settings':bAcctSettings,
     closeout:bCloseout, inventory:bInv, 'inv-dashboard':bInvDash,
     po:bPO, receive:bRecv, transfer:bXfr, vans:bVans,
     locations:bLocs, locstock:bLS, 'inv-reports':bInvReports,
-    testers:bTest, tools:bTools, payroll:bPayroll,
+    testers:bTest, tools:bTools,
+    hr:()=>bPlaceholder('HR'),
+    'hr-payroll':bPayroll,
+    'hr-employees':()=>bPlaceholder('Employee Info'),
+    'hr-state':()=>bPlaceholder('State Settings'),
+    'hr-timeoff':()=>bPlaceholder('Time Off Requests'),
+    'hr-settings':()=>bPlaceholder('HR Settings'),
+    payroll:bPayroll,
     reports:bReports, operations:bOperations, admin:bAdmin,
   };
   return (pages[id]||bDash)();
@@ -8112,6 +8167,14 @@ function deleteCampaign(id){
 
 
 function utilColor(u){return u>=80?'var(--red)':u>=50?'var(--amber)':'var(--green)';}
+
+function bPlaceholder(title){
+  return`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;color:var(--muted)">
+    <div style="font-size:48px;opacity:.3">🚧</div>
+    <div style="font-size:22px;font-weight:700;color:var(--text)">${title}</div>
+    <div style="font-size:14px">This section is coming soon.</div>
+  </div>`;
+}
 
 function bDash(){
   const today=new Date().toISOString().split('T')[0];
