@@ -5519,7 +5519,7 @@ async function svOpsAssignment(){
   }
   S.set('lhs:ops_assignments',all);
   cMod();
-  tst(`Assigned to ${added} employee${added!==1?'s':''}','success');
+  tst(`Assigned to ${added} employee${added!==1?'s':''}`, 'success');
   _opsTab='assignments';
   showPage('operations');
 }
