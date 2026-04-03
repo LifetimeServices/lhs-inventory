@@ -1412,6 +1412,7 @@ const TBL={
   'lhs:territories':'lhs_territories',
   'lhs:ops_documents':'lhs_ops_documents',
   'lhs:ops_assignments':'lhs_ops_assignments',
+  'lhs:cal_events':'lhs_calendar_events',
 };
 
 // Pull all data from Supabase into cache on login
@@ -1767,6 +1768,8 @@ async function startApp(){
     <div class="page" id="p-reports"></div>
     <div class="page" id="p-operations"></div>
     <div class="page" id="p-admin"></div>
+    <div class="page" id="p-dispatch-board"></div>
+    <div class="page" id="p-dispatch-calendar"></div>
     <div class="page" id="p-accounts"></div>
     <div class="page" id="p-business"></div>
     <div class="page" id="p-commercial"></div>
@@ -1784,7 +1787,7 @@ async function startApp(){
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
-  const _validPages=['dashboard','chatter','dispatch','workorders','closeout',
+  const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
     'accounts','customers','properties','business','commercial',
     'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings',
     'tasks','mytasks',
@@ -1801,12 +1804,14 @@ async function startApp(){
   if(_hash.startsWith('confirm-po-')){ confirmPOByToken(_hash.replace('confirm-po-','')); }
   // Activate the correct sub-nav if restoring to a sub-section page
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
+  const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
   const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
   const _acctPgs=['acct-dashboard','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
-  if(_invPgs.includes(_restorePage)) renderInvNav();
+  if(_dispPgs.includes(_restorePage)) renderDispatchNav();
+  else if(_invPgs.includes(_restorePage)) renderInvNav();
   else if(_salesPgs.includes(_restorePage)) renderSalesNav();
   else if(_acctPgs.includes(_restorePage)) renderAcctNav();
   else if(_acctsPgs.includes(_restorePage)) renderAccountsNav();
@@ -1827,6 +1832,11 @@ async function startApp(){
 }
 
 // ─── NAV ─────────────────────────────────────────────────────────────────────
+const DISPATCH_NAV=[
+  {id:'dispatch-board',    l:'&#128203; Dispatch Board'},
+  {id:'dispatch-calendar', l:'&#128197; Company Calendar'},
+];
+
 const MAIN_NAV=[
   {id:'dashboard',   l:'Dashboard'},
   {id:'dispatch',    l:'Dispatch'},
@@ -1944,6 +1954,7 @@ function _renderSubNav(navMode, navArr, defaultPage){
   setTimeout(updateNavArrows,50);
 }
 
+function renderDispatchNav() { _renderSubNav('dispatch', DISPATCH_NAV, 'dispatch-board'); }
 function renderAccountsNav(){ _renderSubNav('accounts', ACCOUNTS_NAV, 'customers'); }
 function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-leads'); }
 function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
@@ -1983,7 +1994,8 @@ function renderMainNav(){
     const b=document.createElement('button');
     b.className='nb'; b.innerHTML=n.l; b.dataset.p=n.id;
     b.onclick=()=>{
-      if(n.id==='inventory') renderInvNav();
+      if(n.id==='dispatch') renderDispatchNav();
+      else if(n.id==='inventory') renderInvNav();
       else if(n.id==='sales') renderSalesNav();
       else if(n.id==='accounts') renderAccountsNav();
       else if(n.id==='hr') renderHRNav();
@@ -2041,7 +2053,7 @@ function showPage(id){
   // Render dashboard charts after DOM is painted
   if(id==='dashboard') setTimeout(renderDashCharts,80);
   // Fix dispatch board height so toolbar never scrolls
-  if(id==='dispatch') setTimeout(fixDispBoardHeight,0);
+  if(id==='dispatch'||id==='dispatch-board') setTimeout(fixDispBoardHeight,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
@@ -2068,17 +2080,19 @@ window.addEventListener('popstate',e=>{
   // Check if user is logged in (CU set)
   if(!CU){ window.history.replaceState({lmsPage:'dashboard'},'','#dashboard'); return; }
   // Re-render the correct nav mode for this page
+  const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
   const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
   const acctPages=['acct-dashboard','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
-  if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
+  if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
+  else if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
   else if(salesPages.includes(id)&&_navMode!=='sales') renderSalesNav();
   else if(acctPages.includes(id)&&_navMode!=='accounting') renderAcctNav();
   else if(accountsPages.includes(id)&&_navMode!=='accounts') renderAccountsNav();
   else if(hrPages.includes(id)&&_navMode!=='hr') renderHRNav();
-  else if(!invPages.includes(id)&&!salesPages.includes(id)&&!acctPages.includes(id)&&!accountsPages.includes(id)&&!hrPages.includes(id)&&_navMode!=='main') renderMainNav();
+  else if(!dispPages.includes(id)&&!invPages.includes(id)&&!salesPages.includes(id)&&!acctPages.includes(id)&&!accountsPages.includes(id)&&!hrPages.includes(id)&&_navMode!=='main') renderMainNav();
   // Show the page without pushing another history entry
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb:not(.nb-back)').forEach(b=>b.classList.remove('active'));
@@ -2090,7 +2104,9 @@ window.addEventListener('popstate',e=>{
 
 function buildPage(id){
   const pages={
-    dashboard:bDash, chatter:bChatter, dispatch:bDispatch, workorders:bWorkOrders, customers:bCustomers, properties:bProperties,
+    dashboard:bDash, chatter:bChatter,
+    dispatch:bDispatch, 'dispatch-board':bDispatch, 'dispatch-calendar':bCompanyCalendar,
+    workorders:bWorkOrders, customers:bCustomers, properties:bProperties,
     accounts:()=>bPlaceholder('Accounts'),
     business:()=>bPlaceholder('Business Accounts'),
     commercial:()=>bPlaceholder('Commercial Accounts'),
@@ -8808,6 +8824,370 @@ function bDispatch(){
     ${(()=>{try{return renderDispBoard();}catch(e){console.error('Dispatch board error:',e);return`<div class="card" style="text-align:center;padding:32px;color:var(--red)">Dispatch board error: ${esc(e.message)}<br><small>Check browser console for details</small></div>`;}})()}
   </div>
 </div>`;
+}
+
+// ─── COMPANY CALENDAR ────────────────────────────────────────────────────────
+let _calYear=new Date().getFullYear();
+let _calMonth=new Date().getMonth(); // 0-indexed
+let _calSelectedDay=null;
+
+const CAL_EVENT_TYPES={
+  ooo:      {label:'Out of Office', color:'#2563eb', bg:'#dbeafe', icon:'🏖️'},
+  birthday: {label:'Birthday',      color:'#9333ea', bg:'#f3e8ff', icon:'🎂'},
+  anniversary:{label:'Work Anniversary', color:'#d97706', bg:'#fef3c7', icon:'🎉'},
+  holiday:  {label:'Holiday',       color:'#dc2626', bg:'#fee2e2', icon:'🏛️'},
+  custom:   {label:'Event',         color:'#0d9488', bg:'#ccfbf1', icon:'📅'},
+};
+
+// US Federal Holidays (month is 0-indexed, day is 1-indexed; rule can be 'fixed' or 'nth')
+const US_HOLIDAYS=[
+  {name:"New Year's Day",       month:0,  day:1,    rule:'fixed'},
+  {name:"MLK Jr. Day",          month:0,  nth:3,    weekday:1,  rule:'nth'},
+  {name:"Presidents' Day",      month:1,  nth:3,    weekday:1,  rule:'nth'},
+  {name:"Memorial Day",         month:4,  nth:-1,   weekday:1,  rule:'nth'},
+  {name:"Juneteenth",           month:5,  day:19,   rule:'fixed'},
+  {name:"Independence Day",     month:6,  day:4,    rule:'fixed'},
+  {name:"Labor Day",            month:8,  nth:1,    weekday:1,  rule:'nth'},
+  {name:"Columbus Day",         month:9,  nth:2,    weekday:1,  rule:'nth'},
+  {name:"Veterans Day",         month:10, day:11,   rule:'fixed'},
+  {name:"Thanksgiving",         month:10, nth:4,    weekday:4,  rule:'nth'},
+  {name:"Christmas Day",        month:11, day:25,   rule:'fixed'},
+];
+
+function _holidayDate(h, year){
+  if(h.rule==='fixed') return new Date(year, h.month, h.day);
+  // nth weekday (nth=-1 means last)
+  if(h.nth===-1){
+    // last weekday in month
+    const last=new Date(year, h.month+1, 0); // last day of month
+    let d=last.getDate();
+    while(new Date(year,h.month,d).getDay()!==h.weekday) d--;
+    return new Date(year,h.month,d);
+  }
+  // nth occurrence of weekday
+  let count=0, day=1;
+  while(true){
+    const dt=new Date(year,h.month,day);
+    if(dt.getDay()===h.weekday){ count++; if(count===h.nth) return dt; }
+    day++;
+  }
+}
+
+function _getCalEvents(year, month){
+  const events={}; // key: 'YYYY-MM-DD' → [{type,label,person,color,bg,icon}]
+  const push=(dateStr,ev)=>{ if(!events[dateStr]) events[dateStr]=[]; events[dateStr].push(ev); };
+
+  // Holidays
+  US_HOLIDAYS.forEach(h=>{
+    const dt=_holidayDate(h,year);
+    if(dt.getMonth()===month){
+      const key=`${year}-${String(month+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+      push(key,{...CAL_EVENT_TYPES.holiday, name:h.name});
+    }
+  });
+
+  // Birthdays & Anniversaries from users
+  const users=S.get('lhs:users')||[];
+  users.forEach(u=>{
+    if(u.birthday){
+      try{
+        const bd=new Date(u.birthday+'T12:00:00');
+        if(bd.getMonth()===month){
+          const key=`${year}-${String(month+1).padStart(2,'0')}-${String(bd.getDate()).padStart(2,'0')}`;
+          push(key,{...CAL_EVENT_TYPES.birthday, name:`${u.name}'s Birthday`});
+        }
+      }catch{}
+    }
+    if(u.hire_date){
+      try{
+        const hd=new Date(u.hire_date+'T12:00:00');
+        if(hd.getMonth()===month){
+          const yrs=year-hd.getFullYear();
+          if(yrs>0){
+            const key=`${year}-${String(month+1).padStart(2,'0')}-${String(hd.getDate()).padStart(2,'0')}`;
+            push(key,{...CAL_EVENT_TYPES.anniversary, name:`${u.name} — ${yrs} Year${yrs>1?'s':''} 🎉`});
+          }
+        }
+      }catch{}
+    }
+  });
+
+  // OOO & custom events from lhs_calendar_events cache
+  const calEvts=S.get('lhs:cal_events')||[];
+  calEvts.forEach(ev=>{
+    try{
+      const start=new Date(ev.start_date+'T12:00:00');
+      const end=ev.end_date?new Date(ev.end_date+'T12:00:00'):start;
+      // Walk each day of the range
+      let cur=new Date(start);
+      while(cur<=end){
+        if(cur.getFullYear()===year&&cur.getMonth()===month){
+          const key=`${year}-${String(month+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+          const t=CAL_EVENT_TYPES[ev.event_type]||CAL_EVENT_TYPES.custom;
+          push(key,{...t, name:ev.title+(ev.user_name?` (${ev.user_name})`:'')} );
+        }
+        cur.setDate(cur.getDate()+1);
+      }
+    }catch{}
+  });
+
+  return events;
+}
+
+function bCompanyCalendar(){
+  const today=new Date();
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const year=_calYear, month=_calMonth;
+  const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const dayHeaders=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const firstDay=new Date(year,month,1).getDay(); // 0=Sun
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const events=_getCalEvents(year,month);
+
+  // Build calendar grid cells
+  let cells='';
+  // Leading blanks
+  for(let i=0;i<firstDay;i++){
+    cells+=`<div style="min-height:90px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
+  }
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday=dateStr===todayStr;
+    const isSelected=dateStr===_calSelectedDay;
+    const dayEvts=events[dateStr]||[];
+    const maxShow=3;
+    const evtChips=dayEvts.slice(0,maxShow).map(e=>
+      `<div title="${e.name}" style="background:${e.bg};color:${e.color};font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;border-left:2px solid ${e.color};margin-bottom:1px">${e.icon} ${e.name}</div>`
+    ).join('');
+    const overflow=dayEvts.length>maxShow?`<div style="font-size:10px;color:var(--muted);padding:1px 5px">+${dayEvts.length-maxShow} more</div>`:'';
+
+    cells+=`<div onclick="calSelectDay('${dateStr}')" style="min-height:90px;padding:6px;cursor:pointer;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr);
+      background:${isSelected?'#f0fdf4':isToday?'#eff6ff':'white'};
+      transition:background .1s;position:relative"
+      onmouseover="this.style.background='${isSelected?'#dcfce7':'#f8fafc'}'"
+      onmouseout="this.style.background='${isSelected?'#f0fdf4':isToday?'#eff6ff':'white'}'">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:13px;font-weight:${isToday?'700':'500'};color:${isToday?'white':'var(--text)'};
+          ${isToday?`background:var(--teal);border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;`:''}">
+          ${d}
+        </span>
+        ${dayEvts.length?`<span style="font-size:10px;background:var(--surf);border-radius:10px;padding:1px 5px;color:var(--muted)">${dayEvts.length}</span>`:''}
+      </div>
+      ${evtChips}${overflow}
+    </div>`;
+  }
+  // Trailing blanks to complete last row
+  const total=firstDay+daysInMonth;
+  const trailing=(7-total%7)%7;
+  for(let i=0;i<trailing;i++){
+    cells+=`<div style="min-height:90px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
+  }
+
+  // Selected day detail panel
+  let detailPanel='';
+  if(_calSelectedDay){
+    const selEvts=events[_calSelectedDay]||[];
+    const selDate=new Date(_calSelectedDay+'T12:00:00');
+    const dayLabel=selDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    detailPanel=`
+    <div style="margin-top:20px;background:white;border:1px solid var(--bdr);border-radius:10px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surf);border-bottom:1px solid var(--bdr)">
+        <div>
+          <div style="font-weight:700;font-size:15px;color:var(--navy)">${dayLabel}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:1px">${selEvts.length?selEvts.length+' event'+(selEvts.length>1?'s':''):'No events scheduled'}</div>
+        </div>
+        <button class="btn btn-n sm" onclick="oAddCalEvent('${_calSelectedDay}')">+ Add Event</button>
+      </div>
+      ${selEvts.length?`<div style="padding:12px 18px;display:flex;flex-direction:column;gap:8px">
+        ${selEvts.map(e=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:${e.bg};border-radius:8px;border-left:4px solid ${e.color}">
+            <span style="font-size:22px">${e.icon}</span>
+            <div>
+              <div style="font-weight:600;font-size:13px;color:${e.color}">${e.name}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.05em">${e.label}</div>
+            </div>
+          </div>`).join('')}
+      </div>`:`<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Nothing scheduled for this day.<br>
+        <button class="btn btn-o sm" style="margin-top:10px" onclick="oAddCalEvent('${_calSelectedDay}')">+ Add an Event</button></div>`}
+    </div>`;
+  }
+
+  // Upcoming events sidebar list (next 30 days)
+  const upcomingEvents=[];
+  for(let i=0;i<60;i++){
+    const dt=new Date(today);
+    dt.setDate(today.getDate()+i);
+    const ds=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    const allY=_getCalEvents(dt.getFullYear(),dt.getMonth());
+    const dayEvts2=allY[ds]||[];
+    dayEvts2.forEach(e=>upcomingEvents.push({dateStr:ds,date:dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}),...e}));
+    if(upcomingEvents.length>=12) break;
+  }
+
+  return`<div style="display:flex;gap:20px;align-items:flex-start">
+  <!-- MAIN CALENDAR -->
+  <div style="flex:1;min-width:0">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-o sm" onclick="calNav(-1)">&#9664;</button>
+        <div style="font-size:20px;font-weight:700;color:var(--navy);min-width:180px;text-align:center">${monthNames[month]} ${year}</div>
+        <button class="btn btn-o sm" onclick="calNav(1)">&#9654;</button>
+        <button class="btn btn-n sm" onclick="calGoToday()">Today</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${Object.entries(CAL_EVENT_TYPES).map(([k,v])=>`
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${v.color};background:${v.bg};padding:3px 8px;border-radius:10px;border:1px solid ${v.color}20">
+            ${v.icon} ${v.label}
+          </span>`).join('')}
+        <button class="btn btn-n sm" onclick="oAddCalEvent(null)">+ Add Event</button>
+      </div>
+    </div>
+    <!-- Calendar Grid -->
+    <div style="border:1px solid var(--bdr);border-radius:10px;overflow:hidden;background:white;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <!-- Day headers -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);background:var(--navy)">
+        ${dayHeaders.map(h=>`<div style="padding:8px 0;text-align:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.8);letter-spacing:.06em;text-transform:uppercase">${h}</div>`).join('')}
+      </div>
+      <!-- Day cells -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr)">
+        ${cells}
+      </div>
+    </div>
+    ${detailPanel}
+  </div>
+
+  <!-- SIDEBAR: Upcoming Events -->
+  <div style="width:240px;flex-shrink:0">
+    <div style="background:white;border:1px solid var(--bdr);border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="padding:14px 16px;background:var(--surf);border-bottom:1px solid var(--bdr)">
+        <div style="font-weight:700;font-size:13px;color:var(--navy)">📌 Upcoming Events</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Next 60 days</div>
+      </div>
+      <div style="max-height:480px;overflow-y:auto">
+        ${upcomingEvents.length?upcomingEvents.map(e=>`
+          <div onclick="calSelectDay('${e.dateStr}')" style="padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:background .1s"
+            onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background='white'">
+            <div style="flex-shrink:0;width:36px;text-align:center">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${e.date.split(' ')[0]}</div>
+              <div style="font-size:18px;font-weight:700;color:var(--navy);line-height:1">${e.date.split(' ')[1]}</div>
+            </div>
+            <div style="min-width:0">
+              <div style="font-size:12px;font-weight:600;color:${e.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.icon} ${e.name}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${e.label}</div>
+            </div>
+          </div>`).join(''):`<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No upcoming events in the next 60 days.</div>`}
+      </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div style="margin-top:14px;background:white;border:1px solid var(--bdr);border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">📊 This Month</div>
+      ${Object.entries(CAL_EVENT_TYPES).map(([k,v])=>{
+        const cnt=Object.values(events).flat().filter(e=>e.label===v.label).length;
+        return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdr)">
+          <span style="font-size:12px;color:var(--text)">${v.icon} ${v.label}</span>
+          <span style="font-size:12px;font-weight:700;color:${cnt?v.color:'var(--muted)'}">${cnt}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+</div>`;
+}
+
+function calNav(dir){
+  _calMonth+=dir;
+  if(_calMonth>11){_calMonth=0;_calYear++;}
+  if(_calMonth<0){_calMonth=11;_calYear--;}
+  _calSelectedDay=null;
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
+}
+
+function calGoToday(){
+  const now=new Date();
+  _calYear=now.getFullYear(); _calMonth=now.getMonth(); _calSelectedDay=null;
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
+}
+
+function calSelectDay(dateStr){
+  _calSelectedDay=_calSelectedDay===dateStr?null:dateStr;
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
+}
+
+function oAddCalEvent(dateStr){
+  const today=dateStr||new Date().toISOString().split('T')[0];
+  oMod('Add Calendar Event',`
+  <div class="fr">
+    <div class="fl"><label>Event Title</label><input id="cal-title" placeholder="e.g. Team Offsite"></div>
+    <div class="fl"><label>Event Type</label><select id="cal-type">
+      <option value="ooo">🏖️ Out of Office</option>
+      <option value="holiday">🏛️ Holiday</option>
+      <option value="custom" selected>📅 Event</option>
+    </select></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Start Date</label><input type="date" id="cal-start" value="${today}"></div>
+    <div class="fl"><label>End Date (optional)</label><input type="date" id="cal-end" value="${today}"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Person (optional)</label><select id="cal-user">
+      <option value="">— All / Company-wide —</option>
+      ${(S.get('lhs:users')||[]).map(u=>`<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('')}
+    </select></div>
+    <div class="fl"><label>Notes</label><input id="cal-notes" placeholder="Optional details"></div>
+  </div>
+  <div class="br2" style="position:sticky;bottom:-28px;background:var(--white);padding:12px 0 0;margin:12px -28px -28px;padding-left:28px;padding-right:28px;border-top:1px solid var(--bdr)">
+    <button class="btn btn-n" onclick="svCalEvent()">Save Event</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svCalEvent(){
+  const title=v('cal-title')?.trim();
+  if(!title){tst('Event title is required','warning');return;}
+  const ev={
+    id:'cal-'+Date.now(),
+    title,
+    event_type:v('cal-type')||'custom',
+    start_date:v('cal-start')||new Date().toISOString().split('T')[0],
+    end_date:v('cal-end')||v('cal-start')||new Date().toISOString().split('T')[0],
+    user_name:v('cal-user')||null,
+    notes:v('cal-notes')||null,
+    created_by:CU?.name||'Unknown',
+    created_at:new Date().toISOString(),
+  };
+  // Save to Supabase
+  try{
+    const{error}=await DB.from('lhs_calendar_events').insert({
+      title:ev.title,
+      event_type:ev.event_type,
+      start_date:ev.start_date,
+      end_date:ev.end_date,
+      user_name:ev.user_name,
+      notes:ev.notes,
+      created_by:ev.created_by,
+    });
+    if(error) throw error;
+    tst('Event saved','success');
+  }catch(e){
+    console.warn('Calendar event save:',e.message);
+    tst('Saved locally (DB not connected yet)','info');
+  }
+  // Update local cache
+  const evts=S.get('lhs:cal_events')||[];
+  evts.push(ev);
+  S.set('lhs:cal_events',evts);
+  cMod();
+  // Refresh the calendar view if open
+  _calYear=new Date(ev.start_date+'T12:00:00').getFullYear();
+  _calMonth=new Date(ev.start_date+'T12:00:00').getMonth();
+  _calSelectedDay=ev.start_date;
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
 }
 
 function renderDispBoard(){
