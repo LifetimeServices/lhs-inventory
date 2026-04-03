@@ -1343,15 +1343,15 @@ function getClassifications(division, jobType, subtype){
 // ── DEFAULT PERMISSIONS ───────────────────────────────────────────────────────
 // tabs: dashboard, dispatch, workorders, closeout, inventory, payroll, reports, admin
 const DEFAULT_PERMS={
-  'God View':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,admin:1,sales:1,properties:1},
-  'Admin':              {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,admin:1,sales:1,properties:1},
-  'Director':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,admin:0,sales:1,properties:1},
-  'Regional Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,admin:0,sales:1,properties:1},
-  'Operations Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,admin:0,sales:1,properties:1},
-  'Dispatcher':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,admin:0,sales:0,properties:1},
-  'Location Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,admin:0,sales:0,properties:1},
-  'Van Tech':           {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:0,inventory:0,payroll:0,accounting:0,reports:0,admin:0,sales:0,properties:0},
-  'Sales Rep':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,admin:0,sales:1,properties:1},
+  'God View':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,properties:1},
+  'Admin':              {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,properties:1},
+  'Director':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,properties:1},
+  'Regional Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,properties:1},
+  'Operations Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1,properties:1},
+  'Dispatcher':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,properties:1},
+  'Location Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,customers:1,inventory:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0,properties:1},
+  'Van Tech':           {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:0,inventory:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,properties:0},
+  'Sales Rep':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,customers:1,inventory:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1,properties:1},
 };
 
 let WH=['Green Bay WI','Brookfield WI','Colorado'];
@@ -1410,6 +1410,8 @@ const TBL={
   'lhs:timesheets':'lhs_timesheets',
   'lhs:time_punches':'lhs_time_punches',
   'lhs:territories':'lhs_territories',
+  'lhs:ops_documents':'lhs_ops_documents',
+  'lhs:ops_assignments':'lhs_ops_assignments',
 };
 
 // Pull all data from Supabase into cache on login
@@ -1761,6 +1763,7 @@ async function startApp(){
     <div class="page" id="p-acct-receipts"></div>
     <div class="page" id="p-acct-settings"></div>
     <div class="page" id="p-reports"></div>
+    <div class="page" id="p-operations"></div>
     <div class="page" id="p-admin"></div>
   `;
   seed(); buildNav();
@@ -1769,7 +1772,7 @@ async function startApp(){
   const _validPages=['dashboard','chatter','dispatch','workorders','customers','properties','sales',
     'sales-leads','sales-opps','sales-estimates','sales-tasks','sales-activities','sales-marketing','sales-settings',
     'tasks','mytasks','accounting','acct-dashboard','acct-receipts','acct-settings','closeout','inventory','inv-dashboard','po','receive','transfer','vans',
-    'locations','locstock','inv-reports','testers','tools','payroll','reports','admin'];
+    'locations','locstock','inv-reports','testers','tools','payroll','reports','operations','admin'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -1805,6 +1808,7 @@ const MAIN_NAV=[
   {id:'payroll',     l:'Payroll'},
   {id:'accounting',  l:'Accounting'},
   {id:'reports',     l:'Reports'},
+  {id:'operations',  l:'Operations'},
   {id:'admin',       l:'Admin'},
 ];
 
@@ -2052,7 +2056,7 @@ function buildPage(id){
     po:bPO, receive:bRecv, transfer:bXfr, vans:bVans,
     locations:bLocs, locstock:bLS, 'inv-reports':bInvReports,
     testers:bTest, tools:bTools, payroll:bPayroll,
-    reports:bReports, admin:bAdmin,
+    reports:bReports, operations:bOperations, admin:bAdmin,
   };
   return (pages[id]||bDash)();
 }
@@ -5013,6 +5017,534 @@ function expAll(){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(all,null,2)],{type:'application/json'}));
   a.download=`LHS_Inventory_${td()}.json`; a.click(); tst('Exported','success');
+}
+
+// ─── OPERATIONS ──────────────────────────────────────────────────────────────
+let _opsTab='library';
+
+function bOperations(){
+  const docs=S.get('lhs:ops_documents')||[];
+  const assigns=S.get('lhs:ops_assignments')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  // Overdue check
+  const today=new Date().toISOString().split('T')[0];
+  const overdueCount=assigns.filter(a=>a.status!=='completed'&&a.due_date&&a.due_date<today).length;
+
+  const tabs=[
+    {id:'library',  label:'📚 Library'},
+    {id:'sds',      label:'🧪 SDS Binder'},
+    {id:'assignments', label:`📋 Assignments${overdueCount?` <span style="background:#C62828;color:white;border-radius:8px;padding:0 6px;font-size:10px;margin-left:4px">${overdueCount}</span>`:''}` },
+    {id:'compliance', label:'✅ Compliance'},
+  ];
+
+  return`
+  <div class="pt">Operations</div>
+  <div class="ps">Training library, safety documents, SDS binder, and compliance tracking</div>
+  <div class="tabs" style="margin-bottom:20px">
+    ${tabs.map(t=>`<button class="tab${_opsTab===t.id?' active':''}" onclick="opsTab('${t.id}',this)">${t.label}</button>`).join('')}
+  </div>
+  <div id="ops-tab-content">
+    ${_opsTab==='library'?bOpsLibrary(docs):_opsTab==='sds'?bOpsSDS(docs):_opsTab==='assignments'?bOpsAssignments(assigns,docs,users):bOpsCompliance(assigns,docs,users)}
+  </div>`;
+}
+
+function opsTab(tab,el){
+  _opsTab=tab;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const c=g('ops-tab-content');
+  const docs=S.get('lhs:ops_documents')||[];
+  const assigns=S.get('lhs:ops_assignments')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  if(c) c.innerHTML=tab==='library'?bOpsLibrary(docs):tab==='sds'?bOpsSDS(docs):tab==='assignments'?bOpsAssignments(assigns,docs,users):bOpsCompliance(assigns,docs,users);
+}
+
+// ── Library tab ───────────────────────────────────────────────────────────────
+function bOpsLibrary(docs){
+  const lib=docs.filter(d=>d.category!=='sds'&&d.active!==false);
+  const cats=['training','safety'];
+  return`
+  <div class="sh" style="margin-bottom:16px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${['All','Training','Safety'].map(c=>`<button class="btn sm ${c==='All'?'btn-n':'btn-o'}" onclick="opsFilterLib('${c.toLowerCase()}',this)">${c}</button>`).join('')}
+    </div>
+    <button class="btn btn-n" onclick="oAddOpsDoc('training')">+ Add Content</button>
+  </div>
+  <div id="ops-lib-grid">
+  ${!lib.length?`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No content yet. Click <strong>+ Add Content</strong> to upload training or safety materials.</div>`:''}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+    ${lib.map(d=>opsDocCard(d)).join('')}
+  </div>
+  </div>`;
+}
+
+function opsFilterLib(cat,el){
+  document.querySelectorAll('#ops-lib-grid .btn').forEach(b=>b.classList.remove('btn-n'));
+  if(el){el.classList.add('btn-n');el.classList.remove('btn-o');}
+  const docs=(S.get('lhs:ops_documents')||[]).filter(d=>d.category!=='sds'&&d.active!==false);
+  const filtered=cat==='all'?docs:docs.filter(d=>d.category===cat);
+  const grid=document.querySelector('#ops-lib-grid > div:last-child');
+  if(grid) grid.innerHTML=filtered.map(d=>opsDocCard(d)).join('');
+}
+
+function opsDocCard(d){
+  const typeIcon=d.type==='video'?'🎬':d.type==='link'?'🔗':'📄';
+  const catColor=d.category==='training'?'#1565C0':d.category==='safety'?'#C62828':'#2E7D32';
+  const catLabel=d.category==='training'?'Training':d.category==='safety'?'Safety':'SDS';
+  return`<div style="background:white;border:1.5px solid var(--bdr);border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+    <div style="background:${catColor};padding:14px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:28px">${typeIcon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.75)">${catLabel}${d.duration_seconds?` · ${Math.round(d.duration_seconds/60)} min`:''}</div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;flex:1">
+      ${d.description?`<div style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.5">${esc(d.description)}</div>`:''}
+      ${d.tags&&d.tags.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${d.tags.map(t=>`<span style="background:var(--surf);border-radius:8px;padding:2px 8px;font-size:11px;color:var(--navy)">${esc(t)}</span>`).join('')}</div>`:''}
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid var(--bdr);display:flex;gap:6px;flex-wrap:wrap">
+      ${d.file_url||d.video_url?`<button class="btn sm btn-n" onclick="opsOpenDoc('${d.id}')">▶ View</button>`:''}
+      <button class="btn sm btn-o" onclick="oAssignDoc('${d.id}')">Assign</button>
+      <button class="btn sm btn-o" onclick="oEditOpsDoc('${d.id}')">Edit</button>
+      <button class="btn sm btn-r" onclick="delOpsDoc('${d.id}')">&#215;</button>
+    </div>
+  </div>`;
+}
+
+function opsOpenDoc(id){
+  const d=(S.get('lhs:ops_documents')||[]).find(x=>x.id===id);
+  if(!d) return;
+  const url=d.file_url||d.video_url||'';
+  if(!url){tst('No file or link attached','error');return;}
+  // Detect YouTube/Vimeo for embed
+  if(url.includes('youtube.com')||url.includes('youtu.be')||url.includes('vimeo.com')){
+    const embedUrl=url.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
+    oMod(d.title,`<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px">
+      <iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe>
+    </div>`);
+  } else {
+    window.open(url,'_blank');
+  }
+}
+
+// ── SDS Binder tab ────────────────────────────────────────────────────────────
+function bOpsSDS(docs){
+  const sds=docs.filter(d=>d.category==='sds'&&d.active!==false);
+  return`
+  <div class="sh" style="margin-bottom:16px">
+    <input id="sds-search" placeholder="🔍 Search by product, manufacturer, or CAS #..."
+      style="padding:9px 16px;border:1.5px solid var(--bdr);border-radius:20px;font-size:13px;width:340px;outline:none"
+      oninput="opsFilterSDS(this.value)">
+    <button class="btn btn-n" onclick="oAddOpsDoc('sds')">+ Add SDS</button>
+  </div>
+  <div id="sds-list">
+  ${!sds.length?`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No SDS sheets yet. Click <strong>+ Add SDS</strong> to build your digital binder.</div>`:''}
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Product / Chemical</th><th>Manufacturer</th><th>CAS #</th><th>SDS Date</th><th>Added</th><th></th></tr></thead>
+    <tbody id="sds-tbody">
+    ${sds.map(d=>`<tr>
+      <td style="font-weight:600">${esc(d.title)}</td>
+      <td style="color:var(--muted)">${esc(d.manufacturer||'—')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
+      <td style="font-size:12px">${d.sds_date||'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${(d.created_at||'').slice(0,10)}</td>
+      <td style="white-space:nowrap">
+        ${d.file_url?`<button class="btn sm btn-n" onclick="window.open('${d.file_url}','_blank')">📄 View</button>`:''}
+        <button class="btn sm btn-o" onclick="oEditOpsDoc('${d.id}')">Edit</button>
+        <button class="btn sm btn-r" onclick="delOpsDoc('${d.id}')">&#215;</button>
+      </td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div></div>`;
+}
+
+function opsFilterSDS(q){
+  const docs=(S.get('lhs:ops_documents')||[]).filter(d=>d.category==='sds'&&d.active!==false);
+  const ql=q.toLowerCase();
+  const filtered=!ql?docs:docs.filter(d=>
+    (d.title||'').toLowerCase().includes(ql)||
+    (d.manufacturer||'').toLowerCase().includes(ql)||
+    (d.cas_number||'').toLowerCase().includes(ql)||
+    (d.chemical_name||'').toLowerCase().includes(ql)
+  );
+  const tbody=g('sds-tbody');
+  if(!tbody) return;
+  tbody.innerHTML=filtered.map(d=>`<tr>
+    <td style="font-weight:600">${esc(d.title)}</td>
+    <td style="color:var(--muted)">${esc(d.manufacturer||'—')}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
+    <td style="font-size:12px">${d.sds_date||'—'}</td>
+    <td style="font-size:12px;color:var(--muted)">${(d.created_at||'').slice(0,10)}</td>
+    <td style="white-space:nowrap">
+      ${d.file_url?`<button class="btn sm btn-n" onclick="window.open('${d.file_url}','_blank')">📄 View</button>`:''}
+      <button class="btn sm btn-o" onclick="oEditOpsDoc('${d.id}')">Edit</button>
+      <button class="btn sm btn-r" onclick="delOpsDoc('${d.id}')">&#215;</button>
+    </td>
+  </tr>`).join('');
+}
+
+// ── Assignments tab ───────────────────────────────────────────────────────────
+function bOpsAssignments(assigns,docs,users){
+  const today=new Date().toISOString().split('T')[0];
+  assigns.forEach(a=>{
+    if(a.status!=='completed'&&a.due_date&&a.due_date<today) a.status='overdue';
+    if(a.status!=='completed'&&a.expires_date&&a.expires_date<today) a.status='expired';
+  });
+  const sorted=[...assigns].sort((a,b)=>{
+    const order={overdue:0,expired:1,assigned:2,completed:3};
+    return (order[a.status]??2)-(order[b.status]??2)||(a.due_date||'').localeCompare(b.due_date||'');
+  });
+  const statusBadge=(s)=>({
+    assigned:`<span style="background:#E3F2FD;color:#1565C0;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600">Assigned</span>`,
+    overdue:`<span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600">⚠ Overdue</span>`,
+    expired:`<span style="background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600">Expired</span>`,
+    completed:`<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600">✓ Completed</span>`,
+  })[s]||bx(s);
+
+  return`
+  <div class="sh" style="margin-bottom:16px">
+    <div style="font-size:13px;color:var(--muted)">${assigns.length} total assignments</div>
+    <button class="btn btn-n" onclick="oNewAssignment()">+ New Assignment</button>
+  </div>
+  ${!assigns.length?`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No assignments yet. Click <strong>+ New Assignment</strong> to assign training to your team.</div>`:''}
+  ${assigns.length?`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Employee</th><th>Content</th><th>Category</th><th>Due Date</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+    <tbody>${sorted.map(a=>{
+      const doc=docs.find(d=>d.id===a.document_id)||{};
+      const rowStyle=a.status==='overdue'?'background:#FFF5F5':a.status==='expired'?'background:#FFF8F0':'';
+      return`<tr style="${rowStyle}">
+        <td style="font-weight:600">${esc(a.user_name||'')}</td>
+        <td>${esc(doc.title||'(deleted)')}</td>
+        <td>${doc.category?bx(doc.category,'bn'):''}</td>
+        <td style="font-size:13px">${a.due_date||'—'}</td>
+        <td style="font-size:13px;color:var(--muted)">${a.expires_date||'—'}</td>
+        <td>${statusBadge(a.status)}</td>
+        <td style="white-space:nowrap">
+          ${a.status!=='completed'?`<button class="btn sm btn-n" onclick="markOpsComplete('${a.id}')">✓ Complete</button>`:''}
+          <button class="btn sm btn-r" onclick="delOpsAssignment('${a.id}')">&#215;</button>
+        </td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table></div></div>`:''}`;
+}
+
+// ── Compliance tab ────────────────────────────────────────────────────────────
+function bOpsCompliance(assigns,docs,users){
+  const today=new Date().toISOString().split('T')[0];
+  const total=assigns.length;
+  const completed=assigns.filter(a=>a.status==='completed').length;
+  const overdue=assigns.filter(a=>a.status!=='completed'&&a.due_date&&a.due_date<today).length;
+  const pending=assigns.filter(a=>a.status==='assigned'&&(!a.due_date||a.due_date>=today)).length;
+  const pct=total?Math.round(completed/total*100):0;
+
+  // Per-user compliance
+  const byUser={};
+  assigns.forEach(a=>{
+    if(!byUser[a.user_name]) byUser[a.user_name]={name:a.user_name,total:0,done:0,overdue:0};
+    byUser[a.user_name].total++;
+    if(a.status==='completed') byUser[a.user_name].done++;
+    if(a.status!=='completed'&&a.due_date&&a.due_date<today) byUser[a.user_name].overdue++;
+  });
+
+  return`
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px">
+    ${[
+      {label:'Overall Completion',val:pct+'%',sub:`${completed} of ${total} assigned`,color:'#2E7D32',bg:'#E8F5E9'},
+      {label:'Completed',val:completed,sub:'assignments done',color:'#2E7D32',bg:'#E8F5E9'},
+      {label:'Overdue',val:overdue,sub:'need attention now',color:'#C62828',bg:'#FFEBEE'},
+      {label:'Pending',val:pending,sub:'not yet started',color:'#1565C0',bg:'#E3F2FD'},
+    ].map(s=>`<div style="background:${s.bg};border-radius:12px;padding:18px">
+      <div style="font-size:28px;font-weight:800;color:${s.color}">${s.val}</div>
+      <div style="font-weight:700;font-size:13px;color:${s.color}">${s.label}</div>
+      <div style="font-size:11px;color:${s.color};opacity:.75;margin-top:2px">${s.sub}</div>
+    </div>`).join('')}
+  </div>
+  ${Object.keys(byUser).length?`
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Compliance by Employee</div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Employee</th><th>Assigned</th><th>Completed</th><th>Overdue</th><th>Rate</th></tr></thead>
+    <tbody>${Object.values(byUser).sort((a,b)=>b.overdue-a.overdue).map(u=>`<tr>
+      <td style="font-weight:600">${esc(u.name)}</td>
+      <td style="text-align:center">${u.total}</td>
+      <td style="text-align:center;color:#2E7D32;font-weight:600">${u.done}</td>
+      <td style="text-align:center;color:${u.overdue?'#C62828':'var(--muted)'};font-weight:${u.overdue?'700':'400'}">${u.overdue||'—'}</td>
+      <td>
+        <div style="background:#E5E7EB;border-radius:4px;height:8px;width:100%;min-width:80px">
+          <div style="background:${u.overdue?'#C62828':'#2E7D32'};height:8px;border-radius:4px;width:${u.total?Math.round(u.done/u.total*100):0}%"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${u.total?Math.round(u.done/u.total*100):0}%</div>
+      </td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div></div>`:'<div style="color:var(--muted);font-size:13px">No assignment data yet.</div>'}`;
+}
+
+// ── Add / Edit document modal ─────────────────────────────────────────────────
+function oAddOpsDoc(defaultCat='training'){
+  const isSDS=defaultCat==='sds';
+  oMod(isSDS?'Add SDS Sheet':'Add Training / Safety Content',`
+    <div class="fr">
+      <div class="fl"><label>Title</label><input id="opsd-title" placeholder="${isSDS?'Product / Chemical name':'e.g. Lockout Tagout Procedure'}"></div>
+      <div class="fl"><label>Category</label>
+        <select id="opsd-cat">
+          <option value="training"${defaultCat==='training'?' selected':''}>Training</option>
+          <option value="safety"${defaultCat==='safety'?' selected':''}>Safety</option>
+          <option value="sds"${defaultCat==='sds'?' selected':''}>SDS</option>
+        </select>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Content Type</label>
+        <select id="opsd-type" onchange="opsTypeChanged(this.value)">
+          <option value="document">Document (PDF)</option>
+          <option value="video">Video (upload)</option>
+          <option value="link">External Link (YouTube, Vimeo, Drive)</option>
+        </select>
+      </div>
+      <div class="fl"><label>Duration (minutes, optional)</label><input type="number" id="opsd-dur" placeholder="e.g. 15" min="0"></div>
+    </div>
+    <div id="opsd-file-row" class="fl" style="margin-bottom:12px"><label>File Upload</label>
+      <input type="file" id="opsd-file" accept=".pdf,.doc,.docx,.mp4,.mov,.ppt,.pptx">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">📹 Large video files will be stored in Supabase Storage (setup required for videos &gt;50MB)</div>
+    </div>
+    <div id="opsd-link-row" class="fl" style="display:none;margin-bottom:12px"><label>External URL</label>
+      <input id="opsd-link" placeholder="https://youtube.com/watch?v=... or Google Drive link"></div>
+    ${isSDS?`
+    <div class="fr">
+      <div class="fl"><label>Manufacturer</label><input id="opsd-mfg" placeholder="e.g. 3M"></div>
+      <div class="fl"><label>CAS Number</label><input id="opsd-cas" placeholder="e.g. 67-56-1"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>SDS Revision Date</label><input type="date" id="opsd-sdsdate"></div>
+      <div class="fl"><label>Product Code</label><input id="opsd-pcode" placeholder="Optional"></div>
+    </div>`:''}
+    <div class="fl" style="margin-bottom:12px"><label>Description / Notes</label>
+      <textarea id="opsd-desc" rows="2" placeholder="Brief description of this content…"></textarea></div>
+    <div class="fl" style="margin-bottom:12px"><label>Tags (comma separated)</label>
+      <input id="opsd-tags" placeholder="e.g. OSHA, PPE, onboarding"></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svOpsDoc()">Save</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+function opsTypeChanged(type){
+  const fileRow=g('opsd-file-row');
+  const linkRow=g('opsd-link-row');
+  if(fileRow) fileRow.style.display=type==='link'?'none':'block';
+  if(linkRow) linkRow.style.display=type==='link'?'block':'none';
+}
+
+function oEditOpsDoc(id){
+  const d=(S.get('lhs:ops_documents')||[]).find(x=>x.id===id);
+  if(!d) return;
+  const isSDS=d.category==='sds';
+  oMod('Edit '+(isSDS?'SDS Sheet':'Content'),`
+    <input type="hidden" id="opsd-id" value="${esc(id)}">
+    <div class="fr">
+      <div class="fl"><label>Title</label><input id="opsd-title" value="${esc(d.title||'')}"></div>
+      <div class="fl"><label>Category</label>
+        <select id="opsd-cat">
+          <option value="training"${d.category==='training'?' selected':''}>Training</option>
+          <option value="safety"${d.category==='safety'?' selected':''}>Safety</option>
+          <option value="sds"${d.category==='sds'?' selected':''}>SDS</option>
+        </select>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Content Type</label>
+        <select id="opsd-type">
+          <option value="document"${d.type==='document'?' selected':''}>Document</option>
+          <option value="video"${d.type==='video'?' selected':''}>Video</option>
+          <option value="link"${d.type==='link'?' selected':''}>External Link</option>
+        </select>
+      </div>
+      <div class="fl"><label>Duration (minutes)</label><input type="number" id="opsd-dur" value="${d.duration_seconds?Math.round(d.duration_seconds/60):''}"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>File URL (current: ${d.file_url?'<a href="'+d.file_url+'" target="_blank">view</a>':'none'})</label>
+      <input id="opsd-fileurl" value="${esc(d.file_url||d.video_url||'')}" placeholder="Paste URL or leave to keep existing"></div>
+    ${isSDS?`
+    <div class="fr">
+      <div class="fl"><label>Manufacturer</label><input id="opsd-mfg" value="${esc(d.manufacturer||'')}"></div>
+      <div class="fl"><label>CAS Number</label><input id="opsd-cas" value="${esc(d.cas_number||'')}"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>SDS Revision Date</label><input type="date" id="opsd-sdsdate" value="${d.sds_date||''}"></div>
+      <div class="fl"><label>Product Code</label><input id="opsd-pcode" value="${esc(d.product_code||'')}"></div>
+    </div>`:''}
+    <div class="fl" style="margin-bottom:12px"><label>Description</label>
+      <textarea id="opsd-desc" rows="2">${esc(d.description||'')}</textarea></div>
+    <div class="fl" style="margin-bottom:12px"><label>Tags (comma separated)</label>
+      <input id="opsd-tags" value="${esc((d.tags||[]).join(', '))}"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
+      <input type="checkbox" id="opsd-active"${d.active!==false?' checked':''}> Active</label>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svOpsDoc()">Save Changes</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function svOpsDoc(){
+  const id=v('opsd-id');
+  const title=v('opsd-title').trim();
+  if(!title){tst('Title required','error');return;}
+  const durMin=parseFloat(v('opsd-dur')||'0')||0;
+  const tags=v('opsd-tags').split(',').map(t=>t.trim()).filter(Boolean);
+  const fileUrlField=g('opsd-fileurl');
+  const linkField=g('opsd-link');
+  let fileUrl=fileUrlField?v('opsd-fileurl'):linkField?v('opsd-link'):'';
+
+  // Handle file upload (if file input present and has a file)
+  const fileInput=g('opsd-file');
+  if(fileInput&&fileInput.files&&fileInput.files[0]){
+    const f=fileInput.files[0];
+    // Try Supabase Storage upload
+    try{
+      const path=`ops/${Date.now()}_${f.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const{data,error}=await DB.storage.from('lhs-operations').upload(path,f,{upsert:true});
+      if(!error&&data){
+        const{data:pub}=DB.storage.from('lhs-operations').getPublicUrl(path);
+        fileUrl=pub?.publicUrl||fileUrl;
+      }
+    }catch(e){
+      tst('File saved as link — storage bucket not configured yet','info');
+    }
+  }
+
+  const obj={
+    title,
+    category:v('opsd-cat')||'training',
+    type:v('opsd-type')||'document',
+    description:v('opsd-desc')||'',
+    duration_seconds:durMin?Math.round(durMin*60):0,
+    file_url:fileUrl||'',
+    video_url:v('opsd-type')==='link'?fileUrl:'',
+    tags,
+    manufacturer:v('opsd-mfg')||'',
+    cas_number:v('opsd-cas')||'',
+    sds_date:v('opsd-sdsdate')||'',
+    product_code:v('opsd-pcode')||'',
+    active:g('opsd-active')?g('opsd-active').checked:true,
+  };
+
+  const all=S.get('lhs:ops_documents')||[];
+  if(id){
+    const saved=await dbUpdate('lhs:ops_documents',id,obj);
+    if(!saved){tst('Save failed','error');return;}
+    const idx=all.findIndex(x=>x.id===id);
+    if(idx>=0) all[idx]={...all[idx],...obj};
+    S.set('lhs:ops_documents',all);
+    tst('Updated','success');
+  } else {
+    obj.id=crypto.randomUUID();
+    obj.created_at=new Date().toISOString();
+    obj.created_by=CU?.name||'';
+    const saved=await dbInsert('lhs:ops_documents',obj);
+    if(!saved){tst('Save failed','error');return;}
+    all.push(saved);
+    S.set('lhs:ops_documents',all);
+    tst('Content added','success');
+  }
+  cMod();
+  showPage('operations');
+}
+
+async function delOpsDoc(id){
+  const all=S.get('lhs:ops_documents')||[];
+  const d=all.find(x=>x.id===id);
+  if(!confirm(`Delete "${d?.title}"?`)) return;
+  await dbDelete('lhs:ops_documents',id);
+  S.set('lhs:ops_documents',all.filter(x=>x.id!==id));
+  tst('Deleted','info');
+  showPage('operations');
+}
+
+// ── Assignment modal ──────────────────────────────────────────────────────────
+function oAssignDoc(docId){
+  const docs=S.get('lhs:ops_documents')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  const doc=docs.find(d=>d.id===docId)||{};
+  const docOpts=docs.filter(d=>d.active!==false).map(d=>`<option value="${d.id}"${d.id===docId?' selected':''}>[${d.category}] ${esc(d.title)}</option>`).join('');
+  oMod('Assign Training',`
+    <div class="fl" style="margin-bottom:12px"><label>Content</label>
+      <select id="asn-doc">${docOpts}</select></div>
+    <div class="fl" style="margin-bottom:12px"><label>Assign To (select one or more)</label>
+      <div style="border:1px solid var(--bdr);border-radius:8px;max-height:200px;overflow-y:auto;padding:6px">
+        ${users.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;border-radius:6px;font-size:13px">
+          <input type="checkbox" value="${u.id}" data-name="${esc(u.name||u.email)}"> ${esc(u.name||u.email)}
+          <span style="font-size:11px;color:var(--muted)">${esc(u.role||'')}</span>
+        </label>`).join('')}
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Due Date</label><input type="date" id="asn-due" value="${new Date(Date.now()+14*86400000).toISOString().split('T')[0]}"></div>
+      <div class="fl"><label>Expires / Recertification Date</label><input type="date" id="asn-exp"></div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svOpsAssignment()">Assign</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+function oNewAssignment(){
+  oAssignDoc('');
+}
+
+async function svOpsAssignment(){
+  const docId=v('asn-doc');
+  const dueDate=v('asn-due');
+  const expDate=v('asn-exp');
+  const checked=[...document.querySelectorAll('#mb input[type=checkbox]:checked')];
+  if(!docId){tst('Select content','error');return;}
+  if(!checked.length){tst('Select at least one employee','error');return;}
+  const all=S.get('lhs:ops_assignments')||[];
+  let added=0;
+  for(const cb of checked){
+    const obj={
+      id:crypto.randomUUID(),
+      document_id:docId,
+      user_id:cb.value,
+      user_name:cb.dataset.name||'',
+      assigned_by:CU?.name||'',
+      assigned_at:new Date().toISOString(),
+      due_date:dueDate||'',
+      expires_date:expDate||'',
+      status:'assigned',
+      created_at:new Date().toISOString(),
+    };
+    const saved=await dbInsert('lhs:ops_assignments',obj);
+    if(saved){all.push(saved);added++;}
+  }
+  S.set('lhs:ops_assignments',all);
+  cMod();
+  tst(`Assigned to ${added} employee${added!==1?'s':''}','success');
+  _opsTab='assignments';
+  showPage('operations');
+}
+
+async function markOpsComplete(id){
+  const all=S.get('lhs:ops_assignments')||[];
+  const idx=all.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const updates={status:'completed',completed_at:new Date().toISOString()};
+  await dbUpdate('lhs:ops_assignments',id,updates);
+  all[idx]={...all[idx],...updates};
+  S.set('lhs:ops_assignments',all);
+  tst('Marked complete','success');
+  _opsTab='assignments';
+  showPage('operations');
+}
+
+async function delOpsAssignment(id){
+  const all=S.get('lhs:ops_assignments')||[];
+  if(!confirm('Remove this assignment?')) return;
+  await dbDelete('lhs:ops_assignments',id);
+  S.set('lhs:ops_assignments',all.filter(x=>x.id!==id));
+  tst('Removed','info');
+  _opsTab='assignments';
+  showPage('operations');
 }
 
 // ─── ADMIN ───────────────────────────────────────────────────────────────────
