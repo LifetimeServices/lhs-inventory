@@ -12371,8 +12371,12 @@ function bCustomers(){
       style="padding:9px 16px;border:1.5px solid var(--bdr);border-radius:20px;font-size:14px;
       font-family:'DM Sans',sans-serif;width:320px;outline:none"
       oninput="renderCustList(this.value)">
-    <button class="btn btn-n" onclick="oAddCustomer()">+ Add Customer</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" onclick="oImportCustomers()" style="border-color:var(--teal);color:var(--teal)">&#8679; Import from ServiceTitan</button>
+      <button class="btn btn-n" onclick="oAddCustomer()">+ Add Customer</button>
+    </div>
   </div>
+  <div id="cust-import-area"></div>
   <div id="cust-list">${renderCustTable(custs)}</div>`;
 }
 
@@ -12453,6 +12457,198 @@ function custForm(c,saveFn){
     <button class="btn btn-n" onclick="${saveFn}()">Save Customer</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`;
+}
+
+// ── CUSTOMER IMPORT (ServiceTitan) ───────────────────────────────────────────
+
+// Known ST column name → internal key mapping
+const _ST_COLS={
+  'customer id':'st_customer_id',
+  'customer name':'_full_name',
+  'type':'customer_type',
+  'phone number':'_phones',
+  'email':'email',
+  'full address':'_full_address',
+  'do not mail':'do_not_mail',
+  'customers lifetime':'st_lifetime_value',
+  'lifetime value':'st_lifetime_value',
+  'lifetime jobs':'st_lifetime_jobs',
+  'lifetime jobs completed':'st_lifetime_jobs',
+};
+
+function oImportCustomers(){
+  const area=g('cust-import-area');
+  if(!area) return;
+  area.innerHTML=`
+  <div style="background:white;border:2px solid var(--teal);border-radius:12px;padding:20px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-weight:700;font-size:15px;color:var(--navy)">Import Customers from ServiceTitan</div>
+      <button class="btn sm btn-o" onclick="g('cust-import-area').innerHTML=''">Cancel</button>
+    </div>
+    <div id="cust-import-drop"
+      ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+      ondragleave="this.style.borderColor='var(--bdr)'"
+      ondrop="event.preventDefault();custImportFileHandler(event.dataTransfer.files[0])"
+      style="border:2px dashed var(--bdr);border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:border-color .2s"
+      onclick="g('cust-import-file').click()">
+      <div style="font-size:32px;margin-bottom:8px">📂</div>
+      <div style="font-weight:600;color:var(--navy);margin-bottom:4px">Drop your file here or click to browse</div>
+      <div style="font-size:12px;color:var(--muted)">Accepts CSV, Excel (.xlsx/.xls) — export from Numbers or Google Sheets as CSV first</div>
+      <input type="file" id="cust-import-file" accept=".csv,.xlsx,.xls,.numbers" style="display:none" onchange="custImportFileHandler(this.files[0])">
+    </div>
+    <div id="cust-import-preview" style="margin-top:14px"></div>
+  </div>`;
+}
+
+async function custImportFileHandler(file){
+  if(!file) return;
+  const preview=g('cust-import-preview');
+  if(preview) preview.innerHTML=`<div style="color:var(--muted);font-size:13px">Reading file…</div>`;
+  try{
+    await lhsLoadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const raw=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!raw.length){if(preview) preview.innerHTML=`<div style="color:red;font-size:13px">No data found in file.</div>`;return;}
+    _custImportRows=raw;
+    renderImportPreview(raw);
+  }catch(e){
+    if(preview) preview.innerHTML=`<div style="color:red;font-size:13px">Could not read file: ${e.message}. Try exporting as CSV.</div>`;
+  }
+}
+
+let _custImportRows=[];
+
+function _parseSTName(full){
+  const s=(full||'').trim();
+  const sp=s.lastIndexOf(' ');
+  if(sp<0) return{first_name:s,last_name:''};
+  return{first_name:s.slice(0,sp).trim(),last_name:s.slice(sp+1).trim()};
+}
+
+function _parseSTPhones(raw){
+  const parts=(raw||'').split(',').map(p=>p.trim()).filter(Boolean);
+  return{phone:parts[0]||'',phone2:parts[1]||''};
+}
+
+function _parseSTAddress(full){
+  let s=(full||'').replace(/,?\s*(USA|United States)\s*$/i,'').trim();
+  const parts=s.split(',').map(p=>p.trim()).filter(Boolean);
+  if(parts.length>=3){
+    const last=parts[parts.length-1];
+    const m=last.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+    if(m) return{address:parts.slice(0,-2).join(', '),city:parts[parts.length-2],state:m[1],zip:m[2]};
+  }
+  if(parts.length===2){
+    const m=parts[1].match(/^(.*?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+    if(m) return{address:parts[0],city:m[1],state:m[2],zip:m[3]};
+  }
+  return{address:s,city:'',state:'',zip:''};
+}
+
+function _mapSTRow(raw){
+  const out={};
+  Object.entries(raw).forEach(([col,val])=>{
+    const key=_ST_COLS[col.toLowerCase().trim()]||
+      Object.keys(_ST_COLS).find(k=>col.toLowerCase().includes(k));
+    if(key) out[key]=String(val).trim();
+  });
+  const rec={
+    st_customer_id:out.st_customer_id||'',
+    customer_type:out.customer_type||'Residential',
+    email:out.email||'',
+    full_address:out._full_address||'',
+    do_not_mail:(out.do_not_mail||'').toLowerCase()==='true',
+    st_lifetime_value:parseFloat((out.st_lifetime_value||'0').replace(/[$,]/g,''))||0,
+    st_lifetime_jobs:parseInt(out.st_lifetime_jobs||'0')||0,
+    source:'ServiceTitan',
+    imported_at:new Date().toISOString(),
+  };
+  Object.assign(rec,_parseSTName(out._full_name||''));
+  Object.assign(rec,_parseSTPhones(out._phones||''));
+  Object.assign(rec,_parseSTAddress(out._full_address||''));
+  return rec;
+}
+
+function renderImportPreview(raw){
+  const preview=g('cust-import-preview');
+  if(!preview) return;
+  const mapped=raw.map(_mapSTRow);
+  const existing=S.get('lhs:customers')||[];
+  const existingSTIds=new Set(existing.map(c=>c.st_customer_id).filter(Boolean));
+  const newRows=mapped.filter(r=>r.st_customer_id&&!existingSTIds.has(r.st_customer_id));
+  const dupRows=mapped.filter(r=>r.st_customer_id&&existingSTIds.has(r.st_customer_id));
+  const noIdRows=mapped.filter(r=>!r.st_customer_id);
+  window._custImportMapped=mapped;
+  window._custImportNew=newRows;
+
+  preview.innerHTML=`
+  <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="background:#E8F5E9;border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#2E7D32">${newRows.length}</div>
+      <div style="font-size:11px;color:#2E7D32;font-weight:600">New Customers</div>
+    </div>
+    <div style="background:#FFF3E0;border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#E65100">${dupRows.length}</div>
+      <div style="font-size:11px;color:#E65100;font-weight:600">Already Exist (skipped)</div>
+    </div>
+    ${noIdRows.length?`<div style="background:#F3F4F6;border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#666">${noIdRows.length}</div>
+      <div style="font-size:11px;color:#666;font-weight:600">No ST ID (will import)</div>
+    </div>`:''}
+  </div>
+  <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">Preview (first 5 rows)</div>
+  <div class="tw" style="margin-bottom:14px;font-size:12px"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Address</th><th>City</th><th>ST</th><th>ZIP</th><th>ST ID</th></tr></thead>
+    <tbody>${mapped.slice(0,5).map(r=>`<tr>
+      <td>${r.first_name||''} ${r.last_name||''}</td>
+      <td>${r.customer_type||''}</td>
+      <td>${r.phone||''}</td>
+      <td style="color:var(--muted)">${r.email||''}</td>
+      <td>${r.address||''}</td>
+      <td>${r.city||''}</td>
+      <td>${r.state||''}</td>
+      <td>${r.zip||''}</td>
+      <td style="color:var(--muted);font-size:11px">${r.st_customer_id||''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div>
+  ${newRows.length+noIdRows.length>0
+    ?`<button class="btn btn-n" id="cust-import-run-btn" onclick="runCustomerImport()">Import ${newRows.length+noIdRows.length} Customers</button>`
+    :`<div style="color:var(--muted);font-size:13px">All customers in this file already exist — nothing to import.</div>`}
+  <div id="cust-import-progress" style="margin-top:10px"></div>`;
+}
+
+async function runCustomerImport(){
+  const btn=g('cust-import-run-btn');
+  const prog=g('cust-import-progress');
+  const toImport=window._custImportNew||[];
+  const noId=(window._custImportMapped||[]).filter(r=>!r.st_customer_id);
+  const all=[...toImport,...noId];
+  if(!all.length){tst('Nothing to import','info');return;}
+  if(btn){btn.disabled=true;btn.textContent='Importing…';}
+  let done=0,failed=0;
+  const CHUNK=30;
+  const existing=S.get('lhs:customers')||[];
+  for(let i=0;i<all.length;i+=CHUNK){
+    const chunk=all.slice(i,i+CHUNK);
+    for(const rec of chunk){
+      try{
+        const saved=await dbInsert('lhs:customers',rec);
+        if(saved){existing.push(saved);done++;}
+        else failed++;
+      }catch{failed++;}
+    }
+    if(prog) prog.innerHTML=`<div style="font-size:13px;color:var(--muted)">Imported ${Math.min(i+CHUNK,all.length)} of ${all.length}…</div>`;
+  }
+  S.set('lhs:customers',existing);
+  if(prog) prog.innerHTML='';
+  tst(`Imported ${done} customers${failed?` (${failed} failed)`:''}`,done>0?'success':'error');
+  g('cust-import-area').innerHTML='';
+  const el=g('cust-list');
+  if(el) el.innerHTML=renderCustTable(S.get('lhs:customers')||[]);
+  g('cust-search').value='';
 }
 
 function oAddCustomer(){ oMod('Add Customer',custForm({},'svAddCustomer')); }
