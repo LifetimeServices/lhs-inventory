@@ -12595,12 +12595,12 @@ function renderImportPreview(raw){
     </div>
     ${noIdRows.length?`<div style="background:#F3F4F6;border-radius:8px;padding:10px 18px;text-align:center">
       <div style="font-size:22px;font-weight:800;color:#666">${noIdRows.length}</div>
-      <div style="font-size:11px;color:#666;font-weight:600">No ST ID (will import)</div>
+      <div style="font-size:11px;color:#666;font-weight:600">No Source ID (will import)</div>
     </div>`:''}
   </div>
   <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">Preview (first 5 rows)</div>
   <div class="tw" style="margin-bottom:14px;font-size:12px"><table>
-    <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Address</th><th>City</th><th>ST</th><th>ZIP</th><th>ST ID</th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Address</th><th>City</th><th>ST</th><th>ZIP</th><th>Customer ID</th></tr></thead>
     <tbody>${mapped.slice(0,5).map(r=>`<tr>
       <td>${r.first_name||''} ${r.last_name||''}</td>
       <td>${r.customer_type||''}</td>
@@ -12610,7 +12610,7 @@ function renderImportPreview(raw){
       <td>${r.city||''}</td>
       <td>${r.state||''}</td>
       <td>${r.zip||''}</td>
-      <td style="color:var(--muted);font-size:11px">${r.st_customer_id||''}</td>
+      <td style="color:var(--muted);font-size:11px;font-style:italic">assigned after import</td>
     </tr>`).join('')}
     </tbody>
   </table></div>
@@ -12618,6 +12618,16 @@ function renderImportPreview(raw){
     ?`<button class="btn btn-n" id="cust-import-run-btn" onclick="runCustomerImport()">Import ${newRows.length+noIdRows.length} Customers</button>`
     :`<div style="color:var(--muted);font-size:13px">All customers in this file already exist — nothing to import.</div>`}
   <div id="cust-import-progress" style="margin-top:10px"></div>`;
+}
+
+// Generate next sequential LHS customer number (e.g. C-00042)
+function _nextCustNum(allCustomers){
+  const nums=allCustomers.map(c=>{
+    const m=(c.customer_number||'').match(/(\d+)$/);
+    return m?parseInt(m[1]):0;
+  });
+  const next=(Math.max(0,...nums))+1;
+  return 'C-'+String(next).padStart(5,'0');
 }
 
 async function runCustomerImport(){
@@ -12631,20 +12641,33 @@ async function runCustomerImport(){
   let done=0,failed=0;
   const CHUNK=30;
   const existing=S.get('lhs:customers')||[];
+  const newlySaved=[];
   for(let i=0;i<all.length;i+=CHUNK){
     const chunk=all.slice(i,i+CHUNK);
     for(const rec of chunk){
       try{
         const saved=await dbInsert('lhs:customers',rec);
-        if(saved){existing.push(saved);done++;}
+        if(saved){existing.push(saved);newlySaved.push(saved);done++;}
         else failed++;
       }catch{failed++;}
     }
-    if(prog) prog.innerHTML=`<div style="font-size:13px;color:var(--muted)">Imported ${Math.min(i+CHUNK,all.length)} of ${all.length}…</div>`;
+    if(prog) prog.innerHTML=`<div style="font-size:13px;color:var(--muted)">Importing… ${Math.min(i+CHUNK,all.length)} of ${all.length}</div>`;
+  }
+  // Assign sequential Customer IDs to every newly imported customer
+  if(newlySaved.length){
+    if(prog) prog.innerHTML=`<div style="font-size:13px;color:var(--muted)">Assigning customer numbers…</div>`;
+    for(const c of newlySaved){
+      if(c.customer_number) continue; // skip if already has one
+      const num=_nextCustNum(existing);
+      c.customer_number=num;
+      const idx=existing.findIndex(x=>x.id===c.id);
+      if(idx>=0) existing[idx].customer_number=num;
+      try{await dbUpdate('lhs:customers',c.id,{customer_number:num});}catch{}
+    }
   }
   S.set('lhs:customers',existing);
   if(prog) prog.innerHTML='';
-  tst(`Imported ${done} customers${failed?` (${failed} failed)`:''}`,done>0?'success':'error');
+  tst(`Imported ${done} customers${failed?` (${failed} failed)`:''} — customer numbers assigned`,done>0?'success':'error');
   g('cust-import-area').innerHTML='';
   const el=g('cust-list');
   if(el) el.innerHTML=renderCustTable(S.get('lhs:customers')||[]);
