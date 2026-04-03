@@ -9121,29 +9121,30 @@ function calSelectDay(dateStr){
 function oAddCalEvent(dateStr){
   const today=dateStr||new Date().toISOString().split('T')[0];
   oMod('Add Calendar Event',`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Event Title</label>
+  <style>#cal-title,#cal-start,#cal-end,#cal-notes,#cal-type,#cal-user{padding:10px 12px;font-size:14px;height:42px;box-sizing:border-box}</style>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Event Title</label>
       <input id="cal-title" placeholder="e.g. Team Offsite" style="width:100%"></div>
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Event Type</label>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Event Type</label>
       <select id="cal-type" style="width:100%">
         <option value="ooo">🏖️ Out of Office</option>
         <option value="holiday">🏛️ Holiday / Company Closure</option>
         <option value="custom" selected>📅 General Event</option>
       </select></div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Start Date</label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Start Date</label>
       <input type="date" id="cal-start" value="${today}" style="width:100%"></div>
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">End Date <span style="font-weight:400;text-transform:none">(optional — for multi-day)</span></label>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">End Date <span style="font-weight:400;text-transform:none;font-size:11px">(optional — for multi-day)</span></label>
       <input type="date" id="cal-end" value="" style="width:100%"></div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Person <span style="font-weight:400;text-transform:none">(optional)</span></label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Person <span style="font-weight:400;text-transform:none;font-size:11px">(optional)</span></label>
       <select id="cal-user" style="width:100%">
         <option value="">— All / Company-wide —</option>
         ${(S.get('lhs:users')||[]).map(u=>`<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('')}
       </select></div>
-    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Notes <span style="font-weight:400;text-transform:none">(optional)</span></label>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Notes <span style="font-weight:400;text-transform:none;font-size:11px">(optional)</span></label>
       <input id="cal-notes" placeholder="Optional details" style="width:100%"></div>
   </div>
   <div style="border-top:1px solid var(--bdr);padding-top:16px;display:flex;gap:8px">
