@@ -8270,7 +8270,7 @@ function bDash(){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${notifs.length?`<button class="btn btn-o sm" onclick="showPage('mytasks')" style="color:var(--red);border-color:var(--red)">🔔 ${notifs.length} unread</button>`:''}
       ${overdueTasks.length?`<button class="btn btn-o sm" onclick="showPage('mytasks')" style="color:var(--red);border-color:var(--red)">⚠️ ${overdueTasks.length} overdue</button>`:''}
-      <button class="btn btn-n sm" onclick="showPage('dispatch')">→ Dispatch Board</button>
+      <button class="btn btn-n sm" onclick="goDispBoard()">→ Dispatch Board</button>
     </div>
   </div>
 
@@ -8293,7 +8293,7 @@ function bDash(){
     <div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">📅 Today's Schedule</div>
-        <button class="btn btn-o sm" onclick="showPage('dispatch')">View Board</button>
+        <button class="btn btn-o sm" onclick="goDispBoard()">View Board</button>
       </div>
       <div style="padding:12px 16px;max-height:280px;overflow-y:auto">
         ${!todayApts.length?`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No appointments scheduled today</div>`
@@ -8322,7 +8322,7 @@ function bDash(){
     <div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">👷 Tech Utilization Today</div>
-        <button class="btn btn-o sm" onclick="showPage('dispatch')">Dispatch</button>
+        <button class="btn btn-o sm" onclick="goDispBoard()">Dispatch</button>
       </div>
       <div style="padding:12px 16px;max-height:280px;overflow-y:auto">
         ${!dispUsers.length?`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No techs configured</div>`
@@ -9121,29 +9121,111 @@ function calSelectDay(dateStr){
 function oAddCalEvent(dateStr){
   const today=dateStr||new Date().toISOString().split('T')[0];
   oMod('Add Calendar Event',`
-  <div class="fr">
-    <div class="fl"><label>Event Title</label><input id="cal-title" placeholder="e.g. Team Offsite"></div>
-    <div class="fl"><label>Event Type</label><select id="cal-type">
-      <option value="ooo">🏖️ Out of Office</option>
-      <option value="holiday">🏛️ Holiday</option>
-      <option value="custom" selected>📅 Event</option>
-    </select></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Event Title</label>
+      <input id="cal-title" placeholder="e.g. Team Offsite" style="width:100%"></div>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Event Type</label>
+      <select id="cal-type" style="width:100%">
+        <option value="ooo">🏖️ Out of Office</option>
+        <option value="holiday">🏛️ Holiday / Company Closure</option>
+        <option value="custom" selected>📅 General Event</option>
+      </select></div>
   </div>
-  <div class="fr">
-    <div class="fl"><label>Start Date</label><input type="date" id="cal-start" value="${today}"></div>
-    <div class="fl"><label>End Date (optional)</label><input type="date" id="cal-end" value="${today}"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Start Date</label>
+      <input type="date" id="cal-start" value="${today}" style="width:100%"></div>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">End Date <span style="font-weight:400;text-transform:none">(optional — for multi-day)</span></label>
+      <input type="date" id="cal-end" value="" style="width:100%"></div>
   </div>
-  <div class="fr">
-    <div class="fl"><label>Person (optional)</label><select id="cal-user">
-      <option value="">— All / Company-wide —</option>
-      ${(S.get('lhs:users')||[]).map(u=>`<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('')}
-    </select></div>
-    <div class="fl"><label>Notes</label><input id="cal-notes" placeholder="Optional details"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Person <span style="font-weight:400;text-transform:none">(optional)</span></label>
+      <select id="cal-user" style="width:100%">
+        <option value="">— All / Company-wide —</option>
+        ${(S.get('lhs:users')||[]).map(u=>`<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('')}
+      </select></div>
+    <div><label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Notes <span style="font-weight:400;text-transform:none">(optional)</span></label>
+      <input id="cal-notes" placeholder="Optional details" style="width:100%"></div>
   </div>
-  <div class="br2" style="position:sticky;bottom:-28px;background:var(--white);padding:12px 0 0;margin:12px -28px -28px;padding-left:28px;padding-right:28px;border-top:1px solid var(--bdr)">
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;display:flex;gap:8px">
     <button class="btn btn-n" onclick="svCalEvent()">Save Event</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
+}
+
+// Auto-sync PTO/UTO task blocks → Company Calendar as Out of Office events
+async function _syncPTOToCalendar(newBlocks){
+  if(!newBlocks||!newBlocks.length) return;
+  const ptoBlocks=newBlocks.filter(b=>b.is_pto);
+  if(!ptoBlocks.length) return;
+
+  // Group consecutive dates per tech into date ranges
+  const byTech={};
+  ptoBlocks.forEach(b=>{
+    if(!byTech[b.tech]) byTech[b.tech]=[];
+    byTech[b.tech].push(b);
+  });
+
+  const calEvts=S.get('lhs:cal_events')||[];
+  const toInsert=[];
+
+  Object.entries(byTech).forEach(([tech,blocks])=>{
+    // Sort by date
+    blocks.sort((a,b2)=>a.date.localeCompare(b2.date));
+    // Collapse into ranges (consecutive days = one range)
+    let rangeStart=blocks[0].date, rangeEnd=blocks[0].date, rangeType=blocks[0].type;
+    for(let i=1;i<blocks.length;i++){
+      const prev=new Date(rangeEnd+'T12:00:00');
+      const cur=new Date(blocks[i].date+'T12:00:00');
+      prev.setDate(prev.getDate()+1);
+      if(prev.toISOString().split('T')[0]===blocks[i].date&&blocks[i].type===rangeType){
+        rangeEnd=blocks[i].date;
+      } else {
+        // Save current range, start new one
+        const ev={
+          id:'cal-pto-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+          title:`${tech} — ${rangeType}`,
+          event_type:'ooo',
+          start_date:rangeStart,
+          end_date:rangeEnd,
+          user_name:tech,
+          notes:`Auto-created from ${rangeType} task block`,
+          created_by:CU?.name||'System',
+          created_at:new Date().toISOString(),
+          source:'task_block',
+        };
+        calEvts.push(ev);
+        toInsert.push(ev);
+        rangeStart=blocks[i].date; rangeEnd=blocks[i].date; rangeType=blocks[i].type;
+      }
+    }
+    // Push the last range
+    const ev={
+      id:'cal-pto-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+      title:`${tech} — ${rangeType}`,
+      event_type:'ooo',
+      start_date:rangeStart,
+      end_date:rangeEnd,
+      user_name:tech,
+      notes:`Auto-created from ${rangeType} task block`,
+      created_by:CU?.name||'System',
+      created_at:new Date().toISOString(),
+      source:'task_block',
+    };
+    calEvts.push(ev);
+    toInsert.push(ev);
+  });
+
+  S.set('lhs:cal_events',calEvts);
+
+  // Save to Supabase
+  try{
+    const rows=toInsert.map(({id,source,...r})=>r); // strip local-only fields
+    await DB.from('lhs_calendar_events').insert(rows);
+  }catch(e){ console.warn('Cal OOO sync:',e.message); }
+
+  // Refresh calendar view if it's open
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
 }
 
 async function svCalEvent(){
@@ -9581,23 +9663,25 @@ function renderDispBoard(){
 }
 
 // Dispatch nav
+// Navigate to dispatch board — activates sub-nav if coming from elsewhere
+function goDispBoard(){ if(_navMode!=='dispatch') renderDispatchNav(); showPage('dispatch-board'); }
 function dispNav(dir){
   const d=new Date(_dispDate+'T12:00:00');
   d.setDate(d.getDate()+dir);
   _dispDate=d.toISOString().split('T')[0];
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
-function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; showPage('dispatch'); }
-function dispSetDate(val){ if(val){ _dispDate=val; showPage('dispatch'); } }
-function dispSetView(v){ _dispView=v; showPage('dispatch'); }
-function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; showPage('dispatch'); }
-function dispSetTerritory(t){ _dispTerritory=t; showPage('dispatch'); }
+function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; showPage('dispatch-board'); }
+function dispSetDate(val){ if(val){ _dispDate=val; showPage('dispatch-board'); } }
+function dispSetView(v){ _dispView=v; showPage('dispatch-board'); }
+function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; showPage('dispatch-board'); }
+function dispSetTerritory(t){ _dispTerritory=t; showPage('dispatch-board'); }
 
 function dispToggleDiv(div){
   const idx=_dispCollapsed.indexOf(div);
   if(idx>=0) _dispCollapsed.splice(idx,1); else _dispCollapsed.push(div);
   try{localStorage.setItem('lms_disp_collapsed',JSON.stringify(_dispCollapsed));}catch{}
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
 
 async function dispPin(div){
@@ -9611,7 +9695,7 @@ async function dispPin(div){
     try{await DB.from('lhs_users').update({dispatch_pins:_dispPinned}).eq('id',CU.id);}catch(e){console.warn('pin save failed',e?.message);}
     CU.dispatch_pins=_dispPinned;
   }
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
 
 async function dispPinAll(){
@@ -9636,7 +9720,7 @@ async function dispPinAll(){
     try{await DB.from('lhs_users').update({dispatch_pins:_dispPinned}).eq('id',CU.id);}catch(e){console.warn('pin save failed',e?.message);}
     CU.dispatch_pins=_dispPinned;
   }
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
 
 // Division drag-to-reorder
@@ -9661,7 +9745,7 @@ function divDrop(e,targetDiv){
   try{localStorage.setItem('lms_disp_order',JSON.stringify(order));}catch{}
   tst(`${_divDragSource} moved`,'success');
   _divDragSource=null;
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
 
 function divDragOver(e,targetDiv){
@@ -9726,7 +9810,7 @@ async function dispDrop(e,newTech,newDiv){
     S.set('lhs:grey_blocks',blocks);
     try{await DB.from('lhs_grey_blocks').update({time:finalTime,tech:b.tech}).eq('id',blockId);}catch(err){console.warn('grey block move failed',err?.message);}
     tst(`Block moved to ${finalTime}`,'success');
-    showPage('dispatch'); return;
+    showPage('dispatch-board'); return;
   }
   if(!_dragApt) return;
   const {aptId,woId,techName}=_dragApt;
@@ -9756,7 +9840,7 @@ async function dispDrop(e,newTech,newDiv){
     const dur=movingApt.estimated_duration||120;
     if(checkOverlap(newTech||techName, movingApt.scheduled_date, newStartMin, dur, aptId)){
       tst('Cannot move — overlaps with an existing appointment or block','error');
-      showPage('dispatch'); return;
+      showPage('dispatch-board'); return;
     }
   }
 
@@ -9790,7 +9874,7 @@ async function dispDrop(e,newTech,newDiv){
   if(timeChanged||techChanged){
     const msg=techChanged?`Moved to ${newTech} at ${finalTime}`:`Rescheduled to ${finalTime}`;
     tst(msg,'success');
-    showPage('dispatch');
+    showPage('dispatch-board');
   }
 }
 
@@ -9942,7 +10026,7 @@ document.addEventListener('mouseup',async e=>{
     try{await DB.from('lhs_grey_blocks').update({time:newTime,duration:newDur}).eq('id',blockId);}catch(err){console.warn('grey block resize failed',err?.message);}
     const d2h=Math.floor(newDur/60),d2m=newDur%60;
     tst(`Block: ${newTime} · ${d2h>0?d2h+'h ':''}${d2m>0?d2m+'m':''}`.trim(),'success');
-    showPage('dispatch'); return;
+    showPage('dispatch-board'); return;
   }
   if(!_dispResize) return;
   const {aptId,side,startX,origTime,origDur}=_dispResize;
@@ -9987,7 +10071,7 @@ document.addEventListener('mouseup',async e=>{
 
   const dur2h=Math.floor(newDur/60), dur2m=newDur%60;
   tst(`Appointment: ${newTime} · ${dur2h>0?dur2h+'h ':''}${dur2m>0?dur2m+'m':''}`.trim(),'success');
-  showPage('dispatch');
+  showPage('dispatch-board');
 });
 
 // Grey blocks (task blocks without a WO)
@@ -10191,10 +10275,12 @@ async function svAddGreyBlock(){
   S.set('lhs:grey_blocks',blocks);
   // Persist to Supabase so all users see the blocks
   try{await DB.from('lhs_grey_blocks').insert(newBlocks);}catch(e){console.warn('grey_blocks insert failed',e?.message);}
+  // Auto-sync PTO/UTO blocks to Company Calendar as Out of Office
+  if(isPTO) await _syncPTOToCalendar(newBlocks);
   cMod();
-  if(isPTO) tst(`${type} — ${dates.length} day${dates.length!==1?'s':''} added for ${tech} — flagged on timesheet`,'info');
+  if(isPTO) tst(`${type} — ${dates.length} day${dates.length!==1?'s':''} added for ${tech} — auto-added to Company Calendar as Out of Office`,'info');
   else tst(`${dates.length} task block${dates.length!==1?'s':''} added for ${tech}`,'success');
-  showPage('dispatch');
+  showPage('dispatch-board');
 }
 
 function oEditGreyBlock(id){
@@ -10262,7 +10348,9 @@ async function svEditGreyBlock(id){
     label:blocks[i].label,type,tech,date:blocks[i].date,
     time:blocks[i].time,duration:dur,locked,is_pto:isPTO
   }).eq('id',id);}catch(e){console.warn('grey_blocks update failed',e?.message);}
-  cMod(); tst('Block updated','success'); showPage('dispatch');
+  // Re-sync to calendar if it became PTO
+  if(isPTO) await _syncPTOToCalendar([blocks[i]]);
+  cMod(); tst('Block updated','success'); showPage('dispatch-board');
 }
 
 async function delGreyBlock(id,deleteGroup=false){
@@ -10300,7 +10388,7 @@ async function delGreyBlock(id,deleteGroup=false){
       try{await DB.from('lhs_grey_blocks').delete().eq('id',id);}catch(e){console.warn('grey_blocks delete failed',e?.message);}
     }
   }
-  cMod(); showPage('dispatch');
+  cMod(); showPage('dispatch-board');
 }
 
 // ── WORK ORDERS ──────────────────────────────────────────────────────────────
@@ -12845,7 +12933,7 @@ async function svEditWODetails(woId){
   tst('Work order updated','success');
   // Refresh dispatch board if currently viewing it so color changes appear immediately
   const onDispatch=document.querySelector('.main [data-page="dispatch"]');
-  if(onDispatch) showPage('dispatch'); else openWO(woId);
+  if(onDispatch) showPage('dispatch-board'); else openWO(woId);
 }
 
 // ── PROPERTIES ────────────────────────────────────────────────────────────────
