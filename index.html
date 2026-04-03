@@ -1417,7 +1417,10 @@ const TBL={
 // Pull all data from Supabase into cache on login
 async function warmCache(){
   try{
+    // Tables too large to bulk-load into localStorage — queried on demand instead
+    const ON_DEMAND_TBLS=['lhs_customers'];
     const loads=Object.entries(TBL).map(async([k,tbl])=>{
+      if(ON_DEMAND_TBLS.includes(tbl)) return; // skip — loaded on demand with pagination
       try{
         let query=DB.from(tbl).select('*');
         // Only order by created_at for tables that have it
@@ -1428,7 +1431,6 @@ async function warmCache(){
           S.set(k,data);
           console.log('Loaded',tbl,data.length,'rows from Supabase');
         } else if(!error&&data&&data.length===0){
-          // Table exists but empty - keep whatever is in localStorage
           console.log(tbl,'is empty in Supabase, keeping local cache');
         }
       }catch(e){console.warn('Failed to load',tbl,e.message);}
@@ -12894,37 +12896,73 @@ function oCreateWOForProperty(propId){
 
 // ── CUSTOMERS SECTION ────────────────────────────────────────────────────────
 
+let _custPage=0;
+const _CUST_PAGE_SIZE=50;
+let _custTotal=0;
+let _custSearch='';
+
 function bCustomers(){
-  const custs=S.get('lhs:customers')||[];
+  // Kick off count + first page load asynchronously
+  setTimeout(custLoadPage,0);
   return`<div class="pt">Customers</div>
-  <div class="ps">${custs.length} customers &mdash; search by name, phone, or address</div>
+  <div class="ps" id="cust-count-line">Loading customers…</div>
   <div class="sh">
     <input id="cust-search" placeholder="&#128269; Search by name, phone, email, address..."
       style="padding:9px 16px;border:1.5px solid var(--bdr);border-radius:20px;font-size:14px;
       font-family:'DM Sans',sans-serif;width:320px;outline:none"
-      oninput="renderCustList(this.value)">
+      oninput="custSearchChanged(this.value)">
     <div style="display:flex;gap:8px">
       <button class="btn btn-o" onclick="oImportCustomers()" style="border-color:var(--teal);color:var(--teal)">&#8679; Import</button>
       <button class="btn btn-n" onclick="oAddCustomer()">+ Add Customer</button>
     </div>
   </div>
   <div id="cust-import-area"></div>
-  <div id="cust-list">${renderCustTable(custs)}</div>`;
+  <div id="cust-list"><div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div></div>
+  <div id="cust-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;align-items:center"></div>`;
 }
 
-function renderCustList(q){
-  const custs=S.get('lhs:customers')||[];
-  const ql=(q||'').toLowerCase();
-  const filtered=!ql?custs:custs.filter(c=>
-    `${c.first_name||''} ${c.last_name||''}`.toLowerCase().includes(ql)||
-    (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||
-    (c.email||'').toLowerCase().includes(ql)||
-    (c.address||'').toLowerCase().includes(ql)||
-    (c.city||'').toLowerCase().includes(ql)||
-    (c.company||'').toLowerCase().includes(ql)
-  );
-  const el=document.getElementById('cust-list');
-  if(el) el.innerHTML=renderCustTable(filtered);
+let _custSearchTimer=null;
+function custSearchChanged(val){
+  _custSearch=val;
+  _custPage=0;
+  clearTimeout(_custSearchTimer);
+  _custSearchTimer=setTimeout(custLoadPage,300);
+}
+
+async function custLoadPage(){
+  const listEl=g('cust-list');
+  const pagEl=g('cust-pagination');
+  const countEl=g('cust-count-line');
+  if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div>`;
+  try{
+    const q=(_custSearch||'').trim();
+    const from=_custPage*_CUST_PAGE_SIZE;
+    const to=from+_CUST_PAGE_SIZE-1;
+    let query=DB.from('lhs_customers').select('*',{count:'exact'});
+    if(q){
+      // Search across name, phone, email, city, address
+      query=query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,address.ilike.%${q}%,city.ilike.%${q}%,company.ilike.%${q}%`);
+    }
+    query=query.order('last_name',{ascending:true}).range(from,to);
+    const{data,error,count}=await query;
+    if(error) throw error;
+    _custTotal=count||0;
+    const totalPages=Math.ceil(_custTotal/_CUST_PAGE_SIZE);
+    if(countEl) countEl.textContent=`${_custTotal.toLocaleString()} customers${q?' matching "'+q+'"':''} — showing ${from+1}–${Math.min(from+(data||[]).length,_custTotal)}`;
+    if(listEl) listEl.innerHTML=renderCustTable(data||[]);
+    // Pagination controls
+    if(pagEl){
+      if(totalPages<=1){pagEl.innerHTML='';return;}
+      pagEl.innerHTML=`
+        <button class="btn sm btn-o" onclick="_custPage=0;custLoadPage()" ${_custPage===0?'disabled':''}>«</button>
+        <button class="btn sm btn-o" onclick="_custPage--;custLoadPage()" ${_custPage===0?'disabled':''}>‹</button>
+        <span style="font-size:13px;color:var(--muted)">Page ${_custPage+1} of ${totalPages}</span>
+        <button class="btn sm btn-o" onclick="_custPage++;custLoadPage()" ${_custPage>=totalPages-1?'disabled':''}>›</button>
+        <button class="btn sm btn-o" onclick="_custPage=${totalPages-1};custLoadPage()" ${_custPage>=totalPages-1?'disabled':''}>»</button>`;
+    }
+  }catch(e){
+    if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:red;font-size:13px">Failed to load customers: ${e.message}</div>`;
+  }
 }
 
 function renderCustTable(custs){
@@ -13201,9 +13239,9 @@ async function runCustomerImport(){
   if(prog) prog.innerHTML='';
   tst(`Imported ${done} customers${failed?` (${failed} failed)`:''} — customer numbers assigned`,done>0?'success':'error');
   g('cust-import-area').innerHTML='';
-  const el=g('cust-list');
-  if(el) el.innerHTML=renderCustTable(S.get('lhs:customers')||[]);
-  g('cust-search').value='';
+  _custPage=0; _custSearch='';
+  const si=g('cust-search'); if(si) si.value='';
+  custLoadPage();
 }
 
 function oAddCustomer(){ oMod('Add Customer',custForm({},'svAddCustomer')); }
