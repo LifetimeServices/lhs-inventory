@@ -12372,7 +12372,7 @@ function bCustomers(){
       font-family:'DM Sans',sans-serif;width:320px;outline:none"
       oninput="renderCustList(this.value)">
     <div style="display:flex;gap:8px">
-      <button class="btn btn-o" onclick="oImportCustomers()" style="border-color:var(--teal);color:var(--teal)">&#8679; Import from ServiceTitan</button>
+      <button class="btn btn-o" onclick="oImportCustomers()" style="border-color:var(--teal);color:var(--teal)">&#8679; Import</button>
       <button class="btn btn-n" onclick="oAddCustomer()">+ Add Customer</button>
     </div>
   </div>
@@ -12482,7 +12482,7 @@ function oImportCustomers(){
   area.innerHTML=`
   <div style="background:white;border:2px solid var(--teal);border-radius:12px;padding:20px;margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-weight:700;font-size:15px;color:var(--navy)">Import Customers from ServiceTitan</div>
+      <div style="font-weight:700;font-size:15px;color:var(--navy)">Import Customers</div>
       <button class="btn sm btn-o" onclick="g('cust-import-area').innerHTML=''">Cancel</button>
     </div>
     <div id="cust-import-drop"
