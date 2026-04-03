@@ -1413,6 +1413,8 @@ const TBL={
   'lhs:ops_documents':'lhs_ops_documents',
   'lhs:ops_assignments':'lhs_ops_assignments',
   'lhs:cal_events':'lhs_calendar_events',
+  'lhs:biz_accounts':'lhs_business_accounts',
+  'lhs:comm_accounts':'lhs_commercial_accounts',
 };
 
 // Pull all data from Supabase into cache on login
@@ -2108,8 +2110,8 @@ function buildPage(id){
     dispatch:bDispatch, 'dispatch-board':bDispatch, 'dispatch-calendar':bCompanyCalendar,
     workorders:bWorkOrders, customers:bCustomers, properties:bProperties,
     accounts:()=>bPlaceholder('Accounts'),
-    business:()=>bPlaceholder('Business Accounts'),
-    commercial:()=>bPlaceholder('Commercial Accounts'),
+    business:bBusiness,
+    commercial:bCommercial,
     sales:bSales,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
     'sales-accounts':bCustomers,
     'sales-estimates':bSalesEstimates,
@@ -12989,7 +12991,10 @@ function bProperties(){
     </div>
     <button class="btn btn-n sm" onclick="window._propFSearch=document.getElementById('prop-search')?.value||'';showPage('properties')">Search</button>
     <button class="btn btn-o sm" onclick="window._propFType='';window._propFDiv='';window._propFRegion='';window._propFSearch='';showPage('properties')">Clear</button>
-    <div style="margin-left:auto"><button class="btn btn-n" onclick="oAddProperty()">+ Add Property</button></div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-o" onclick="oImportAccounts('properties')">&#8679; Import</button>
+      <button class="btn btn-n" onclick="oAddProperty()">+ Add Property</button>
+    </div>
   </div>
 
   <div class="card" style="padding:0"><div class="tw"><table>
@@ -13010,6 +13015,778 @@ function bProperties(){
     </tr>`;}).join('')
   :`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No properties found — click + Add Property to start</td></tr>`}
   </tbody></table></div></div>`;
+}
+
+// ─── BUSINESS ACCOUNTS ───────────────────────────────────────────────────────
+const BIZ_TYPES=['Property Owner','Restaurant / Hospitality','Hotel / Motel','Retail','Office / Professional','Healthcare','Education','Industrial','Other'];
+const COMM_TYPES=['Engineering Firm','General Contractor','Environmental Consultant','Subcontractor','Developer','Government / Municipality','Property Management','Other'];
+const ACCT_STATUSES=['Active','Prospect','Inactive'];
+const ACCT_CATEGORIES_BIZ=['Residential Business','Commercial Business'];
+const ACCT_CATEGORIES_COMM=['Commercial Business','Commercial Residence'];
+
+function _acctStatusBadge(s){
+  const c=s==='Active'?'var(--green)':s==='Prospect'?'var(--teal)':'var(--muted)';
+  return`<span style="background:${c}22;color:${c};font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.05em">${s||'Active'}</span>`;
+}
+
+function bBusiness(){
+  const all=S.get('lhs:biz_accounts')||[];
+  const search=(window._bizSearch||'').toLowerCase();
+  const fStatus=window._bizStatus||'';
+  const fType=window._bizType||'';
+  let filtered=all;
+  if(search) filtered=filtered.filter(b=>(b.business_name||'').toLowerCase().includes(search)||(b.contact_name||'').toLowerCase().includes(search)||(b.city||'').toLowerCase().includes(search)||(b.email||'').toLowerCase().includes(search));
+  if(fStatus) filtered=filtered.filter(b=>(b.account_status||'Active')===fStatus);
+  if(fType) filtered=filtered.filter(b=>b.business_type===fType);
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">Business Accounts</div>
+      <div class="ps">${all.length} account${all.length!==1?'s':''} &mdash; ${filtered.length} shown</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" onclick="oImportAccounts('business')">&#8679; Import</button>
+      <button class="btn btn-n" onclick="oAddBusiness()">+ Add Business</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div style="background:var(--surf);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fl" style="margin:0;min-width:160px"><label>Business Type</label>
+      <select onchange="window._bizType=this.value;showPage('business')">
+        <option value="">All Types</option>
+        ${BIZ_TYPES.map(t=>`<option${fType===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:130px"><label>Status</label>
+      <select onchange="window._bizStatus=this.value;showPage('business')">
+        <option value="">All Statuses</option>
+        ${ACCT_STATUSES.map(s=>`<option${fStatus===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:220px"><label>Search</label>
+      <input id="biz-search" placeholder="Name, contact, city, email…" value="${search}"
+        onkeydown="if(event.key==='Enter'){window._bizSearch=this.value;showPage('business')}"
+        style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    </div>
+    <button class="btn btn-n sm" onclick="window._bizSearch=document.getElementById('biz-search')?.value||'';showPage('business')">Search</button>
+    <button class="btn btn-o sm" onclick="window._bizSearch='';window._bizStatus='';window._bizType='';showPage('business')">Clear</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Business Name</th><th>Type</th><th>Category</th><th>Contact</th><th>Phone</th><th>City / State</th><th>Status</th><th>WOs</th><th></th></tr></thead>
+    <tbody>${filtered.length?filtered.map(b=>{
+      const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.business_account_id===b.id);
+      return`<tr style="cursor:pointer" onclick="openBusiness('${b.id}')">
+        <td style="font-weight:600;color:var(--navy)">${esc(b.business_name||'—')}
+          <div style="font-size:11px;font-weight:400;color:var(--muted)">${esc(b.website||'')}</div></td>
+        <td style="font-size:12px">${bx(b.business_type||'—','bn')}</td>
+        <td style="font-size:11px;color:var(--muted)">${b.account_category||'—'}</td>
+        <td style="font-size:13px">${esc(b.contact_name||'—')}<div style="font-size:11px;color:var(--muted)">${esc(b.contact_title||'')}</div></td>
+        <td style="font-size:12px;font-family:'DM Mono',monospace">${esc(b.phone||'—')}</td>
+        <td style="font-size:12px">${esc(b.city||'')}${b.state?' '+b.state:''}</td>
+        <td>${_acctStatusBadge(b.account_status)}</td>
+        <td style="text-align:center;font-weight:600">${wos.length}</td>
+        <td><button class="btn sm btn-o" onclick="event.stopPropagation();openBusiness('${b.id}')">View</button></td>
+      </tr>`;}).join('')
+    :`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No business accounts yet — click + Add Business or Import to get started</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function oAddBusiness(){
+  oMod('Add Business Account',_bizForm({},'svAddBusiness'));
+}
+function oEditBusiness(id){
+  const b=(S.get('lhs:biz_accounts')||[]).find(x=>x.id===id);
+  if(!b) return;
+  window._editBizId=id;
+  oMod('Edit Business Account',_bizForm(b,'svEditBusiness'));
+}
+function _bizForm(b,saveFn){
+  return`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Business Name <span style="color:var(--red)">*</span></label><input id="biz-name" value="${esc(b.business_name||'')}"></div>
+    <div><label>Business Type</label><select id="biz-type">
+      ${BIZ_TYPES.map(t=>`<option${b.business_type===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Account Category</label><select id="biz-cat">
+      ${ACCT_CATEGORIES_BIZ.map(c=>`<option${b.account_category===c?' selected':''}>${c}</option>`).join('')}
+    </select></div>
+    <div><label>Account Status</label><select id="biz-status">
+      ${ACCT_STATUSES.map(s=>`<option${(b.account_status||'Active')===s?' selected':''}>${s}</option>`).join('')}
+    </select></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-bottom:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Primary Contact</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Contact Name</label><input id="biz-contact" value="${esc(b.contact_name||'')}"></div>
+    <div><label>Title / Role</label><input id="biz-title" value="${esc(b.contact_title||'')}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Phone</label><input id="biz-phone" value="${esc(b.phone||'')}"></div>
+    <div><label>Email</label><input id="biz-email" type="email" value="${esc(b.email||'')}"></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-bottom:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Location</div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Address</label><input id="biz-addr" value="${esc(b.address||'')}"></div>
+    <div><label>City</label><input id="biz-city" value="${esc(b.city||'')}"></div>
+    <div><label>State</label><input id="biz-state" value="${esc(b.state||'')}" maxlength="2" style="text-transform:uppercase"></div>
+    <div><label>Zip</label><input id="biz-zip" value="${esc(b.zip||'')}" maxlength="10"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Region</label><select id="biz-region">
+      <option value="">— None —</option>
+      ${Object.keys(REGIONS).map(r=>`<option${b.region===r?' selected':''}>${r}</option>`).join('')}
+    </select></div>
+    <div><label>Website</label><input id="biz-web" placeholder="https://" value="${esc(b.website||'')}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Tax ID (optional)</label><input id="biz-taxid" value="${esc(b.tax_id||'')}"></div>
+    <div><label>Referred By</label><input id="biz-ref" value="${esc(b.referred_by||'')}"></div>
+  </div>
+  <div style="margin-bottom:20px"><label>Notes</label><textarea id="biz-notes" rows="3" style="width:100%">${esc(b.notes||'')}</textarea></div>
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="${saveFn}()">Save Account</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+async function svAddBusiness(){
+  const name=document.getElementById('biz-name')?.value.trim();
+  if(!name){tst('Business name is required','error');return;}
+  const rec={
+    business_name:name, business_type:v('biz-type')||null,
+    account_category:v('biz-cat')||'Residential Business',
+    account_status:v('biz-status')||'Active',
+    contact_name:v('biz-contact')||null, contact_title:v('biz-title')||null,
+    phone:v('biz-phone')||null, email:v('biz-email')||null,
+    address:v('biz-addr')||null, city:v('biz-city')||null,
+    state:(v('biz-state')||'').toUpperCase()||null, zip:v('biz-zip')||null,
+    region:v('biz-region')||null, website:v('biz-web')||null,
+    tax_id:v('biz-taxid')||null, referred_by:v('biz-ref')||null,
+    notes:v('biz-notes')||null,
+    created_by:CU?.name||'', created_at:new Date().toISOString(),
+  };
+  let saved=null;
+  try{const{data,error}=await DB.from('lhs_business_accounts').insert(rec).select().single();if(!error)saved=data;}catch{}
+  const final=saved||{...rec,id:'biz_'+Date.now()};
+  const all=S.get('lhs:biz_accounts')||[];all.unshift(final);S.set('lhs:biz_accounts',all);
+  cMod();tst(`${name} added`,'success');showPage('business');
+}
+async function svEditBusiness(){
+  const id=window._editBizId;
+  const name=document.getElementById('biz-name')?.value.trim();
+  if(!name){tst('Business name is required','error');return;}
+  const all=S.get('lhs:biz_accounts')||[];
+  const i=all.findIndex(x=>x.id===id);if(i<0) return;
+  const rec={...all[i],
+    business_name:name, business_type:v('biz-type')||null,
+    account_category:v('biz-cat')||all[i].account_category,
+    account_status:v('biz-status')||'Active',
+    contact_name:v('biz-contact')||null, contact_title:v('biz-title')||null,
+    phone:v('biz-phone')||null, email:v('biz-email')||null,
+    address:v('biz-addr')||null, city:v('biz-city')||null,
+    state:(v('biz-state')||'').toUpperCase()||null, zip:v('biz-zip')||null,
+    region:v('biz-region')||null, website:v('biz-web')||null,
+    tax_id:v('biz-taxid')||null, referred_by:v('biz-ref')||null,
+    notes:v('biz-notes')||null,
+  };
+  all[i]=rec;S.set('lhs:biz_accounts',all);
+  try{await DB.from('lhs_business_accounts').update(rec).eq('id',id);}catch{}
+  cMod();tst(`${name} updated`,'success');showPage('business');
+}
+function openBusiness(id){
+  const b=(S.get('lhs:biz_accounts')||[]).find(x=>x.id===id);if(!b) return;
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.business_account_id===id);
+  oMod(`${b.business_name}`,`
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${_acctStatusBadge(b.account_status)}
+    <span style="font-size:12px;color:var(--muted);background:var(--surf);padding:2px 8px;border-radius:10px">${b.business_type||'—'}</span>
+    <span style="font-size:12px;color:var(--muted);background:var(--surf);padding:2px 8px;border-radius:10px">${b.account_category||'—'}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Contact</div>
+      <div style="font-weight:600">${esc(b.contact_name||'—')}</div>
+      <div style="font-size:12px;color:var(--muted)">${esc(b.contact_title||'')}</div>
+    </div>
+    <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Reach</div>
+      <div style="font-size:13px">${b.phone?`📞 ${esc(b.phone)}`:'—'}</div>
+      <div style="font-size:13px">${b.email?`✉️ ${esc(b.email)}`:'—'}</div>
+      <div style="font-size:13px">${b.website?`🌐 <a href="${esc(b.website)}" target="_blank" style="color:var(--teal)">${esc(b.website)}</a>`:'—'}</div>
+    </div>
+  </div>
+  <div style="margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Location</div>
+    <div style="font-size:13px">${[b.address,b.city,b.state,b.zip].filter(Boolean).join(', ')||'—'}</div>
+    ${b.region?`<div style="font-size:12px;color:var(--muted)">${b.region} Region</div>`:''}
+  </div>
+  ${b.notes?`<div style="background:var(--surf);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--text)">${esc(b.notes)}</div>`:''}
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Work Orders (${wos.length})</div>
+  ${wos.length?`<div style="display:flex;flex-direction:column;gap:6px">${wos.slice(0,5).map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surf);border-radius:7px;font-size:13px">
+    <span style="font-weight:600;color:var(--navy)">${w.wo_number}</span>
+    <span style="color:var(--muted)">${w.status||''}</span>
+  </div>`).join('')}${wos.length>5?`<div style="font-size:12px;color:var(--muted);text-align:center">+${wos.length-5} more work orders</div>`:''}</div>`
+  :`<div style="font-size:13px;color:var(--muted)">No work orders linked yet</div>`}
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;margin-top:16px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="cMod();oEditBusiness('${id}')">Edit Account</button>
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div>`);
+}
+
+// ─── COMMERCIAL ACCOUNTS ──────────────────────────────────────────────────────
+function bCommercial(){
+  const all=S.get('lhs:comm_accounts')||[];
+  const search=(window._commSearch||'').toLowerCase();
+  const fStatus=window._commStatus||'';
+  const fType=window._commType||'';
+  const fCat=window._commCat||'';
+  let filtered=all;
+  if(search) filtered=filtered.filter(b=>(b.account_name||'').toLowerCase().includes(search)||(b.contact_name||'').toLowerCase().includes(search)||(b.city||'').toLowerCase().includes(search)||(b.email||'').toLowerCase().includes(search));
+  if(fStatus) filtered=filtered.filter(b=>(b.account_status||'Active')===fStatus);
+  if(fType) filtered=filtered.filter(b=>b.account_type===fType);
+  if(fCat) filtered=filtered.filter(b=>b.account_category===fCat);
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">Commercial Accounts</div>
+      <div class="ps">${all.length} account${all.length!==1?'s':''} &mdash; ${filtered.length} shown</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" onclick="oImportAccounts('commercial')">&#8679; Import</button>
+      <button class="btn btn-n" onclick="oAddCommercial()">+ Add Commercial</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div style="background:var(--surf);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fl" style="margin:0;min-width:180px"><label>Account Type</label>
+      <select onchange="window._commType=this.value;showPage('commercial')">
+        <option value="">All Types</option>
+        ${COMM_TYPES.map(t=>`<option${fType===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:160px"><label>Category</label>
+      <select onchange="window._commCat=this.value;showPage('commercial')">
+        <option value="">All Categories</option>
+        ${ACCT_CATEGORIES_COMM.map(c=>`<option${fCat===c?' selected':''}>${c}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:120px"><label>Status</label>
+      <select onchange="window._commStatus=this.value;showPage('commercial')">
+        <option value="">All</option>
+        ${ACCT_STATUSES.map(s=>`<option${fStatus===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:220px"><label>Search</label>
+      <input id="comm-search" placeholder="Name, contact, city, email…" value="${search}"
+        onkeydown="if(event.key==='Enter'){window._commSearch=this.value;showPage('commercial')}"
+        style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    </div>
+    <button class="btn btn-n sm" onclick="window._commSearch=document.getElementById('comm-search')?.value||'';showPage('commercial')">Search</button>
+    <button class="btn btn-o sm" onclick="window._commSearch='';window._commStatus='';window._commType='';window._commCat='';showPage('commercial')">Clear</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Account Name</th><th>Type</th><th>Category</th><th>Contact</th><th>Phone</th><th>City / State</th><th>License #</th><th>Status</th><th>WOs</th><th></th></tr></thead>
+    <tbody>${filtered.length?filtered.map(c=>{
+      const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.commercial_account_id===c.id);
+      return`<tr style="cursor:pointer" onclick="openCommercial('${c.id}')">
+        <td style="font-weight:600;color:var(--navy)">${esc(c.account_name||'—')}
+          <div style="font-size:11px;font-weight:400;color:var(--muted)">${esc(c.website||'')}</div></td>
+        <td style="font-size:12px">${bx(c.account_type||'—','bn')}</td>
+        <td style="font-size:11px"><span style="background:${c.account_category==='Commercial Business'?'#dbeafe':'#fef3c7'};color:${c.account_category==='Commercial Business'?'#1e40af':'#92400e'};padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">${c.account_category||'—'}</span></td>
+        <td style="font-size:13px">${esc(c.contact_name||'—')}<div style="font-size:11px;color:var(--muted)">${esc(c.contact_title||'')}</div></td>
+        <td style="font-size:12px;font-family:'DM Mono',monospace">${esc(c.phone||'—')}</td>
+        <td style="font-size:12px">${esc(c.city||'')}${c.state?' '+c.state:''}</td>
+        <td style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)">${esc(c.license_number||'—')}</td>
+        <td>${_acctStatusBadge(c.account_status)}</td>
+        <td style="text-align:center;font-weight:600">${wos.length}</td>
+        <td><button class="btn sm btn-o" onclick="event.stopPropagation();openCommercial('${c.id}')">View</button></td>
+      </tr>`;}).join('')
+    :`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No commercial accounts yet — click + Add Commercial or Import</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function oAddCommercial(){
+  oMod('Add Commercial Account',_commForm({},'svAddCommercial'));
+}
+function oEditCommercial(id){
+  const c=(S.get('lhs:comm_accounts')||[]).find(x=>x.id===id);
+  if(!c) return;
+  window._editCommId=id;
+  oMod('Edit Commercial Account',_commForm(c,'svEditCommercial'));
+}
+function _commForm(c,saveFn){
+  return`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Account Name <span style="color:var(--red)">*</span></label><input id="comm-name" value="${esc(c.account_name||'')}"></div>
+    <div><label>Account Type</label><select id="comm-type">
+      ${COMM_TYPES.map(t=>`<option${c.account_type===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:6px">
+    <div>
+      <label>Account Category</label>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        ${ACCT_CATEGORIES_COMM.map(cat=>`
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:2px solid ${(c.account_category||'Commercial Business')===cat?'var(--teal)':'var(--bdr)'};background:${(c.account_category||'Commercial Business')===cat?'#f0fafa':'white'};transition:all .15s">
+            <input type="radio" name="comm-cat" value="${cat}" ${(c.account_category||'Commercial Business')===cat?'checked':''} style="display:none" onchange="document.querySelectorAll('[name=comm-cat]').forEach(r=>r.closest('label').style.borderColor=r.checked?'var(--teal)':'var(--bdr)');document.querySelectorAll('[name=comm-cat]').forEach(r=>r.closest('label').style.background=r.checked?'#f0fafa':'white')">
+            ${cat}
+          </label>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Commercial Business = company/firm · Commercial Residence = residential-style but commercially owned</div>
+    </div>
+    <div><label>Status</label><select id="comm-status">
+      ${ACCT_STATUSES.map(s=>`<option${(c.account_status||'Active')===s?' selected':''}>${s}</option>`).join('')}
+    </select></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-bottom:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Primary Contact</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Contact Name</label><input id="comm-contact" value="${esc(c.contact_name||'')}"></div>
+    <div><label>Title / Role</label><input id="comm-title" value="${esc(c.contact_title||'')}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Phone</label><input id="comm-phone" value="${esc(c.phone||'')}"></div>
+    <div><label>Email</label><input id="comm-email" type="email" value="${esc(c.email||'')}"></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-bottom:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Location & Credentials</div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Address</label><input id="comm-addr" value="${esc(c.address||'')}"></div>
+    <div><label>City</label><input id="comm-city" value="${esc(c.city||'')}"></div>
+    <div><label>State</label><input id="comm-state" value="${esc(c.state||'')}" maxlength="2" style="text-transform:uppercase"></div>
+    <div><label>Zip</label><input id="comm-zip" value="${esc(c.zip||'')}" maxlength="10"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><label>Region</label><select id="comm-region">
+      <option value="">— None —</option>
+      ${Object.keys(REGIONS).map(r=>`<option${c.region===r?' selected':''}>${r}</option>`).join('')}
+    </select></div>
+    <div><label>License / Cert #</label><input id="comm-license" value="${esc(c.license_number||'')}" placeholder="e.g. GC-12345"></div>
+    <div><label>Website</label><input id="comm-web" placeholder="https://" value="${esc(c.website||'')}"></div>
+  </div>
+  <div style="margin-bottom:20px"><label>Notes</label><textarea id="comm-notes" rows="3" style="width:100%">${esc(c.notes||'')}</textarea></div>
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="${saveFn}()">Save Account</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+function _commCatVal(){
+  const r=document.querySelector('[name=comm-cat]:checked');
+  return r?r.value:'Commercial Business';
+}
+async function svAddCommercial(){
+  const name=document.getElementById('comm-name')?.value.trim();
+  if(!name){tst('Account name is required','error');return;}
+  const rec={
+    account_name:name, account_type:v('comm-type')||null,
+    account_category:_commCatVal(),
+    account_status:v('comm-status')||'Active',
+    contact_name:v('comm-contact')||null, contact_title:v('comm-title')||null,
+    phone:v('comm-phone')||null, email:v('comm-email')||null,
+    address:v('comm-addr')||null, city:v('comm-city')||null,
+    state:(v('comm-state')||'').toUpperCase()||null, zip:v('comm-zip')||null,
+    region:v('comm-region')||null, license_number:v('comm-license')||null,
+    website:v('comm-web')||null, notes:v('comm-notes')||null,
+    created_by:CU?.name||'', created_at:new Date().toISOString(),
+  };
+  let saved=null;
+  try{const{data,error}=await DB.from('lhs_commercial_accounts').insert(rec).select().single();if(!error)saved=data;}catch{}
+  const final=saved||{...rec,id:'comm_'+Date.now()};
+  const all=S.get('lhs:comm_accounts')||[];all.unshift(final);S.set('lhs:comm_accounts',all);
+  cMod();tst(`${name} added`,'success');showPage('commercial');
+}
+async function svEditCommercial(){
+  const id=window._editCommId;
+  const name=document.getElementById('comm-name')?.value.trim();
+  if(!name){tst('Account name is required','error');return;}
+  const all=S.get('lhs:comm_accounts')||[];
+  const i=all.findIndex(x=>x.id===id);if(i<0) return;
+  const rec={...all[i],
+    account_name:name, account_type:v('comm-type')||null,
+    account_category:_commCatVal(),
+    account_status:v('comm-status')||'Active',
+    contact_name:v('comm-contact')||null, contact_title:v('comm-title')||null,
+    phone:v('comm-phone')||null, email:v('comm-email')||null,
+    address:v('comm-addr')||null, city:v('comm-city')||null,
+    state:(v('comm-state')||'').toUpperCase()||null, zip:v('comm-zip')||null,
+    region:v('comm-region')||null, license_number:v('comm-license')||null,
+    website:v('comm-web')||null, notes:v('comm-notes')||null,
+  };
+  all[i]=rec;S.set('lhs:comm_accounts',all);
+  try{await DB.from('lhs_commercial_accounts').update(rec).eq('id',id);}catch{}
+  cMod();tst(`${name} updated`,'success');showPage('commercial');
+}
+function openCommercial(id){
+  const c=(S.get('lhs:comm_accounts')||[]).find(x=>x.id===id);if(!c) return;
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.commercial_account_id===id);
+  const catColor=c.account_category==='Commercial Business'?{bg:'#dbeafe',color:'#1e40af'}:{bg:'#fef3c7',color:'#92400e'};
+  oMod(`${c.account_name}`,`
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${_acctStatusBadge(c.account_status)}
+    <span style="font-size:12px;color:var(--muted);background:var(--surf);padding:2px 8px;border-radius:10px">${c.account_type||'—'}</span>
+    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:${catColor.bg};color:${catColor.color}">${c.account_category||'—'}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Contact</div>
+      <div style="font-weight:600">${esc(c.contact_name||'—')}</div>
+      <div style="font-size:12px;color:var(--muted)">${esc(c.contact_title||'')}</div>
+    </div>
+    <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Reach</div>
+      <div style="font-size:13px">${c.phone?`📞 ${esc(c.phone)}`:'—'}</div>
+      <div style="font-size:13px">${c.email?`✉️ ${esc(c.email)}`:'—'}</div>
+      <div style="font-size:13px">${c.website?`🌐 <a href="${esc(c.website)}" target="_blank" style="color:var(--teal)">${esc(c.website)}</a>`:'—'}</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Location</div>
+      <div style="font-size:13px">${[c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||'—'}</div>
+      ${c.region?`<div style="font-size:12px;color:var(--muted)">${c.region} Region</div>`:''}
+    </div>
+    ${c.license_number?`<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">License / Cert #</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600">${esc(c.license_number)}</div></div>`:''}
+  </div>
+  ${c.notes?`<div style="background:var(--surf);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">${esc(c.notes)}</div>`:''}
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Work Orders (${wos.length})</div>
+  ${wos.length?`<div style="display:flex;flex-direction:column;gap:6px">${wos.slice(0,5).map(w=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surf);border-radius:7px;font-size:13px">
+    <span style="font-weight:600;color:var(--navy)">${w.wo_number}</span><span style="color:var(--muted)">${w.status||''}</span></div>`).join('')}
+    ${wos.length>5?`<div style="font-size:12px;color:var(--muted);text-align:center">+${wos.length-5} more</div>`:''}</div>`
+  :`<div style="font-size:13px;color:var(--muted)">No work orders linked yet</div>`}
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;margin-top:16px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="cMod();oEditCommercial('${id}')">Edit Account</button>
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div>`);
+}
+
+// ─── ACCOUNTS IMPORT WIZARD ───────────────────────────────────────────────────
+// Shared 3-step import for Properties, Business Accounts, and Commercial Accounts
+var _acctImp={rows:[],headers:[],mapping:{},step:1,target:'business'};
+
+const _ACCT_IMP_FIELDS={
+  properties:[
+    {key:'address',      label:'Address',        required:true,  hint:'Street address — REQUIRED'},
+    {key:'city',         label:'City',            required:true,  hint:'City — REQUIRED'},
+    {key:'state',        label:'State',           required:false, hint:'2-letter state code'},
+    {key:'zip',          label:'Zip Code',        required:false, hint:''},
+    {key:'property_type',label:'Property Type',   required:false, hint:'Residential, Commercial, etc.'},
+    {key:'foundation_type',label:'Foundation',    required:false, hint:''},
+    {key:'sq_ft',        label:'Sq Ft',           required:false, hint:''},
+    {key:'year_built',   label:'Year Built',      required:false, hint:''},
+    {key:'region',       label:'Region',          required:false, hint:''},
+    {key:'notes',        label:'Notes',           required:false, hint:''},
+  ],
+  business:[
+    {key:'business_name',label:'Business Name',   required:true,  hint:'REQUIRED'},
+    {key:'business_type',label:'Business Type',   required:false, hint:'Restaurant, Hotel, etc.'},
+    {key:'account_category',label:'Category',     required:false, hint:'Residential Business / Commercial Business'},
+    {key:'account_status',label:'Status',         required:false, hint:'Active / Prospect / Inactive'},
+    {key:'contact_name', label:'Contact Name',    required:false, hint:''},
+    {key:'contact_title',label:'Contact Title',   required:false, hint:''},
+    {key:'phone',        label:'Phone',           required:false, hint:''},
+    {key:'email',        label:'Email',           required:false, hint:''},
+    {key:'address',      label:'Address',         required:false, hint:''},
+    {key:'city',         label:'City',            required:false, hint:''},
+    {key:'state',        label:'State',           required:false, hint:''},
+    {key:'zip',          label:'Zip',             required:false, hint:''},
+    {key:'region',       label:'Region',          required:false, hint:''},
+    {key:'website',      label:'Website',         required:false, hint:''},
+    {key:'notes',        label:'Notes',           required:false, hint:''},
+  ],
+  commercial:[
+    {key:'account_name', label:'Account Name',    required:true,  hint:'REQUIRED'},
+    {key:'account_type', label:'Account Type',    required:false, hint:'Engineering Firm, Contractor, etc.'},
+    {key:'account_category',label:'Category',     required:false, hint:'Commercial Business / Commercial Residence'},
+    {key:'account_status',label:'Status',         required:false, hint:'Active / Prospect / Inactive'},
+    {key:'contact_name', label:'Contact Name',    required:false, hint:''},
+    {key:'contact_title',label:'Contact Title',   required:false, hint:''},
+    {key:'phone',        label:'Phone',           required:false, hint:''},
+    {key:'email',        label:'Email',           required:false, hint:''},
+    {key:'address',      label:'Address',         required:false, hint:''},
+    {key:'city',         label:'City',            required:false, hint:''},
+    {key:'state',        label:'State',           required:false, hint:''},
+    {key:'zip',          label:'Zip',             required:false, hint:''},
+    {key:'region',       label:'Region',          required:false, hint:''},
+    {key:'license_number',label:'License #',      required:false, hint:''},
+    {key:'website',      label:'Website',         required:false, hint:''},
+    {key:'notes',        label:'Notes',           required:false, hint:''},
+  ],
+};
+
+const _ACCT_IMP_ALIASES={
+  address:['address','streetaddress','street','addr','street_address','fulladdress','propertyaddress'],
+  city:['city','town','municipality'],
+  state:['state','st','province'],
+  zip:['zip','zipcode','postalcode','zip_code'],
+  property_type:['type','propertytype','property_type','proptype','kind'],
+  foundation_type:['foundation','foundationtype','basementtype','foundtype'],
+  sq_ft:['sqft','squarefeet','squarefootage','sq_ft','area','size'],
+  year_built:['yearbuilt','year_built','builtyear','constructed'],
+  region:['region'],
+  notes:['notes','note','comments','comment','memo','remarks'],
+  business_name:['businessname','business_name','name','company','companyname','firm','organization'],
+  business_type:['type','businesstype','business_type','category','kind'],
+  account_category:['category','accountcategory','account_category','accounttype'],
+  account_status:['status','accountstatus'],
+  contact_name:['contactname','contact_name','contact','primarycontact','ownername','owner'],
+  contact_title:['title','contacttitle','jobtitle','role','position'],
+  phone:['phone','phonenumber','telephone','tel','mobile','cell'],
+  email:['email','emailaddress','e-mail'],
+  website:['website','web','url','homepage','siteurl'],
+  account_name:['accountname','account_name','name','company','companyname','firm','organization'],
+  account_type:['type','accounttype','account_type','firmtype'],
+  license_number:['license','licensenumber','license_number','licnum','certnum','certification'],
+};
+
+function oImportAccounts(target){
+  _acctImp={rows:[],headers:[],mapping:{},step:1,target:target||'business'};
+  const labels={properties:'Properties',business:'Business Accounts',commercial:'Commercial Accounts'};
+  oMod(`Import ${labels[target]||'Accounts'} — Excel / CSV`,_acctImpRender());
+}
+function _acctImpRender(){
+  if(_acctImp.step===1) return _acctImpStep1();
+  if(_acctImp.step===2) return _acctImpStep2();
+  if(_acctImp.step===3) return _acctImpStep3();
+  return'';
+}
+function _acctImpStep1(){
+  const t=_acctImp.target;
+  const fields=_ACCT_IMP_FIELDS[t]||[];
+  const reqFields=fields.filter(f=>f.required).map(f=>f.label).join(', ');
+  return`
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:16px">
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--bdr);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--bdr);border-radius:2px"></div>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:2px">Step 1 of 3 — Upload your file</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Accepts .xlsx, .xls, .csv &nbsp;·&nbsp; Google Sheets / Apple Numbers: export as CSV or Excel first.</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Required columns: <strong>${reqFields}</strong> &nbsp;·&nbsp; All other columns are optional and can be skipped.</div>
+  <!-- Drop zone -->
+  <div id="acct-imp-drop" style="border:2px dashed var(--bdr);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .15s"
+    onclick="document.getElementById('acct-imp-file').click()"
+    ondragover="event.preventDefault();this.style.borderColor='var(--teal)';this.style.background='#f0fafa'"
+    ondragleave="this.style.borderColor='var(--bdr)';this.style.background=''"
+    ondrop="event.preventDefault();this.style.borderColor='var(--bdr)';this.style.background='';_acctImpHandleFile(event.dataTransfer.files[0])">
+    <div style="font-size:40px;margin-bottom:12px">📂</div>
+    <div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:6px">Drag & drop your file here</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">or click to browse</div>
+    <div style="font-size:12px;color:var(--muted);background:var(--surf);display:inline-block;padding:4px 14px;border-radius:20px">.xlsx &nbsp;·&nbsp; .xls &nbsp;·&nbsp; .csv &nbsp;·&nbsp; .numbers</div>
+  </div>
+  <input type="file" id="acct-imp-file" accept=".xlsx,.xls,.csv,.numbers" style="display:none" onchange="_acctImpHandleFile(this.files[0])">
+  <div style="text-align:center;margin:14px 0;font-size:12px;color:var(--muted)">— or paste CSV text directly —</div>
+  <textarea id="acct-imp-paste" rows="4" placeholder="Paste CSV here…"
+    style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;resize:vertical;box-sizing:border-box"
+    oninput="_acctImpPaste(this.value)"></textarea>
+  <div id="acct-imp-status" style="margin-top:10px;font-size:13px;color:var(--navy);font-weight:500;min-height:18px"></div>
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;margin-top:16px;display:flex;gap:8px">
+    <button class="btn btn-n" id="acct-imp-next1" onclick="_acctImpGoStep2()" disabled style="opacity:.4;cursor:not-allowed">Next: Map Columns →</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+function _acctImpHandleFile(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  const status=document.getElementById('acct-imp-status');
+  if(status) status.textContent=`Reading ${file.name}…`;
+  const reader=new FileReader();
+  if(ext==='csv'){
+    reader.onload=e=>{
+      _acctImpParseCSV(e.target.result);
+      if(status) status.textContent=`✓ ${file.name} — ${_acctImp.rows.length} data rows, ${_acctImp.headers.length} columns`;
+      _acctImpAutoMap();_acctImpUnlock();
+    };
+    reader.readAsText(file);
+  } else {
+    reader.onload=e=>{
+      try{
+        if(typeof XLSX==='undefined'){tst('SheetJS not loaded yet','error');return;}
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        if(!data||data.length<2){tst('File appears empty','error');return;}
+        _acctImp.headers=(data[0]||[]).map(h=>String(h).trim());
+        _acctImp.rows=data.slice(1).filter(r=>r.some(c=>c!==''&&c!==null&&c!==undefined));
+        if(status) status.textContent=`✓ ${file.name} — ${_acctImp.rows.length} data rows, ${_acctImp.headers.length} columns`;
+        _acctImpAutoMap();_acctImpUnlock();
+      }catch(err){tst('Could not read file — try exporting as CSV','error');}
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+function _acctImpParseCSV(text){
+  const rows=[];let cur=[],field='',inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i],n=text[i+1];
+    if(inQ){if(c==='"'&&n==='"'){field+='"';i++;}else if(c==='"') inQ=false;else field+=c;}
+    else{if(c==='"') inQ=true;else if(c===','){cur.push(field);field='';}
+    else if(c==='\r'&&n==='\n'){cur.push(field);rows.push(cur);cur=[];field='';i++;}
+    else if(c==='\n'||c==='\r'){cur.push(field);rows.push(cur);cur=[];field='';}
+    else field+=c;}
+  }
+  if(field||cur.length) cur.push(field);
+  if(cur.some(c=>c!=='')) rows.push(cur);
+  if(!rows.length) return;
+  _acctImp.headers=rows[0].map(h=>String(h||'').trim());
+  _acctImp.rows=rows.slice(1).filter(r=>r.some(c=>c!==''));
+}
+function _acctImpPaste(val){
+  if(!val.trim()) return;
+  _acctImpParseCSV(val);
+  const s=document.getElementById('acct-imp-status');
+  if(s) s.textContent=`${_acctImp.rows.length} rows detected across ${_acctImp.headers.length} columns`;
+  _acctImpAutoMap();_acctImpUnlock();
+}
+function _acctImpAutoMap(){
+  const norm=s=>String(s||'').toLowerCase().replace(/[\s_\-\.\/\(\)#]/g,'');
+  _acctImp.mapping={};
+  const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
+  fields.forEach(f=>{
+    const aliases=_ACCT_IMP_ALIASES[f.key]||[norm(f.label)];
+    const match=_acctImp.headers.findIndex(h=>aliases.includes(norm(h)));
+    if(match>=0) _acctImp.mapping[f.key]=match;
+  });
+}
+function _acctImpUnlock(){
+  const btn=document.getElementById('acct-imp-next1');
+  if(btn){btn.disabled=false;btn.style.opacity='';btn.style.cursor='';}
+}
+function _acctImpGoStep2(){
+  if(!_acctImp.rows.length){tst('No data rows found','error');return;}
+  _acctImp.step=2;document.getElementById('mb').innerHTML=_acctImpRender();
+}
+function _acctImpStep2(){
+  const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
+  const colOptions=(sel)=>`<option value="">— Skip —</option>`+_acctImp.headers.map((h,i)=>`<option value="${i}"${sel===i?' selected':''}>${h}</option>`).join('');
+  return`
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:16px">
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--bdr);border-radius:2px"></div>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:2px">Step 2 of 3 — Map Your Columns</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tell us which column in your file maps to each field. Auto-mapped where possible.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    ${fields.map(f=>`
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:11px;font-weight:700;color:${f.required?'var(--navy)':'var(--muted)'};text-transform:uppercase;letter-spacing:.05em">
+          ${f.label}${f.required?' <span style="color:var(--red)">*</span>':''}
+        </label>
+        <select onchange="_acctImp.mapping['${f.key}']=this.value!==''?parseInt(this.value):undefined;_acctImpUpdatePreview()">
+          ${colOptions(_acctImp.mapping[f.key])}
+        </select>
+        ${f.hint?`<div style="font-size:10px;color:var(--muted)">${f.hint}</div>`:''}
+      </div>`).join('')}
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Preview (first 3 rows)</div>
+  <div id="acct-imp-preview"></div>
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;margin-top:16px;display:flex;gap:8px">
+    <button class="btn btn-o sm" onclick="_acctImp.step=1;document.getElementById('mb').innerHTML=_acctImpRender()">← Back</button>
+    <button class="btn btn-n" onclick="_acctImpGoStep3()">Preview Import →</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+function _acctImpUpdatePreview(){
+  const el=document.getElementById('acct-imp-preview');
+  if(!el) return;
+  const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
+  const mapped=fields.filter(f=>_acctImp.mapping[f.key]!==undefined);
+  if(!mapped.length){el.innerHTML='<div style="font-size:12px;color:var(--muted)">Map at least one column to preview.</div>';return;}
+  el.innerHTML=`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr>${mapped.map(f=>`<th>${f.label}</th>`).join('')}</tr></thead>
+    <tbody>${_acctImp.rows.slice(0,3).map(r=>`<tr>${mapped.map(f=>`<td style="font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_acctImp.mapping[f.key]!==undefined?r[_acctImp.mapping[f.key]]||'—':'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div></div>`;
+}
+function _acctImpGoStep3(){
+  const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
+  const reqKey=fields.find(f=>f.required)?.key;
+  if(reqKey&&_acctImp.mapping[reqKey]===undefined){tst(`Map the "${fields.find(f=>f.key===reqKey).label}" column first`,'error');return;}
+  _acctImp.step=3;document.getElementById('mb').innerHTML=_acctImpRender();
+}
+function _acctImpStep3(){
+  const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
+  const get=(row,key)=>{const idx=_acctImp.mapping[key];return idx!==undefined?String(row[idx]===undefined||row[idx]===null?'':row[idx]).trim():'';};
+  const reqKey=fields.find(f=>f.required)?.key;
+  const reqLabel=fields.find(f=>f.required)?.label||'Name';
+  let toAdd=[],errs=[];
+  _acctImp.rows.forEach((row,i)=>{
+    const req=reqKey?get(row,reqKey):'';
+    if(reqKey&&!req){errs.push({row:i+2,issue:`Missing ${reqLabel}`});return;}
+    const rec={created_by:CU?.name||'',created_at:new Date().toISOString()};
+    fields.forEach(f=>{ const val=get(row,f.key); if(val) rec[f.key]=val; });
+    toAdd.push(rec);
+  });
+  _acctImp.toAdd=toAdd;
+  const nameKey=reqKey||fields[0]?.key;
+  const labels={properties:'Properties',business:'Business Accounts',commercial:'Commercial Accounts'};
+  return`
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:16px">
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+    <div style="flex:1;height:3px;background:var(--teal);border-radius:2px"></div>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:2px">Step 3 of 3 — Review &amp; Confirm</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Review before importing. This cannot be undone.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+    <div style="background:#e8f8f0;border:1px solid #5cb88a;border-radius:8px;padding:14px;text-align:center">
+      <div style="font-size:28px;font-weight:700;color:#1a6b3c">${toAdd.length}</div>
+      <div style="font-size:12px;color:#1a6b3c;font-weight:600">Ready to Import</div>
+    </div>
+    <div style="background:${errs.length?'#fee2e2':'var(--surf)'};border:1px solid ${errs.length?'var(--red)':'var(--bdr)'};border-radius:8px;padding:14px;text-align:center">
+      <div style="font-size:28px;font-weight:700;color:${errs.length?'var(--red)':'var(--muted)'}">${errs.length}</div>
+      <div style="font-size:12px;font-weight:600;color:${errs.length?'var(--red)':'var(--muted)'}">Rows with Errors</div>
+    </div>
+  </div>
+  ${toAdd.length?`<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">${labels[_acctImp.target]||''} to be added</div>
+  <div class="card" style="padding:0;margin-bottom:14px"><div class="tw" style="max-height:200px;overflow-y:auto"><table>
+    <thead><tr>${fields.slice(0,5).map(f=>`<th>${f.label}</th>`).join('')}</tr></thead>
+    <tbody>${toAdd.slice(0,30).map(r=>`<tr>${fields.slice(0,5).map(f=>`<td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[f.key]||'—'}</td>`).join('')}</tr>`).join('')}
+    ${toAdd.length>30?`<tr><td colspan="5" style="text-align:center;padding:8px;color:var(--muted);font-size:12px">…and ${toAdd.length-30} more rows</td></tr>`:''}</tbody>
+  </table></div></div>`:''}
+  ${errs.length?`<div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">Rows with errors (will be skipped)</div>
+  <div class="card" style="padding:10px;margin-bottom:14px;background:#fee2e2">
+    ${errs.slice(0,5).map(e=>`<div style="font-size:12px;padding:3px 0;border-bottom:1px solid #fca5a5">Row ${e.row}: ${e.issue}</div>`).join('')}
+    ${errs.length>5?`<div style="font-size:11px;color:var(--red);margin-top:4px">…and ${errs.length-5} more</div>`:''}</div>`:''}
+  <div style="border-top:1px solid var(--bdr);padding-top:16px;display:flex;gap:8px">
+    <button class="btn btn-o sm" onclick="_acctImp.step=2;document.getElementById('mb').innerHTML=_acctImpRender()">← Back</button>
+    ${toAdd.length?`<button class="btn btn-n" id="acct-imp-confirm" onclick="svImportAccounts()">&#8679; Import ${toAdd.length} ${labels[_acctImp.target]||'Records'}</button>`:''}
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+async function svImportAccounts(){
+  const toAdd=_acctImp.toAdd||[];
+  if(!toAdd.length){tst('Nothing to import','error');return;}
+  const btn=document.getElementById('acct-imp-confirm');
+  if(btn){btn.textContent='Importing…';btn.disabled=true;}
+  const tgt=_acctImp.target;
+  const tableMap={properties:'lhs_properties',business:'lhs_business_accounts',commercial:'lhs_commercial_accounts'};
+  const cacheMap={properties:'lhs:props',business:'lhs:biz_accounts',commercial:'lhs:comm_accounts'};
+  const pageMap={properties:'properties',business:'business',commercial:'commercial'};
+  const table=tableMap[tgt];const cacheKey=cacheMap[tgt];
+  let added=0,failed=0;
+  const chunks=[];for(let i=0;i<toAdd.length;i+=50) chunks.push(toAdd.slice(i,i+50));
+  for(const chunk of chunks){
+    try{
+      const{data,error}=await DB.from(table).insert(chunk).select();
+      if(error) throw error;
+      const cached=S.get(cacheKey)||[];
+      (data||chunk).forEach(r=>cached.unshift(r));
+      S.set(cacheKey,cached);
+      added+=chunk.length;
+    }catch(e){
+      // fallback: save locally with temp IDs
+      const cached=S.get(cacheKey)||[];
+      chunk.forEach(r=>{const rec={...r,id:tgt+'_'+Date.now()+'_'+Math.random().toString(36).slice(2)};cached.unshift(rec);});
+      S.set(cacheKey,cached);
+      failed+=chunk.length;
+    }
+  }
+  cMod();
+  if(failed) tst(`${added} imported, ${failed} saved locally (DB table may not exist yet)`,'warning');
+  else tst(`${added} ${pageMap[tgt]} imported successfully`,'success');
+  showPage(pageMap[tgt]);
 }
 
 // ── ADD / EDIT PROPERTY FORMS ─────────────────────────────────────────────────
