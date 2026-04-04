@@ -10030,13 +10030,18 @@ function previewInvoice(invId,tmplId){
 
 // ── VOICE / CHAT ASSISTANT ────────────────────────────────────────────────────
 const _VA_PERMS={
-  'God View':   {financial:true,hr:true,payroll:true,customers:true,workorders:'all',inventory:true,admin:true,allUsers:true},
-  'Admin':      {financial:true,hr:true,payroll:true,customers:true,workorders:'all',inventory:true,admin:false,allUsers:true},
-  'Director':   {financial:true,hr:false,payroll:false,customers:true,workorders:'all',inventory:true,admin:false,allUsers:true},
-  'Manager':    {financial:'limited',hr:false,payroll:false,customers:true,workorders:'division',inventory:true,admin:false,allUsers:false},
-  'Sales':      {financial:false,hr:false,payroll:false,customers:true,workorders:false,inventory:false,admin:false,allUsers:false},
-  'Van Tech':   {financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:'limited',admin:false,allUsers:false},
-  'Technician': {financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:'limited',admin:false,allUsers:false},
+  //                       financial  hr     payroll  customers  workorders   inventory    admin   allUsers  sales    dispatch   tasks    purchasing  accounting
+  'God View':        {financial:true, hr:true, payroll:true, customers:true, workorders:'all',     inventory:true,    admin:true,  allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Admin':           {financial:true, hr:true, payroll:true, customers:true, workorders:'all',     inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Director':        {financial:true, hr:true, payroll:false,customers:true, workorders:'all',     inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Regional Manager':{financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',  inventory:true,    admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Location Manager':{financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',  inventory:true,    admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Manager':         {financial:'limited',hr:false,payroll:false,customers:true,workorders:'division',inventory:true, admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Sales Rep':       {financial:false,hr:false, payroll:false,customers:true, workorders:false,    inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Sales':           {financial:false,hr:false, payroll:false,customers:true, workorders:false,    inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Van Tech':        {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Technician':      {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Field Tech':      {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
 };
 let _vaHistory=[];
 let _vaRecognition=null;
@@ -10080,90 +10085,255 @@ function _vaRender(){
 function _vaBuildContext(){
   const p=_vaP();
   const now=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const wos=S.get('lhs:work_orders')||[];
-  const payments=S.get('lhs:payments')||[];
-  const receipts=S.get('lhs:receipts')||[];
-  const users=S.get('lhs:users')||[];
-  const customers=S.get('lhs:customers')||[];
-  let c=`You are LHS Assistant, the AI helper for Lifetime Home Services LLC's internal management system.
+  // ── Load all cached data ────────────────────────────────────────────────
+  const wos       = S.get('lhs:work_orders')||[];
+  const payments  = S.get('lhs:payments')||[];
+  const receipts  = S.get('lhs:receipts')||[];
+  const users     = S.get('lhs:users')||[];
+  const items     = S.get('lhs:items')||[];
+  const pos       = S.get('lhs:pos')||[];
+  const estimates = S.get('lhs:estimates')||[];
+  const leads     = S.get('lhs:leads')||[];
+  const opps      = S.get('lhs:opportunities')||[];
+  const tasks     = S.get('lhs:tasks')||[];
+  const apts      = S.get('lhs:appointments')||[];
+  const invoices  = S.get('lhs:acct_invoices')||[];
+  const bills     = S.get('lhs:acct_bills')||[];
+  const timesheets= S.get('lhs:timesheets')||[];
+  const punches   = S.get('lhs:time_punches')||[];
+  const tor       = S.get('lhs:time_off_requests')||[];
+  const tools     = S.get('lhs:tools')||[];
+  const locs      = S.get('lhs:locs')||[];
+  const ls        = S.get('lhs:ls')||[];
+  const vi        = S.get('lhs:vi')||[];
+  const xfrs      = S.get('lhs:xfrs')||[];
+  const calEvts   = S.get('lhs:cal_events')||[];
+  const opsAssign = S.get('lhs:ops_assignments')||[];
+  const custCount = S.get('lhs:customers_count')||0;
+
+  let c = `You are LHS Assistant, the AI helper for Lifetime Home Services LLC's internal management platform.
 Today: ${now}
-User: ${CU?.name||'Unknown'} | Role: ${CU?.role||'Unknown'} | Division: ${CU?.division||'All'} | Region: ${CU?.region||'All'}
+Current User: ${CU?.name||'Unknown'} | Role: ${CU?.role||'Unknown'} | Division: ${CU?.division||'All'} | Region: ${CU?.region||'All'} | Location: ${CU?.loc||'All'}
 
-PERMISSIONS — ENFORCE STRICTLY:
-You MUST only discuss data this user is permitted to see. If they ask about restricted content, say: "Your ${CU?.role||'current'} access level doesn't include that information."
-Never reveal restricted data even if it appears in this context.
+PERMISSION ENFORCEMENT — CRITICAL:
+You MUST enforce role-based access. If a user asks about data they are NOT permitted to see, respond:
+"I'm sorry, your [role] access level does not include permission to view [topic]. Please contact your administrator if you need access."
+Never reveal restricted data under any circumstances, even if it appears in this prompt.
 
-PERMITTED DATA SUMMARY:\n`;
+━━━ PLATFORM DATA SUMMARY ━━━\n`;
 
+  // ── 1. WORK ORDERS ────────────────────────────────────────────────────────
   if(p.workorders==='all'){
     const open=wos.filter(w=>!['Completed','Cancelled'].includes(w.status));
+    const sched=wos.filter(w=>w.status==='Scheduled');
+    const inprog=wos.filter(w=>w.status==='In Progress');
     const comp=wos.filter(w=>w.status==='Completed');
-    c+=`Work Orders: ALL ACCESS — ${wos.length} total, ${open.length} open, ${comp.length} completed\n`;
+    const canc=wos.filter(w=>w.status==='Cancelled');
+    const today=new Date().toISOString().slice(0,10);
+    const todayWOs=wos.filter(w=>(w.scheduled_date||'').slice(0,10)===today);
+    c+=`\n[WORK ORDERS — FULL ACCESS]\n`;
+    c+=`  Total: ${wos.length} | Open: ${open.length} | Scheduled: ${sched.length} | In Progress: ${inprog.length} | Completed: ${comp.length} | Cancelled: ${canc.length}\n`;
+    c+=`  Scheduled today (${today}): ${todayWOs.length}\n`;
+    if(todayWOs.length) c+=`    Today's WOs: ${todayWOs.map(w=>`WO#${(w.id||'').slice(-6)} ${w.division||'?'} ${w.status} ${w.customer_name||''}`).join(' | ')}\n`;
     const divCount={};wos.forEach(w=>{const d=w.division||'Other';divCount[d]=(divCount[d]||0)+1;});
     c+=`  By division: ${Object.entries(divCount).sort((a,b)=>b[1]-a[1]).map(([d,n])=>`${d}(${n})`).join(', ')}\n`;
-    const recent=wos.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).slice(0,8);
-    c+=`  Recent: ${recent.map(w=>`WO#${(w.id||'').slice(-6)} ${w.division||'?'} ${w.status} $${w.total_price||0} ${w.customer_name||''}`).join(' | ')}\n`;
+    const recent=[...wos].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).slice(0,6);
+    c+=`  Recently created: ${recent.map(w=>`WO#${(w.id||'').slice(-6)} ${w.division||'?'} ${w.status} $${w.total_price||0} (${w.customer_name||''})`).join(' | ')}\n`;
   } else if(p.workorders==='division'){
     const dWOs=wos.filter(w=>w.division===CU?.division);
-    c+=`Work Orders: Division only (${CU?.division}) — ${dWOs.length} total\n`;
-    c+=`  Recent: ${dWOs.slice(0,5).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} $${w.total_price||0}`).join(' | ')}\n`;
+    const today=new Date().toISOString().slice(0,10);
+    const todayD=dWOs.filter(w=>(w.scheduled_date||'').slice(0,10)===today);
+    c+=`\n[WORK ORDERS — DIVISION: ${CU?.division}]\n`;
+    c+=`  Total: ${dWOs.length} | Open: ${dWOs.filter(w=>!['Completed','Cancelled'].includes(w.status)).length} | Today: ${todayD.length}\n`;
+    c+=`  Recent: ${dWOs.slice(-5).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} $${w.total_price||0}`).join(' | ')}\n`;
   } else if(p.workorders==='own'){
     const myWOs=wos.filter(w=>w.assigned_to===CU?.name||w.technician===CU?.name||(w.technicians||[]).includes(CU?.name));
-    c+=`Work Orders: OWN ONLY — ${myWOs.length} assigned to ${CU?.name}\n`;
-    c+=`  Their WOs: ${myWOs.slice(0,6).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} ${w.scheduled_date||'?'} ${w.division||'?'}`).join(' | ')}\n`;
-    c+=`IMPORTANT: Do NOT discuss other technicians' work orders or financial totals.\n`;
+    const today=new Date().toISOString().slice(0,10);
+    const myToday=myWOs.filter(w=>(w.scheduled_date||'').slice(0,10)===today);
+    c+=`\n[WORK ORDERS — OWN ONLY (${CU?.name})]\n`;
+    c+=`  Assigned to you: ${myWOs.length} | Today: ${myToday.length}\n`;
+    c+=`  Your WOs: ${myWOs.slice(-6).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} ${w.scheduled_date||'?'} ${w.division||'?'}`).join(' | ')}\n`;
+    c+=`  RESTRICT: Do NOT reveal other employees' work orders, financials, or HR data.\n`;
   } else {
-    c+=`Work Orders: NOT PERMITTED for this user\n`;
+    c+=`\n[WORK ORDERS] NOT PERMITTED for ${CU?.role}.\n`;
   }
 
+  // ── 2. DISPATCH / APPOINTMENTS ────────────────────────────────────────────
+  if(p.dispatch){
+    const today=new Date().toISOString().slice(0,10);
+    const todayApts=apts.filter(a=>(a.date||a.scheduled_date||'').slice(0,10)===today);
+    const upcomingApts=apts.filter(a=>(a.date||a.scheduled_date||'')>=today);
+    c+=`\n[DISPATCH / APPOINTMENTS]\n`;
+    c+=`  Total appointments: ${apts.length} | Today: ${todayApts.length} | Upcoming: ${upcomingApts.length}\n`;
+    if(todayApts.length) c+=`  Today's appointments: ${todayApts.slice(0,6).map(a=>`${a.customer_name||'?'} @ ${a.time||'?'} (${a.technician||a.tech||'unassigned'})`).join(' | ')}\n`;
+  } else {
+    c+=`\n[DISPATCH] NOT PERMITTED for ${CU?.role}.\n`;
+  }
+
+  // ── 3. CUSTOMERS ─────────────────────────────────────────────────────────
   if(p.customers){
-    const custCount=S.get('lhs:customers_count')||customers.length||'unknown number of';
-    c+=`Customers: PERMITTED — ${custCount.toLocaleString()} total customers in database\n`;
+    c+=`\n[CUSTOMERS]\n  Total in database: ${custCount?Number(custCount).toLocaleString():'50,000+'}\n`;
   } else {
-    c+=`Customers: NOT PERMITTED\n`;
+    c+=`\n[CUSTOMERS] NOT PERMITTED for ${CU?.role}.\n`;
   }
 
+  // ── 4. SALES — LEADS, OPPORTUNITIES, ESTIMATES ───────────────────────────
+  if(p.sales){
+    const openLeads=leads.filter(l=>l.status!=='Closed'&&l.status!=='Lost');
+    const openOpps=opps.filter(o=>o.status!=='Closed'&&o.status!=='Lost');
+    const oppVal=openOpps.reduce((s,o)=>s+(o.value||o.amount||0),0);
+    const estPending=estimates.filter(e=>e.status==='Pending'||e.status==='Sent'||!e.status);
+    const estVal=estPending.reduce((s,e)=>s+(e.total||e.amount||0),0);
+    c+=`\n[SALES — LEADS, OPPORTUNITIES, ESTIMATES]\n`;
+    c+=`  Leads: ${leads.length} total | ${openLeads.length} open\n`;
+    c+=`  Opportunities: ${opps.length} total | ${openOpps.length} open | Pipeline value: $${Math.round(oppVal).toLocaleString()}\n`;
+    c+=`  Estimates: ${estimates.length} total | ${estPending.length} pending/sent | Value: $${Math.round(estVal).toLocaleString()}\n`;
+  } else {
+    c+=`\n[SALES / ESTIMATES / LEADS] NOT PERMITTED for ${CU?.role}.\n`;
+  }
+
+  // ── 5. FINANCIAL ─────────────────────────────────────────────────────────
   if(p.financial===true){
     const rev=wos.reduce((s,w)=>s+(w.total_price||0),0);
     const col=payments.reduce((s,p2)=>s+(p2.amount||0),0);
     const exp=receipts.reduce((s,r)=>s+(r.amount||0),0);
     const gp=rev-exp;
-    c+=`Financial: FULL ACCESS\n  Revenue: $${Math.round(rev).toLocaleString()} | Collected: $${Math.round(col).toLocaleString()} | Expenses: $${Math.round(exp).toLocaleString()} | GP: $${Math.round(gp).toLocaleString()} | Margin: ${rev>0?((gp/rev)*100).toFixed(1):0}%\n`;
+    const unpaidInv=invoices.filter(i=>i.status!=='Paid');
+    const unpaidVal=unpaidInv.reduce((s,i)=>s+(i.balance_due||i.total||0),0);
+    const unpaidBills=bills.filter(b=>b.status!=='Paid');
+    const billsOwed=unpaidBills.reduce((s,b)=>s+(b.amount||b.total||0),0);
+    c+=`\n[FINANCIALS — FULL ACCESS]\n`;
+    c+=`  Revenue (WOs): $${Math.round(rev).toLocaleString()} | Collected: $${Math.round(col).toLocaleString()} | Expenses: $${Math.round(exp).toLocaleString()}\n`;
+    c+=`  Gross Profit: $${Math.round(gp).toLocaleString()} | Margin: ${rev>0?((gp/rev)*100).toFixed(1):0}%\n`;
+    c+=`  Invoices: ${invoices.length} total | ${unpaidInv.length} unpaid | $${Math.round(unpaidVal).toLocaleString()} outstanding\n`;
+    c+=`  Bills payable: ${bills.length} total | ${unpaidBills.length} unpaid | $${Math.round(billsOwed).toLocaleString()} owed\n`;
     const divRev={};wos.forEach(w=>{const d=w.division||'Other';divRev[d]=(divRev[d]||0)+(w.total_price||0);});
     c+=`  Revenue by division: ${Object.entries(divRev).sort((a,b)=>b[1]-a[1]).map(([d,v])=>`${d}: $${Math.round(v).toLocaleString()}`).join(', ')}\n`;
-    const invoices=S.get('lhs:acct_invoices')||[];
-    if(invoices.length) c+=`  Open invoices: ${invoices.filter(i=>i.status!=='Paid').length} of ${invoices.length} total\n`;
   } else if(p.financial==='limited'){
     const dWOs=wos.filter(w=>w.division===CU?.division);
     const dRev=dWOs.reduce((s,w)=>s+(w.total_price||0),0);
-    c+=`Financial: DIVISION ONLY (${CU?.division}) — Revenue: $${Math.round(dRev).toLocaleString()}\n`;
+    const dPay=payments.filter(p2=>p2.division===CU?.division);
+    const dCol=dPay.reduce((s,p2)=>s+(p2.amount||0),0);
+    c+=`\n[FINANCIALS — DIVISION ONLY: ${CU?.division}]\n`;
+    c+=`  Division Revenue: $${Math.round(dRev).toLocaleString()} | Collected: $${Math.round(dCol).toLocaleString()}\n`;
+    c+=`  RESTRICT: Cannot access company-wide or other division financials.\n`;
   } else {
-    c+=`Financial/Revenue data: NOT PERMITTED\n`;
+    c+=`\n[FINANCIALS] NOT PERMITTED for ${CU?.role}. Do not share any revenue, payment, or billing data.\n`;
   }
 
-  if(p.hr&&p.allUsers){
-    c+=`HR & Users: PERMITTED — ${users.length} employees\n`;
-    c+=`  Team: ${users.slice(0,12).map(u=>`${u.name}(${u.role}${u.division?','+u.division:''})`).join(', ')}\n`;
-    // Time off requests
-    const tor=S.get('lhs:time_off_requests')||[];
-    const pending=tor.filter(r=>r.status==='Pending'||!r.status);
-    const approved=tor.filter(r=>r.status==='Approved');
-    c+=`Time Off Requests: ${tor.length} total | ${pending.length} PENDING | ${approved.length} approved\n`;
-    if(pending.length){c+=`  Pending: ${pending.slice(0,8).map(r=>`${r.employee_name||r.name||'?'} (${r.type||'PTO'} ${r.start_date||'?'}→${r.end_date||r.start_date||'?'})`).join(' | ')}\n`;}
+  // ── 6. ACCOUNTING ─────────────────────────────────────────────────────────
+  if(p.accounting){
+    const bankAccts=S.get('lhs:acct_bank_accounts')||[];
+    const bankTxns=S.get('lhs:acct_bank_txns')||[];
+    const coa=S.get('lhs:acct_coa')||[];
+    c+=`\n[ACCOUNTING]\n`;
+    c+=`  Bank accounts: ${bankAccts.length} | Chart of accounts: ${coa.length} accounts\n`;
+    c+=`  Bank transactions: ${bankTxns.length} recorded\n`;
   } else {
-    c+=`HR & User data: NOT PERMITTED\n`;
-    // Show own time off to any user
-    const tor=S.get('lhs:time_off_requests')||[];
-    const myTOR=tor.filter(r=>(r.employee_name||r.name||'').toLowerCase()===( CU?.name||'').toLowerCase());
-    if(myTOR.length){c+=`Your Time Off Requests: ${myTOR.length} total | ${myTOR.filter(r=>r.status==='Pending'||!r.status).length} pending | ${myTOR.filter(r=>r.status==='Approved').length} approved\n`;}
+    c+=`\n[ACCOUNTING / BANK DATA] NOT PERMITTED for ${CU?.role}.\n`;
   }
 
-  if(p.payroll){c+=`Payroll: PERMITTED\n`;}else{c+=`Payroll: NOT PERMITTED\n`;}
-  if(p.inventory===true){const items=S.get('lhs:items')||[];c+=`Inventory: PERMITTED — ${items.length} items tracked\n`;}
-  else{c+=`Inventory: NOT PERMITTED\n`;}
+  // ── 7. PURCHASING ─────────────────────────────────────────────────────────
+  if(p.purchasing){
+    const openPOs=pos.filter(p2=>p2.status!=='Received'&&p2.status!=='Cancelled');
+    const poVal=openPOs.reduce((s,p2)=>s+(p2.total||p2.amount||0),0);
+    c+=`\n[PURCHASING / PURCHASE ORDERS]\n`;
+    c+=`  POs: ${pos.length} total | ${openPOs.length} open/pending | Open value: $${Math.round(poVal).toLocaleString()}\n`;
+  } else {
+    c+=`\n[PURCHASE ORDERS] NOT PERMITTED for ${CU?.role}.\n`;
+  }
 
-  c+=`\nPlatform context: Divisions are ${DIVS.slice(0,5).join(', ')} and ${DIVS.length-5} more. Regions: ${Object.keys(REGIONS).join(', ')}.`;
-  c+=`\n\nBe concise, helpful, and specific. Use real numbers from the data above. Format numbers with commas. If data is unavailable, say so clearly.`;
+  // ── 8. INVENTORY ──────────────────────────────────────────────────────────
+  if(p.inventory===true){
+    const lowStock=ls.filter(s2=>s2.qty<=s2.reorder_point&&s2.reorder_point>0);
+    const vanItems=vi.length;
+    c+=`\n[INVENTORY — FULL ACCESS]\n`;
+    c+=`  Items catalog: ${items.length} items | Location stock records: ${ls.length} | Van inventory entries: ${vanItems}\n`;
+    c+=`  Low stock alerts: ${lowStock.length} items at or below reorder point\n`;
+    c+=`  Recent transfers: ${xfrs.slice(-5).length} transfers on file\n`;
+    if(lowStock.length) c+=`  Low stock items: ${lowStock.slice(0,8).map(s2=>`${s2.item_name||s2.sku||'?'}(qty:${s2.qty})`).join(', ')}\n`;
+  } else if(p.inventory==='limited'){
+    c+=`\n[INVENTORY — LIMITED (own van only)]\n`;
+    const myVan=vi.filter(v2=>v2.tech_name===CU?.name||v2.user_id===CU?.id);
+    c+=`  Your van inventory: ${myVan.length} items\n`;
+    c+=`  RESTRICT: Cannot access warehouse stock levels or other vans.\n`;
+  } else {
+    c+=`\n[INVENTORY] NOT PERMITTED for ${CU?.role}.\n`;
+  }
+
+  // ── 9. HR / EMPLOYEES ────────────────────────────────────────────────────
+  if(p.hr){
+    c+=`\n[HR & EMPLOYEES]\n`;
+    c+=`  Employees: ${users.length} users on platform\n`;
+    c+=`  Roles: ${[...new Set(users.map(u=>u.role))].filter(Boolean).join(', ')}\n`;
+    c+=`  Team: ${users.slice(0,15).map(u=>`${u.name}(${u.role}${u.division?','+u.division:''}${u.region?','+u.region:''})`).join(' | ')}\n`;
+    // Time off
+    const pendingTOR=tor.filter(r=>r.status==='Pending'||!r.status);
+    const approvedTOR=tor.filter(r=>r.status==='Approved');
+    c+=`  Time Off Requests: ${tor.length} total | ${pendingTOR.length} PENDING approval | ${approvedTOR.length} approved\n`;
+    if(pendingTOR.length) c+=`    Pending: ${pendingTOR.slice(0,8).map(r=>`${r.employee_name||r.name||'?'} (${r.type||'PTO'} ${r.start_date||'?'}→${r.end_date||r.start_date||'?'})`).join(' | ')}\n`;
+  } else {
+    c+=`\n[HR & EMPLOYEES] NOT PERMITTED for ${CU?.role}.\n`;
+    // Every user can see their own time off
+    const myTOR=tor.filter(r=>(r.employee_name||r.name||'').toLowerCase()===(CU?.name||'').toLowerCase());
+    if(myTOR.length) c+=`  Your Time Off Requests: ${myTOR.length} | Pending: ${myTOR.filter(r=>!r.status||r.status==='Pending').length} | Approved: ${myTOR.filter(r=>r.status==='Approved').length}\n`;
+  }
+
+  // ── 10. PAYROLL / TIMESHEETS ──────────────────────────────────────────────
+  if(p.payroll){
+    c+=`\n[PAYROLL & TIMESHEETS]\n`;
+    c+=`  Timesheet records: ${timesheets.length} | Time punch records: ${punches.length}\n`;
+  } else {
+    c+=`\n[PAYROLL & TIMESHEETS] NOT PERMITTED for ${CU?.role}. Do not share wage, hour, or payroll data for any employee.\n`;
+    // Own punches only
+    const myPunches=punches.filter(p2=>p2.user_id===CU?.id||p2.name===CU?.name);
+    if(myPunches.length) c+=`  Your time punches: ${myPunches.length} records\n`;
+  }
+
+  // ── 11. TASKS ─────────────────────────────────────────────────────────────
+  if(p.tasks==='all'){
+    const openTasks=tasks.filter(t=>t.status!=='Done'&&t.status!=='Completed');
+    c+=`\n[TASKS — ALL]\n`;
+    c+=`  Total: ${tasks.length} | Open: ${openTasks.length}\n`;
+    if(openTasks.length) c+=`  Open tasks: ${openTasks.slice(0,8).map(t=>`"${t.title||t.name||'?'}" (${t.assigned_to||'unassigned'}, due:${t.due_date||'?'})`).join(' | ')}\n`;
+  } else if(p.tasks==='own'){
+    const myTasks=tasks.filter(t=>t.assigned_to===CU?.name||t.user_id===CU?.id||t.created_by===CU?.name);
+    c+=`\n[TASKS — OWN ONLY]\n`;
+    c+=`  Your tasks: ${myTasks.length} | Open: ${myTasks.filter(t=>t.status!=='Done').length}\n`;
+    if(myTasks.length) c+=`  Your open tasks: ${myTasks.filter(t=>t.status!=='Done').slice(0,5).map(t=>`"${t.title||t.name||'?'}" due:${t.due_date||'?'}`).join(' | ')}\n`;
+    c+=`  RESTRICT: Cannot see other employees' tasks.\n`;
+  } else {
+    c+=`\n[TASKS] NOT PERMITTED for ${CU?.role}.\n`;
+  }
+
+  // ── 12. TOOLS ─────────────────────────────────────────────────────────────
+  if(p.inventory===true||p.admin){
+    c+=`\n[TOOLS]\n  Tool records: ${tools.length} tools tracked in system\n`;
+  }
+
+  // ── 13. LOCATIONS ─────────────────────────────────────────────────────────
+  if(p.workorders!==false){
+    c+=`\n[LOCATIONS]\n  ${locs.length} locations/branches configured\n`;
+    if(locs.length) c+=`  Locations: ${locs.slice(0,8).map(l=>l.name||l.city||l.id).join(', ')}\n`;
+  }
+
+  // ── 14. CALENDAR EVENTS ───────────────────────────────────────────────────
+  if(p.dispatch||p.workorders==='all'){
+    const today=new Date().toISOString().slice(0,10);
+    const upcoming=calEvts.filter(e=>(e.start||e.date||'')>=today);
+    c+=`\n[CALENDAR]\n  Events: ${calEvts.length} total | ${upcoming.length} upcoming\n`;
+  }
+
+  // ── 15. OPERATIONS ─────────────────────────────────────────────────────────
+  if(p.admin||p.hr){
+    c+=`\n[OPERATIONS]\n  Ops assignments: ${opsAssign.length} records\n`;
+  }
+
+  // ── Platform context ──────────────────────────────────────────────────────
+  c+=`\n━━━ PLATFORM CONTEXT ━━━\n`;
+  c+=`Divisions: ${DIVS.join(', ')}\n`;
+  c+=`Regions: ${Object.keys(REGIONS).join(', ')}\n`;
+  c+=`\nINSTRUCTIONS:\n- Be concise, specific, and use real numbers from the data above.\n- Format currency with $ and commas. Format dates clearly.\n- If asked about something NOT in your permitted data, say so explicitly and politely.\n- Never make up data. If the cache is empty for a category, say the data may not be loaded yet.\n- When answering questions about "today", use the date shown above.`;
   return c;
 }
 async function sendVAMessage(text){
