@@ -9096,7 +9096,11 @@ function bAcctSettings(){
         <div style="font-weight:700;font-size:15px;color:var(--navy)">&#128196; Invoice Template</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Customize the look and layout of invoices sent to customers</div>
       </div>
-      ${canEdit?`<button class="btn btn-n" onclick="oInvoiceTemplate()">Edit Template</button>`:''}
+      ${canEdit?`<div style="display:flex;gap:8px">
+        <button class="btn btn-n" onclick="selectInvoiceStyle()">&#127912; Choose Style</button>
+        <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
+        <button class="btn btn-g" onclick="previewInvoice()">&#128065; Preview</button>
+      </div>`:''}
     </div>
     ${(()=>{
       const t=S.get('lhs:invoice_template')||{};
@@ -9175,6 +9179,105 @@ function bAcctSettings(){
 // ── INVOICE TEMPLATE EDITOR ───────────────────────────────────────────────────
 const _IT_AUTH_DEFAULT=`This invoice is agreed and acknowledged. Payment is due upon receipt. A service fee will be charged for any returned checks, and a financing charge of 1% per month shall be applied for overdue amounts. If payment is not received within 90 days of service, a lien will be put on the property until received.`;
 const _IT_ACK_DEFAULT=`I find and agree that all work performed by Lifetime Home Services LLC has been completed in a satisfactory and workmanlike manner. I have been given the opportunity to address concerns and/or discrepancies in the work provided, and I either have no such concerns or have found no discrepancies or they have been addressed to my satisfaction. My signature here signifies my full and final acceptance of all work performed by the contractor.`;
+
+// 5 curated design presets — same clean layout, different color personalities
+const _INVOICE_STYLES=[
+  {id:'navy_sky',    name:'Navy & Sky Blue',   feel:'Trustworthy · Established',
+   accent:'#1565C0', header:'#0D1B3E', row_tint:'#EEF4FF', total_bg:'#0D1B3E', total_fg:'#FFFFFF',
+   swatches:['#0D1B3E','#1565C0','#EEF4FF']},
+  {id:'forest',      name:'Forest Green',       feel:'Reliable · Grounded',
+   accent:'#1B5E20', header:'#1B5E20', row_tint:'#F0FDF4', total_bg:'#1B5E20', total_fg:'#FFFFFF',
+   swatches:['#1B5E20','#4CAF50','#F0FDF4']},
+  {id:'slate_amber', name:'Slate & Amber',      feel:'Modern · Premium',
+   accent:'#B45309', header:'#334155', row_tint:'#FFFBEB', total_bg:'#334155', total_fg:'#FFFFFF',
+   swatches:['#334155','#B45309','#FFFBEB']},
+  {id:'teal',        name:'Ocean Teal',          feel:'Fresh · Contemporary',
+   accent:'#0D7377', header:'#0D7377', row_tint:'#F0FDFA', total_bg:'#0D7377', total_fg:'#FFFFFF',
+   swatches:['#0D7377','#14BDAC','#F0FDFA']},
+  {id:'minimal',     name:'Minimal Charcoal',   feel:'Clean · Sophisticated',
+   accent:'#374151', header:'#111827', row_tint:'#F9FAFB', total_bg:'#111827', total_fg:'#FFFFFF',
+   swatches:['#111827','#374151','#F9FAFB']},
+];
+
+function selectInvoiceStyle(){
+  const t=S.get('lhs:invoice_template')||{};
+  const current=t.style_id||'';
+  oMod('&#127912; Choose Invoice Style',`
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      Five designs — all use your logo and the same clean layout as your existing invoices. Select one to preview or apply.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      ${_INVOICE_STYLES.map(s=>`
+        <div style="border:2px solid ${current===s.id?'var(--navy)':'var(--bdr)'};border-radius:10px;padding:16px;background:${current===s.id?'var(--surf)':'white'}">
+          <!-- Mini invoice preview -->
+          <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-bottom:12px;font-size:9px;font-family:sans-serif">
+            <div style="background:${s.header};padding:8px 10px;display:flex;justify-content:space-between;align-items:center">
+              <div style="color:white;font-weight:700;font-size:10px">LIFETIME</div>
+              <div style="text-align:right;color:rgba(255,255,255,.85);font-size:8px;line-height:1.5">Lifetime Home Services LLC<br>Brookfield, WI 53005</div>
+            </div>
+            <div style="background:white;padding:8px 10px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <div><div style="font-size:7px;font-weight:700;color:#999;letter-spacing:.06em">BILL TO</div><div style="font-size:8px;font-weight:600">Tom Giles</div></div>
+                <div style="border:1px solid #ccc;font-size:7px;text-align:center">
+                  <div style="padding:2px 6px;border-bottom:1px solid #ccc">INV #</div>
+                  <div style="background:${s.header};color:white;padding:2px 6px">Apr 2026</div>
+                </div>
+              </div>
+              <table style="width:100%;border-collapse:collapse;margin-top:4px">
+                <tr style="border-bottom:1px solid ${s.accent}">
+                  <td style="color:${s.accent};font-size:7px;font-weight:700;padding:3px 0">TASK</td>
+                  <td style="color:${s.accent};font-size:7px;font-weight:700;padding:3px 2px">DESCRIPTION</td>
+                  <td style="color:${s.accent};font-size:7px;font-weight:700;text-align:right;padding:3px 0">TOTAL</td>
+                </tr>
+                <tr style="background:${s.row_tint}">
+                  <td style="font-size:7px;padding:3px 0;color:#666">SVC</td>
+                  <td style="font-size:7px;padding:3px 2px">Services rendered</td>
+                  <td style="font-size:7px;text-align:right;font-weight:600;padding:3px 0">$1,158</td>
+                </tr>
+                <tr><td colspan="2" style="font-size:7px;padding:3px 0;color:#666">Balance Due</td>
+                  <td style="font-size:7px;text-align:right;font-weight:700;color:${s.accent};padding:3px 0">$0.00</td></tr>
+              </table>
+            </div>
+            <div style="background:${s.total_bg};padding:5px 10px;display:flex;justify-content:space-between">
+              <span style="color:${s.total_fg};font-size:7px;opacity:.8">Lifetime Home Services LLC</span>
+              <span style="color:${s.total_fg};font-size:7px;opacity:.8">Page 1</span>
+            </div>
+          </div>
+          <!-- Style info -->
+          <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:2px">${s.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${s.feel}</div>
+          <div style="display:flex;gap:5px;margin-bottom:12px">
+            ${s.swatches.map(c=>`<div style="width:22px;height:22px;border-radius:4px;background:${c};border:1px solid rgba(0,0,0,.1)" title="${c}"></div>`).join('')}
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-n sm" onclick="applyInvoiceStyle('${s.id}',true)">Preview</button>
+            <button class="btn btn-o sm" onclick="applyInvoiceStyle('${s.id}')">Apply${current===s.id?' ✓':''}</button>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="br2">
+      <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
+      <button class="btn btn-o" onclick="cMod()">Close</button>
+    </div>`);
+}
+
+function applyInvoiceStyle(styleId, andPreview){
+  const s=_INVOICE_STYLES.find(x=>x.id===styleId); if(!s) return;
+  const existing=S.get('lhs:invoice_template')||{};
+  const t={...existing,
+    style_id:s.id,
+    accent_color:s.accent,
+    header_color:s.header,
+    row_tint:s.row_tint,
+    total_bg:s.total_bg,
+    total_fg:s.total_fg,
+    updated_at:new Date().toISOString()
+  };
+  S.set('lhs:invoice_template',t);
+  tst(`${s.name} style applied`,'success');
+  if(andPreview) previewInvoice();
+  else selectInvoiceStyle();
+}
 
 function oInvoiceTemplate(tab){
   const t=S.get('lhs:invoice_template')||{};
@@ -9328,8 +9431,11 @@ function saveInvoiceTemplate(currentTab, andPreview){
 function previewInvoice(invId){
   const t=S.get('lhs:invoice_template')||{};
   const inv=invId?(S.get('lhs:acct_invoices')||[]).find(i=>i.id===invId):null;
-  const ac=t.accent_color||'#c0392b';
-  const hc=t.header_color||'#1a2744';
+  const ac=t.accent_color||'#1565C0';
+  const hc=t.header_color||'#0D1B3E';
+  const rowTint=t.row_tint||'#EEF4FF';
+  const totalBg=t.total_bg||hc;
+  const totalFg=t.total_fg||'#FFFFFF';
   const num=inv?.invoice_number||'INV-0001';
   const custName=inv?.customer_name||'Sample Customer';
   const invDate=inv?.invoice_date||new Date().toISOString().slice(0,10);
@@ -9428,7 +9534,7 @@ function previewInvoice(invId){
           </tr>
         </thead>
         <tbody>
-          <tr style="border-bottom:1px solid #eee;vertical-align:top">
+          <tr style="border-bottom:1px solid #eee;vertical-align:top;background:${rowTint}">
             <td style="padding:12px 8px 12px 0;font-size:12px;color:#555">${esc(inv?.division||'SVC')}</td>
             <td style="padding:12px 8px;font-size:13px">
               <strong>${esc(inv?.notes||'Services rendered — see work order for full detail')}</strong>
@@ -9472,24 +9578,17 @@ function previewInvoice(invId){
 
       <!-- TOTALS -->
       <div style="display:flex;justify-content:flex-end;margin-bottom:28px">
-        <table style="font-size:13px;border-collapse:collapse;min-width:300px">
-          <tr>
-            <td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Sub-Total</td>
-            <td style="text-align:right;padding:5px 0">${f$(subtotal)}</td>
-          </tr>
-          <tr>
-            <td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Total Due</td>
-            <td style="text-align:right;padding:5px 0;font-weight:700">${f$(subtotal)}</td>
-          </tr>
-          <tr>
-            <td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Payment</td>
-            <td style="text-align:right;padding:5px 0">${f$(paid)}</td>
-          </tr>
-          <tr style="border-top:2px solid #222">
-            <td style="padding:10px 24px 5px 0;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Balance Due</td>
-            <td style="text-align:right;padding:10px 0 5px;font-weight:800;font-size:16px;color:${balance===0?'inherit':ac}">${f$(balance)}</td>
-          </tr>
-        </table>
+        <div style="min-width:300px">
+          <table style="width:100%;font-size:13px;border-collapse:collapse">
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Sub-Total</td><td style="text-align:right;padding:5px 0">${f$(subtotal)}</td></tr>
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Total Due</td><td style="text-align:right;padding:5px 0;font-weight:700">${f$(subtotal)}</td></tr>
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Payment</td><td style="text-align:right;padding:5px 0">${f$(paid)}</td></tr>
+          </table>
+          <div style="background:${totalBg};color:${totalFg};border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span style="font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85">Balance Due</span>
+            <span style="font-weight:800;font-size:20px;font-family:'DM Mono',monospace">${f$(balance)}</span>
+          </div>
+        </div>
       </div>
 
       <!-- THANK YOU + AUTHORIZATION -->
@@ -9512,17 +9611,22 @@ function previewInvoice(invId){
       ${t.payment_instructions?`<div style="margin-top:20px;font-size:12px;color:#555;border-top:1px solid #eee;padding-top:12px">${esc(t.payment_instructions)}</div>`:''}
 
       <!-- FOOTER -->
-      <div style="margin-top:40px;border-top:1px solid #555;padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
+      <div style="margin-top:40px;border-top:2px solid ${hc};padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
         <span>Invoice #${esc(num)}</span>
-        <span>Page 1 of ${t.show_wi_cure!==false?3:2}</span>
+        <span>Page 1 of 2</span>
       </div>
 
-      <!-- WI RIGHT TO CURE -->
-      ${t.show_wi_cure!==false?wiCure:''}
+      <!-- WI RIGHT TO CURE — optional add-on page -->
+      ${t.show_wi_cure?`
+      <div style="margin-top:32px;border-top:3px solid #ccc;padding-top:24px">
+        <div style="text-align:center;font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">— Attached Page —</div>
+        ${wiCure}
+      </div>`:''}
 
     </div>
     <div class="br2" style="margin-top:16px">
-      <button class="btn btn-n" onclick="oInvoiceTemplate()">&#9998; Edit Template</button>
+      <button class="btn btn-n" onclick="selectInvoiceStyle()">&#127912; Change Style</button>
+      <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
       <button class="btn btn-o" onclick="cMod()">Close</button>
     </div>`);
 }
