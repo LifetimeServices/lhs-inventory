@@ -8051,37 +8051,21 @@ function oAddInvoice(d){
   },30);
 }
 
-// Queries Supabase directly via raw fetch — uses * as PostgREST wildcard (not %)
+// Same query pattern as the working custLoadPage customer search
 async function _invCustSearch(q){
   const res=document.getElementById('inv-cust-results'); if(!res) return;
   const term=(q||'').trim();
   res.style.display='block';
   res.innerHTML='<div style="padding:12px 14px;font-size:13px;color:var(--muted)">Searching...</div>';
   try{
-    const hdrs={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Accept':'application/json'};
-    const base=SUPA_URL+'/rest/v1/lhs_customers?select=id,first_name,last_name,company,phone,city,state';
-    let url;
-    if(term.length>=1){
-      // PostgREST uses * as the wildcard in URL ilike patterns (not %)
-      // encodeURIComponent handles spaces and special chars in the search term
-      const t=encodeURIComponent(term);
-      const digits=term.replace(/\D/g,'');
-      let phoneClause;
-      if(digits.length>=7){
-        // Phone: match any formatting e.g. "4146597273" → *(414)*(659)*(7273)*
-        const p3=digits.slice(0,3), p6=digits.slice(3,6), p7=digits.slice(6);
-        phoneClause=`phone.ilike.*${p3}*${p6}*${p7}*`;
-      } else {
-        phoneClause=`phone.ilike.*${t}*`;
-      }
-      const orFilter=`(first_name.ilike.*${t}*,last_name.ilike.*${t}*,company.ilike.*${t}*,${phoneClause})`;
-      url=`${base}&or=${orFilter}&limit=40`;
-    } else {
-      url=`${base}&order=created_at.desc&limit=40`;
+    let qb=DB.from('lhs_customers')
+      .select('id,first_name,last_name,company,phone,city,state');
+    if(term){
+      qb=qb.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%,phone.ilike.%${term}%`);
     }
-    const r=await fetch(url,{headers:hdrs});
-    if(!r.ok){const txt=await r.text();throw new Error(`${r.status} ${txt}`);}
-    const data=await r.json();
+    qb=qb.order('last_name',{ascending:true}).range(0,39);
+    const{data,error}=await qb;
+    if(error) throw error;
     if(!document.getElementById('inv-cust-results')) return;
     if(!data||!data.length){
       res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted);text-align:center">No customers found${term?' for "'+esc(term)+'"':''}</div>`;
