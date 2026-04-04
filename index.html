@@ -2772,18 +2772,24 @@ async function postRecv(pi3){
 let _xl=[],_xi=[];
 function bXfr(){
   const xfrs=S.get('lhs:xfrs')||[];
+  const _locs=S.get('lhs:locs')||[];
+  const vehOpts=VH.map(vn=>{
+    const loc=_locs.find(l=>l.name===vn);
+    const drv=loc?.driver?` — ${loc.driver}`:'';
+    return`<option value="${vn}">${vn}${drv}</option>`;
+  }).join('');
   return`<div class="pt">Vehicle Transfer</div><div class="ps">Move inventory between warehouses and vehicles</div>
   <div class="card"><div class="ct">New Transfer</div>
   <div class="fr">
     <div class="fl"><label>From</label><select id="xf" onchange="xUpA()">
       <option value="">&#8212; Source &#8212;</option>
       ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
-      ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+      ${vehOpts}
     </select></div>
     <div class="fl"><label>To</label><select id="xt">
       <option value="">&#8212; Destination &#8212;</option>
       ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
-      ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+      ${vehOpts}
     </select></div>
     <div class="fl"><label>Reason</label><select id="xr">
       <option>Van Restock</option><option>Warehouse to Van</option><option>Van to Warehouse</option>
@@ -2841,28 +2847,82 @@ function xAvail(i){
   const el=g('xla'+i);if(el){el.textContent=q;el.style.color=q>0?'var(--green)':'var(--red)';}
 }
 function xUpA(){_xl.forEach((_,i)=>xAvail(i));}
-function postXfr(){
+async function postXfr(){
   const from=v('xf');const to=v('xt');const reason=v('xr');const notes=v('xn');
   if(!from||!to){tst('Select From and To','error');return}
   if(from===to){tst('From and To cannot match','error');return}
-  const lines=_xl.filter(l=>l.sku); if(!lines.length){tst('Add at least one item','error');return}
-  const ls=S.get('lhs:ls')||[];const vi=S.get('lhs:vi')||[];const xfrs=S.get('lhs:xfrs')||[];
+
+  // Read lines directly from live DOM rows — avoids stale _xl indices after row deletions
+  if(!_xi.length) _xi=S.get('lhs:items')||[];
+  const tb=g('xtb');
+  const lines=[];
+  if(tb){
+    tb.querySelectorAll('tr').forEach(row=>{
+      const skuIn=row.querySelector('input[readonly]');
+      const qtyIn=row.querySelector('input[type="number"]');
+      const sku=(skuIn?.value||'').trim();
+      const qty=parseInt(qtyIn?.value)||0;
+      if(!sku||qty<=0) return;
+      const it=_xi.find(x=>x.sku===sku);
+      lines.push({sku,item:it?.name||sku,qty});
+    });
+  }
+  if(!lines.length){tst('Add at least one item with a quantity','error');return}
+
+  const ls=S.get('lhs:ls')||[];
+  const vi=S.get('lhs:vi')||[];
+  const xfrs=S.get('lhs:xfrs')||[];
   const errs=[];
-  lines.forEach((l,i)=>{
-    const qty=pi2('xlq'+i); if(!qty) return;
-    if(WH.includes(from)){const r=ls.find(x=>x.sku===l.sku&&x.location===from);
-      if(!r||r.qty<qty){errs.push(`Not enough ${l.item} at ${from}`);return} r.qty-=qty;
-    }else{const r=vi.find(x=>x.sku===l.sku&&x.vehicle===from);
-      if(!r||r.qty<qty){errs.push(`Not enough ${l.item} in ${from}`);return} r.qty-=qty;}
-    if(WH.includes(to)){const r=ls.find(x=>x.sku===l.sku&&x.location===to);
-      if(r) r.qty+=qty; else ls.push({sku:l.sku,item:l.item,location:to,qty,min:0,max:0,bin:''});
-    }else{const r=vi.find(x=>x.sku===l.sku&&x.vehicle===to);
-      if(r) r.qty+=qty; else vi.push({sku:l.sku,item:l.item,vehicle:to,division:'',qty,min:0,max:0,tech:''});}
-    xfrs.push({date:td(),from,to,sku:l.sku,item:l.item,qty,reason,notes:notes||'',by:CU.name});
+  const changedVi=new Set();
+  const changedLs=new Set();
+  const newXfrs=[];
+
+  lines.forEach(l=>{
+    const {sku,item,qty}=l;
+    // Deduct from source
+    if(WH.includes(from)){
+      const r=ls.find(x=>x.sku===sku&&x.location===from);
+      if(!r||r.qty<qty){errs.push(`Not enough ${item} at ${from} (have ${r?.qty||0})`);return}
+      r.qty-=qty; changedLs.add(r);
+    }else{
+      const r=vi.find(x=>x.sku===sku&&x.vehicle===from);
+      if(!r||r.qty<qty){errs.push(`Not enough ${item} in ${from} (have ${r?.qty||0})`);return}
+      r.qty-=qty; r.qty_on_hand=r.qty; changedVi.add(r);
+    }
+    // Add to destination
+    if(WH.includes(to)){
+      const r=ls.find(x=>x.sku===sku&&x.location===to);
+      if(r){r.qty+=qty; changedLs.add(r);}
+      else{const nr={sku,item,location:to,qty,min:0,max:0,bin:''};ls.push(nr);changedLs.add(nr);}
+    }else{
+      const r=vi.find(x=>x.sku===sku&&x.vehicle===to);
+      if(r){r.qty+=qty; r.qty_on_hand=r.qty; changedVi.add(r);}
+      else{const nr={sku,item,vehicle:to,division:'',qty,qty_on_hand:qty,min:0,max:0,tech:''};vi.push(nr);changedVi.add(nr);}
+    }
+    const xfrRow={date:td(),from,to,sku,item,qty,reason,notes:notes||'',by:CU.name};
+    xfrs.push(xfrRow); newXfrs.push(xfrRow);
   });
+
   if(errs.length){tst(errs[0],'error');return}
-  S.set('lhs:ls',ls);S.set('lhs:vi',vi);S.set('lhs:xfrs',xfrs);
-  _xl=[]; tst(`${lines.length} item(s) transferred`,'success'); showPage('transfer');
+
+  // Update local cache and re-render immediately
+  S.set('lhs:ls',ls); S.set('lhs:vi',vi); S.set('lhs:xfrs',xfrs);
+  _xl=[];
+  tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
+  showPage('transfer');
+
+  // Persist to Supabase in background so data survives refresh
+  for(const r of changedVi){
+    if(r.id) dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty}).catch(e=>console.warn('vi update:',e?.message));
+    else dbInsert('lhs:vi',r).then(saved=>{if(saved) r.id=saved.id;}).catch(e=>console.warn('vi insert:',e?.message));
+  }
+  for(const r of changedLs){
+    if(r.id) dbUpdate('lhs:ls',r.id,{qty:r.qty}).catch(e=>console.warn('ls update:',e?.message));
+    else dbInsert('lhs:ls',r).then(saved=>{if(saved) r.id=saved.id;}).catch(e=>console.warn('ls insert:',e?.message));
+  }
+  for(const xfrRow of newXfrs){
+    dbInsert('lhs:xfrs',xfrRow).catch(e=>console.warn('xfr insert:',e?.message));
+  }
 }
 function restMax(){
   const to=v('xt');const from=v('xf');
