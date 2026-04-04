@@ -19871,16 +19871,30 @@ function renderPunchArea(){
 
   const isClockedIn=lastType==='clock_in'||lastType==='meal_end';
   const isMeal=lastType==='meal_start';
-  const isClockedOut=lastType==='clock_out';
+
+  // Calculate total time worked today from punch pairs
+  let totalWorkedMins=0;
+  let lastClockIn=null;
+  todayPunches.forEach(p=>{
+    if(p.punch_type==='clock_in'||p.punch_type==='meal_end') lastClockIn=new Date(p.punched_at);
+    else if((p.punch_type==='clock_out'||p.punch_type==='meal_start')&&lastClockIn){
+      totalWorkedMins+=Math.round((new Date(p.punched_at)-lastClockIn)/60000);
+      lastClockIn=null;
+    }
+  });
+  // If still clocked in, add time since last clock-in
+  if(lastClockIn) totalWorkedMins+=Math.round((new Date()-lastClockIn)/60000);
+  const totalHrsDisplay=totalWorkedMins>0?`${Math.floor(totalWorkedMins/60)}h ${totalWorkedMins%60}m`:'0h 0m';
 
   area.innerHTML=`
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Today's Punches</div>
-    ${todayPunches.length?`<div style="margin-bottom:8px;max-height:80px;overflow-y:auto">${todayPunches.map(p=>`<div style="font-size:11px;color:#555;display:flex;justify-content:space-between;padding:2px 0">
+    ${todayPunches.length?`<div style="margin-bottom:8px;max-height:100px;overflow-y:auto">${todayPunches.map(p=>`<div style="font-size:11px;color:#555;display:flex;justify-content:space-between;padding:2px 0">
       <span>${p.punch_type==='clock_in'?'🟢 Clock In':p.punch_type==='meal_start'?'🟡 Meal Start':p.punch_type==='meal_end'?'🟢 Meal End':'🔴 Clock Out'}</span>
       <span style="color:var(--muted)">${new Date(p.punched_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`).join('')}</div>`:'<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No punches yet today</div>'}
+    ${totalWorkedMins>0?`<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">Total today: ${totalHrsDisplay}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${!isClockedIn&&!isMeal&&!isClockedOut?`<button class="btn sm btn-g" onclick="prPunch('clock_in')">🟢 Clock In</button>`:''}
+      ${!isClockedIn&&!isMeal?`<button class="btn sm btn-g" onclick="prPunch('clock_in')">🟢 Clock In</button>`:''}
       ${isClockedIn?`<button class="btn sm" style="background:#FFA000;color:white" onclick="prPunch('meal_start')">🟡 Meal</button>`:''}
       ${isMeal?`<button class="btn sm btn-g" onclick="prPunch('meal_end')">↩ Return</button>`:''}
       ${isClockedIn?`<button class="btn sm btn-r" onclick="prPunch('clock_out')">🔴 Clock Out</button>`:''}
