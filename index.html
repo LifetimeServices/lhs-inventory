@@ -12817,7 +12817,7 @@ async function dispDrop(e,newTech,newDiv){
   const movingApt=apts2.find(a=>a.id===aptId);
   if(movingApt){
     const [dh,dm]=(finalTime+':00').split(':').map(Number);
-    const newStartMin=(dh-startHr)*60+dm;
+    const newStartMin=dh*60+dm;
     const dur=movingApt.estimated_duration||120;
     if(checkOverlap(newTech||techName, movingApt.scheduled_date, newStartMin, dur, aptId)){
       tst('Cannot move — overlaps with an existing appointment or block','error');
@@ -12865,13 +12865,12 @@ async function dispDrop(e,newTech,newDiv){
 }
 
 // Check if a new block overlaps any existing apt or grey block for a tech on a date
+// newStartMin = absolute minutes from midnight (e.g. 8:00 → 480)
 function checkOverlap(techName, date, newStartMin, newDurMin, excludeAptId){
-  const pxPerHr=window._dispPxPerHr||80;
   const newEnd=newStartMin+newDurMin;
   const apts=S.get('lhs:appointments')||[];
   const techs=S.get('lhs:apt_techs')||[];
   const grey=S.get('lhs:grey_blocks')||[];
-  const startHr=window._dispStartHr||6;
   // Check appointments
   for(const a of apts){
     if(a.id===excludeAptId) continue;
@@ -12879,7 +12878,7 @@ function checkOverlap(techName, date, newStartMin, newDurMin, excludeAptId){
     const isOn=techs.some(t=>t.appointment_id===a.id&&t.tech_name===techName);
     if(!isOn) continue;
     const [hh,mm]=(a.scheduled_time||'08:00').split(':').map(Number);
-    const aStart=(hh-startHr)*60+mm;
+    const aStart=hh*60+mm;
     const aEnd=aStart+(a.estimated_duration||120);
     if(newStartMin<aEnd&&newEnd>aStart) return true;
   }
@@ -12887,11 +12886,42 @@ function checkOverlap(techName, date, newStartMin, newDurMin, excludeAptId){
   for(const b of grey){
     if(b.tech!==techName||b.date!==date) continue;
     const [hh,mm]=(b.time||'08:00').split(':').map(Number);
-    const bStart=(hh-startHr)*60+mm;
+    const bStart=hh*60+mm;
     const bEnd=bStart+(b.duration||60);
     if(newStartMin<bEnd&&newEnd>bStart) return true;
   }
   return false;
+}
+
+// Returns human-readable conflict descriptions for a list of techs on a date/time
+// Used when creating or editing appointments outside the dispatch board
+function aptConflicts(techNames, date, timeStr, durMin, excludeAptId){
+  if(!date||!timeStr||!techNames?.length) return [];
+  const apts=S.get('lhs:appointments')||[];
+  const aptTechs=S.get('lhs:apt_techs')||[];
+  const wos=S.get('lhs:work_orders')||[];
+  const [hh,mm]=(timeStr||'08:00').split(':').map(Number);
+  const newStart=hh*60+mm;
+  const newEnd=newStart+Math.max(1,durMin);
+  const conflicts=[];
+  for(const tName of techNames){
+    for(const a of apts){
+      if(a.id===excludeAptId||a.scheduled_date!==date) continue;
+      const isOn=aptTechs.some(t=>t.appointment_id===a.id&&t.tech_name===tName);
+      if(!isOn) continue;
+      const [ah,am]=(a.scheduled_time||'08:00').split(':').map(Number);
+      const aStart=ah*60+am;
+      const aEnd=aStart+(a.estimated_duration||120);
+      if(newStart<aEnd&&newEnd>aStart){
+        const wo=wos.find(w=>w.id===a.wo_id);
+        const ap=ah>=12?'PM':'AM';
+        const dh=ah>12?ah-12:(ah===0?12:ah);
+        const timeLabel=`${dh}:${am<10?'0':''}${am} ${ap}`;
+        conflicts.push(`${tName} already scheduled at ${timeLabel}${wo?' ('+wo.wo_number+')':''}`);
+      }
+    }
+  }
+  return conflicts;
 }
 
 function dispDragOverPanel(event, techName){
@@ -12983,9 +13013,12 @@ function dispResizeStart(e,aptId,side){
   e.preventDefault();
   const apt=(S.get('lhs:appointments')||[]).find(a=>a.id===aptId);
   if(!apt) return;
+  const _aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId).map(t=>t.tech_name);
   _dispResize={aptId,side,startX:e.clientX,
     origTime:apt.scheduled_time||'08:00',
-    origDur:apt.estimated_duration||120};
+    origDur:apt.estimated_duration||120,
+    date:apt.scheduled_date,
+    techNames:_aptTechs};
   document.body.style.cursor=side==='left'?'w-resize':'e-resize';
   document.body.style.userSelect='none';
   // Show live preview bar
@@ -13038,7 +13071,7 @@ document.addEventListener('mouseup',async e=>{
     return;
   }
   if(!_dispResize) return;
-  const {aptId,side,startX,origTime,origDur}=_dispResize;
+  const {aptId,side,startX,origTime,origDur,date:resizeDate,techNames:resizeTechs}=_dispResize;
   _dispResize=null;
   document.body.style.cursor='';
   document.body.style.userSelect='';
@@ -13072,6 +13105,15 @@ document.addEventListener('mouseup',async e=>{
   const newH=Math.floor(newStartMin/60);
   const newM=newStartMin%60;
   const newTime=`${String(newH).padStart(2,'0')}:${String(newM).padStart(2,'0')}`;
+
+  // Check that resized block doesn't now overlap another appointment for this tech
+  const resizeStartMin=newH*60+newM;
+  for(const tName of (resizeTechs||[])){
+    if(checkOverlap(tName, resizeDate||apt.scheduled_date, resizeStartMin, newDur, aptId)){
+      tst(`Cannot resize — would overlap an existing appointment for ${tName}`,'error');
+      showPage('dispatch-board'); return;
+    }
+  }
 
   apt.scheduled_time=newTime;
   apt.estimated_duration=newDur;
@@ -13259,9 +13301,8 @@ async function svAddGreyBlock(){
   if(!dates.length){tst('No matching dates — check day selections','error');return}
 
   // Check for overlap on each date before saving any
-  const startHr=window._dispStartHr||6;
   const [bh,bm]=(time||'08:00').split(':').map(Number);
-  const newStartMin=(bh-startHr)*60+bm;
+  const newStartMin=bh*60+bm;
   for(const date of dates){
     if(checkOverlap(tech,date,newStartMin,dur,null)){
       tst(`Cannot add block on ${date} — overlaps with an existing appointment or block for ${tech}`,'error');
@@ -13966,14 +14007,28 @@ async function svCreateWO(){
   if(!savedWO){tst('Failed to save work order','error');return}
   wo.id=savedWO.id;
 
-  // Create first appointment
+  // Create first appointment — check for scheduling conflicts first
+  const _wocDate=v('woc-adate'), _wocTime=v('woc-atime')||'08:00';
+  const _wocDur=(()=>{const s=_wocTime;const e=v('woc-aend')||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
+  const _wocTechNames=(window._wocTechs||[]).map(t=>t.name);
+  if(_wocDate&&_wocTime&&_wocTechNames.length){
+    const wocConflicts=aptConflicts(_wocTechNames, _wocDate, _wocTime, _wocDur, null);
+    if(wocConflicts.length){
+      // Roll back the saved WO since appointment can't be scheduled
+      try{await DB.from('lhs_work_orders').delete().eq('id',savedWO.id);}catch{}
+      const wos2=S.get('lhs:work_orders')||[];
+      S.set('lhs:work_orders',wos2.filter(w=>w.id!==savedWO.id));
+      tst(`⚠️ Scheduling conflict: ${wocConflicts[0]}. Work order not created.`,'error');
+      return;
+    }
+  }
   const apt={
     wo_id:savedWO.id,
     appointment_number:1,
-    scheduled_date:v('woc-adate'),
-    scheduled_time:v('woc-atime'),
+    scheduled_date:_wocDate,
+    scheduled_time:_wocTime,
     arrival_window:v('woc-awin'),
-    estimated_duration:(()=>{const s=v('woc-atime')||'08:00';const e=v('woc-aend')||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})(),
+    estimated_duration:_wocDur,
     price:parseFloat(document.getElementById('woc-aprice')?.value)||totalPrice,
     status:'Scheduled',
     is_flexible:v('woc-flex')==='true',
@@ -14648,6 +14703,17 @@ async function svAptDetail(aptId, woId){
   const _aptStart=newTime||apt?.scheduled_time||'08:00';
   const _aptEnd=v('aptd-end');
   const newDur=_aptEnd?(()=>{const[sh2,sm2]=_aptStart.split(':').map(Number);const[eh2,em2]=_aptEnd.split(':').map(Number);return Math.max(15,(eh2*60+em2)-(sh2*60+sm2));})():(apt?.estimated_duration||120);
+  // If date or time is changing, check for conflicts before saving
+  const reschedDate=newDate||apt?.scheduled_date;
+  const reschedTime=newTime||apt?.scheduled_time||'08:00';
+  if((newDate&&newDate!==apt?.scheduled_date)||(newTime&&newTime!==apt?.scheduled_time)){
+    const aptTechNames=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId).map(t=>t.tech_name);
+    const conflicts=aptConflicts(aptTechNames, reschedDate, reschedTime, newDur, aptId);
+    if(conflicts.length){
+      tst(`⚠️ Scheduling conflict: ${conflicts[0]}`,'error');
+      return;
+    }
+  }
   // If marked Completed, force 100%
   const finalPct=status==='Completed'?100:pct;
   const updates={pct_complete:finalPct,status,completion_notes:notes,updated_at:new Date().toISOString()};
@@ -15230,10 +15296,19 @@ function naAddTech(val){
 }
 
 async function svAddAppointment(woId,num){
+  const naDate=v('na-date'), naTime=v('na-time')||'08:00';
+  const naDur=(()=>{const s=naTime;const e=v('na-end')||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
+  // Overlap check — block double-booking before inserting
+  const naTechNames=(window._naTechs||[]).map(t=>t.name);
+  const conflicts=aptConflicts(naTechNames, naDate, naTime, naDur, null);
+  if(conflicts.length){
+    tst(`⚠️ Scheduling conflict: ${conflicts[0]}`,'error');
+    return;
+  }
   const apt={wo_id:woId,appointment_number:num,
-    scheduled_date:v('na-date'),scheduled_time:v('na-time'),
+    scheduled_date:naDate,scheduled_time:naTime,
     arrival_window:v('na-win'),
-    estimated_duration:(()=>{const s=v('na-time')||'08:00';const e=v('na-end')||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})(),
+    estimated_duration:naDur,
     price:parseFloat(document.getElementById('na-price')?.value)||0,
     status:'Scheduled',created_by:CU.name,created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:appointments',apt);
