@@ -1954,7 +1954,8 @@ function calcUtilization(techName, date){
   const u=(S.get('lhs:users')||[]).find(x=>x.name===techName);
   const wsH=timeToHr(u?.work_start||'08:00');
   const weH=timeToHr(u?.work_end||'17:00');
-  const availMin=(weH-wsH)*60;
+  // Use full shift window but never less than 8 hours — prevents false 100% from narrow scheduling windows
+  const availMin=Math.max((weH-wsH)*60, 8*60);
   if(availMin<=0) return 0;
   const allApts=S.get('lhs:appointments')||[];
   const allTechs=S.get('lhs:apt_techs')||[];
@@ -19078,19 +19079,22 @@ function prWeekDates(weekStart){
   return dates;
 }
 
-// Generate period options: 6 weeks back, current, 2 weeks forward
+// Generate period options: 6 weeks back, current, 2 weeks forward (Sunday start)
 function prPeriodOptions(){
   const opts=[];
   const today=new Date();
-  const curMon=new Date(today);
-  const day=today.getDay();
-  curMon.setDate(today.getDate()-(day===0?6:day-1));
+  const curSun=new Date(today);
+  const day=today.getDay(); // 0=Sun,1=Mon,...,6=Sat
+  curSun.setDate(today.getDate()-day); // roll back to Sunday
   for(let w=-6;w<=2;w++){
-    const d=new Date(curMon);
-    d.setDate(curMon.getDate()+w*7);
+    const d=new Date(curSun);
+    d.setDate(curSun.getDate()+w*7);
     const key=d.toISOString().slice(0,10);
     opts.push({key,label:prPeriodLabel(key)});
   }
+  // Include current period if it's not already in the list (e.g. old Monday-based entry)
+  const cur=window._prPeriod;
+  if(cur&&!opts.find(o=>o.key===cur)) opts.unshift({key:cur,label:prPeriodLabel(cur)});
   return opts;
 }
 
@@ -19202,13 +19206,13 @@ function bPayrollDashboard(){
   <div class="ps">Weekly timesheet management — ${tsUsers.length} employee${tsUsers.length!==1?'s':''} tracked</div>
 
   <!-- Period Selector -->
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+  <div style="display:flex;align-items:stretch;gap:8px;margin-bottom:16px;flex-wrap:wrap">
     <button class="btn btn-n sm" onclick="prNavPeriod('${prevPeriod}')">&#8592; Prev</button>
-    <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;cursor:pointer" onchange="prSetPeriod(this.value)">
+    <select style="padding:0 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;cursor:pointer;height:auto;align-self:stretch" onchange="prSetPeriod(this.value)">
       ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
     </select>
     <button class="btn btn-n sm" onclick="prNavPeriod('${nextPeriod}')">Next &#8594;</button>
-    ${disputedCount>0?`<span style="background:#B71C1C;color:white;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin-left:4px">⚠ ${disputedCount} Dispute${disputedCount!==1?'s':''}</span>`:''}
+    ${disputedCount>0?`<span style="background:#B71C1C;color:white;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin-left:4px;align-self:center">⚠ ${disputedCount} Dispute${disputedCount!==1?'s':''}</span>`:''}
     ${canApprove?`<button class="btn sm btn-n" style="margin-left:auto" onclick="prAddEntry()">+ Add Entry</button>`:''}
   </div>
 
@@ -19565,12 +19569,12 @@ function bPayrollDetail(){
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
     ${!isOwnView?`<button class="btn sm btn-n" onclick="prBackToDashboard()">&#8592; Payroll</button>`:''}
     <div class="pt" style="margin:0">Timesheet ${isMyOwn?'— My Time Card':''}</div>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      ${!isOwnView?`<select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetEmployee(this.value)">
+    <div style="margin-left:auto;display:flex;align-items:stretch;gap:8px;flex-wrap:wrap">
+      ${!isOwnView?`<select style="padding:0 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;height:auto;align-self:stretch" onchange="prSetEmployee(this.value)">
         ${tsUsers.map(u=>`<option value="${esc(u.name)}"${u.name===emp?' selected':''}>${u.name}</option>`).join('')}
-      </select>`:`<span style="font-size:14px;font-weight:600">${emp}</span>`}
+      </select>`:`<span style="font-size:14px;font-weight:600;align-self:center">${emp}</span>`}
       <button class="btn sm btn-n" onclick="prNavPeriod('${prevPeriod}')">&#8592;</button>
-      <select style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white" onchange="prSetPeriod(this.value)">
+      <select style="padding:0 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;background:white;align-self:stretch;height:auto" onchange="prSetPeriod(this.value)">
         ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
       </select>
       <button class="btn sm btn-n" onclick="prNavPeriod('${nextPeriod}')">&#8594;</button>
@@ -20060,9 +20064,9 @@ async function prSaveEntry(existingId, period){
   if(existingId){
     const i=allTS.findIndex(t=>t.id===existingId);
     if(i>=0){
-      Object.assign(allTS[i],{regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO});
+      Object.assign(allTS[i],{regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO,week_start:weekStart});
       S.set('lhs:timesheets',allTS);
-      try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO}).eq('id',existingId);}catch(err){console.warn('ts update failed',err?.message);}
+      try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:meal,other_time:other,pto_hours:pto,total_hours:totalHrs,notes,is_pto:isPTO,week_start:weekStart}).eq('id',existingId);}catch(err){console.warn('ts update failed',err?.message);}
     }
   } else {
     const dup=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
