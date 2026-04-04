@@ -9081,6 +9081,73 @@ async function delBankTxn(id){
   showPage('acct-bank');
 }
 
+// ── INVOICE TEMPLATE HELPERS ──────────────────────────────────────────────────
+function _getTemplates(){
+  let arr=S.get('lhs:invoice_templates');
+  if(!arr||!Array.isArray(arr)||!arr.length){
+    const old=S.get('lhs:invoice_template')||{};
+    arr=[{...old,id:old.id||crypto.randomUUID(),name:old.name||'Standard Invoice',is_default:true,created_at:old.created_at||new Date().toISOString(),updated_at:old.updated_at||new Date().toISOString()}];
+    S.set('lhs:invoice_templates',arr);
+  }
+  return arr;
+}
+function _saveTemplates(arr){S.set('lhs:invoice_templates',arr);}
+function _getTmpl(id){
+  const arr=_getTemplates();
+  if(id){const f=arr.find(t=>t.id===id);if(f)return f;}
+  return arr.find(t=>t.is_default)||arr[0]||{};
+}
+function oNewInvoiceTemplate(){
+  const name=prompt('Template name:','New Invoice Template');
+  if(!name||!name.trim())return;
+  const arr=_getTemplates();
+  const base=arr.find(t=>t.is_default)||arr[0]||{};
+  const tmpl={...base,id:crypto.randomUUID(),name:name.trim(),is_default:false,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  arr.push(tmpl);
+  _saveTemplates(arr);
+  tst(`"${tmpl.name}" created`,'success');
+  oInvoiceTemplate('company',tmpl.id);
+}
+function duplicateInvoiceTemplate(id){
+  const arr=_getTemplates();
+  const src=arr.find(t=>t.id===id);if(!src)return;
+  const name=prompt('Name for duplicate:','Copy of '+src.name);
+  if(!name||!name.trim())return;
+  const tmpl={...src,id:crypto.randomUUID(),name:name.trim(),is_default:false,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  arr.push(tmpl);
+  _saveTemplates(arr);
+  tst(`"${tmpl.name}" created`,'success');
+  showPage('acct-settings');
+}
+function deleteInvoiceTemplate(id){
+  const arr=_getTemplates();
+  if(arr.length<=1){tst('Cannot delete the only template','error');return;}
+  const tmpl=arr.find(t=>t.id===id);
+  if(!confirm(`Delete "${tmpl?.name||'this template'}"?`))return;
+  const filtered=arr.filter(t=>t.id!==id);
+  if(tmpl?.is_default&&filtered.length)filtered[0].is_default=true;
+  _saveTemplates(filtered);
+  tst('Template deleted','success');
+  showPage('acct-settings');
+}
+function setDefaultTemplate(id){
+  const arr=_getTemplates();
+  arr.forEach(t=>t.is_default=(t.id===id));
+  _saveTemplates(arr);
+  tst('Default template updated','success');
+  showPage('acct-settings');
+}
+function renameInvoiceTemplate(id){
+  const arr=_getTemplates();
+  const tmpl=arr.find(t=>t.id===id);if(!tmpl)return;
+  const name=prompt('New name:',tmpl.name);
+  if(!name||!name.trim())return;
+  tmpl.name=name.trim();tmpl.updated_at=new Date().toISOString();
+  _saveTemplates(arr);
+  tst('Renamed','success');
+  showPage('acct-settings');
+}
+
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 function bAcctSettings(){
   const codes=S.get('lhs:accounting_codes')||[];
@@ -9089,41 +9156,38 @@ function bAcctSettings(){
   return`<div class="pt">&#9881;&#65039; Accounting Settings</div>
   <div class="ps">Invoice templates, chart of accounts, and system configuration</div>
 
-  <!-- Invoice Template -->
+  <!-- Invoice Templates -->
   <div class="card" style="margin-bottom:18px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
-        <div style="font-weight:700;font-size:15px;color:var(--navy)">&#128196; Invoice Template</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Customize the look and layout of invoices sent to customers</div>
+        <div style="font-weight:700;font-size:15px;color:var(--navy)">&#128196; Invoice Templates</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Create multiple named templates — each with its own style, logo, and layout</div>
       </div>
-      ${canEdit?`<div style="display:flex;gap:8px">
-        <button class="btn btn-n" onclick="selectInvoiceStyle()">&#127912; Choose Style</button>
-        <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
-        <button class="btn btn-g" onclick="previewInvoice()">&#128065; Preview</button>
-      </div>`:''}
+      ${canEdit?`<button class="btn btn-n" onclick="oNewInvoiceTemplate()">&#43; New Template</button>`:''}
     </div>
     ${(()=>{
-      const t=S.get('lhs:invoice_template')||{};
-      return`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div style="background:var(--surf);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;letter-spacing:.05em;margin-bottom:4px">Company Name</div>
-          <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(t.company_name||'Not set')}</div>
-        </div>
-        <div style="background:var(--surf);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;letter-spacing:.05em;margin-bottom:4px">Accent Color</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="width:20px;height:20px;border-radius:4px;background:${t.accent_color||'#0f2044'};border:1px solid var(--bdr)"></div>
-            <span style="font-size:13px;font-family:'DM Mono',monospace;color:var(--navy)">${t.accent_color||'#0f2044'}</span>
+      const tmpls=_getTemplates();
+      return tmpls.map(t=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1.5px solid ${t.is_default?'var(--navy)':'var(--bdr)'};border-radius:10px;margin-bottom:10px;background:${t.is_default?'#f0f4ff':'white'}">
+          <div style="display:flex;align-items:center;gap:12px;min-width:0">
+            <div style="width:32px;height:32px;border-radius:6px;background:${t.header_color||t.accent_color||'#0D1B3E'};flex-shrink:0"></div>
+            <div style="min-width:0">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-weight:700;font-size:14px;color:var(--navy)">${esc(t.name||'Untitled')}</span>
+                ${t.is_default?`<span style="background:var(--navy);color:white;font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:20px">DEFAULT</span>`:''}
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(t.payment_terms||'Due on Receipt')} · Updated ${t.updated_at?new Date(t.updated_at).toLocaleDateString():'—'}</div>
+            </div>
           </div>
-        </div>
-        <div style="background:var(--surf);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;letter-spacing:.05em;margin-bottom:4px">Payment Terms</div>
-          <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(t.payment_terms||'Net 30')}</div>
-        </div>
-      </div>
-      <div style="margin-top:10px;display:flex;gap:8px">
-        ${canEdit?`<button class="btn btn-o sm" onclick="previewInvoice()">&#128065; Preview</button>`:''}
-      </div>`;
+          <div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px">
+            <button class="btn btn-g sm" onclick="previewInvoice(null,'${t.id}')">&#128065; Preview</button>
+            <button class="btn btn-o sm" onclick="oInvoiceTemplate('company','${t.id}')">&#9998; Edit</button>
+            ${canEdit?`<button class="btn btn-n sm" onclick="selectInvoiceStyle('${t.id}')">&#127912;</button>`:''}
+            ${!t.is_default&&canEdit?`<button class="btn sm" style="background:#e8eef8;color:var(--navy);border:1px solid var(--bdr)" onclick="setDefaultTemplate('${t.id}')">Set Default</button>`:''}
+            ${canEdit?`<button class="btn sm" style="background:#f5f5f5;color:var(--muted);border:1px solid var(--bdr)" onclick="duplicateInvoiceTemplate('${t.id}')">&#10064;</button>`:''}
+            ${tmpls.length>1&&canEdit?`<button class="btn btn-r sm" onclick="deleteInvoiceTemplate('${t.id}')">&#10005;</button>`:''}
+          </div>
+        </div>`).join('');
     })()}
   </div>
 
@@ -9190,8 +9254,8 @@ const _INVOICE_STYLES=[
    swatches:['#334155','#B45309','#FFFBEB']},
 ];
 
-function selectInvoiceStyle(){
-  const t=S.get('lhs:invoice_template')||{};
+function selectInvoiceStyle(tmplId){
+  const t=_getTmpl(tmplId);
   const current=t.style_id||'';
   oMod('&#127912; Choose Invoice Style',`
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
@@ -9241,42 +9305,35 @@ function selectInvoiceStyle(){
             ${s.swatches.map(c=>`<div style="width:22px;height:22px;border-radius:4px;background:${c};border:1px solid rgba(0,0,0,.1)" title="${c}"></div>`).join('')}
           </div>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-n sm" onclick="applyInvoiceStyle('${s.id}',true)">Preview</button>
-            <button class="btn btn-o sm" onclick="applyInvoiceStyle('${s.id}')">Apply${current===s.id?' ✓':''}</button>
+            <button class="btn btn-n sm" onclick="applyInvoiceStyle('${s.id}',true,'${tmplId||''}')">Preview</button>
+            <button class="btn btn-o sm" onclick="applyInvoiceStyle('${s.id}',false,'${tmplId||''}')">Apply${current===s.id?' ✓':''}</button>
           </div>
         </div>`).join('')}
     </div>
     <div class="br2">
-      <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
+      <button class="btn btn-o" onclick="oInvoiceTemplate('company','${tmplId||''}')">&#9998; Edit Details</button>
       <button class="btn btn-o" onclick="cMod()">Close</button>
     </div>`);
 }
 
-function applyInvoiceStyle(styleId, andPreview){
+function applyInvoiceStyle(styleId, andPreview, tmplId){
   const s=_INVOICE_STYLES.find(x=>x.id===styleId); if(!s) return;
-  const existing=S.get('lhs:invoice_template')||{};
-  const t={...existing,
-    style_id:s.id,
-    accent_color:s.accent,
-    header_color:s.header,
-    row_tint:s.row_tint,
-    total_bg:s.total_bg,
-    total_fg:s.total_fg,
-    updated_at:new Date().toISOString()
-  };
-  S.set('lhs:invoice_template',t);
+  const arr=_getTemplates();
+  const tmpl=arr.find(t=>t.id===tmplId)||(arr.find(t=>t.is_default)||arr[0]);
+  Object.assign(tmpl,{style_id:s.id,accent_color:s.accent,header_color:s.header,row_tint:s.row_tint,total_bg:s.total_bg,total_fg:s.total_fg,updated_at:new Date().toISOString()});
+  _saveTemplates(arr);
   tst(`${s.name} style applied`,'success');
-  if(andPreview) previewInvoice();
-  else selectInvoiceStyle();
+  if(andPreview) previewInvoice(null,tmpl.id);
+  else selectInvoiceStyle(tmpl.id);
 }
 
-function oInvoiceTemplate(tab){
-  const t=S.get('lhs:invoice_template')||{};
+function oInvoiceTemplate(tab, tmplId){
+  const t=_getTmpl(tmplId);const _tid=t.id||tmplId||'';
   const tb=tab||'company';
   const tabs=[['company','&#127981; Company'],['style','&#127912; Style'],['legal','&#9878; Legal Text']];
-  oMod('&#128196; Invoice Template Editor',`
+  oMod(`&#128196; ${esc(t.name||'Invoice Template')} — Editor`,`
     <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:18px">
-      ${tabs.map(([id,lbl])=>`<button onclick="oInvoiceTemplate('${id}')" style="padding:8px 18px;font-size:13px;font-weight:${tb===id?700:400};color:${tb===id?'var(--navy)':'var(--muted)'};background:none;border:none;border-bottom:${tb===id?'2px solid var(--navy)':'2px solid transparent'};margin-bottom:-2px;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
+      ${tabs.map(([id,lbl])=>`<button onclick="oInvoiceTemplate('${id}','${_tid||''}')" style="padding:8px 18px;font-size:13px;font-weight:${tb===id?700:400};color:${tb===id?'var(--navy)':'var(--muted)'};background:none;border:none;border-bottom:${tb===id?'2px solid var(--navy)':'2px solid transparent'};margin-bottom:-2px;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
     </div>
 
     ${tb==='company'?`
@@ -9390,7 +9447,7 @@ function oInvoiceTemplate(tab){
                   <div style="font-size:11px;color:var(--muted)">PDF · Page ${i+2}</div>
                 </div>
               </div>
-              <button class="btn btn-r sm" onclick="removeInvoicePdfPage(${i})">&#10005; Remove</button>
+              <button class="btn btn-r sm" onclick="removeInvoicePdfPage(${i},'${_tid||''}')">&#10005; Remove</button>
             </div>`).join('')}
         </div>
 
@@ -9398,7 +9455,7 @@ function oInvoiceTemplate(tab){
         <div style="display:flex;align-items:center;gap:10px">
           <label class="btn btn-o sm" style="cursor:pointer;margin:0">
             &#8679; Upload PDF
-            <input type="file" accept=".pdf,application/pdf" id="it-pdf-upload" style="display:none" onchange="addInvoicePdfPage(this)">
+            <input type="file" accept=".pdf,application/pdf" id="it-pdf-upload" style="display:none" onchange="addInvoicePdfPage(this,'${_tid||''}')">
           </label>
           <span style="font-size:11px;color:var(--muted)">PDF will be saved to this template and printed as additional pages</span>
         </div>
@@ -9406,8 +9463,8 @@ function oInvoiceTemplate(tab){
     </div>`:''}
 
     <div class="br2" style="margin-top:16px">
-      <button class="btn btn-n" onclick="saveInvoiceTemplate('${tb}')">&#10003; Save Template</button>
-      <button class="btn btn-g" onclick="saveInvoiceTemplate('${tb}',true)">&#128065; Save & Preview</button>
+      <button class="btn btn-n" onclick="saveInvoiceTemplate('${tb}',false,'${_tid||''}')">&#10003; Save Template</button>
+      <button class="btn btn-g" onclick="saveInvoiceTemplate('${tb}',true,'${_tid||''}')">&#128065; Save & Preview</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
 
@@ -9421,11 +9478,12 @@ function oInvoiceTemplate(tab){
   },60);
 }
 
-function saveInvoiceTemplate(currentTab, andPreview){
+function saveInvoiceTemplate(currentTab, andPreview, tmplId){
   const v2=id=>document.getElementById(id)?.value||'';
   const chk=id=>{const el=document.getElementById(id);return el?el.checked:true;};
   // Merge into existing template so switching tabs doesn't lose data
-  const existing=S.get('lhs:invoice_template')||{};
+  const arr=_getTemplates();
+  const existing=arr.find(t=>t.id===tmplId)||(arr.find(t=>t.is_default)||arr[0])||{};
   const t={...existing,
     company_name:v2('it-name')||existing.company_name||'Lifetime Home Services LLC',
     address1:v2('it-addr1')||existing.address1||'',
@@ -9453,31 +9511,34 @@ function saveInvoiceTemplate(currentTab, andPreview){
     additional_pdfs:existing.additional_pdfs||[],
     updated_at:new Date().toISOString()
   };
-  S.set('lhs:invoice_template',t);
-  tst('Invoice template saved','success');
-  if(andPreview){previewInvoice();}
+  const idx=arr.findIndex(x=>x.id===existing.id);
+  if(idx>=0)arr[idx]=t;else arr.push(t);
+  _saveTemplates(arr);
+  tst(`"${t.name||'Template'}" saved`,'success');
+  if(andPreview){previewInvoice(null,t.id);}
   else{cMod();showPage('acct-settings');}
 }
 
-function addInvoicePdfPage(input){
+function addInvoicePdfPage(input,tmplId){
   const file=input?.files?.[0]; if(!file) return;
   if(file.type!=='application/pdf'&&!file.name.endsWith('.pdf')){tst('Please upload a PDF file','error');return;}
   if(file.size>5*1024*1024){tst('PDF must be under 5 MB','error');return;}
   const reader=new FileReader();
   reader.onload=function(e){
-    const t=S.get('lhs:invoice_template')||{};
-    const pages=t.additional_pdfs||[];
+    const arr=_getTemplates();
+    const tmpl=arr.find(t=>t.id===tmplId)||(arr.find(t=>t.is_default)||arr[0]);
+    const pages=tmpl.additional_pdfs||[];
     pages.push({name:file.name,dataUrl:e.target.result,added_at:new Date().toISOString()});
-    t.additional_pdfs=pages;
-    S.set('lhs:invoice_template',t);
+    tmpl.additional_pdfs=pages;tmpl.updated_at=new Date().toISOString();
+    _saveTemplates(arr);
     tst(`"${file.name}" added to template`,'success');
-    oInvoiceTemplate('legal'); // refresh the legal tab
+    oInvoiceTemplate('legal',tmplId);
   };
   reader.readAsDataURL(file);
 }
 
-function oAddInvoicePage(){
-  const t=S.get('lhs:invoice_template')||{};
+function oAddInvoicePage(tmplId){
+  const t=_getTmpl(tmplId);
   const wiOn=t.show_wi_cure!==false;
   // Show a quick picker panel — overlay on top of the preview
   const panel=document.createElement('div');
@@ -9500,9 +9561,9 @@ function oAddInvoicePage(){
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Any document (max 5 MB) — saved to this template</div>
         <label class="btn btn-o sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
           &#8679; Choose PDF
-          <input type="file" accept=".pdf,application/pdf" style="display:none" onchange="addInvoicePdfPage(this);document.getElementById('add-page-panel')?.remove()">
+          <input type="file" accept=".pdf,application/pdf" style="display:none" onchange="addInvoicePdfPage(this,'${tmplId||''}');document.getElementById('add-page-panel')?.remove()">
         </label>
-        ${(t.additional_pdfs||[]).length?`<div style="margin-top:10px;font-size:11px;color:var(--muted)">${(t.additional_pdfs||[]).map((p,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px"><span>&#128196; ${esc(p.name)}</span><button onclick="removeInvoicePdfPage(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">&#10005;</button></div>`).join('')}</div>`:''}
+        ${(t.additional_pdfs||[]).length?`<div style="margin-top:10px;font-size:11px;color:var(--muted)">${(t.additional_pdfs||[]).map((p,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px"><span>&#128196; ${esc(p.name)}</span><button onclick="removeInvoicePdfPage(${i},'${tmplId||''}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">&#10005;</button></div>`).join('')}</div>`:''}
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -9512,26 +9573,29 @@ function oAddInvoicePage(){
   document.body.appendChild(panel);
   window._apSaveAndClose=function(){
     const el=document.getElementById('ap-wi-cure');
-    const t2=S.get('lhs:invoice_template')||{};
-    t2.show_wi_cure=el?el.checked:t2.show_wi_cure;
-    S.set('lhs:invoice_template',t2);
+    const arr2=_getTemplates();
+    const tmpl2=arr2.find(x=>x.id===tmplId)||(arr2.find(x=>x.is_default)||arr2[0]);
+    tmpl2.show_wi_cure=el?el.checked:tmpl2.show_wi_cure;
+    tmpl2.updated_at=new Date().toISOString();
+    _saveTemplates(arr2);
     document.getElementById('add-page-panel')?.remove();
-    previewInvoice();
+    previewInvoice(null,tmplId);
   };
 }
 
-function removeInvoicePdfPage(idx){
-  const t=S.get('lhs:invoice_template')||{};
-  const pages=t.additional_pdfs||[];
+function removeInvoicePdfPage(idx,tmplId){
+  const arr=_getTemplates();
+  const tmpl=arr.find(t=>t.id===tmplId)||(arr.find(t=>t.is_default)||arr[0]);
+  const pages=tmpl.additional_pdfs||[];
   const removed=pages.splice(idx,1);
-  t.additional_pdfs=pages;
-  S.set('lhs:invoice_template',t);
+  tmpl.additional_pdfs=pages;tmpl.updated_at=new Date().toISOString();
+  _saveTemplates(arr);
   tst(removed[0]?`"${removed[0].name}" removed`:'Page removed','success');
-  oInvoiceTemplate('legal');
+  oInvoiceTemplate('legal',tmplId);
 }
 
-function previewInvoice(invId){
-  const t=S.get('lhs:invoice_template')||{};
+function previewInvoice(invId,tmplId){
+  const t=_getTmpl(tmplId);
   const inv=invId?(S.get('lhs:acct_invoices')||[]).find(i=>i.id===invId):null;
   const ac=t.accent_color||'#1565C0';
   const hc=t.header_color||'#0D1B3E';
@@ -9759,12 +9823,12 @@ function previewInvoice(invId){
         <strong>Additional Pages:</strong>
         ${(t.show_wi_cure?['Wisconsin Right to Cure']:[]).concat((t.additional_pdfs||[]).map(p=>p.name)).map(n=>`<span style="display:inline-block;background:#e8eef8;border-radius:4px;padding:2px 7px;font-size:11px;margin-left:6px">${esc(n)}</span>`).join('')||'<span style="color:#aaa;font-style:italic;margin-left:6px">None added yet</span>'}
       </div>
-      <button class="btn btn-n sm" onclick="oAddInvoicePage()">&#43; Add Page</button>
+      <button class="btn btn-n sm" onclick="oAddInvoicePage('${t.id||''}')">&#43; Add Page</button>
     </div>
 
     <div class="br2" style="margin-top:12px">
-      <button class="btn btn-n" onclick="selectInvoiceStyle()">&#127912; Change Style</button>
-      <button class="btn btn-o" onclick="oInvoiceTemplate('legal')">&#9998; Edit Details</button>
+      <button class="btn btn-n" onclick="selectInvoiceStyle('${t.id||''}')">&#127912; Change Style</button>
+      <button class="btn btn-o" onclick="oInvoiceTemplate('legal','${t.id||''}')">&#9998; Edit Details</button>
       <button class="btn btn-o" onclick="cMod()">Close</button>
     </div>`);
 }
