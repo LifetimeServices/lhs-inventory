@@ -9329,7 +9329,7 @@ function oInvoiceTemplate(tab){
               oninput="document.getElementById('it-color').value=this.value">
           </div>
         </div>
-        <div class="fl" style="margin-bottom:14px"><label>Invoice # Box Header Color <span style="font-size:11px;color:var(--muted)">(dark box beside invoice date)</span></label>
+        <div class="fl" style="margin-bottom:14px"><label>Table Header Color <span style="font-size:11px;color:var(--muted)">(TASK, PAID ON rows, footer bar, balance due)</span></label>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="color" id="it-hdrcolor" value="${t.header_color||'#1a2744'}"
               style="width:44px;height:38px;padding:2px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer">
@@ -9360,18 +9360,54 @@ function oInvoiceTemplate(tab){
     <div>
       <div class="fl" style="margin-bottom:14px">
         <label>Customer Authorization Text <span style="font-size:11px;color:var(--muted)">(appears with signature line on invoice)</span></label>
-        <textarea id="it-auth" rows="5" style="font-size:12px">${esc(t.auth_text||_IT_AUTH_DEFAULT)}</textarea>
+        <textarea id="it-auth" rows="4" style="font-size:12px">${esc(t.auth_text||_IT_AUTH_DEFAULT)}</textarea>
       </div>
       <div class="fl" style="margin-bottom:14px">
         <label>Customer Acknowledgement Text <span style="font-size:11px;color:var(--muted)">(work completion sign-off)</span></label>
-        <textarea id="it-ack" rows="5" style="font-size:12px">${esc(t.ack_text||_IT_ACK_DEFAULT)}</textarea>
+        <textarea id="it-ack" rows="4" style="font-size:12px">${esc(t.ack_text||_IT_ACK_DEFAULT)}</textarea>
       </div>
       <div class="fl" style="margin-bottom:14px">
         <label>Additional Notes / Payment Instructions <span style="font-size:11px;color:var(--muted)">(bottom of invoice)</span></label>
-        <textarea id="it-payment" rows="3" style="font-size:12px">${esc(t.payment_instructions||'')}</textarea>
+        <textarea id="it-payment" rows="2" style="font-size:12px">${esc(t.payment_instructions||'')}</textarea>
       </div>
-      <div style="background:var(--surf);border-radius:8px;padding:12px;font-size:12px;color:var(--muted)">
-        &#9878; The <strong>Wisconsin "Right to Cure Law"</strong> page is a standard legal document that attaches as the final page. Toggle it on/off in the Style tab.
+
+      <!-- ADD PAGE SECTION -->
+      <div style="border:1.5px dashed var(--bdr);border-radius:8px;padding:14px;margin-top:4px">
+        <div style="font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);margin-bottom:10px">&#128196; Additional Pages</div>
+
+        <!-- WI Right to Cure notice -->
+        <div style="background:var(--surf);border-radius:6px;padding:10px 12px;font-size:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-weight:600">Wisconsin Right to Cure Law</span>
+            <span style="color:var(--muted);margin-left:6px">— Pre-built legal page</span>
+          </div>
+          <span style="font-size:11px;color:var(--muted)">Toggle in Style tab → Show on Invoice</span>
+        </div>
+
+        <!-- Uploaded PDF pages -->
+        <div id="it-pdf-list" style="margin-bottom:12px">
+          ${(t.additional_pdfs||[]).length===0?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:4px 0">No additional pages uploaded.</div>':
+            (t.additional_pdfs||[]).map((p,i)=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surf);border-radius:6px;margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:18px">&#128196;</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600">${esc(p.name)}</div>
+                  <div style="font-size:11px;color:var(--muted)">PDF · Page ${i+2}</div>
+                </div>
+              </div>
+              <button class="btn btn-r sm" onclick="removeInvoicePdfPage(${i})">&#10005; Remove</button>
+            </div>`).join('')}
+        </div>
+
+        <!-- Upload new PDF -->
+        <div style="display:flex;align-items:center;gap:10px">
+          <label class="btn btn-o sm" style="cursor:pointer;margin:0">
+            &#8679; Upload PDF
+            <input type="file" accept=".pdf,application/pdf" id="it-pdf-upload" style="display:none" onchange="addInvoicePdfPage(this)">
+          </label>
+          <span style="font-size:11px;color:var(--muted)">PDF will be saved to this template and printed as additional pages</span>
+        </div>
       </div>
     </div>`:''}
 
@@ -9420,12 +9456,40 @@ function saveInvoiceTemplate(currentTab, andPreview){
     auth_text:v2('it-auth')||existing.auth_text||_IT_AUTH_DEFAULT,
     ack_text:v2('it-ack')||existing.ack_text||_IT_ACK_DEFAULT,
     payment_instructions:v2('it-payment')||existing.payment_instructions||'',
+    additional_pdfs:existing.additional_pdfs||[],
     updated_at:new Date().toISOString()
   };
   S.set('lhs:invoice_template',t);
   tst('Invoice template saved','success');
   if(andPreview){previewInvoice();}
   else{cMod();showPage('acct-settings');}
+}
+
+function addInvoicePdfPage(input){
+  const file=input?.files?.[0]; if(!file) return;
+  if(file.type!=='application/pdf'&&!file.name.endsWith('.pdf')){tst('Please upload a PDF file','error');return;}
+  if(file.size>5*1024*1024){tst('PDF must be under 5 MB','error');return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const t=S.get('lhs:invoice_template')||{};
+    const pages=t.additional_pdfs||[];
+    pages.push({name:file.name,dataUrl:e.target.result,added_at:new Date().toISOString()});
+    t.additional_pdfs=pages;
+    S.set('lhs:invoice_template',t);
+    tst(`"${file.name}" added to template`,'success');
+    oInvoiceTemplate('legal'); // refresh the legal tab
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeInvoicePdfPage(idx){
+  const t=S.get('lhs:invoice_template')||{};
+  const pages=t.additional_pdfs||[];
+  const removed=pages.splice(idx,1);
+  t.additional_pdfs=pages;
+  S.set('lhs:invoice_template',t);
+  tst(removed[0]?`"${removed[0].name}" removed`:'Page removed','success');
+  oInvoiceTemplate('legal');
 }
 
 function previewInvoice(invId){
@@ -9494,14 +9558,14 @@ function previewInvoice(invId){
           <div style="font-weight:600;font-size:14px">${esc(custName)}</div>
           <div style="font-size:12px;color:#555;line-height:1.7">${inv?.customer_address||''}</div>
         </div>
-        <table style="border-collapse:collapse;border:1px solid #bbb;font-size:11px;flex-shrink:0">
+        <table style="border-collapse:collapse;border:1px solid #bbb;font-size:11px;flex-shrink:0;background:white">
           <tr>
-            <td style="padding:5px 12px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">INVOICE</td>
-            <td style="padding:5px 12px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;background:${hc};color:white;white-space:nowrap">INVOICE DATE</td>
+            <td style="padding:5px 14px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;color:#222">INVOICE</td>
+            <td style="padding:5px 14px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;color:#222">INVOICE DATE</td>
           </tr>
           <tr>
-            <td style="padding:5px 12px;border:1px solid #bbb;font-weight:600;font-size:12px">${esc(num)}</td>
-            <td style="padding:5px 12px;border:1px solid #bbb;font-weight:700;font-size:12px;background:${hc};color:white">${fmtD(invDate)}</td>
+            <td style="padding:5px 14px;border:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:600;font-size:12px;color:#111">${esc(num)}</td>
+            <td style="padding:5px 14px;border:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:600;font-size:12px;color:#111">${fmtD(invDate)}</td>
           </tr>
         </table>
       </div>
@@ -9541,9 +9605,9 @@ function previewInvoice(invId){
             <td style="padding:12px 8px;font-size:13px">
               <strong>${esc(inv?.notes||'Services rendered — see work order for full detail')}</strong>
             </td>
-            <td style="padding:12px 8px;text-align:right;font-size:13px">1.00</td>
-            <td style="padding:12px 8px;text-align:right;font-size:13px">${f$(amt)}</td>
-            <td style="padding:12px 0 12px 8px;text-align:right;font-size:13px;font-weight:600">${f$(amt)}</td>
+            <td style="padding:12px 8px;text-align:right;font-size:13px;font-family:'DM Mono',monospace">1.00</td>
+            <td style="padding:12px 8px;text-align:right;font-size:13px;font-family:'DM Mono',monospace">${f$(amt)}</td>
+            <td style="padding:12px 0 12px 8px;text-align:right;font-size:13px;font-weight:600;font-family:'DM Mono',monospace">${f$(amt)}</td>
           </tr>
           ${tax?`<tr style="border-bottom:1px solid #eee">
             <td></td>
@@ -9570,7 +9634,7 @@ function previewInvoice(invId){
             <td style="padding:10px 8px 10px 0;font-size:13px">${fmtD(invDate)}</td>
             <td style="padding:10px 8px;font-size:13px">Check</td>
             <td style="padding:10px 8px;font-size:13px"></td>
-            <td style="padding:10px 0 10px 8px;text-align:right;font-size:13px">${f$(paid)}</td>
+            <td style="padding:10px 0 10px 8px;text-align:right;font-size:13px;font-family:'DM Mono',monospace">${f$(paid)}</td>
           </tr>`:
           `<tr><td colspan="4" style="padding:12px 0;font-size:12px;color:#999;font-style:italic">No payments recorded</td></tr>`}
         </tbody>
@@ -9582,9 +9646,9 @@ function previewInvoice(invId){
       <div style="display:flex;justify-content:flex-end;margin-bottom:28px">
         <div style="min-width:300px">
           <table style="width:100%;font-size:13px;border-collapse:collapse">
-            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Sub-Total</td><td style="text-align:right;padding:5px 0">${f$(subtotal)}</td></tr>
-            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Total Due</td><td style="text-align:right;padding:5px 0;font-weight:700">${f$(subtotal)}</td></tr>
-            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Payment</td><td style="text-align:right;padding:5px 0">${f$(paid)}</td></tr>
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Sub-Total</td><td style="text-align:right;padding:5px 0;font-family:'DM Mono',monospace">${f$(subtotal)}</td></tr>
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Total Due</td><td style="text-align:right;padding:5px 0;font-weight:700;font-family:'DM Mono',monospace">${f$(subtotal)}</td></tr>
+            <tr><td style="padding:5px 24px 5px 0;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#555">Payment</td><td style="text-align:right;padding:5px 0;font-family:'DM Mono',monospace">${f$(paid)}</td></tr>
           </table>
           <div style="background:${totalBg};color:${totalFg};border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:8px">
             <span style="font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85">Balance Due</span>
@@ -9613,17 +9677,39 @@ function previewInvoice(invId){
       ${t.payment_instructions?`<div style="margin-top:20px;font-size:12px;color:#555;border-top:1px solid #eee;padding-top:12px">${esc(t.payment_instructions)}</div>`:''}
 
       <!-- FOOTER -->
-      <div style="margin-top:40px;border-top:2px solid ${hc};padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
-        <span>Invoice #${esc(num)}</span>
-        <span>Page 1 of 2</span>
-      </div>
+      ${(()=>{
+        const extraPages=(t.show_wi_cure?1:0)+(t.additional_pdfs||[]).length;
+        const total=1+extraPages;
+        return `<div style="margin-top:40px;border-top:2px solid ${hc};padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
+          <span>Invoice #${esc(num)}</span>
+          <span>Page 1 of ${total}</span>
+        </div>`;
+      })()}
 
       <!-- WI RIGHT TO CURE — optional add-on page -->
       ${t.show_wi_cure?`
-      <div style="margin-top:32px;border-top:3px solid #ccc;padding-top:24px">
-        <div style="text-align:center;font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">— Attached Page —</div>
+      <div style="margin-top:32px;border-top:3px solid #ccc;padding-top:28px;page-break-before:always">
+        <div style="text-align:center;font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">— Page 2 — Attached Legal Document —</div>
         ${wiCure}
+        <div style="margin-top:24px;border-top:2px solid ${hc};padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
+          <span>Invoice #${esc(num)} — Wisconsin Right to Cure</span>
+          <span>Page 2 of ${1+(t.show_wi_cure?1:0)+(t.additional_pdfs||[]).length}</span>
+        </div>
       </div>`:''}
+
+      <!-- ADDITIONAL PDF PAGES -->
+      ${(t.additional_pdfs||[]).map((p,i)=>{
+        const pg=2+(t.show_wi_cure?1:0)+i;
+        const total=1+(t.show_wi_cure?1:0)+(t.additional_pdfs||[]).length;
+        return `<div style="margin-top:32px;border-top:3px solid #ccc;padding-top:28px;page-break-before:always">
+          <div style="text-align:center;font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">— Page ${pg} — ${esc(p.name)} —</div>
+          <iframe src="${p.dataUrl}" style="width:100%;height:1100px;border:none;display:block" title="${esc(p.name)}"></iframe>
+          <div style="margin-top:8px;border-top:2px solid ${hc};padding-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#555">
+            <span>Invoice #${esc(num)} — ${esc(p.name)}</span>
+            <span>Page ${pg} of ${total}</span>
+          </div>
+        </div>`;
+      }).join('')}
 
     </div>
     <div class="br2" style="margin-top:16px">
