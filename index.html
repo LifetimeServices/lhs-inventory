@@ -1468,6 +1468,21 @@ const TBL={
   'lhs:job_time_entries':'lhs_job_time_entries',
 };
 
+// Normalize a van-inventory row: Supabase schema uses different column names than app code.
+// Maps vehicle_id→vehicle, item_name→item, qty_on_hand→qty, van_min→min, van_max→max.
+// Safe to call on already-normalized rows (keeps existing fields).
+function _normVi(r){
+  return{
+    ...r,
+    vehicle:r.vehicle||r.vehicle_id||'',
+    item:r.item||r.item_name||r.sku||'',
+    qty:r.qty!==undefined?r.qty:(r.qty_on_hand||0),
+    qty_on_hand:r.qty_on_hand!==undefined?r.qty_on_hand:(r.qty||0),
+    min:r.min!==undefined?r.min:(r.van_min||0),
+    max:r.max!==undefined?r.max:(r.van_max||0),
+  };
+}
+
 // Pull all data from Supabase into cache on login
 async function warmCache(){
   try{
@@ -1534,6 +1549,10 @@ async function warmCache(){
       if(!_AUDIT[a.wo_id]) _AUDIT[a.wo_id]=[];
       if(!_AUDIT[a.wo_id].find(x=>x.id===a.id)) _AUDIT[a.wo_id].push(a);
     });
+    // Normalize van inventory rows: Supabase uses vehicle_id/item_name/qty_on_hand/van_min/van_max
+    // but app code uses vehicle/item/qty/min/max — map both directions so all code works
+    const rawVi=S.get('lhs:vi')||[];
+    if(rawVi.length) S.set('lhs:vi',rawVi.map(_normVi));
     // Merge location vehicle extras (stored locally, not yet in Supabase schema)
     const rawLocs=S.get('lhs:locs')||[];
     if(rawLocs.length) S.set('lhs:locs',mergeLocExtras(rawLocs));
@@ -2980,8 +2999,8 @@ async function postXfr(){
     return; // Don't update localStorage if DB failed — don't mislead user
   }
 
-  // All saves confirmed — commit to localStorage (IDs now populated) and re-render
-  S.set('lhs:ls',ls); S.set('lhs:vi',vi); S.set('lhs:xfrs',xfrs);
+  // All saves confirmed — normalize vi rows then commit to localStorage and re-render
+  S.set('lhs:ls',ls); S.set('lhs:vi',vi.map(_normVi)); S.set('lhs:xfrs',xfrs);
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
   showPage('transfer');
@@ -3032,11 +3051,11 @@ function bVans(){
   if(fDiv)    vehicles=vehicles.filter(v=>v.division===fDiv||v.divisions?.includes(fDiv));
   if(fVeh)    vehicles=vehicles.filter(v=>v.name===fVeh);
 
-  // Compute costs per vehicle
+  // Compute costs per vehicle (handle both vehicle and vehicle_id field names)
   function matCost(vname){
-    return (vi.filter(r=>r.vehicle===vname)).reduce((s,r)=>{
+    return (vi.filter(r=>(r.vehicle||r.vehicle_id)===vname)).reduce((s,r)=>{
       const itm=items.find(i=>i.sku===r.sku);
-      return s+(r.qty||0)*(itm?.cost||r.unit_cost||0);
+      return s+(r.qty||0)*(itm?.cost||itm?.unit_cost||r.unit_cost||0);
     },0);
   }
   function toolCost(driver){
@@ -3173,19 +3192,21 @@ function vanDetailHTML(v, vi, tools, items, canEdit){
       </tr></thead>
       <tbody>${vItems.map(r=>{
         const itm=items.find(i=>i.sku===r.sku);
-        const uc=itm?.cost||r.unit_cost||0;
-        const tot=(r.qty||0)*uc;
-        const status=r.qty===0?'OUT':r.qty<(r.min||0)?'LOW':'OK';
+        const uc=itm?.cost||itm?.unit_cost||r.unit_cost||0;
+        const qty=r.qty||0;
+        const tot=qty*uc;
+        const vMin=r.min||0; const vMax=r.max||0;
+        const status=qty===0?'OUT':vMin>0&&qty<vMin?'LOW':'OK';
         const statusColor=status==='OUT'?'var(--red)':status==='LOW'?'var(--amber)':'var(--green)';
         return`<tr style="border-top:1px solid var(--bdr)">
-          <td style="padding:7px 10px;font-weight:500">${esc(r.item||r.sku)}</td>
+          <td style="padding:7px 10px;font-weight:500">${esc(r.item||r.item_name||r.sku)}</td>
           <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${esc(r.sku)}</td>
           <td style="padding:7px 10px">${r.division?bx(r.division,'bn'):''}</td>
-          <td style="padding:7px 10px;text-align:center;font-weight:700;color:${statusColor}">${r.qty||0}</td>
-          <td style="padding:7px 10px;text-align:center;color:var(--muted)">${r.min||0}</td>
-          <td style="padding:7px 10px;text-align:center;color:var(--muted)">${r.max||0}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">${f$(uc)}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">${f$(tot)}</td>
+          <td style="padding:7px 10px;text-align:center;font-weight:700;color:${statusColor}">${qty}</td>
+          <td style="padding:7px 10px;text-align:center;color:var(--muted)">${vMin||'&#8212;'}</td>
+          <td style="padding:7px 10px;text-align:center;color:var(--muted)">${vMax||'&#8212;'}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--muted)">${uc?f$(uc):'&#8212;'}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">${tot?f$(tot):'&#8212;'}</td>
           ${canEdit?`<td style="padding:7px 10px">
             <input type="number" value="${r.qty||0}" min="0"
               style="width:60px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
