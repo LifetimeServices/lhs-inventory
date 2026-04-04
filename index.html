@@ -10,6 +10,8 @@
 --white:#fff;--red:#d94040;--green:#2d8c4e;--amber:#d97c20;
 --text:#1a1a2e;--muted:#6b7280;--bdr:#e2e0db;--surf:#fafaf8;
 --sh:0 2px 12px rgba(15,31,61,.10);--shlg:0 8px 32px rgba(15,31,61,.18);--r:10px;--rl:16px}
+/* Disable slashed zeros in DM Mono — clean unslashed 0 everywhere */
+*{font-feature-settings:"zero" 0}
 *{box-sizing:border-box;margin:0;padding:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-height:100vh}
