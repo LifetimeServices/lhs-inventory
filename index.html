@@ -1836,6 +1836,8 @@ async function startApp(){
   refreshNotifBadge();
   prRefreshPayrollBadge();
   startNotifPolling();
+  // Check for pending TOR approvals that need daily reminders (slight delay so cache is warm)
+  setTimeout(checkTORReminders, 3000);
 }
 
 // ─── NAV ─────────────────────────────────────────────────────────────────────
@@ -17642,11 +17644,48 @@ function _hrEmployeeForm(u, saveFn){
     </select></div>
   </div>
 
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Time Off Approval Chain</div>
+  <div style="background:var(--surf);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--muted)">
+    Select up to 3 approvers in order. When this employee submits a time off request it routes to Level 1 first — each approver must approve before it advances to the next. Any approver can deny at any stage.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+    <div>
+      <label>Level 1 Approver <span style="font-size:11px;font-weight:400;color:var(--muted)">(e.g. Foreman)</span></label>
+      <select id="hef-apr1" style="width:100%">
+        <option value="">— None —</option>
+        ${_hrManagerOptions(users, u.approver_1_email)}
+      </select>
+    </div>
+    <div>
+      <label>Level 2 Approver <span style="font-size:11px;font-weight:400;color:var(--muted)">(e.g. Regional Mgr)</span></label>
+      <select id="hef-apr2" style="width:100%">
+        <option value="">— None —</option>
+        ${_hrManagerOptions(users, u.approver_2_email)}
+      </select>
+    </div>
+    <div>
+      <label>Level 3 Approver <span style="font-size:11px;font-weight:400;color:var(--muted)">(e.g. COO / Director)</span></label>
+      <select id="hef-apr3" style="width:100%">
+        <option value="">— None —</option>
+        ${_hrManagerOptions(users, u.approver_3_email)}
+      </select>
+    </div>
+  </div>
+
   <div style="border-top:1px solid var(--bdr);padding-top:14px;display:flex;gap:8px">
     <button class="btn btn-n" onclick="${saveFn}()">Save Employee</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>
   </div>`;
+}
+
+// Only manager-level users can be approvers
+const HR_APPROVER_ROLES=['God View','Admin','Director','Regional Manager','Operations Manager','Location Manager'];
+function _hrManagerOptions(users, selectedEmail){
+  return users.filter(u=>HR_APPROVER_ROLES.includes(u.role)&&u.active!==false)
+    .sort((a,b)=>a.name.localeCompare(b.name))
+    .map(u=>`<option value="${esc(u.email)}"${u.email===selectedEmail?' selected':''}>${esc(u.name)} (${esc(u.role)})</option>`)
+    .join('');
 }
 
 async function svAddHREmployee(){
@@ -17718,6 +17757,12 @@ function _hrEmployeePayload(){
     include_dispatch:document.getElementById('hef-disp')?.value!=='false',
     timesheet_needed:document.getElementById('hef-ts')?.value!=='false',
     active:document.getElementById('hef-active')?.value!=='false',
+    approver_1_email:v('hef-apr1')||null,
+    approver_1_name:(()=>{const e=v('hef-apr1');return e?(S.get('lhs:users')||[]).find(u=>u.email===e)?.name||null:null;})(),
+    approver_2_email:v('hef-apr2')||null,
+    approver_2_name:(()=>{const e=v('hef-apr2');return e?(S.get('lhs:users')||[]).find(u=>u.email===e)?.name||null:null;})(),
+    approver_3_email:v('hef-apr3')||null,
+    approver_3_name:(()=>{const e=v('hef-apr3');return e?(S.get('lhs:users')||[]).find(u=>u.email===e)?.name||null:null;})(),
   };
 }
 
@@ -17848,23 +17893,56 @@ function bHRTimeOff(){
       <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Requested</th><th>Notes</th><th>Status</th>
       ${canApprove?'<th>Actions</th>':''}
     </tr></thead>
-    <tbody>${list.length?list.map(r=>`<tr>
+    <tbody>${list.length?list.map(r=>{
+      const isPending=!r.status||r.status==='Pending';
+      const myStage=_myApprovalStage(r);   // which stage is the current user responsible for, or null
+      const canActNow=isPending&&myStage!==null;
+      return`<tr>
       ${!isOwn?`<td style="font-weight:600;font-size:13px">${esc(r.employee_name||'—')}</td>`:''}
       <td><span class="bx bn" style="font-size:11px">${esc(r.leave_type||'PTO')}</span></td>
       <td style="font-size:12px">${r.start_date?fmtDate(r.start_date):'—'}</td>
       <td style="font-size:12px">${r.end_date?fmtDate(r.end_date):'—'}</td>
       <td style="font-size:12px;text-align:center">${r.hours||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${r.created_at?fmtDate(r.created_at.slice(0,10)):'—'}</td>
-      <td style="font-size:12px;max-width:200px">${esc(r.notes||'')}</td>
+      <td style="font-size:12px;max-width:160px">${esc(r.notes||'')}</td>
       <td>${_hrLeaveStatusBadge(r.status)}</td>
-      ${canApprove&&(!r.status||r.status==='Pending')?`<td style="white-space:nowrap">
-        <button class="btn sm btn-n" onclick="svTORStatus('${r.id}','Approved')">✓ Approve</button>
-        <button class="btn sm btn-r" onclick="svTORStatus('${r.id}','Denied')">✗ Deny</button>
-      </td>`:canApprove?`<td style="font-size:11px;color:var(--muted)">${r.approved_by?'by '+esc(r.approved_by):''}</td>`:''}
-    </tr>`).join('')
-    :`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No ${tab==='pending'?'pending':tab} requests</td></tr>`}
+      <td style="min-width:160px">${_torApprovalChainBadges(r)}</td>
+      <td style="white-space:nowrap">
+        ${canActNow?`<button class="btn sm btn-n" onclick="svTORStatus('${r.id}','Approved')">✓ Approve</button>
+        <button class="btn sm btn-r" style="margin-left:4px" onclick="svTORStatus('${r.id}','Denied')">✗ Deny</button>`
+        :isPending&&canApprove?`<span style="font-size:11px;color:var(--muted)">Awaiting L${r.approval_stage||1}</span>`
+        :r.approved_by?`<span style="font-size:11px;color:var(--muted)">by ${esc(r.approved_by)}</span>`:''}
+      </td>
+    </tr>`;}).join('')
+    :`<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">No ${tab==='pending'?'pending':tab} requests</td></tr>`}
     </tbody>
   </table></div></div>`;
+}
+
+// Returns which approval stage the current user is responsible for (null if not their turn)
+function _myApprovalStage(r){
+  if(!CU?.email||!r||r.status!=='Pending'&&r.status) return null;
+  const stage=r.approval_stage||1;
+  const emailForStage=stage===1?r.approver_1_email:stage===2?r.approver_2_email:stage===3?r.approver_3_email:null;
+  // Also allow God View / Admin to act on any pending request
+  if(['God View','Admin'].includes(CU?.role)&&(!r.status||r.status==='Pending')) return stage;
+  return emailForStage===CU.email?stage:null;
+}
+
+// Renders a compact chain of approval status pills
+function _torApprovalChainBadges(r){
+  const levels=[
+    {n:r.approver_1_name, s:r.approver_1_status, e:r.approver_1_email},
+    {n:r.approver_2_name, s:r.approver_2_status, e:r.approver_2_email},
+    {n:r.approver_3_name, s:r.approver_3_status, e:r.approver_3_email},
+  ].filter(l=>l.e);
+  if(!levels.length) return`<span style="font-size:11px;color:var(--muted)">No chain set</span>`;
+  return levels.map((l,i)=>{
+    const firstName=(l.n||'?').split(' ')[0];
+    const col=l.s==='Approved'?'#16a34a':l.s==='Denied'?'#dc2626':l.s==='Pending'?'#d97706':'#94a3b8';
+    const icon=l.s==='Approved'?'✓':l.s==='Denied'?'✗':l.s==='Pending'?'⏳':'…';
+    return`<span title="${esc(l.n||'')} — ${l.s||'Waiting'}" style="display:inline-flex;align-items:center;gap:2px;background:${col}18;color:${col};font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-right:3px;border:1px solid ${col}40">${icon} ${firstName}</span>`;
+  }).join('→');
 }
 
 function oAddTimeOffRequest(){
@@ -17906,42 +17984,153 @@ async function svAddTimeOffRequest(){
   const empName=v('tor-emp'), startDate=v('tor-start');
   if(!empName){tst('Select an employee','error');return}
   if(!startDate){tst('Start date required','error');return}
-  const rec={
-    employee_name:empName,
-    leave_type:v('tor-type')||'PTO',
-    start_date:startDate,
-    end_date:v('tor-end')||startDate,
-    hours:parseFloat(v('tor-hours'))||null,
-    status:v('tor-status')||'Pending',
-    notes:v('tor-notes')||null,
-    approved_by:v('tor-status')==='Approved'?CU?.name:null,
-    created_by:CU?.name||null,
-    created_at:new Date().toISOString(),
-  };
+  const users=S.get('lhs:users')||[];
+  const emp=users.find(u=>u.name===empName)||{};
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  // Build approval chain from employee record
+  const chain=_buildApprovalChain(emp);
+  const rec=_buildTORRecord({empName, emp, chain, startDate, leaveType:v('tor-type'), endDate:v('tor-end'), hours:v('tor-hours'), notes:v('tor-notes'), forceStatus:canApprove?v('tor-status'):null});
   try{
     const{data,error}=await DB.from('lhs_time_off_requests').insert(rec).select().single();
     if(error){console.warn(error.message);tst('Save failed: '+error.message,'error');return}
-    const reqs=S.get('lhs:time_off_requests')||[]; reqs.push(data||rec); S.set('lhs:time_off_requests',reqs);
-    // Auto-sync approved requests to calendar
-    if((data||rec).status==='Approved') _syncTORToCalendar([data||rec]);
+    const saved=data||rec;
+    const reqs=S.get('lhs:time_off_requests')||[]; reqs.push(saved); S.set('lhs:time_off_requests',reqs);
+    if(saved.status==='Approved') _syncTORToCalendar([saved]);
+    else await _notifyNextApprover(saved);
     cMod(); tst('Request submitted','success'); showPage('hr-timeoff');
   }catch(e){tst('Save failed','error')}
 }
 
-async function svTORStatus(reqId, newStatus){
+// Build the ordered approval chain for an employee [{email, name, level}]
+function _buildApprovalChain(emp){
+  const chain=[];
+  if(emp.approver_1_email) chain.push({email:emp.approver_1_email, name:emp.approver_1_name||emp.approver_1_email, level:1});
+  if(emp.approver_2_email) chain.push({email:emp.approver_2_email, name:emp.approver_2_name||emp.approver_2_email, level:2});
+  if(emp.approver_3_email) chain.push({email:emp.approver_3_email, name:emp.approver_3_name||emp.approver_3_email, level:3});
+  return chain;
+}
+
+// Build a TOR record with approval chain baked in
+function _buildTORRecord({empName, emp, chain, startDate, leaveType, endDate, hours, notes, forceStatus}){
+  const stage=chain.length>0?1:99;
+  const status=forceStatus||(chain.length===0?'Approved':'Pending');
+  return{
+    employee_name:empName,
+    employee_id:emp.email||null,
+    leave_type:leaveType||'PTO',
+    start_date:startDate,
+    end_date:endDate||startDate,
+    hours:parseFloat(hours)||null,
+    status,
+    notes:notes||null,
+    approval_stage:status==='Approved'?99:stage,
+    approver_1_email:chain[0]?.email||null,
+    approver_1_name:chain[0]?.name||null,
+    approver_1_status:chain.length>0?'Pending':null,
+    approver_2_email:chain[1]?.email||null,
+    approver_2_name:chain[1]?.name||null,
+    approver_2_status:chain[1]?'Waiting':null,
+    approver_3_email:chain[2]?.email||null,
+    approver_3_name:chain[2]?.name||null,
+    approver_3_status:chain[2]?'Waiting':null,
+    approved_by:status==='Approved'?CU?.name:null,
+    created_by:CU?.name||null,
+    created_at:new Date().toISOString(),
+    last_reminded_at:new Date().toISOString(),
+  };
+}
+
+// Send notification to whoever needs to act next on a TOR
+async function _notifyNextApprover(req){
+  const stage=req.approval_stage||1;
+  const approverEmail=stage===1?req.approver_1_email:stage===2?req.approver_2_email:stage===3?req.approver_3_email:null;
+  const approverName=stage===1?req.approver_1_name:stage===2?req.approver_2_name:stage===3?req.approver_3_name:null;
+  if(!approverEmail) return;
+  const dates=req.start_date+(req.end_date&&req.end_date!==req.start_date?' – '+req.end_date:'');
+  await sendNotification({
+    user_email:approverEmail,
+    user_name:approverName,
+    type:'timeoff',
+    title:`⏳ Time Off Request — Action Required`,
+    body:`${req.employee_name} is requesting ${req.leave_type||'PTO'} (${dates}). Please approve or deny.`,
+    entity_type:'time_off_request',
+    entity_id:req.id,
+    entity_label:`TOR-${req.employee_name}`,
+    from_user:req.employee_name,
+  });
+  // Update last_reminded_at
+  try{await DB.from('lhs_time_off_requests').update({last_reminded_at:new Date().toISOString()}).eq('id',req.id);}catch{}
+}
+
+// The main approve/deny action — handles stage advancement
+async function svTORStatus(reqId, action){
   const reqs=S.get('lhs:time_off_requests')||[];
   const idx=reqs.findIndex(r=>r.id===reqId);
   if(idx<0) return;
-  const upd={status:newStatus, approved_by:CU?.name||null};
-  try{
-    const{error}=await DB.from('lhs_time_off_requests').update(upd).eq('id',reqId);
-    if(error) console.warn('TOR status:',error.message);
-    reqs[idx]={...reqs[idx],...upd};
-    S.set('lhs:time_off_requests',reqs);
-    if(newStatus==='Approved') _syncTORToCalendar([reqs[idx]]);
-    tst(reqs[idx].employee_name+' — '+newStatus,'success');
-    showPage('hr-timeoff');
-  }catch(e){tst('Update failed','error')}
+  const req={...reqs[idx]};
+  const stage=req.approval_stage||1;
+  const now=new Date().toISOString();
+
+  if(action==='Denied'){
+    // Any level can deny immediately — close the whole request
+    const upd={status:'Denied', approval_stage:99,
+      [`approver_${stage}_status`]:'Denied', [`approver_${stage}_at`]:now, approved_by:CU?.name};
+    await _applyTORUpdate(reqId, upd, reqs, idx);
+    // Notify the employee
+    await _notifyEmployee(req, 'Denied', CU?.name);
+    tst('Request denied','info');
+  } else {
+    // Approve this stage
+    const stageUpd={[`approver_${stage}_status`]:'Approved', [`approver_${stage}_at`]:now};
+    // Determine next stage
+    const nextStage=_nextTORStage(req, stage);
+    if(nextStage){
+      // More approvers needed
+      const upd={...stageUpd, approval_stage:nextStage, [`approver_${nextStage}_status`]:'Pending', last_reminded_at:now};
+      await _applyTORUpdate(reqId, upd, reqs, idx);
+      await _notifyNextApprover({...req,...upd});
+      tst(`Stage ${stage} approved — forwarded to next approver`,'success');
+    } else {
+      // Final approval
+      const upd={...stageUpd, approval_stage:99, status:'Approved', approved_by:CU?.name};
+      await _applyTORUpdate(reqId, upd, reqs, idx);
+      await _notifyEmployee(req, 'Approved', CU?.name);
+      _syncTORToCalendar([{...req,...upd}]);
+      tst(req.employee_name+' — Fully Approved ✓','success');
+    }
+  }
+  showPage('hr-timeoff');
+}
+
+function _nextTORStage(req, currentStage){
+  if(currentStage===1&&req.approver_2_email) return 2;
+  if(currentStage===2&&req.approver_3_email) return 3;
+  return null;
+}
+
+async function _applyTORUpdate(reqId, upd, reqs, idx){
+  try{await DB.from('lhs_time_off_requests').update(upd).eq('id',reqId);}catch(e){console.warn('TOR update:',e.message);}
+  reqs[idx]={...reqs[idx],...upd};
+  S.set('lhs:time_off_requests',reqs);
+}
+
+async function _notifyEmployee(req, decision, byName){
+  const users=S.get('lhs:users')||[];
+  const emp=users.find(u=>u.name===req.employee_name||u.email===req.employee_id);
+  if(!emp?.email) return;
+  const icon=decision==='Approved'?'✅':'❌';
+  const dates=req.start_date+(req.end_date&&req.end_date!==req.start_date?' – '+req.end_date:'');
+  await sendNotification({
+    user_email:emp.email,
+    user_name:emp.name,
+    type:'timeoff',
+    title:`${icon} Time Off Request ${decision}`,
+    body:`Your ${req.leave_type||'PTO'} request (${dates}) was ${decision.toLowerCase()} by ${byName}.`,
+    entity_type:'time_off_request',
+    entity_id:req.id,
+    entity_label:`TOR-${req.employee_name}`,
+    from_user:byName,
+  });
 }
 
 async function _syncTORToCalendar(reqs){
@@ -18320,11 +18509,24 @@ function _myTORNewForm(user, emp){
       <textarea id="my-tor-notes" rows="3" placeholder="Optional — describe your request or provide any context for your manager"
         style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
     </div>
-    <div style="background:var(--surf);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
+    <div style="background:var(--surf);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
       <span>🏖️ PTO Available: <strong style="color:var(--text)">${emp.pto_balance!=null?emp.pto_balance+' hrs':'Not set'}</strong></span>
       <span>🤒 UTO Available: <strong style="color:var(--text)">${emp.uto_balance!=null?emp.uto_balance+' hrs':'Not set'}</strong></span>
       ${cfg.pto_waiting_days!=null?`<span>⏱ Waiting period: <strong style="color:var(--text)">${cfg.pto_waiting_days} days</strong></span>`:''}
     </div>
+    ${(()=>{
+      const chain=_buildApprovalChain(emp);
+      if(!chain.length) return`<div style="background:#fef3c7;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#92400e">⚠️ No approval chain is configured for your profile. Contact HR to set up your approval chain before submitting.</div>`;
+      return`<div style="background:#eff6ff;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--navy)">
+        <div style="font-weight:700;margin-bottom:6px">📋 Your request will be routed to:</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${chain.map((c,i)=>`
+            ${i>0?`<span style="color:var(--muted)">→</span>`:''}
+            <span style="background:var(--navy);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px">L${c.level}: ${esc(c.name)}</span>
+          `).join('')}
+        </div>
+      </div>`;
+    })()}
     <button class="btn btn-n" onclick="svMyTimeOffRequest()" style="min-width:160px">Submit Request</button>
     <div style="font-size:12px;color:var(--muted);margin-top:8px">Your manager will be notified. You'll see the status update in Pending and History.</div>
   </div>`;
@@ -18337,8 +18539,8 @@ function _myTORTable(list, showStatus){
   </div>`;
   return`<div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr>
-      <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Submitted</th><th>Notes</th>
-      <th>Status</th><th>Reviewed By</th><th></th>
+      <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Submitted</th>
+      <th>Approval Chain</th><th>Status</th><th></th>
     </tr></thead>
     <tbody>${list.map(r=>{
       const isPending=!r.status||r.status==='Pending';
@@ -18348,11 +18550,10 @@ function _myTORTable(list, showStatus){
       <td style="font-size:13px;white-space:nowrap">${r.end_date&&r.end_date!==r.start_date?fmtDate(r.end_date):'—'}</td>
       <td style="font-size:13px;text-align:center">${r.hours||'—'}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.created_at?fmtDate(r.created_at.slice(0,10)):'—'}</td>
-      <td style="font-size:12px;color:var(--muted);max-width:180px">${esc(r.notes||'')}</td>
+      <td style="min-width:160px">${_torApprovalChainBadges(r)}</td>
       <td>${_myTORBadge(r.status)}</td>
-      <td style="font-size:12px;color:var(--muted)">${r.approved_by?esc(r.approved_by):'—'}</td>
       <td style="white-space:nowrap">
-        ${isPending?`<button class="btn sm btn-o" onclick="oEditMyTOR('${r.id}')">Edit</button> <button class="btn sm btn-r" onclick="svCancelMyTOR('${r.id}')">Cancel</button>`:''}
+        ${isPending?`<button class="btn sm btn-o" onclick="oEditMyTOR('${r.id}')">Edit</button> <button class="btn sm btn-r" style="margin-left:4px" onclick="svCancelMyTOR('${r.id}')">Cancel</button>`:''}
       </td>
     </tr>`;}).join('')}
     </tbody>
@@ -18436,29 +18637,27 @@ function _myTORBadge(s){
 async function svMyTimeOffRequest(){
   const startDate=v('my-tor-start');
   if(!startDate){tst('Please select a start date','error');return}
-  const leaveType=v('my-tor-type')||'PTO';
-  const endDate=v('my-tor-end')||startDate;
-  const hours=parseFloat(v('my-tor-hours'))||null;
-  const notes=v('my-tor-notes')||null;
-  const rec={
-    employee_name:CU?.name||'',
-    employee_id:CU?.email||'',
-    leave_type:leaveType,
-    start_date:startDate,
-    end_date:endDate,
-    hours,
-    status:'Pending',
-    notes,
-    created_by:CU?.name||null,
-    created_at:new Date().toISOString(),
-  };
+  const users=S.get('lhs:users')||[];
+  const emp=users.find(u=>u.email===CU?.email||u.name===CU?.name)||{};
+  const chain=_buildApprovalChain(emp);
+  const rec=_buildTORRecord({
+    empName:CU?.name||'',
+    emp,
+    chain,
+    startDate,
+    leaveType:v('my-tor-type'),
+    endDate:v('my-tor-end'),
+    hours:v('my-tor-hours'),
+    notes:v('my-tor-notes'),
+  });
   try{
     const{data,error}=await DB.from('lhs_time_off_requests').insert(rec).select().single();
     if(error){tst('Submit failed: '+error.message,'error');return}
-    const reqs=S.get('lhs:time_off_requests')||[];
-    reqs.push(data||rec);
-    S.set('lhs:time_off_requests',reqs);
-    tst('Request submitted — your manager will review it shortly','success');
+    const saved=data||rec;
+    const reqs=S.get('lhs:time_off_requests')||[]; reqs.push(saved); S.set('lhs:time_off_requests',reqs);
+    await _notifyNextApprover(saved);
+    const chainMsg=chain.length?`Sent to ${chain[0].name} for approval.`:'No approvers configured — contact HR.';
+    tst('Request submitted — '+chainMsg,'success');
     window._myTORTab='pending';
     showPage('my-timeoff');
   }catch(e){tst('Submit failed — '+e.message,'error')}
@@ -20571,6 +20770,42 @@ function oppToWO(oppId){
 
 
 
+// ── TIME OFF APPROVAL DAILY REMINDERS ─────────────────────────────────────────
+async function checkTORReminders(){
+  if(!CU?.email) return;
+  try{
+    const {data:pendingReqs}=await DB.from('lhs_time_off_requests')
+      .select('*')
+      .eq('status','Pending')
+      .or(`approver_1_email.eq.${CU.email},approver_2_email.eq.${CU.email},approver_3_email.eq.${CU.email}`)
+      .order('created_at',{ascending:true});
+    if(!pendingReqs?.length) return;
+    const now=new Date();
+    const twentyHrsAgo=new Date(now-20*60*60*1000).toISOString();
+    for(const req of pendingReqs){
+      const stage=req.approval_stage||1;
+      const activeApprover=stage===1?req.approver_1_email:stage===2?req.approver_2_email:stage===3?req.approver_3_email:null;
+      const isMyTurn=activeApprover===CU.email||['God View','Admin'].includes(CU?.role);
+      if(!isMyTurn) continue;
+      if(req.last_reminded_at&&req.last_reminded_at>twentyHrsAgo) continue;
+      const dates=req.start_date+(req.end_date&&req.end_date!==req.start_date?' – '+req.end_date:'');
+      await sendNotification({
+        user_email:CU.email,user_name:CU.name,type:'timeoff_reminder',
+        title:`⏰ Reminder: Time Off Awaiting Your Approval`,
+        body:`${req.employee_name} — ${req.leave_type||'PTO'} (${dates}). Waiting on your response.`,
+        entity_type:'time_off_request',entity_id:req.id,
+        entity_label:`TOR-${req.employee_name}`,from_user:'HR System',
+      });
+      try{
+        await DB.from('lhs_time_off_requests').update({last_reminded_at:now.toISOString()}).eq('id',req.id);
+        const reqs=S.get('lhs:time_off_requests')||[];
+        const idx=reqs.findIndex(r=>r.id===req.id);
+        if(idx>=0){reqs[idx].last_reminded_at=now.toISOString();S.set('lhs:time_off_requests',reqs);}
+      }catch{}
+    }
+  }catch(e){console.warn('TOR reminder check:',e.message);}
+}
+
 // ── NOTIFICATION SYSTEM ───────────────────────────────────────────────────────
 async function sendNotification(notif){
   const all=S.get('lhs:notifications')||[];
@@ -20652,6 +20887,15 @@ async function notifClick(id){
   } else if(n.entity_type==='lead'&&n.entity_id){
     showPage('sales-leads');
     setTimeout(()=>openLead(n.entity_id),300);
+  } else if(n.entity_type==='time_off_request'){
+    // Managers go to HR Time Off to approve; employees go to My Time Off
+    const isManager=HR_APPROVER_ROLES.includes(CU?.role);
+    if(isManager){
+      if(_navMode!=='hr') renderHRNav();
+      showPage('hr-timeoff');
+    } else {
+      goMyTimeOff();
+    }
   }
 }
 
