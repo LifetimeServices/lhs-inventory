@@ -1415,6 +1415,8 @@ const TBL={
   'lhs:cal_events':'lhs_calendar_events',
   'lhs:biz_accounts':'lhs_business_accounts',
   'lhs:comm_accounts':'lhs_commercial_accounts',
+  'lhs:time_off_requests':'lhs_time_off_requests',
+  'lhs:hr_state_settings':'lhs_hr_state_settings',
 };
 
 // Pull all data from Supabase into cache on login
@@ -2127,10 +2129,10 @@ function buildPage(id){
     testers:bTest, tools:bTools,
     hr:()=>bPlaceholder('HR'),
     'hr-payroll':bPayroll,
-    'hr-employees':()=>bPlaceholder('Employee Info'),
-    'hr-state':()=>bPlaceholder('State Settings'),
-    'hr-timeoff':()=>bPlaceholder('Time Off Requests'),
-    'hr-settings':()=>bPlaceholder('HR Settings'),
+    'hr-employees':bHREmployees,
+    'hr-state':bHRState,
+    'hr-timeoff':bHRTimeOff,
+    'hr-settings':bHRSettings,
     payroll:bPayroll,
     reports:bReports, operations:bOperations, admin:bAdmin,
   };
@@ -17116,6 +17118,1052 @@ function prAddEntry(){
   const nearestDate=weekDates.find(d=>d>=today)||weekDates[0];
   const defaultEmp=window._prEmp||tsUsers[0]?.name||'';
   prEditDay(defaultEmp, nearestDate, period);
+}
+
+// ─── DATE FORMAT HELPER ──────────────────────────────────────────────────────
+// Formats a YYYY-MM-DD string to "Jan 1, 2025"
+function fmtDate(d){
+  if(!d) return '—';
+  try{return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+  catch{return d;}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HR MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const HR_EMP_TYPES=['Full Time','Part Time','Contract','1099 / Independent'];
+const HR_PAY_TYPES=['Hourly','Salary','Piece Rate','Commission','Hourly + Commission'];
+const HR_PAY_FREQS=['Weekly','Bi-Weekly','Semi-Monthly','Monthly'];
+const HR_FLSA=['Non-Exempt (Hourly)','Exempt (Salaried)'];
+const HR_LEAVE_TYPES=['PTO','UTO','FMLA','Bereavement','Jury Duty','Military Leave','Personal','Other'];
+const HR_LEAVE_STATUS=['Pending','Approved','Denied','Cancelled'];
+const HR_CERT_TYPES=['Radon Measurement','Radon Mitigation','Electrical License','Waterproofing Cert','OSHA 10','OSHA 30','Driver\'s License','CDL','EPA 608','Other'];
+const HR_STATES_LIST=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+// ─── EMPLOYEE INFO ─────────────────────────────────────────────────────────────
+window._hrEmpSearch = window._hrEmpSearch || '';
+window._hrEmpStatus = window._hrEmpStatus || '';
+window._hrEmpRole   = window._hrEmpRole   || '';
+window._hrEmpView   = window._hrEmpView   || 'list'; // 'list' | 'detail'
+window._hrEmpId     = window._hrEmpId     || null;
+
+function bHREmployees(){
+  if(window._hrEmpView==='detail' && window._hrEmpId) return bHREmployeeDetail();
+  return bHREmployeeList();
+}
+
+function bHREmployeeList(){
+  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const all=(S.get('lhs:users')||[]);
+  const search=(window._hrEmpSearch||'').toLowerCase();
+  const fStatus=window._hrEmpStatus||'';
+  const fRole=window._hrEmpRole||'';
+  let filtered=all;
+  if(search) filtered=filtered.filter(u=>(u.name||'').toLowerCase().includes(search)||(u.email||'').toLowerCase().includes(search)||(u.division||'').toLowerCase().includes(search)||(u.region||'').toLowerCase().includes(search));
+  if(fStatus==='Active')   filtered=filtered.filter(u=>u.active!==false&&!u.terminated);
+  if(fStatus==='Inactive') filtered=filtered.filter(u=>u.active===false||u.terminated);
+  if(fRole)  filtered=filtered.filter(u=>u.role===fRole);
+  const uniqueRoles=[...new Set(all.map(u=>u.role).filter(Boolean))].sort();
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">Employee Info</div>
+      <div class="ps">${all.length} employee${all.length!==1?'s':''} &mdash; ${filtered.length} shown</div>
+    </div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddHREmployee()">+ Add Employee</button>`:''}
+  </div>
+
+  <div style="background:var(--surf);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fl" style="margin:0;min-width:130px"><label>Status</label>
+      <select onchange="window._hrEmpStatus=this.value;showPage('hr-employees')">
+        <option value="">All</option>
+        <option${fStatus==='Active'?' selected':''}>Active</option>
+        <option${fStatus==='Inactive'?' selected':''}>Inactive</option>
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:160px"><label>Role</label>
+      <select onchange="window._hrEmpRole=this.value;showPage('hr-employees')">
+        <option value="">All Roles</option>
+        ${uniqueRoles.map(r=>`<option${fRole===r?' selected':''}>${r}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:220px"><label>Search</label>
+      <input id="hr-emp-search" placeholder="Name, email, division, region…" value="${esc(search)}"
+        onkeydown="if(event.key==='Enter'){window._hrEmpSearch=this.value;showPage('hr-employees')}"
+        style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    </div>
+    <button class="btn btn-n sm" onclick="window._hrEmpSearch=document.getElementById('hr-emp-search')?.value||'';showPage('hr-employees')">Search</button>
+    <button class="btn btn-o sm" onclick="window._hrEmpSearch='';window._hrEmpStatus='';window._hrEmpRole='';showPage('hr-employees')">Clear</button>
+  </div>
+
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr>
+      <th>Employee</th><th>Role</th><th>Division</th><th>Region</th>
+      <th>Employment</th><th>Pay Type</th><th>Hire Date</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>${filtered.length?filtered.map(u=>{
+      const active=u.active!==false&&!u.terminated;
+      const dob=u.birthday?new Date(u.birthday+'T00:00:00'):null;
+      const today=new Date();
+      let isBday=false;
+      if(dob) isBday=dob.getMonth()===today.getMonth()&&dob.getDate()===today.getDate();
+      const hireDt=u.hire_date?new Date(u.hire_date+'T00:00:00'):null;
+      let isAnniv=false;
+      if(hireDt) isAnniv=hireDt.getMonth()===today.getMonth()&&hireDt.getDate()===today.getDate()&&hireDt.getFullYear()<today.getFullYear();
+      return`<tr style="cursor:pointer" onclick="hrOpenEmployee('${u.id||u.email}')">
+        <td>
+          <div style="font-weight:600;color:var(--navy)">${esc(u.name||'—')}${isBday?' 🎂':''}${isAnniv?' 🎉':''}</div>
+          <div style="font-size:11px;color:var(--muted)">${esc(u.email||'')}</div>
+          ${u.phone?`<div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${esc(u.phone)}</div>`:''}
+        </td>
+        <td><span class="bx bn" style="font-size:11px">${esc(u.role||'—')}</span></td>
+        <td style="font-size:12px">${esc(u.division||'—')}</td>
+        <td style="font-size:12px">${esc(u.region||'—')}</td>
+        <td style="font-size:12px">${esc(u.employment_type||'—')}</td>
+        <td style="font-size:12px">${esc(u.pay_type||'—')}${u.pay_rate?`<div style="font-size:11px;color:var(--muted)">$${Number(u.pay_rate).toFixed(2)}</div>`:''}</td>
+        <td style="font-size:12px">${u.hire_date?fmtDate(u.hire_date):'—'}</td>
+        <td>${active?bx('Active','bg'):bx('Inactive','bgr')}</td>
+        <td><button class="btn sm btn-o" onclick="event.stopPropagation();hrOpenEmployee('${u.id||u.email}')">View</button></td>
+      </tr>`;}).join('')
+    :`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No employees found</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function hrOpenEmployee(idOrEmail){
+  window._hrEmpId=idOrEmail;
+  window._hrEmpView='detail';
+  window._hrEmpTab=window._hrEmpTab||'profile';
+  showPage('hr-employees');
+}
+
+function bHREmployeeDetail(){
+  const users=S.get('lhs:users')||[];
+  const u=users.find(x=>x.id===window._hrEmpId||x.email===window._hrEmpId);
+  if(!u) return`<div class="al al-r">Employee not found. <button class="btn btn-o sm" onclick="window._hrEmpView='list';showPage('hr-employees')">Back</button></div>`;
+  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const tab=window._hrEmpTab||'profile';
+  const active=u.active!==false&&!u.terminated;
+  const certs=u.certifications||[];
+  const docs=u.hr_documents||[];
+  const hireYear=u.hire_date?new Date(u.hire_date+'T00:00:00').getFullYear():null;
+  const yearsService=hireYear?new Date().getFullYear()-hireYear:null;
+
+  const tabs=[
+    {id:'profile',    l:'Profile'},
+    {id:'employment', l:'Employment'},
+    {id:'compensation',l:'Compensation'},
+    {id:'fieldservice',l:'Field Service'},
+    {id:'timeoff',    l:'Time Off'},
+    {id:'documents',  l:'Documents'},
+  ];
+
+  const tabContent={
+    profile:`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Personal Information</div>
+          ${_hrField('Full Name', u.name)}
+          ${_hrField('Preferred Name', u.preferred_name)}
+          ${_hrField('Date of Birth', u.birthday?fmtDate(u.birthday):null)}
+          ${_hrField('SSN (last 4)', u.ssn_last4?'•••–••–'+u.ssn_last4:null)}
+          ${_hrField('Personal Phone', u.phone)}
+          ${_hrField('Personal Email', u.personal_email)}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Address</div>
+          ${_hrField('Street', u.address)}
+          ${_hrField('City', u.city)}
+          ${_hrField('State', u.state)}
+          ${_hrField('ZIP', u.zip)}
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:14px;margin-bottom:10px">Emergency Contact</div>
+          ${_hrField('Name', u.emergency_contact_name)}
+          ${_hrField('Phone', u.emergency_contact_phone)}
+          ${_hrField('Relationship', u.emergency_contact_rel)}
+        </div>
+      </div>`,
+    employment:`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Job Details</div>
+          ${_hrField('Job Title', u.title)}
+          ${_hrField('Role / Access Level', u.role)}
+          ${_hrField('Employment Type', u.employment_type)}
+          ${_hrField('FLSA Status', u.flsa_status)}
+          ${_hrField('Primary Division', u.division)}
+          ${_hrField('Region', u.region)}
+          ${_hrField('Manager', u.manager)}
+          ${_hrField('Home Location', u.home_location)}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Dates & Status</div>
+          ${_hrField('Hire Date', u.hire_date?fmtDate(u.hire_date):null)}
+          ${yearsService!==null?_hrField('Years of Service', yearsService+' yr'+(yearsService!==1?'s':'')):_hrField('Years of Service',null)}
+          ${_hrField('Rehire Date', u.rehire_date?fmtDate(u.rehire_date):null)}
+          ${_hrField('Status', active?'Active':'Inactive')}
+          ${u.terminated?_hrField('Termination Date', u.termination_date?fmtDate(u.termination_date):null):''}
+          ${u.terminated?_hrField('Termination Reason', u.termination_reason):''}
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:14px;margin-bottom:10px">System Access</div>
+          ${_hrField('Work Email', u.email)}
+          ${_hrField('Dispatch Board', u.include_dispatch!==false?'Shown':'Hidden')}
+          ${_hrField('Timesheet Tracking', u.timesheet_needed!==false?'Yes':'No')}
+        </div>
+      </div>`,
+    compensation:`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Pay Structure</div>
+          ${_hrField('Pay Type', u.pay_type)}
+          ${_hrField('Pay Rate', u.pay_rate?'$'+Number(u.pay_rate).toFixed(2)+(u.pay_type==='Hourly'||u.pay_type==='Hourly + Commission'?' / hr':u.pay_type==='Salary'?' / yr':''):null)}
+          ${_hrField('Pay Frequency', u.pay_frequency)}
+          ${_hrField('Overtime Eligible', u.flsa_status==='Non-Exempt (Hourly)'?'Yes — 1.5× over 40 hrs':'No — Exempt')}
+          ${u.pay_type&&u.pay_type.includes('Commission')?_hrField('Commission %', u.commission_rate?u.commission_rate+'%':null):''}
+          ${u.pay_type==='Piece Rate'?_hrField('Piece Rate', u.piece_rate?'$'+Number(u.piece_rate).toFixed(2)+' / unit':null):''}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Availability</div>
+          ${_hrField('Work Hours', (u.work_start||'08:00')+' – '+(u.work_end||'17:00'))}
+          ${_hrField('Work Days', u.work_days||'Mon–Fri')}
+          ${_hrField('Timezone', u.timezone||'America/Chicago')}
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:14px;margin-bottom:10px">PTO Balance</div>
+          ${_hrField('PTO Balance', u.pto_balance!=null?u.pto_balance+' hrs':'—')}
+          ${_hrField('PTO Accrual Rate', u.pto_accrual?u.pto_accrual+' hrs / pay period':'—')}
+        </div>
+      </div>`,
+    fieldservice:`
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Field Assignment</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div>
+            ${_hrField('Vehicle / Van', u.vehicle_assigned)}
+            ${_hrField('Equipment Issued', u.equipment_issued)}
+            ${_hrField('Service Territory', u.service_territory)}
+            ${_hrField('GPS Tracking', u.gps_enabled?'Enabled':'Not configured')}
+          </div>
+          <div>
+            ${_hrField('Work Start', u.work_start||'08:00')}
+            ${_hrField('Work End', u.work_end||'17:00')}
+            ${_hrField('Home Location', u.home_location)}
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Certifications &amp; Licenses</div>
+          ${canEdit?`<button class="btn btn-n sm" onclick="oAddHRCert('${u.id||u.email}')">+ Add</button>`:''}
+        </div>
+        ${certs.length?`<div style="display:flex;flex-direction:column;gap:8px">${certs.map((c,i)=>{
+          const exp=c.expiration?new Date(c.expiration+'T00:00:00'):null;
+          const today=new Date(); today.setHours(0,0,0,0);
+          const daysLeft=exp?Math.round((exp-today)/(1000*60*60*24)):null;
+          const isExp=daysLeft!==null&&daysLeft<0;
+          const isWarn=daysLeft!==null&&daysLeft>=0&&daysLeft<=60;
+          return`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surf);border-radius:8px;border-left:3px solid ${isExp?'var(--red)':isWarn?'#d97706':'var(--green)'}">
+            <div>
+              <div style="font-weight:600;font-size:13px">${esc(c.name||'—')}</div>
+              <div style="font-size:11px;color:var(--muted)">${c.issuer?esc(c.issuer)+' · ':''}${c.license_number?'#'+esc(c.license_number)+' · ':''}${c.state?esc(c.state)+' · ':''}</div>
+            </div>
+            <div style="text-align:right">
+              ${c.expiration?`<div style="font-size:12px;font-weight:600;color:${isExp?'var(--red)':isWarn?'#d97706':'var(--text)'}">${isExp?'EXPIRED':isWarn?daysLeft+' days left':'Exp '+fmtDate(c.expiration)}</div>`:'<div style="font-size:12px;color:var(--muted)">No expiration</div>'}
+              ${canEdit?`<button class="btn sm btn-r" style="margin-top:4px" onclick="hrRemoveCert('${u.id||u.email}',${i})">Remove</button>`:''}
+            </div>
+          </div>`;}).join('')}</div>`
+        :`<div style="padding:24px;text-align:center;color:var(--muted);background:var(--surf);border-radius:8px">No certifications on file${canEdit?' — click + Add to record one':''}</div>`}
+      </div>`,
+    timeoff:`
+      <div>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">PTO / Leave Balances</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px">
+          ${_hrBalanceCard('PTO', u.pto_balance, 'var(--green)', '🏖️')}
+          ${_hrBalanceCard('UTO', u.uto_balance, '#7c3aed', '🤒')}
+          ${_hrBalanceCard('Holiday', u.holiday_balance, '#d97706', '🏛️')}
+        </div>
+        ${_hrEmpTimeOffHistory(u.id||u.email)}
+      </div>`,
+    documents:`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Employee Documents</div>
+        ${canEdit?`<button class="btn btn-n sm" onclick="tst('Document upload coming soon','info')">+ Upload</button>`:''}
+      </div>
+      ${docs.length?`<div style="display:flex;flex-direction:column;gap:8px">${docs.map(d=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surf);border-radius:8px">
+          <div><div style="font-weight:600;font-size:13px">📄 ${esc(d.name||'Document')}</div><div style="font-size:11px;color:var(--muted)">${d.category||''} · ${d.uploaded_at?fmtDate(d.uploaded_at):''}</div></div>
+          <button class="btn sm btn-o" onclick="tst('Download coming soon','info')">Download</button>
+        </div>`).join('')}</div>`
+      :`<div style="padding:32px;text-align:center;color:var(--muted);background:var(--surf);border-radius:8px">
+        <div style="font-size:32px;margin-bottom:8px">📂</div>
+        <div style="font-size:14px">No documents on file</div>
+        <div style="font-size:12px;margin-top:4px">Upload offer letters, I-9s, certifications, and other employee documents here</div>
+      </div>`}`,
+  };
+
+  return`
+  <!-- Back button -->
+  <div style="margin-bottom:12px">
+    <button class="btn btn-o sm" onclick="window._hrEmpView='list';window._hrEmpId=null;showPage('hr-employees')">← All Employees</button>
+  </div>
+
+  <!-- Header card -->
+  <div style="background:var(--navy);color:#fff;border-radius:12px;padding:20px 24px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0">
+      ${(u.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('')}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:20px;font-weight:700">${esc(u.name||'—')}</div>
+      <div style="opacity:.75;font-size:13px">${esc(u.title||u.role||'')}${u.division?' · '+esc(u.division):''}${u.region?' · '+esc(u.region):''}</div>
+      <div style="opacity:.6;font-size:12px;margin-top:2px">${esc(u.email||'')}${u.phone?' · '+esc(u.phone):''}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span style="padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.15);font-size:12px;font-weight:600">${active?'● Active':'○ Inactive'}</span>
+      ${u.hire_date?`<span style="padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.15);font-size:12px">Since ${fmtDate(u.hire_date)}</span>`:''}
+    </div>
+    ${canEdit?`<button class="btn btn-n sm" onclick="oEditHREmployee('${u.id||u.email}')">Edit</button>`:''}
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" style="margin-bottom:14px">
+    ${tabs.map(t=>`<button class="tab${tab===t.id?' active':''}" onclick="window._hrEmpTab='${t.id}';showPage('hr-employees')">${t.l}</button>`).join('')}
+  </div>
+
+  <!-- Tab content -->
+  <div class="card">
+    ${tabContent[tab]||tabContent.profile}
+  </div>`;
+}
+
+function _hrField(label, value){
+  return`<div style="margin-bottom:10px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">${label}</div>
+    <div style="font-size:14px;font-weight:500;color:${value?'var(--text)':'var(--muted)'}">${value?esc(String(value)):'—'}</div>
+  </div>`;
+}
+
+function _hrBalanceCard(label, balance, color, icon){
+  return`<div style="background:var(--surf);border-radius:10px;padding:14px 16px;border-top:3px solid ${color}">
+    <div style="font-size:18px;margin-bottom:4px">${icon}</div>
+    <div style="font-size:22px;font-weight:700;color:${color}">${balance!=null?balance:'—'}</div>
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em">${label} Hours</div>
+  </div>`;
+}
+
+function _hrEmpTimeOffHistory(idOrEmail){
+  const reqs=S.get('lhs:time_off_requests')||[];
+  const empReqs=reqs.filter(r=>r.employee_id===idOrEmail||r.employee_name===(S.get('lhs:users')||[]).find(u=>u.id===idOrEmail||u.email===idOrEmail)?.name);
+  if(!empReqs.length) return`<div style="padding:20px;text-align:center;color:var(--muted);background:var(--surf);border-radius:8px;font-size:13px">No time off requests on file</div>`;
+  return`<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Time Off History</div>
+  <div class="tw"><table><thead><tr><th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Status</th><th>Notes</th></tr></thead>
+  <tbody>${empReqs.sort((a,b)=>(b.start_date||'').localeCompare(a.start_date||'')).map(r=>`<tr>
+    <td><span class="bx bn" style="font-size:11px">${esc(r.leave_type||'PTO')}</span></td>
+    <td style="font-size:12px">${r.start_date?fmtDate(r.start_date):'—'}</td>
+    <td style="font-size:12px">${r.end_date?fmtDate(r.end_date):'—'}</td>
+    <td style="font-size:12px">${r.hours||'—'}</td>
+    <td>${_hrLeaveStatusBadge(r.status)}</td>
+    <td style="font-size:12px;color:var(--muted)">${esc(r.notes||'')}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function _hrLeaveStatusBadge(s){
+  const map={Approved:'bg',Pending:'bn',Denied:'bgr',Cancelled:'bgr'};
+  return bx(s||'Pending', map[s]||'bn');
+}
+
+// ─── ADD / EDIT EMPLOYEE MODAL ─────────────────────────────────────────────────
+function oAddHREmployee(){
+  window._editHREmpId=null;
+  oMod('Add Employee', _hrEmployeeForm({},'svAddHREmployee'));
+}
+function oEditHREmployee(idOrEmail){
+  const u=(S.get('lhs:users')||[]).find(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(!u) return;
+  window._editHREmpId=idOrEmail;
+  oMod('Edit Employee', _hrEmployeeForm(u,'svEditHREmployee'));
+}
+
+function _hrEmployeeForm(u, saveFn){
+  const users=S.get('lhs:users')||[];
+  const managers=users.filter(x=>['God View','Admin','Director','Regional Manager','Operations Manager'].includes(x.role));
+  return`
+  <style>#hef input,#hef select,#hef textarea{width:100%;box-sizing:border-box;padding:9px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--text)}</style>
+  <div id="hef">
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Personal</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div><label>Full Name <span style="color:var(--red)">*</span></label><input id="hef-name" value="${esc(u.name||'')}"></div>
+    <div><label>Preferred Name</label><input id="hef-preferred" value="${esc(u.preferred_name||'')}"></div>
+    <div><label>Date of Birth</label><input type="date" id="hef-dob" value="${u.birthday||''}"></div>
+    <div><label>SSN (last 4 only)</label><input id="hef-ssn" maxlength="4" placeholder="1234" value="${esc(u.ssn_last4||'')}"></div>
+    <div><label>Personal Phone</label><input id="hef-phone" placeholder="(555) 555-5555" value="${esc(u.phone||'')}"></div>
+    <div><label>Personal Email</label><input id="hef-pemail" placeholder="personal@email.com" value="${esc(u.personal_email||'')}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
+    <div><label>Street Address</label><input id="hef-addr" value="${esc(u.address||'')}"></div>
+    <div><label>City</label><input id="hef-city" value="${esc(u.city||'')}"></div>
+    <div><label>State</label><select id="hef-state"><option value="">—</option>${HR_STATES_LIST.map(s=>`<option${u.state===s?' selected':''}>${s}</option>`).join('')}</select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+    <div><label>ZIP</label><input id="hef-zip" value="${esc(u.zip||'')}"></div>
+    <div><label>Emergency Contact Name</label><input id="hef-ecname" value="${esc(u.emergency_contact_name||'')}"></div>
+    <div><label>Emergency Contact Phone</label><input id="hef-ecphone" value="${esc(u.emergency_contact_phone||'')}"></div>
+  </div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Employment</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div><label>Work Email <span style="color:var(--red)">*</span></label><input id="hef-email" value="${esc(u.email||'')}"></div>
+    <div><label>Job Title</label><input id="hef-title" value="${esc(u.title||'')}"></div>
+    <div><label>Role / Access Level</label><select id="hef-role">
+      ${ROLES.map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+    </select></div>
+    <div><label>Employment Type</label><select id="hef-emptype">
+      <option value="">—</option>
+      ${HR_EMP_TYPES.map(t=>`<option${u.employment_type===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+    <div><label>FLSA Status</label><select id="hef-flsa">
+      <option value="">—</option>
+      ${HR_FLSA.map(f=>`<option${u.flsa_status===f?' selected':''}>${f}</option>`).join('')}
+    </select></div>
+    <div><label>Primary Division</label><select id="hef-div">
+      <option value="">All Divisions</option>${DIVS.map(d=>`<option${u.division===d?' selected':''}>${d}</option>`).join('')}
+    </select></div>
+    <div><label>Region</label><select id="hef-region">
+      <option value="">All Regions</option>${Object.keys(REGIONS||{}).map(r=>`<option${u.region===r?' selected':''}>${r}</option>`).join('')}
+    </select></div>
+    <div><label>Manager</label><select id="hef-mgr">
+      <option value="">— None —</option>
+      ${managers.map(m=>`<option${u.manager===m.name?' selected':''}>${esc(m.name)}</option>`).join('')}
+    </select></div>
+    <div><label>Hire Date</label><input type="date" id="hef-hire" value="${u.hire_date||''}"></div>
+    <div><label>Home Location / Van</label><select id="hef-loc">
+      <option value="">—</option>
+      ${[...WH,...VH].map(w=>`<option${u.home_location===w?' selected':''}>${w}</option>`).join('')}
+    </select></div>
+  </div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Compensation</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+    <div><label>Pay Type</label><select id="hef-paytype">
+      <option value="">—</option>
+      ${HR_PAY_TYPES.map(t=>`<option${u.pay_type===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+    <div><label>Pay Rate ($)</label><input id="hef-payrate" type="number" step="0.01" placeholder="0.00" value="${u.pay_rate||''}"></div>
+    <div><label>Pay Frequency</label><select id="hef-payfreq">
+      <option value="">—</option>
+      ${HR_PAY_FREQS.map(f=>`<option${u.pay_frequency===f?' selected':''}>${f}</option>`).join('')}
+    </select></div>
+    <div><label>Commission Rate (%)</label><input id="hef-comm" type="number" step="0.1" placeholder="e.g. 5" value="${u.commission_rate||''}"></div>
+    <div><label>PTO Balance (hrs)</label><input id="hef-pto" type="number" step="0.5" value="${u.pto_balance!=null?u.pto_balance:''}"></div>
+    <div><label>PTO Accrual (hrs/period)</label><input id="hef-pto-accrual" type="number" step="0.25" value="${u.pto_accrual!=null?u.pto_accrual:''}"></div>
+  </div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Field Service</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div><label>Vehicle / Van Assignment</label><select id="hef-vehicle">
+      <option value="">— None —</option>
+      ${VH.map(v=>`<option${u.vehicle_assigned===v?' selected':''}>${v}</option>`).join('')}
+    </select></div>
+    <div><label>Service Territory</label><input id="hef-territory" placeholder="e.g. Chicago North, Metro East" value="${esc(u.service_territory||'')}"></div>
+    <div><label>Equipment Issued</label><input id="hef-equip" placeholder="e.g. Radalink RM, Fantech HRV-85" value="${esc(u.equipment_issued||'')}"></div>
+    <div><label>GPS Tracking</label><select id="hef-gps">
+      <option value="">Not configured</option>
+      <option value="true"${u.gps_enabled?'selected':''}>Enabled</option>
+      <option value="false"${u.gps_enabled===false?'selected':''}>Disabled</option>
+    </select></div>
+  </div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">System Access</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div><label>Show on Dispatch Board?</label><select id="hef-disp">
+      <option value="true"${u.include_dispatch!==false?'selected':''}>Yes</option>
+      <option value="false"${u.include_dispatch===false?'selected':''}>No</option>
+    </select></div>
+    <div><label>Timesheet Required?</label><select id="hef-ts">
+      <option value="true"${u.timesheet_needed!==false?'selected':''}>Yes</option>
+      <option value="false"${u.timesheet_needed===false?'selected':''}>No</option>
+    </select></div>
+    <div><label>Status</label><select id="hef-active">
+      <option value="true"${u.active!==false?'selected':''}>Active</option>
+      <option value="false"${u.active===false?'selected':''}>Inactive</option>
+    </select></div>
+  </div>
+
+  <div style="border-top:1px solid var(--bdr);padding-top:14px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="${saveFn}()">Save Employee</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>
+  </div>`;
+}
+
+async function svAddHREmployee(){
+  const name=v('hef-name'), email=v('hef-email');
+  if(!name||!email){tst('Name and work email are required','error');return}
+  const rec=_hrEmployeePayload();
+  rec.name=name; rec.email=email.toLowerCase().trim();
+  rec.active=true; rec.password_hash=Math.random().toString(36).slice(2,10);
+  try{
+    const{data,error}=await DB.from('lhs_users').insert(rec).select().single();
+    if(error){tst('Save failed: '+error.message,'error');return}
+    const users=S.get('lhs:users')||[]; users.push(data); S.set('lhs:users',users);
+    cMod(); tst(name+' added','success');
+    window._hrEmpId=data.id||data.email; window._hrEmpView='detail';
+    showPage('hr-employees');
+  }catch(e){tst('Save failed — '+e.message,'error')}
+}
+
+async function svEditHREmployee(){
+  const idOrEmail=window._editHREmpId;
+  const users=S.get('lhs:users')||[];
+  const idx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(idx<0){tst('Employee not found','error');return}
+  const rec=_hrEmployeePayload();
+  rec.name=v('hef-name')||users[idx].name;
+  rec.email=v('hef-email')||users[idx].email;
+  const updated={...users[idx],...rec};
+  try{
+    const{error}=await DB.from('lhs_users').update(rec).eq('id',users[idx].id);
+    if(error) console.warn('Supabase update:',error.message);
+    users[idx]=updated; S.set('lhs:users',users);
+    cMod(); tst('Saved','success');
+    showPage('hr-employees');
+  }catch(e){tst('Save failed — '+e.message,'error')}
+}
+
+function _hrEmployeePayload(){
+  return{
+    preferred_name:v('hef-preferred')||null,
+    birthday:v('hef-dob')||null,
+    ssn_last4:v('hef-ssn')||null,
+    phone:v('hef-phone')||null,
+    personal_email:v('hef-pemail')||null,
+    address:v('hef-addr')||null,
+    city:v('hef-city')||null,
+    state:v('hef-state')||null,
+    zip:v('hef-zip')||null,
+    emergency_contact_name:v('hef-ecname')||null,
+    emergency_contact_phone:v('hef-ecphone')||null,
+    title:v('hef-title')||null,
+    role:v('hef-role')||'Van Tech',
+    employment_type:v('hef-emptype')||null,
+    flsa_status:v('hef-flsa')||null,
+    division:v('hef-div')||null,
+    region:v('hef-region')||null,
+    manager:v('hef-mgr')||null,
+    hire_date:v('hef-hire')||null,
+    home_location:v('hef-loc')||null,
+    pay_type:v('hef-paytype')||null,
+    pay_rate:parseFloat(v('hef-payrate'))||null,
+    pay_frequency:v('hef-payfreq')||null,
+    commission_rate:parseFloat(v('hef-comm'))||null,
+    pto_balance:v('hef-pto')!==''?parseFloat(v('hef-pto')):null,
+    pto_accrual:v('hef-pto-accrual')!==''?parseFloat(v('hef-pto-accrual')):null,
+    vehicle_assigned:v('hef-vehicle')||null,
+    service_territory:v('hef-territory')||null,
+    equipment_issued:v('hef-equip')||null,
+    gps_enabled:document.getElementById('hef-gps')?.value==='true'?true:document.getElementById('hef-gps')?.value==='false'?false:null,
+    include_dispatch:document.getElementById('hef-disp')?.value!=='false',
+    timesheet_needed:document.getElementById('hef-ts')?.value!=='false',
+    active:document.getElementById('hef-active')?.value!=='false',
+  };
+}
+
+// ─── CERTIFICATIONS ─────────────────────────────────────────────────────────
+function oAddHRCert(idOrEmail){
+  oMod('Add Certification / License',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div><label>Certification Name <span style="color:var(--red)">*</span></label>
+      <select id="hcert-name">
+        <option value="">— Select —</option>
+        ${HR_CERT_TYPES.map(c=>`<option>${c}</option>`).join('')}
+      </select>
+    </div>
+    <div><label>Custom Name (if Other)</label><input id="hcert-custom" placeholder="Enter name if not listed"></div>
+    <div><label>Issuing Authority</label><input id="hcert-issuer" placeholder="e.g. Illinois IEMA"></div>
+    <div><label>License / Cert #</label><input id="hcert-num" placeholder="ABC-12345"></div>
+    <div><label>State</label><select id="hcert-state">
+      <option value="">— Any —</option>
+      ${HR_STATES_LIST.map(s=>`<option>${s}</option>`).join('')}
+    </select></div>
+    <div><label>Expiration Date</label><input type="date" id="hcert-exp"></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:12px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="svHRCert('${idOrEmail}')">Save Certification</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svHRCert(idOrEmail){
+  const nameVal=v('hcert-name'), customVal=v('hcert-custom');
+  const certName=customVal||nameVal;
+  if(!certName){tst('Certification name required','error');return}
+  const users=S.get('lhs:users')||[];
+  const idx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(idx<0){tst('Employee not found','error');return}
+  const cert={
+    name:certName,
+    issuer:v('hcert-issuer')||null,
+    license_number:v('hcert-num')||null,
+    state:v('hcert-state')||null,
+    expiration:v('hcert-exp')||null,
+    added:new Date().toISOString().slice(0,10),
+  };
+  const certs=[...(users[idx].certifications||[]),cert];
+  try{
+    const{error}=await DB.from('lhs_users').update({certifications:certs}).eq('id',users[idx].id);
+    if(error) console.warn('Cert save:',error.message);
+    users[idx].certifications=certs; S.set('lhs:users',users);
+    cMod(); tst('Certification saved','success'); showPage('hr-employees');
+  }catch(e){tst('Save failed','error')}
+}
+
+async function hrRemoveCert(idOrEmail, idx){
+  if(!confirm('Remove this certification?')) return;
+  const users=S.get('lhs:users')||[];
+  const uIdx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(uIdx<0) return;
+  const certs=(users[uIdx].certifications||[]).filter((_,i)=>i!==idx);
+  try{
+    const{error}=await DB.from('lhs_users').update({certifications:certs}).eq('id',users[uIdx].id);
+    if(error) console.warn('Remove cert:',error.message);
+    users[uIdx].certifications=certs; S.set('lhs:users',users);
+    tst('Removed','success'); showPage('hr-employees');
+  }catch(e){tst('Remove failed','error')}
+}
+
+
+// ─── TIME OFF REQUESTS ─────────────────────────────────────────────────────────
+window._torTab   = window._torTab   || 'pending';
+window._torEmpF  = window._torEmpF  || '';
+window._torTypeF = window._torTypeF || '';
+
+function bHRTimeOff(){
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const isOwn=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
+  const all=S.get('lhs:time_off_requests')||[];
+  const users=S.get('lhs:users')||[];
+  const tab=window._torTab||'pending';
+  const fEmp=window._torEmpF||'';
+  const fType=window._torTypeF||'';
+
+  let list=isOwn?all.filter(r=>r.employee_name===CU.name):all;
+  if(tab==='pending') list=list.filter(r=>!r.status||r.status==='Pending');
+  else if(tab==='approved') list=list.filter(r=>r.status==='Approved');
+  else if(tab==='denied') list=list.filter(r=>r.status==='Denied'||r.status==='Cancelled');
+  if(fEmp) list=list.filter(r=>r.employee_name===fEmp);
+  if(fType) list=list.filter(r=>r.leave_type===fType);
+  list=list.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+
+  const empNames=[...new Set((isOwn?all.filter(r=>r.employee_name===CU.name):all).map(r=>r.employee_name).filter(Boolean))].sort();
+  const pending=all.filter(r=>!r.status||r.status==='Pending');
+
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">Time Off Requests</div>
+      <div class="ps">${pending.length} pending approval</div>
+    </div>
+    <button class="btn btn-n" onclick="oAddTimeOffRequest()">+ New Request</button>
+  </div>
+
+  <div class="tabs" style="margin-bottom:12px">
+    <button class="tab${tab==='pending'?' active':''}" onclick="window._torTab='pending';showPage('hr-timeoff')">⏳ Pending${pending.length?` <span style="background:var(--red);color:#fff;border-radius:10px;padding:0 6px;font-size:11px">${pending.length}</span>`:''}</button>
+    <button class="tab${tab==='approved'?' active':''}" onclick="window._torTab='approved';showPage('hr-timeoff')">✅ Approved</button>
+    <button class="tab${tab==='denied'?' active':''}" onclick="window._torTab='denied';showPage('hr-timeoff')">❌ Denied / Cancelled</button>
+    <button class="tab${tab==='all'?' active':''}" onclick="window._torTab='all';showPage('hr-timeoff')">All</button>
+  </div>
+
+  ${!isOwn?`<div style="background:var(--surf);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fl" style="margin:0;min-width:170px"><label>Employee</label>
+      <select onchange="window._torEmpF=this.value;showPage('hr-timeoff')">
+        <option value="">All Employees</option>
+        ${empNames.map(n=>`<option${fEmp===n?' selected':''}>${n}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:140px"><label>Leave Type</label>
+      <select onchange="window._torTypeF=this.value;showPage('hr-timeoff')">
+        <option value="">All Types</option>
+        ${HR_LEAVE_TYPES.map(t=>`<option${fType===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-o sm" onclick="window._torEmpF='';window._torTypeF='';showPage('hr-timeoff')">Clear</button>
+  </div>`:''}
+
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr>
+      ${!isOwn?'<th>Employee</th>':''}
+      <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Requested</th><th>Notes</th><th>Status</th>
+      ${canApprove?'<th>Actions</th>':''}
+    </tr></thead>
+    <tbody>${list.length?list.map(r=>`<tr>
+      ${!isOwn?`<td style="font-weight:600;font-size:13px">${esc(r.employee_name||'—')}</td>`:''}
+      <td><span class="bx bn" style="font-size:11px">${esc(r.leave_type||'PTO')}</span></td>
+      <td style="font-size:12px">${r.start_date?fmtDate(r.start_date):'—'}</td>
+      <td style="font-size:12px">${r.end_date?fmtDate(r.end_date):'—'}</td>
+      <td style="font-size:12px;text-align:center">${r.hours||'—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.created_at?fmtDate(r.created_at.slice(0,10)):'—'}</td>
+      <td style="font-size:12px;max-width:200px">${esc(r.notes||'')}</td>
+      <td>${_hrLeaveStatusBadge(r.status)}</td>
+      ${canApprove&&(!r.status||r.status==='Pending')?`<td style="white-space:nowrap">
+        <button class="btn sm btn-n" onclick="svTORStatus('${r.id}','Approved')">✓ Approve</button>
+        <button class="btn sm btn-r" onclick="svTORStatus('${r.id}','Denied')">✗ Deny</button>
+      </td>`:canApprove?`<td style="font-size:11px;color:var(--muted)">${r.approved_by?'by '+esc(r.approved_by):''}</td>`:''}
+    </tr>`).join('')
+    :`<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No ${tab==='pending'?'pending':tab} requests</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function oAddTimeOffRequest(){
+  const users=S.get('lhs:users')||[];
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const empList=canApprove?users:users.filter(u=>u.name===CU?.name);
+  oMod('New Time Off Request',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div><label>Employee <span style="color:var(--red)">*</span></label>
+      <select id="tor-emp">
+        <option value="">— Select —</option>
+        ${empList.map(u=>`<option${CU?.name===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div><label>Leave Type <span style="color:var(--red)">*</span></label>
+      <select id="tor-type">
+        ${HR_LEAVE_TYPES.map(t=>`<option>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div><label>From Date <span style="color:var(--red)">*</span></label><input type="date" id="tor-start"></div>
+    <div><label>To Date</label><input type="date" id="tor-end"></div>
+    <div><label>Hours</label><input type="number" id="tor-hours" step="0.5" placeholder="e.g. 8"></div>
+    <div><label>Status</label>
+      <select id="tor-status">
+        <option>Pending</option>
+        ${canApprove?'<option>Approved</option>':''}
+        <option>Cancelled</option>
+      </select>
+    </div>
+  </div>
+  <div style="margin-bottom:14px"><label>Notes / Reason</label><textarea id="tor-notes" rows="2" style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical" placeholder="Optional reason or details"></textarea></div>
+  <div style="border-top:1px solid var(--bdr);padding-top:12px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="svAddTimeOffRequest()">Submit Request</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svAddTimeOffRequest(){
+  const empName=v('tor-emp'), startDate=v('tor-start');
+  if(!empName){tst('Select an employee','error');return}
+  if(!startDate){tst('Start date required','error');return}
+  const rec={
+    employee_name:empName,
+    leave_type:v('tor-type')||'PTO',
+    start_date:startDate,
+    end_date:v('tor-end')||startDate,
+    hours:parseFloat(v('tor-hours'))||null,
+    status:v('tor-status')||'Pending',
+    notes:v('tor-notes')||null,
+    approved_by:v('tor-status')==='Approved'?CU?.name:null,
+    created_by:CU?.name||null,
+    created_at:new Date().toISOString(),
+  };
+  try{
+    const{data,error}=await DB.from('lhs_time_off_requests').insert(rec).select().single();
+    if(error){console.warn(error.message);tst('Save failed: '+error.message,'error');return}
+    const reqs=S.get('lhs:time_off_requests')||[]; reqs.push(data||rec); S.set('lhs:time_off_requests',reqs);
+    // Auto-sync approved requests to calendar
+    if((data||rec).status==='Approved') _syncTORToCalendar([data||rec]);
+    cMod(); tst('Request submitted','success'); showPage('hr-timeoff');
+  }catch(e){tst('Save failed','error')}
+}
+
+async function svTORStatus(reqId, newStatus){
+  const reqs=S.get('lhs:time_off_requests')||[];
+  const idx=reqs.findIndex(r=>r.id===reqId);
+  if(idx<0) return;
+  const upd={status:newStatus, approved_by:CU?.name||null};
+  try{
+    const{error}=await DB.from('lhs_time_off_requests').update(upd).eq('id',reqId);
+    if(error) console.warn('TOR status:',error.message);
+    reqs[idx]={...reqs[idx],...upd};
+    S.set('lhs:time_off_requests',reqs);
+    if(newStatus==='Approved') _syncTORToCalendar([reqs[idx]]);
+    tst(reqs[idx].employee_name+' — '+newStatus,'success');
+    showPage('hr-timeoff');
+  }catch(e){tst('Update failed','error')}
+}
+
+async function _syncTORToCalendar(reqs){
+  // When a time off request is approved, add an OOO entry to the calendar
+  const cal=S.get('lhs:cal_events')||[];
+  for(const r of reqs){
+    if(r.status!=='Approved') continue;
+    const ev={
+      title:r.employee_name+' — Out of Office',
+      event_type:'ooo',
+      start_date:r.start_date,
+      end_date:r.end_date||r.start_date,
+      user_name:r.employee_name,
+      notes:(r.leave_type||'PTO')+(r.notes?' — '+r.notes:''),
+      created_by:'HR Auto-Sync',
+      created_at:new Date().toISOString(),
+    };
+    try{
+      const{data,error}=await DB.from('lhs_calendar_events').insert(ev).select().single();
+      if(!error&&data) cal.push(data);
+      else cal.push({...ev,id:'local-'+Date.now()});
+    }catch{cal.push({...ev,id:'local-'+Date.now()})}
+  }
+  S.set('lhs:cal_events',cal);
+}
+
+
+// ─── STATE SETTINGS ─────────────────────────────────────────────────────────────
+window._hrStateSearch='';
+
+function bHRState(){
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const all=S.get('lhs:hr_state_settings')||[];
+  const search=(window._hrStateSearch||'').toLowerCase();
+  const filtered=search?all.filter(s=>(s.state||'').toLowerCase().includes(search)||(s.notes||'').toLowerCase().includes(search)):all;
+  const usedStates=new Set(all.map(s=>s.state));
+  const availStates=HR_STATES_LIST.filter(s=>!usedStates.has(s));
+
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">State Settings</div>
+      <div class="ps">Minimum wage, overtime rules, and tax rates by state</div>
+    </div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddHRState()">+ Add State</button>`:''}
+  </div>
+
+  ${all.length===0?`
+  <div class="card" style="text-align:center;padding:40px">
+    <div style="font-size:40px;margin-bottom:12px">🗺️</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">No State Configurations Yet</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:16px">Add each state where you have employees to track minimum wage, overtime thresholds, and workers' comp codes.</div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddHRState()">+ Add First State</button>`:''}
+  </div>`:`
+  <div style="background:var(--surf);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+    <input placeholder="Search states…" value="${esc(search)}"
+      onkeyup="window._hrStateSearch=this.value;showPage('hr-state')"
+      style="width:240px;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+  </div>
+  <div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr>
+      <th>State</th><th>Min. Wage</th><th>OT Threshold</th>
+      <th>Workers' Comp Code</th><th>UI Rate</th><th>Notes</th>
+      ${canEdit?'<th></th>':''}
+    </tr></thead>
+    <tbody>${filtered.map(s=>`<tr>
+      <td style="font-weight:700;font-size:14px">${esc(s.state||'—')}</td>
+      <td style="font-size:13px">${s.min_wage?'$'+Number(s.min_wage).toFixed(2)+'/hr':'—'}</td>
+      <td style="font-size:12px">${esc(s.ot_threshold||'40 hrs/wk')}</td>
+      <td style="font-size:12px;font-family:'DM Mono',monospace">${esc(s.workers_comp_code||'—')}</td>
+      <td style="font-size:12px">${s.ui_rate!=null?Number(s.ui_rate).toFixed(2)+'%':'—'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px">${esc(s.notes||'')}</td>
+      ${canEdit?`<td style="white-space:nowrap">
+        <button class="btn sm btn-o" onclick="oEditHRState('${s.id}')">Edit</button>
+        <button class="btn sm btn-r" onclick="delHRState('${s.id}')">×</button>
+      </td>`:''}
+    </tr>`).join('')}
+    </tbody>
+  </table></div></div>`}`;
+}
+
+function oAddHRState(){
+  window._editHRStateId=null;
+  const all=S.get('lhs:hr_state_settings')||[];
+  const usedStates=new Set(all.map(s=>s.state));
+  const availStates=HR_STATES_LIST.filter(s=>!usedStates.has(s));
+  oMod('Add State Settings',_hrStateForm({availStates},'svSaveHRState'));
+}
+function oEditHRState(id){
+  const all=S.get('lhs:hr_state_settings')||[];
+  const s=all.find(x=>x.id===id); if(!s) return;
+  window._editHRStateId=id;
+  oMod('Edit State Settings',_hrStateForm(s,'svSaveHRState'));
+}
+function _hrStateForm(s,saveFn){
+  const availStates=s.availStates||HR_STATES_LIST;
+  return`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div><label>State <span style="color:var(--red)">*</span></label>
+      ${s.state?`<input id="hss-state" value="${esc(s.state)}" readonly style="background:var(--surf)">`:
+      `<select id="hss-state"><option value="">— Select —</option>${availStates.map(st=>`<option>${st}</option>`).join('')}</select>`}
+    </div>
+    <div><label>Minimum Wage ($/hr)</label><input type="number" id="hss-wage" step="0.01" placeholder="e.g. 15.00" value="${s.min_wage||''}"></div>
+    <div><label>Overtime Threshold</label><input id="hss-ot" placeholder="e.g. 40 hrs/wk or 8 hrs/day" value="${esc(s.ot_threshold||'')}"></div>
+    <div><label>Workers' Comp Code</label><input id="hss-wc" placeholder="e.g. 5183, 8010" value="${esc(s.workers_comp_code||'')}"></div>
+    <div><label>UI / Unemployment Rate (%)</label><input type="number" id="hss-ui" step="0.01" placeholder="e.g. 2.70" value="${s.ui_rate||''}"></div>
+    <div><label>SUI Wage Base ($)</label><input type="number" id="hss-suibase" step="1" placeholder="e.g. 12960" value="${s.sui_wage_base||''}"></div>
+    <div style="grid-column:span 2"><label>Notes</label><textarea id="hss-notes" rows="2" style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical">${esc(s.notes||'')}</textarea></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:12px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="${saveFn}()">Save</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+
+async function svSaveHRState(){
+  const stateVal=v('hss-state'); if(!stateVal){tst('Select a state','error');return}
+  const rec={
+    state:stateVal,
+    min_wage:parseFloat(v('hss-wage'))||null,
+    ot_threshold:v('hss-ot')||'40 hrs/wk',
+    workers_comp_code:v('hss-wc')||null,
+    ui_rate:parseFloat(v('hss-ui'))||null,
+    sui_wage_base:parseInt(v('hss-suibase'))||null,
+    notes:v('hss-notes')||null,
+  };
+  const all=S.get('lhs:hr_state_settings')||[];
+  const editId=window._editHRStateId;
+  try{
+    if(editId){
+      const{error}=await DB.from('lhs_hr_state_settings').update(rec).eq('id',editId);
+      if(error) console.warn(error.message);
+      const idx=all.findIndex(x=>x.id===editId); if(idx>=0) all[idx]={...all[idx],...rec};
+    } else {
+      const{data,error}=await DB.from('lhs_hr_state_settings').insert(rec).select().single();
+      if(error){tst('Save failed: '+error.message,'error');return}
+      all.push(data||rec);
+    }
+    S.set('lhs:hr_state_settings',all);
+    cMod(); tst('Saved','success'); showPage('hr-state');
+  }catch(e){tst('Save failed','error')}
+}
+
+async function delHRState(id){
+  if(!confirm('Remove this state configuration?')) return;
+  try{
+    await DB.from('lhs_hr_state_settings').delete().eq('id',id);
+    const all=(S.get('lhs:hr_state_settings')||[]).filter(x=>x.id!==id);
+    S.set('lhs:hr_state_settings',all); tst('Removed','success'); showPage('hr-state');
+  }catch(e){tst('Remove failed','error')}
+}
+
+
+// ─── HR SETTINGS ──────────────────────────────────────────────────────────────
+function bHRSettings(){
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const cfg=S.get('lhs:hr_config')||{};
+  return`
+  <div class="pt" style="margin-bottom:4px">HR Settings</div>
+  <div class="ps" style="margin-bottom:16px">Global HR configuration — pay periods, PTO policies, and compliance defaults</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--bdr)">Pay Period Settings</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      ${_hrSettingField('Default Pay Frequency', cfg.pay_frequency||'Bi-Weekly')}
+      ${_hrSettingField('Pay Period Start Day', cfg.pay_period_start||'Monday')}
+      ${_hrSettingField('OT Threshold (hrs/week)', cfg.ot_threshold_hrs||'40')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--bdr)">PTO Policy</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      ${_hrSettingField('Default Accrual Rate', cfg.pto_accrual_rate ? cfg.pto_accrual_rate+' hrs / pay period' : '3.08 hrs / pay period')}
+      ${_hrSettingField('Max PTO Carryover (hrs)', cfg.pto_max_carryover||'40')}
+      ${_hrSettingField('Waiting Period (days)', cfg.pto_waiting_days!=null?cfg.pto_waiting_days+' days':'90 days')}
+      ${_hrSettingField('Accrual Type', cfg.pto_accrual_type||'Per Pay Period')}
+      ${_hrSettingField('Negative Balance Allowed', cfg.pto_allow_negative?'Yes':'No')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--bdr)">Compliance Defaults</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      ${_hrSettingField('Company HQ State', cfg.hq_state||'IL')}
+      ${_hrSettingField('Multi-State Operations', cfg.multi_state?'Yes':'No')}
+      ${_hrSettingField('I-9 Reminder (days before exp)', cfg.i9_reminder_days||'90')}
+      ${_hrSettingField('Cert Expiry Warning (days)', cfg.cert_warning_days||'60')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--bdr)">Certifications Expiring Soon</div>
+    ${_hrCertExpiryWidget()}
+  </div>
+
+  ${canEdit?`<button class="btn btn-n" onclick="oEditHRSettings()">⚙ Edit HR Settings</button>`:''}`;
+}
+
+function _hrSettingField(label, value){
+  return`<div>
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">${label}</div>
+    <div style="font-size:14px;font-weight:600">${esc(String(value||'—'))}</div>
+  </div>`;
+}
+
+function _hrCertExpiryWidget(){
+  const users=S.get('lhs:users')||[];
+  const cfg=S.get('lhs:hr_config')||{};
+  const warnDays=cfg.cert_warning_days||60;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const soon=[];
+  users.forEach(u=>{
+    (u.certifications||[]).forEach(c=>{
+      if(!c.expiration) return;
+      const exp=new Date(c.expiration+'T00:00:00');
+      const days=Math.round((exp-today)/(1000*60*60*24));
+      if(days<=warnDays) soon.push({user:u.name,cert:c.name,expiration:c.expiration,days});
+    });
+  });
+  soon.sort((a,b)=>a.days-b.days);
+  if(!soon.length) return`<div style="color:var(--muted);font-size:13px;padding:8px 0">✓ All certifications are current</div>`;
+  return`<div style="display:flex;flex-direction:column;gap:8px">${soon.map(s=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surf);border-radius:8px;border-left:3px solid ${s.days<0?'var(--red)':s.days<=14?'#dc2626':s.days<=30?'#d97706':'#ca8a04'}">
+      <div>
+        <div style="font-weight:600;font-size:13px">${esc(s.user)}</div>
+        <div style="font-size:12px;color:var(--muted)">${esc(s.cert)}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:700;color:${s.days<0?'var(--red)':'#d97706'}">${s.days<0?'EXPIRED':s.days===0?'TODAY':s.days+' days'}</div>
+        <div style="font-size:11px;color:var(--muted)">${fmtDate(s.expiration)}</div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function oEditHRSettings(){
+  const cfg=S.get('lhs:hr_config')||{};
+  oMod('Edit HR Settings',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div><label>Default Pay Frequency</label><select id="hcfg-payfreq">
+      ${HR_PAY_FREQS.map(f=>`<option${cfg.pay_frequency===f?' selected':''}>${f}</option>`).join('')}
+    </select></div>
+    <div><label>OT Threshold (hrs/week)</label><input type="number" id="hcfg-ot" value="${cfg.ot_threshold_hrs||40}"></div>
+    <div><label>Company HQ State</label><select id="hcfg-hqstate">
+      ${HR_STATES_LIST.map(s=>`<option${cfg.hq_state===s?' selected':''}>${s}</option>`).join('')}
+    </select></div>
+    <div><label>Multi-State Operations</label><select id="hcfg-multistate">
+      <option value="true"${cfg.multi_state?'selected':''}>Yes</option>
+      <option value="false"${!cfg.multi_state?'selected':''}>No</option>
+    </select></div>
+    <div><label>Default PTO Accrual (hrs/period)</label><input type="number" id="hcfg-pto-accrual" step="0.01" value="${cfg.pto_accrual_rate||3.08}"></div>
+    <div><label>Max PTO Carryover (hrs)</label><input type="number" id="hcfg-pto-co" value="${cfg.pto_max_carryover||40}"></div>
+    <div><label>PTO Waiting Period (days)</label><input type="number" id="hcfg-pto-wait" value="${cfg.pto_waiting_days!=null?cfg.pto_waiting_days:90}"></div>
+    <div><label>Cert Expiry Warning (days)</label><input type="number" id="hcfg-cert-warn" value="${cfg.cert_warning_days||60}"></div>
+    <div><label>I-9 Reminder (days before exp)</label><input type="number" id="hcfg-i9" value="${cfg.i9_reminder_days||90}"></div>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:12px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="svHRSettings()">Save Settings</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+function svHRSettings(){
+  const cfg={
+    pay_frequency:v('hcfg-payfreq')||'Bi-Weekly',
+    ot_threshold_hrs:parseInt(v('hcfg-ot'))||40,
+    hq_state:v('hcfg-hqstate')||'IL',
+    multi_state:document.getElementById('hcfg-multistate')?.value==='true',
+    pto_accrual_rate:parseFloat(v('hcfg-pto-accrual'))||3.08,
+    pto_max_carryover:parseInt(v('hcfg-pto-co'))||40,
+    pto_waiting_days:parseInt(v('hcfg-pto-wait'))||90,
+    cert_warning_days:parseInt(v('hcfg-cert-warn'))||60,
+    i9_reminder_days:parseInt(v('hcfg-i9'))||90,
+  };
+  S.set('lhs:hr_config',cfg);
+  cMod(); tst('HR Settings saved','success'); showPage('hr-settings');
 }
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
