@@ -1949,21 +1949,52 @@ function userLocalHour(u){
 // Parse "HH:MM" → decimal hours
 function timeToHr(t){ const [h,m]=(t||'08:00').split(':').map(Number); return h+m/60; }
 
-// Calc utilization % for a tech on a given date — fully self-contained
+// Calc utilization % for a tech on a given date — uses time-slot overlap so
+// back-to-back and overlapping appointments don't overcount, and only time
+// within the tech's actual work window is counted.
 function calcUtilization(techName, date){
   const u=(S.get('lhs:users')||[]).find(x=>x.name===techName);
   const wsH=timeToHr(u?.work_start||'08:00');
   const weH=timeToHr(u?.work_end||'17:00');
-  // Use full shift window but never less than 8 hours — prevents false 100% from narrow scheduling windows
-  const availMin=Math.max((weH-wsH)*60, 8*60);
+  // Work window in absolute minutes; use minimum 8-hour day so a narrow
+  // scheduling profile doesn't inflate the percentage.
+  const wsMin=wsH*60;
+  const weMin=Math.max(weH*60, wsMin+8*60);
+  const availMin=weMin-wsMin;
   if(availMin<=0) return 0;
+
   const allApts=S.get('lhs:appointments')||[];
   const allTechs=S.get('lhs:apt_techs')||[];
-  const aptMins=allApts.filter(a=>a.scheduled_date===date).reduce((s,a)=>{
-    const isOnApt=allTechs.some(t=>t.appointment_id===a.id&&t.tech_name===techName);
-    return isOnApt?s+(a.estimated_duration||120):s;
-  },0);
-  return Math.min(100,Math.round((aptMins/availMin)*100));
+
+  // Build time intervals [start, end] in absolute minutes for each apt this tech is on
+  const intervals=allApts
+    .filter(a=>a.scheduled_date===date && allTechs.some(t=>t.appointment_id===a.id&&t.tech_name===techName))
+    .map(a=>{
+      const [hh,mm]=(a.scheduled_time||'08:00').split(':').map(Number);
+      const aptStart=hh*60+mm;
+      const aptEnd=aptStart+(a.estimated_duration||120);
+      // Clamp to work window
+      const s=Math.max(aptStart, wsMin);
+      const e=Math.min(aptEnd,   weMin);
+      return [s,e];
+    })
+    .filter(([s,e])=>s<e); // discard if fully outside work window
+
+  if(!intervals.length) return 0;
+
+  // Merge overlapping intervals so back-to-back apts don't double-count
+  intervals.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const [s,e] of intervals){
+    if(merged.length && merged[merged.length-1][1]>=s){
+      merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],e);
+    } else {
+      merged.push([s,e]);
+    }
+  }
+
+  const bookedMin=merged.reduce((sum,[s,e])=>sum+(e-s),0);
+  return Math.min(100,Math.round(bookedMin/availMin*100));
 }
 const INV_NAV=[
   {id:'inv-dashboard',l:'Overview'},
@@ -20437,7 +20468,7 @@ function bHREmployeeDetail(){
       <span style="padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.15);font-size:12px;font-weight:600">${active?'● Active':'○ Inactive'}</span>
       ${u.hire_date?`<span style="padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.15);font-size:12px">Since ${fmtDate(u.hire_date)}</span>`:''}
     </div>
-    ${canEdit?`<button class="btn btn-n sm" onclick="oEditHREmployee('${u.id||u.email}')">Edit</button>`:''}
+    ${canEdit?`<button style="background:var(--teal);color:var(--navy);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer" onclick="oEditHREmployee('${u.id||u.email}')">✏️ Edit</button>`:''}
   </div>
 
   <!-- Tabs -->
@@ -20447,6 +20478,9 @@ function bHREmployeeDetail(){
 
   <!-- Tab content -->
   <div class="card">
+    ${canEdit?`<div style="display:flex;justify-content:flex-end;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
+      <button style="background:var(--navy);color:var(--teal);border:none;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer" onclick="oEditHREmployee('${u.id||u.email}')">✏️ Edit Employee</button>
+    </div>`:''}
     ${tabContent[tab]||tabContent.profile}
   </div>`;
 }
