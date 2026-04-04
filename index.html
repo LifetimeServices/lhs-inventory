@@ -1418,6 +1418,12 @@ const TBL={
   'lhs:comm_accounts':'lhs_commercial_accounts',
   'lhs:time_off_requests':'lhs_time_off_requests',
   'lhs:hr_state_settings':'lhs_hr_state_settings',
+  'lhs:acct_invoices':'lhs_acct_invoices',
+  'lhs:acct_bills':'lhs_acct_bills',
+  'lhs:acct_coa':'lhs_acct_coa',
+  'lhs:acct_journal':'lhs_acct_journal',
+  'lhs:acct_bank_accounts':'lhs_acct_bank_accounts',
+  'lhs:acct_bank_txns':'lhs_acct_bank_txns',
 };
 
 // Pull all data from Supabase into cache on login
@@ -1768,6 +1774,13 @@ async function startApp(){
     <div class="page" id="p-payroll"></div>
     <div class="page" id="p-accounting"></div>
     <div class="page" id="p-acct-dashboard"></div>
+    <div class="page" id="p-acct-division"></div>
+    <div class="page" id="p-acct-invoices"></div>
+    <div class="page" id="p-acct-ar"></div>
+    <div class="page" id="p-acct-ap"></div>
+    <div class="page" id="p-acct-coa"></div>
+    <div class="page" id="p-acct-journal"></div>
+    <div class="page" id="p-acct-bank"></div>
     <div class="page" id="p-acct-receipts"></div>
     <div class="page" id="p-acct-settings"></div>
     <div class="page" id="p-reports"></div>
@@ -1800,7 +1813,7 @@ async function startApp(){
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
     'my-timeoff',
-    'payroll','accounting','acct-dashboard','acct-receipts','acct-settings',
+    'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
     'reports','operations','admin'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
@@ -1814,7 +1827,7 @@ async function startApp(){
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
   const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
-  const _acctPgs=['acct-dashboard','acct-receipts','acct-settings'];
+  const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
   if(_dispPgs.includes(_restorePage)) renderDispatchNav();
@@ -1970,6 +1983,13 @@ function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payrol
 
 const ACCT_NAV=[
   {id:'acct-dashboard', l:'&#128200; Dashboard'},
+  {id:'acct-division',  l:'&#127963; Division P&amp;L'},
+  {id:'acct-invoices',  l:'&#128203; Invoices'},
+  {id:'acct-ar',        l:'&#128198; AR Aging'},
+  {id:'acct-ap',        l:'&#128179; Payables'},
+  {id:'acct-coa',       l:'&#128218; Chart of Accounts'},
+  {id:'acct-journal',   l:'&#128221; Journal'},
+  {id:'acct-bank',      l:'&#127974; Bank'},
   {id:'acct-receipts',  l:'&#129518; Receipts'},
   {id:'acct-settings',  l:'&#9881;&#65039; Settings'},
 ];
@@ -2092,7 +2112,7 @@ window.addEventListener('popstate',e=>{
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
   const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
-  const acctPages=['acct-dashboard','acct-receipts','acct-settings'];
+  const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
   if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
@@ -2127,7 +2147,12 @@ function buildPage(id){
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
     'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
     tasks:bTasks, mytasks:bMyTasks,
-    accounting:bAccounting,'acct-dashboard':bAcctDashboard,'acct-receipts':bAcctReceipts,'acct-settings':bAcctSettings,
+    accounting:bAccounting,'acct-dashboard':bAcctDashboard,
+    'acct-division':bAcctDivision,'acct-invoices':bAcctInvoices,
+    'acct-ar':bAcctAR,'acct-ap':bAcctAP,
+    'acct-coa':bAcctCOA,'acct-journal':bAcctJournal,
+    'acct-bank':bAcctBank,
+    'acct-receipts':bAcctReceipts,'acct-settings':bAcctSettings,
     closeout:bCloseout, inventory:bInv, 'inv-dashboard':bInvDash,
     po:bPO, receive:bRecv, transfer:bXfr, vans:bVans,
     locations:bLocs, locstock:bLS, 'inv-reports':bInvReports,
@@ -7708,6 +7733,1273 @@ async function rejectReceipt(id){
   S.set('lhs:receipts',recs);
   await dbUpdate('lhs:receipts',id,{status:'Rejected',approved_by:r.approved_by,approved_at:r.approved_at});
   tst('Receipt rejected','warning'); showPage('acct-receipts');
+}
+
+// ─── DIVISION P&L ─────────────────────────────────────────────────────────────
+function bAcctDivision(){
+  const wos=S.get('lhs:work_orders')||[];
+  const payments=S.get('lhs:payments')||[];
+  const receipts=S.get('lhs:receipts')||[];
+  const df=window._acctDateFrom||'';
+  const dt=window._acctDateTo||'9';
+
+  // Build per-division metrics — driven entirely by DIVS constant
+  const rows=DIVS.map(div=>{
+    const divWOs=wos.filter(w=>{
+      const cd=(w.completed_at||w.scheduled_date||'').slice(0,10);
+      if(df && cd<df) return false;
+      if(dt && cd>dt) return false;
+      return (w.division||w.job_type||'')===div;
+    });
+    const revenue=divWOs.reduce((s,w)=>s+(w.total_price||0),0);
+    const divPmts=payments.filter(p=>{
+      const pd=(p.posted_at||'').slice(0,10);
+      if(df && pd<df) return false;
+      if(dt && pd>dt) return false;
+      return divWOs.some(w=>w.id===p.work_order_id);
+    });
+    const collected=divPmts.reduce((s,p)=>s+(p.amount||0),0);
+    const divExp=receipts.filter(r=>{
+      if(df && (r.receipt_date||'')< df) return false;
+      if(dt && (r.receipt_date||'')> dt) return false;
+      return (r.division||r.job_type||'')===div;
+    });
+    const expenses=divExp.reduce((s,r)=>s+(r.amount||0),0);
+    const gp=revenue-expenses;
+    const margin=revenue>0?((gp/revenue)*100):0;
+    const jobs=divWOs.length;
+    return{div,revenue,collected,expenses,gp,margin,jobs};
+  }).filter(r=>r.jobs>0||true); // show all divs
+
+  const totRev=rows.reduce((s,r)=>s+r.revenue,0);
+  const totCol=rows.reduce((s,r)=>s+r.collected,0);
+  const totExp=rows.reduce((s,r)=>s+r.expenses,0);
+  const totGP=totRev-totExp;
+  const totMgn=totRev>0?((totGP/totRev)*100):0;
+  const totJobs=rows.reduce((s,r)=>s+r.jobs,0);
+
+  const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
+  const pct=v=>v.toFixed(1)+'%';
+  const gpColor=v=>v>=0?'var(--green)':'var(--red)';
+
+  return`<div class="pt">&#127963; Division P&amp;L</div>
+  <div class="ps">Profit &amp; loss by division — driven by <code>DIVS</code> constant, add a division once and it appears everywhere</div>
+
+  ${_acctDateBar("showPage('acct-division')")}
+
+  <!-- Summary KPIs -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px">
+    ${[
+      {l:'Total Revenue',v:fmt(totRev),c:'n'},
+      {l:'Collected',v:fmt(totCol),c:'g'},
+      {l:'Total Expenses',v:fmt(totExp),c:'r'},
+      {l:'Gross Profit',v:fmt(totGP),c:totGP>=0?'gr':'r'},
+      {l:'Avg Margin',v:pct(totMgn),c:totMgn>=40?'gr':totMgn>=20?'a':'r'},
+      {l:'Total Jobs',v:totJobs,c:'n'},
+    ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
+  </div>
+
+  <!-- Division table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--bdr);font-weight:700;font-size:14px;color:var(--navy)">
+      &#127963; All Divisions &mdash; <span style="font-weight:400;font-size:13px;color:var(--muted)">${rows.filter(r=>r.jobs>0).length} active this period</span>
+    </div>
+    <div class="tw" style="overflow-x:auto"><table>
+      <thead><tr>
+        <th>Division</th><th>Jobs</th>
+        <th style="text-align:right">Revenue</th>
+        <th style="text-align:right">Collected</th>
+        <th style="text-align:right">Expenses</th>
+        <th style="text-align:right">Gross Profit</th>
+        <th style="text-align:right">Margin</th>
+        <th style="text-align:right">Collection %</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>{
+          const colPct=r.revenue>0?((r.collected/r.revenue)*100):0;
+          const isActive=r.jobs>0;
+          return`<tr style="${!isActive?'opacity:0.45':''}">
+            <td style="font-weight:600;color:var(--navy)">${esc(r.div)}</td>
+            <td><span style="background:var(--surf);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${r.jobs}</span></td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${fmt(r.revenue)}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(r.collected)}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--red)">${fmt(r.expenses)}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${gpColor(r.gp)}">${fmt(r.gp)}</td>
+            <td style="text-align:right">
+              <span style="background:${r.margin>=40?'#e8f5e9':r.margin>=20?'#fff8e1':'#ffebee'};
+                color:${r.margin>=40?'var(--green)':r.margin>=20?'var(--amber)':'var(--red)'};
+                border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(r.margin)}</span>
+            </td>
+            <td style="text-align:right">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:60px;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${Math.min(colPct,100).toFixed(1)}%;background:${colPct>=90?'var(--green)':colPct>=60?'var(--amber)':'var(--red)'};border-radius:3px"></div>
+                </div>
+                <span style="font-size:12px;font-family:'DM Mono',monospace">${pct(colPct)}</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+        <!-- Totals row -->
+        <tr style="background:var(--surf);border-top:2px solid var(--bdr)">
+          <td style="font-weight:700;color:var(--navy)">TOTAL</td>
+          <td><span style="background:var(--navy);color:var(--teal);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${totJobs}</span></td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${fmt(totRev)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(totCol)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--red)">${fmt(totExp)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${gpColor(totGP)}">${fmt(totGP)}</td>
+          <td style="text-align:right"><span style="background:${totMgn>=40?'#e8f5e9':totMgn>=20?'#fff8e1':'#ffebee'};color:${totMgn>=40?'var(--green)':totMgn>=20?'var(--amber)':'var(--red)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(totMgn)}</span></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- Monthly trend chart placeholder -->
+  <div class="card" style="margin-top:0">
+    <div class="ct">Monthly Revenue Trend</div>
+    <div id="div-trend-chart" style="height:180px;display:flex;align-items:flex-end;gap:3px;padding-bottom:4px"></div>
+  </div>
+
+  <script>
+  (function(){
+    const wos=window._S?._cache?.['lhs:work_orders']||JSON.parse(localStorage.getItem('lhs:work_orders')||'[]');
+    const el=document.getElementById('div-trend-chart'); if(!el) return;
+    const months={};
+    wos.forEach(w=>{
+      const d=(w.completed_at||w.scheduled_date||'').slice(0,7);
+      if(!d) return;
+      months[d]=(months[d]||0)+(w.total_price||0);
+    });
+    const keys=Object.keys(months).sort().slice(-12);
+    if(!keys.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;margin:auto">No data yet</div>';return;}
+    const max=Math.max(...keys.map(k=>months[k]),1);
+    el.innerHTML=keys.map(k=>{
+      const h=Math.max(4,Math.round((months[k]/max)*160));
+      return\`<div title="\${k}: $\${Math.round(months[k]).toLocaleString()}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:default">
+        <div style="width:100%;height:\${h}px;background:var(--teal);border-radius:3px 3px 0 0;opacity:.85;transition:opacity .2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.85"></div>
+        <div style="font-size:9px;color:var(--muted);white-space:nowrap">\${k.slice(5)}</div>
+      </div>\`;
+    }).join('');
+  })();
+  <\/script>`;
+}
+
+// ─── INVOICES ─────────────────────────────────────────────────────────────────
+function bAcctInvoices(){
+  const invs=S.get('lhs:acct_invoices')||[];
+  const wos=S.get('lhs:work_orders')||[];
+  const customers=S.get('lhs:customers')||[];
+  const df=window._acctDateFrom||'';
+  const dt=window._acctDateTo||'9';
+  const canEdit=['God View','Admin','Director','Operations Manager'].includes(CU?.role);
+
+  const filtered=invs.filter(i=>{
+    const d=(i.invoice_date||i.created_at||'').slice(0,10);
+    if(df && d<df) return false;
+    if(dt && d>dt) return false;
+    return true;
+  }).sort((a,b)=>(b.invoice_date||b.created_at||'').localeCompare(a.invoice_date||a.created_at||''));
+
+  const totAmt=filtered.reduce((s,i)=>s+(i.amount||0),0);
+  const totPaid=filtered.filter(i=>i.status==='Paid').reduce((s,i)=>s+(i.amount||0),0);
+  const totOpen=filtered.filter(i=>i.status==='Open'||!i.status).reduce((s,i)=>s+(i.amount||0),0);
+  const totOver=filtered.filter(i=>i.status==='Overdue').reduce((s,i)=>s+(i.amount||0),0);
+  const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const statusColor={Paid:'var(--green)',Open:'var(--amber)',Overdue:'var(--red)',Void:'var(--muted)',Draft:'var(--muted)'};
+  const statusBg={Paid:'#e8f5e9',Open:'#fff8e1',Overdue:'#ffebee',Void:'var(--surf)',Draft:'var(--surf)'};
+
+  return`<div class="pt">&#128203; Invoices</div>
+  <div class="ps">Track all customer invoices — link to work orders, monitor payment status</div>
+
+  ${_acctDateBar("showPage('acct-invoices')")}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px">
+    ${[
+      {l:'Total Invoiced',v:fmt(totAmt),c:'n'},
+      {l:'Collected',v:fmt(totPaid),c:'gr'},
+      {l:'Open',v:fmt(totOpen),c:'a'},
+      {l:'Overdue',v:fmt(totOver),c:'r'},
+      {l:'Count',v:filtered.length,c:'n'},
+    ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:600;color:var(--navy)">${filtered.length} invoice${filtered.length!==1?'s':''}</div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddInvoice()">+ New Invoice</button>`:''}
+  </div>
+
+  <div class="card" style="padding:0">
+    ${!filtered.length
+      ?`<div style="padding:48px;text-align:center;color:var(--muted)">
+          <div style="font-size:36px;margin-bottom:12px">&#128203;</div>
+          <div style="font-weight:600;font-size:15px;color:var(--navy);margin-bottom:6px">No invoices yet</div>
+          <div style="font-size:13px;margin-bottom:20px">Create your first invoice to start tracking receivables.</div>
+          ${canEdit?`<button class="btn btn-n" onclick="oAddInvoice()">+ Create Invoice</button>`:''}
+        </div>`
+      :`<div class="tw" style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>#</th><th>Customer</th><th>Division</th>
+          <th style="text-align:right">Amount</th>
+          <th>Invoice Date</th><th>Due Date</th>
+          <th>Status</th><th>Work Order</th>
+          ${canEdit?'<th></th>':''}
+        </tr></thead>
+        <tbody>${filtered.map(i=>{
+          const cust=customers.find(c=>c.id===i.customer_id);
+          const wo=wos.find(w=>w.id===i.work_order_id);
+          const st=i.status||'Open';
+          return`<tr>
+            <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
+            <td style="font-weight:500">${esc(i.customer_name||cust?.name||'—')}</td>
+            <td>${esc(i.division||'—')}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(i.amount||0)}</td>
+            <td>${fmtDate(i.invoice_date)}</td>
+            <td style="${st==='Overdue'?'color:var(--red);font-weight:600':''}">${fmtDate(i.due_date)}</td>
+            <td><span style="background:${statusBg[st]||'var(--surf)'};color:${statusColor[st]||'var(--muted)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${st}</span></td>
+            <td>${wo?`<a href="#" onclick="showPage('closeout');return false" style="color:var(--teal);font-size:12px">WO #${esc(wo.wo_number||wo.id?.slice(-6))}</a>`:'—'}</td>
+            ${canEdit?`<td style="white-space:nowrap;text-align:right">
+              <button class="btn sm btn-o" onclick="oEditInvoice('${esc(i.id)}')">Edit</button>
+              <button class="btn sm btn-r" onclick="delInvoice('${esc(i.id)}')">&#215;</button>
+            </td>`:''}
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`}
+  </div>`;
+}
+
+function oAddInvoice(){
+  const customers=S.get('lhs:customers')||[];
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.status==='Completed'||w.status==='Invoiced');
+  const today=new Date().toISOString().slice(0,10);
+  const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+  oMod('+ New Invoice',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Invoice # *</label>
+        <input id="inv-num" placeholder="INV-0001"></div>
+      <div class="fl" style="margin:0"><label>Division</label>
+        <select id="inv-div"><option value="">-- Select --</option>
+          ${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+        </select></div>
+    </div>
+    <div class="fl" style="margin-bottom:10px"><label>Customer *</label>
+      <select id="inv-cust"><option value="">-- Select customer --</option>
+        ${customers.map(c=>`<option value="${esc(c.id)}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('')}
+      </select></div>
+    <div class="fl" style="margin-bottom:10px"><label>Link Work Order (optional)</label>
+      <select id="inv-wo"><option value="">-- None --</option>
+        ${wos.map(w=>`<option value="${esc(w.id)}">WO #${esc(w.wo_number||w.id?.slice(-6))} — ${esc(w.customer_name||'')} (${esc(w.division||'')})</option>`).join('')}
+      </select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Amount *</label>
+        <input type="number" id="inv-amt" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fl" style="margin:0"><label>Invoice Date</label>
+        <input type="date" id="inv-date" value="${today}"></div>
+      <div class="fl" style="margin:0"><label>Due Date</label>
+        <input type="date" id="inv-due" value="${due30}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Status</label>
+        <select id="inv-status">
+          <option value="Open">Open</option>
+          <option value="Paid">Paid</option>
+          <option value="Overdue">Overdue</option>
+          <option value="Draft">Draft</option>
+          <option value="Void">Void</option>
+        </select></div>
+      <div class="fl" style="margin:0"><label>Tax Amount ($)</label>
+        <input type="number" id="inv-tax" step="0.01" min="0" placeholder="0.00"></div>
+    </div>
+    <div class="fl" style="margin-bottom:16px"><label>Notes</label>
+      <textarea id="inv-notes" rows="2" placeholder="Invoice notes..."></textarea></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveInvoice()">Save Invoice</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function saveInvoice(editId){
+  const num=(document.getElementById('inv-num')?.value||'').trim();
+  const amt=parseFloat(document.getElementById('inv-amt')?.value||'0');
+  const custSel=document.getElementById('inv-cust');
+  const custId=custSel?.value||'';
+  const custName=custSel?.selectedOptions[0]?.dataset?.name||'';
+  if(!num){tst('Invoice number required','error');return;}
+  if(!amt||amt<=0){tst('Amount must be greater than 0','error');return;}
+  const rec={
+    invoice_number:num,
+    customer_id:custId||null,
+    customer_name:custName||null,
+    work_order_id:document.getElementById('inv-wo')?.value||null,
+    division:document.getElementById('inv-div')?.value||null,
+    amount:amt,
+    tax_amount:parseFloat(document.getElementById('inv-tax')?.value||'0')||null,
+    invoice_date:document.getElementById('inv-date')?.value||null,
+    due_date:document.getElementById('inv-due')?.value||null,
+    status:document.getElementById('inv-status')?.value||'Open',
+    notes:document.getElementById('inv-notes')?.value||null,
+    created_by:CU?.name||null,
+  };
+  if(editId){
+    await dbUpdate('lhs:acct_invoices',editId,rec);
+  } else {
+    rec.id=crypto.randomUUID();
+    rec.created_at=new Date().toISOString();
+    await dbInsert('lhs:acct_invoices',rec);
+  }
+  cMod(); showPage('acct-invoices');
+}
+
+function oEditInvoice(id){
+  const invs=S.get('lhs:acct_invoices')||[];
+  const i=invs.find(x=>x.id===id); if(!i) return;
+  oAddInvoice();
+  setTimeout(()=>{
+    document.getElementById('inv-num')&&(document.getElementById('inv-num').value=i.invoice_number||'');
+    document.getElementById('inv-div')&&(document.getElementById('inv-div').value=i.division||'');
+    document.getElementById('inv-cust')&&(document.getElementById('inv-cust').value=i.customer_id||'');
+    document.getElementById('inv-wo')&&(document.getElementById('inv-wo').value=i.work_order_id||'');
+    document.getElementById('inv-amt')&&(document.getElementById('inv-amt').value=i.amount||'');
+    document.getElementById('inv-tax')&&(document.getElementById('inv-tax').value=i.tax_amount||'');
+    document.getElementById('inv-date')&&(document.getElementById('inv-date').value=i.invoice_date||'');
+    document.getElementById('inv-due')&&(document.getElementById('inv-due').value=i.due_date||'');
+    document.getElementById('inv-status')&&(document.getElementById('inv-status').value=i.status||'Open');
+    document.getElementById('inv-notes')&&(document.getElementById('inv-notes').value=i.notes||'');
+    const btn=document.querySelector('.modal-footer .btn-n');
+    if(btn) btn.onclick=()=>saveInvoice(id);
+  },50);
+}
+
+async function delInvoice(id){
+  if(!confirm('Delete this invoice?')) return;
+  const invs=S.get('lhs:acct_invoices')||[];
+  S.set('lhs:acct_invoices',invs.filter(i=>i.id!==id));
+  try{await DB.from('lhs_acct_invoices').delete().eq('id',id);}catch{}
+  showPage('acct-invoices');
+}
+
+// ─── AR AGING ─────────────────────────────────────────────────────────────────
+function bAcctAR(){
+  const invs=S.get('lhs:acct_invoices')||[];
+  const today=new Date();
+  const openInvs=invs.filter(i=>i.status==='Open'||i.status==='Overdue');
+  const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const buckets=[
+    {label:'Current (0-30d)',min:0,max:30,color:'var(--green)',bg:'#e8f5e9'},
+    {label:'31-60 Days',min:31,max:60,color:'var(--amber)',bg:'#fff8e1'},
+    {label:'61-90 Days',min:61,max:90,color:'#e65100',bg:'#fff3e0'},
+    {label:'90+ Days',min:91,max:99999,color:'var(--red)',bg:'#ffebee'},
+  ];
+
+  const aged=openInvs.map(i=>{
+    const due=i.due_date?new Date(i.due_date):new Date(i.invoice_date||today);
+    const days=Math.max(0,Math.floor((today-due)/86400000));
+    return{...i,daysOverdue:days};
+  });
+
+  const bucketData=buckets.map(b=>{
+    const items=aged.filter(i=>i.daysOverdue>=b.min&&i.daysOverdue<=b.max);
+    const total=items.reduce((s,i)=>s+(i.amount||0),0);
+    return{...b,items,total};
+  });
+
+  const grandTotal=aged.reduce((s,i)=>s+(i.amount||0),0);
+
+  return`<div class="pt">&#128198; AR Aging</div>
+  <div class="ps">Accounts receivable aging — track overdue invoices by customer and time bucket</div>
+
+  ${_acctDateBar("showPage('acct-ar')")}
+
+  <!-- Aging buckets -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:22px">
+    ${bucketData.map(b=>`<div style="background:${b.bg};border-left:4px solid ${b.color};border-radius:10px;padding:16px 18px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${b.color};margin-bottom:6px">${b.label}</div>
+      <div style="font-size:28px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">${fmt(b.total)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">${b.items.length} invoice${b.items.length!==1?'s':''}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Grand total bar -->
+  <div class="card" style="margin-bottom:18px;display:flex;align-items:center;gap:20px;padding:16px 20px">
+    <div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px">Total Outstanding AR</div>
+      <div style="font-size:32px;font-weight:700;color:var(--navy)">${fmt(grandTotal)}</div>
+    </div>
+    <div style="flex:1;height:12px;background:var(--bdr);border-radius:6px;overflow:hidden;display:flex">
+      ${bucketData.filter(b=>b.total>0).map(b=>`<div title="${b.label}: ${fmt(b.total)}"
+        style="height:100%;width:${grandTotal>0?(b.total/grandTotal*100).toFixed(1):0}%;background:${b.color};transition:width .4s"></div>`).join('')}
+    </div>
+  </div>
+
+  <!-- Detail by bucket -->
+  ${bucketData.map(b=>!b.items.length?'':`
+  <details open style="margin-bottom:16px">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;background:${b.bg};border-radius:10px;border-left:4px solid ${b.color}">
+      <span style="font-size:12px;color:var(--muted)">▶</span>
+      <span style="font-weight:700;color:var(--navy)">${b.label}</span>
+      <span style="font-size:13px;font-weight:700;color:${b.color};margin-left:auto">${fmt(b.total)} — ${b.items.length} invoice${b.items.length!==1?'s':''}</span>
+    </summary>
+    <div class="tw" style="overflow-x:auto;margin-top:8px"><table>
+      <thead><tr><th>#</th><th>Customer</th><th>Division</th><th style="text-align:right">Amount</th><th>Due Date</th><th>Days Overdue</th><th>Action</th></tr></thead>
+      <tbody>${b.items.map(i=>`<tr>
+        <td style="font-family:'DM Mono',monospace;font-weight:700">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
+        <td style="font-weight:500">${esc(i.customer_name||'—')}</td>
+        <td>${esc(i.division||'—')}</td>
+        <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(i.amount||0)}</td>
+        <td style="color:${b.color};font-weight:600">${fmtDate(i.due_date)}</td>
+        <td><span style="background:${b.bg};color:${b.color};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${i.daysOverdue}d</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn sm btn-o" onclick="markInvoicePaid('${esc(i.id)}')">Mark Paid</button>
+          <button class="btn sm btn-n" onclick="oEditInvoice('${esc(i.id)}')">Edit</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </details>`).join('')}
+
+  ${!aged.length?`<div class="card" style="text-align:center;padding:48px;color:var(--muted)">
+    <div style="font-size:36px;margin-bottom:12px">&#127881;</div>
+    <div style="font-weight:600;font-size:15px;color:var(--green);margin-bottom:6px">All clear — no open invoices!</div>
+    <div style="font-size:13px">Create invoices on the Invoices tab to start tracking AR.</div>
+  </div>`:''}`;
+}
+
+async function markInvoicePaid(id){
+  if(!confirm('Mark this invoice as Paid?')) return;
+  await dbUpdate('lhs:acct_invoices',id,{status:'Paid',paid_at:new Date().toISOString(),updated_by:CU?.name||null});
+  showPage('acct-ar');
+}
+
+// ─── ACCOUNTS PAYABLE ─────────────────────────────────────────────────────────
+function bAcctAP(){
+  const bills=S.get('lhs:acct_bills')||[];
+  const df=window._acctDateFrom||'';
+  const dt=window._acctDateTo||'9';
+  const canEdit=['God View','Admin','Director','Operations Manager'].includes(CU?.role);
+  const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const filtered=bills.filter(b=>{
+    const d=(b.bill_date||b.created_at||'').slice(0,10);
+    if(df && d<df) return false;
+    if(dt && d>dt) return false;
+    return true;
+  }).sort((a,b2)=>(b2.bill_date||b2.created_at||'').localeCompare(a.bill_date||a.created_at||''));
+
+  const today=new Date();
+  const totAmt=filtered.reduce((s,b)=>s+(b.amount||0),0);
+  const totPaid=filtered.filter(b=>b.status==='Paid').reduce((s,b)=>s+(b.amount||0),0);
+  const totOpen=filtered.filter(b=>b.status!=='Paid'&&b.status!=='Void').reduce((s,b)=>s+(b.amount||0),0);
+  const totOver=filtered.filter(b=>{
+    if(b.status==='Paid'||b.status==='Void') return false;
+    const due=b.due_date?new Date(b.due_date):null;
+    return due&&due<today;
+  }).reduce((s,b)=>s+(b.amount||0),0);
+
+  const statusColor={Paid:'var(--green)',Open:'var(--amber)',Overdue:'var(--red)',Void:'var(--muted)',Draft:'var(--muted)'};
+  const statusBg={Paid:'#e8f5e9',Open:'#fff8e1',Overdue:'#ffebee',Void:'var(--surf)',Draft:'var(--surf)'};
+
+  return`<div class="pt">&#128179; Payables</div>
+  <div class="ps">Accounts payable — vendor bills, track what you owe and due dates</div>
+
+  ${_acctDateBar("showPage('acct-ap')")}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px">
+    ${[
+      {l:'Total Bills',v:fmt(totAmt),c:'n'},
+      {l:'Paid',v:fmt(totPaid),c:'gr'},
+      {l:'Open / Due',v:fmt(totOpen),c:'a'},
+      {l:'Overdue',v:fmt(totOver),c:'r'},
+    ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:600;color:var(--navy)">${filtered.length} bill${filtered.length!==1?'s':''}</div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddBill()">+ New Bill</button>`:''}
+  </div>
+
+  <div class="card" style="padding:0">
+    ${!filtered.length
+      ?`<div style="padding:48px;text-align:center;color:var(--muted)">
+          <div style="font-size:36px;margin-bottom:12px">&#128179;</div>
+          <div style="font-weight:600;font-size:15px;color:var(--navy);margin-bottom:6px">No bills yet</div>
+          ${canEdit?`<button class="btn btn-n" onclick="oAddBill()">+ Add First Bill</button>`:''}
+        </div>`
+      :`<div class="tw" style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Bill #</th><th>Vendor</th><th>Division</th>
+          <th style="text-align:right">Amount</th>
+          <th>Bill Date</th><th>Due Date</th>
+          <th>Status</th><th>GL Code</th>
+          ${canEdit?'<th></th>':''}
+        </tr></thead>
+        <tbody>${filtered.map(b=>{
+          const st=b.status||'Open';
+          const due=b.due_date?new Date(b.due_date):null;
+          const isOver=st!=='Paid'&&st!=='Void'&&due&&due<today;
+          return`<tr>
+            <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy)">${esc(b.bill_number||b.id?.slice(-6)||'—')}</td>
+            <td style="font-weight:500">${esc(b.vendor_name||'—')}</td>
+            <td>${esc(b.division||'—')}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(b.amount||0)}</td>
+            <td>${fmtDate(b.bill_date)}</td>
+            <td style="${isOver?'color:var(--red);font-weight:600':''}">${fmtDate(b.due_date)}</td>
+            <td><span style="background:${statusBg[isOver?'Overdue':st]};color:${statusColor[isOver?'Overdue':st]};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${isOver?'Overdue':st}</span></td>
+            <td style="font-family:'DM Mono',monospace;font-size:12px">${esc(b.gl_code||'—')}</td>
+            ${canEdit?`<td style="white-space:nowrap;text-align:right">
+              ${st!=='Paid'?`<button class="btn sm btn-g" onclick="markBillPaid('${esc(b.id)}')">Pay</button>`:''}
+              <button class="btn sm btn-o" onclick="oEditBill('${esc(b.id)}')">Edit</button>
+              <button class="btn sm btn-r" onclick="delBill('${esc(b.id)}')">&#215;</button>
+            </td>`:''}
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`}
+  </div>`;
+}
+
+function oAddBill(editData){
+  const codes=S.get('lhs:accounting_codes')||[];
+  const vens=S.get('lhs:vens')||[];
+  const today=new Date().toISOString().slice(0,10);
+  const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+  const d=editData||{};
+  oMod((editData?'Edit':'+ New')+' Bill',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Bill # *</label>
+        <input id="bill-num" placeholder="BILL-0001" value="${esc(d.bill_number||'')}"></div>
+      <div class="fl" style="margin:0"><label>Division</label>
+        <select id="bill-div"><option value="">-- Select --</option>
+          ${DIVS.map(div=>`<option value="${esc(div)}"${d.division===div?' selected':''}>${esc(div)}</option>`).join('')}
+        </select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Vendor *</label>
+        <input id="bill-vendor" placeholder="Vendor name" value="${esc(d.vendor_name||'')}"></div>
+      <div class="fl" style="margin:0"><label>GL Code</label>
+        <select id="bill-gl"><option value="">-- None --</option>
+          ${codes.map(c=>`<option value="${esc(c.code)}"${d.gl_code===c.code?' selected':''}>${esc(c.code)} — ${esc(c.description)}</option>`).join('')}
+        </select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Amount *</label>
+        <input type="number" id="bill-amt" step="0.01" min="0" placeholder="0.00" value="${d.amount||''}"></div>
+      <div class="fl" style="margin:0"><label>Bill Date</label>
+        <input type="date" id="bill-date" value="${d.bill_date||today}"></div>
+      <div class="fl" style="margin:0"><label>Due Date</label>
+        <input type="date" id="bill-due" value="${d.due_date||due30}"></div>
+    </div>
+    <div class="fl" style="margin-bottom:10px"><label>Status</label>
+      <select id="bill-status">
+        ${['Open','Paid','Void','Draft'].map(s=>`<option value="${s}"${(d.status||'Open')===s?' selected':''}>${s}</option>`).join('')}
+      </select></div>
+    <div class="fl" style="margin-bottom:16px"><label>Notes</label>
+      <textarea id="bill-notes" rows="2" placeholder="Notes...">${esc(d.notes||'')}</textarea></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveBill('${esc(d.id||'')}')">Save Bill</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function saveBill(editId){
+  const num=(document.getElementById('bill-num')?.value||'').trim();
+  const vendor=(document.getElementById('bill-vendor')?.value||'').trim();
+  const amt=parseFloat(document.getElementById('bill-amt')?.value||'0');
+  if(!num){tst('Bill number required','error');return;}
+  if(!vendor){tst('Vendor name required','error');return;}
+  if(!amt||amt<=0){tst('Amount must be greater than 0','error');return;}
+  const rec={
+    bill_number:num, vendor_name:vendor,
+    division:document.getElementById('bill-div')?.value||null,
+    gl_code:document.getElementById('bill-gl')?.value||null,
+    amount:amt,
+    bill_date:document.getElementById('bill-date')?.value||null,
+    due_date:document.getElementById('bill-due')?.value||null,
+    status:document.getElementById('bill-status')?.value||'Open',
+    notes:document.getElementById('bill-notes')?.value||null,
+    updated_by:CU?.name||null,
+  };
+  if(editId){
+    await dbUpdate('lhs:acct_bills',editId,rec);
+  } else {
+    rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString(); rec.created_by=CU?.name||null;
+    await dbInsert('lhs:acct_bills',rec);
+  }
+  cMod(); showPage('acct-ap');
+}
+
+function oEditBill(id){
+  const bills=S.get('lhs:acct_bills')||[];
+  const b=bills.find(x=>x.id===id); if(!b) return;
+  oAddBill(b);
+}
+
+async function markBillPaid(id){
+  if(!confirm('Mark this bill as Paid?')) return;
+  await dbUpdate('lhs:acct_bills',id,{status:'Paid',paid_at:new Date().toISOString(),updated_by:CU?.name||null});
+  showPage('acct-ap');
+}
+
+async function delBill(id){
+  if(!confirm('Delete this bill?')) return;
+  const bills=S.get('lhs:acct_bills')||[];
+  S.set('lhs:acct_bills',bills.filter(b=>b.id!==id));
+  try{await DB.from('lhs_acct_bills').delete().eq('id',id);}catch{}
+  showPage('acct-ap');
+}
+
+// ─── CHART OF ACCOUNTS ────────────────────────────────────────────────────────
+function bAcctCOA(){
+  const coa=S.get('lhs:acct_coa')||_defaultCOA();
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+
+  const types=['Asset','Liability','Equity','Revenue','Cost of Goods Sold','Expense','Other Income','Other Expense'];
+  const grouped={};
+  types.forEach(t=>{grouped[t]=coa.filter(c=>c.type===t);});
+
+  const typeColors={
+    'Asset':'var(--teal)','Liability':'var(--red)','Equity':'var(--navy)',
+    'Revenue':'var(--green)','Cost of Goods Sold':'#e65100','Expense':'var(--amber)',
+    'Other Income':'var(--green)','Other Expense':'var(--red)'
+  };
+
+  return`<div class="pt">&#128218; Chart of Accounts</div>
+  <div class="ps">Full general ledger structure — accounts organized by type for complete double-entry bookkeeping</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+    <div style="font-size:13px;color:var(--muted)">${coa.length} accounts across ${Object.values(grouped).filter(g=>g.length>0).length} categories</div>
+    <div style="display:flex;gap:8px">
+      ${canEdit?`<button class="btn btn-n" onclick="oAddCOAAccount()">+ Add Account</button>`:''}
+      ${canEdit&&coa.length===0?`<button class="btn btn-o" onclick="loadDefaultCOA()">Load Default COA</button>`:''}
+    </div>
+  </div>
+
+  ${types.map(type=>{
+    const accounts=grouped[type]||[];
+    if(!accounts.length) return '';
+    const color=typeColors[type]||'var(--navy)';
+    return`<details open style="margin-bottom:12px">
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;
+        padding:12px 16px;background:var(--surf);border-radius:10px;border-left:4px solid ${color}">
+        <span style="font-size:12px;color:var(--muted)">▶</span>
+        <span style="font-weight:700;color:var(--navy)">${type}</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:auto">${accounts.length} accounts</span>
+      </summary>
+      <div class="tw" style="overflow-x:auto;margin-top:6px"><table>
+        <thead><tr><th>Code</th><th>Account Name</th><th>Sub-type</th><th>Description</th>${canEdit?'<th></th>':''}</tr></thead>
+        <tbody>${accounts.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<tr>
+          <td style="font-family:'DM Mono',monospace;font-weight:700;color:${color}">${esc(a.code)}</td>
+          <td style="font-weight:600">${esc(a.name)}</td>
+          <td style="font-size:12px;color:var(--muted)">${esc(a.subtype||'')}</td>
+          <td style="font-size:12px;color:var(--muted)">${esc(a.description||'')}</td>
+          ${canEdit?`<td style="white-space:nowrap;text-align:right">
+            <button class="btn sm btn-o" onclick="oEditCOAAccount('${esc(a.id)}')">Edit</button>
+            <button class="btn sm btn-r" onclick="delCOAAccount('${esc(a.id)}')">&#215;</button>
+          </td>`:''}
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </details>`;
+  }).join('')}
+
+  ${!coa.length?`<div class="card" style="text-align:center;padding:48px;color:var(--muted)">
+    <div style="font-size:36px;margin-bottom:12px">&#128218;</div>
+    <div style="font-weight:600;font-size:15px;color:var(--navy);margin-bottom:6px">No accounts yet</div>
+    <div style="font-size:13px;margin-bottom:20px">Start with a standard chart of accounts or add your own.</div>
+    ${canEdit?`<button class="btn btn-n" onclick="loadDefaultCOA()" style="margin-right:8px">Load Default COA</button>
+    <button class="btn btn-o" onclick="oAddCOAAccount()">+ Custom Account</button>`:''}
+  </div>`:''}`;
+}
+
+function _defaultCOA(){
+  return[
+    // Assets
+    {id:'coa-1000',code:'1000',name:'Cash',type:'Asset',subtype:'Current Asset',description:'Operating cash accounts'},
+    {id:'coa-1100',code:'1100',name:'Accounts Receivable',type:'Asset',subtype:'Current Asset',description:'Money owed by customers'},
+    {id:'coa-1200',code:'1200',name:'Inventory',type:'Asset',subtype:'Current Asset',description:'Materials and supplies on hand'},
+    {id:'coa-1300',code:'1300',name:'Prepaid Expenses',type:'Asset',subtype:'Current Asset',description:'Expenses paid in advance'},
+    {id:'coa-1500',code:'1500',name:'Equipment',type:'Asset',subtype:'Fixed Asset',description:'Tools, machinery, vehicles'},
+    {id:'coa-1510',code:'1510',name:'Accumulated Depreciation',type:'Asset',subtype:'Fixed Asset',description:'Contra-asset: total depreciation'},
+    // Liabilities
+    {id:'coa-2000',code:'2000',name:'Accounts Payable',type:'Liability',subtype:'Current Liability',description:'Money owed to vendors'},
+    {id:'coa-2100',code:'2100',name:'Credit Cards Payable',type:'Liability',subtype:'Current Liability',description:'Outstanding credit card balances'},
+    {id:'coa-2200',code:'2200',name:'Sales Tax Payable',type:'Liability',subtype:'Current Liability',description:'Sales tax collected, owed to state'},
+    {id:'coa-2300',code:'2300',name:'Payroll Liabilities',type:'Liability',subtype:'Current Liability',description:'Payroll taxes and withholdings due'},
+    {id:'coa-2500',code:'2500',name:'Notes Payable',type:'Liability',subtype:'Long-term Liability',description:'Bank loans and long-term debt'},
+    // Equity
+    {id:'coa-3000',code:'3000',name:"Owner's Equity",type:'Equity',subtype:'',description:"Owner's capital account"},
+    {id:'coa-3100',code:'3100',name:'Retained Earnings',type:'Equity',subtype:'',description:'Cumulative earnings retained in the business'},
+    // Revenue
+    {id:'coa-4000',code:'4000',name:'Service Revenue',type:'Revenue',subtype:'',description:'Revenue from all service lines'},
+    ...DIVS.map((d,i)=>({
+      id:`coa-40${String(10+i).padStart(2,'0')}`,
+      code:`40${String(10+i).padStart(2,'0')}`,
+      name:d+' Revenue',type:'Revenue',subtype:'Division Revenue',description:`Revenue from ${d} division`
+    })),
+    // COGS
+    {id:'coa-5000',code:'5000',name:'Cost of Goods Sold',type:'Cost of Goods Sold',subtype:'',description:'Direct job costs — materials, subcontractors'},
+    {id:'coa-5100',code:'5100',name:'Labor — Direct',type:'Cost of Goods Sold',subtype:'',description:'Field technician wages on jobs'},
+    {id:'coa-5200',code:'5200',name:'Materials',type:'Cost of Goods Sold',subtype:'',description:'Parts and materials used on jobs'},
+    // Expenses
+    {id:'coa-6000',code:'6000',name:'Payroll — Administrative',type:'Expense',subtype:'Payroll',description:'Office and admin staff wages'},
+    {id:'coa-6100',code:'6100',name:'Rent / Occupancy',type:'Expense',subtype:'Facilities',description:'Office and warehouse rent'},
+    {id:'coa-6200',code:'6200',name:'Utilities',type:'Expense',subtype:'Facilities',description:'Electric, gas, internet'},
+    {id:'coa-6300',code:'6300',name:'Vehicle Expenses',type:'Expense',subtype:'Transportation',description:'Fuel, repairs, insurance for company vehicles'},
+    {id:'coa-6400',code:'6400',name:'Insurance',type:'Expense',subtype:'Insurance',description:'Business, liability, workers comp'},
+    {id:'coa-6500',code:'6500',name:'Marketing & Advertising',type:'Expense',subtype:'Marketing',description:'Digital ads, print, events'},
+    {id:'coa-6600',code:'6600',name:'Software & Technology',type:'Expense',subtype:'Technology',description:'SaaS subscriptions, tools'},
+    {id:'coa-6700',code:'6700',name:'Tools & Equipment',type:'Expense',subtype:'Operations',description:'Small tools under capitalization threshold'},
+    {id:'coa-6800',code:'6800',name:'Training & Certifications',type:'Expense',subtype:'HR',description:'Employee training, licenses, certs'},
+    {id:'coa-6900',code:'6900',name:'Professional Services',type:'Expense',subtype:'Professional',description:'Legal, accounting, consulting'},
+    {id:'coa-7000',code:'7000',name:'Depreciation Expense',type:'Expense',subtype:'Non-cash',description:'Annual depreciation of fixed assets'},
+  ];
+}
+
+function loadDefaultCOA(){
+  if(!confirm('Load the default chart of accounts? This will add standard accounts to your COA.')) return;
+  const existing=S.get('lhs:acct_coa')||[];
+  const defaults=_defaultCOA();
+  const merged=[...existing];
+  defaults.forEach(d=>{if(!merged.find(e=>e.code===d.code)) merged.push(d);});
+  S.set('lhs:acct_coa',merged);
+  tst('Default COA loaded — '+defaults.length+' accounts added','success');
+  showPage('acct-coa');
+}
+
+function oAddCOAAccount(){
+  const types=['Asset','Liability','Equity','Revenue','Cost of Goods Sold','Expense','Other Income','Other Expense'];
+  oMod('+ Add Account',`
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Account Code *</label>
+        <input id="coa-code" placeholder="e.g. 6050"></div>
+      <div class="fl" style="margin:0"><label>Account Name *</label>
+        <input id="coa-name" placeholder="e.g. Office Supplies"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Type *</label>
+        <select id="coa-type">${types.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+      <div class="fl" style="margin:0"><label>Sub-type</label>
+        <input id="coa-subtype" placeholder="e.g. Current Asset"></div>
+    </div>
+    <div class="fl" style="margin-bottom:16px"><label>Description</label>
+      <textarea id="coa-desc" rows="2" placeholder="What this account tracks..."></textarea></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveCOAAccount()">Save Account</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function saveCOAAccount(editId){
+  const code=(document.getElementById('coa-code')?.value||'').trim();
+  const name=(document.getElementById('coa-name')?.value||'').trim();
+  if(!code||!name){tst('Code and Name required','error');return;}
+  const rec={
+    code, name,
+    type:document.getElementById('coa-type')?.value||'Expense',
+    subtype:document.getElementById('coa-subtype')?.value||null,
+    description:document.getElementById('coa-desc')?.value||null,
+    updated_by:CU?.name||null,
+  };
+  if(editId){
+    await dbUpdate('lhs:acct_coa',editId,rec);
+  } else {
+    rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString(); rec.created_by=CU?.name||null;
+    await dbInsert('lhs:acct_coa',rec);
+  }
+  cMod(); showPage('acct-coa');
+}
+
+function oEditCOAAccount(id){
+  const coa=S.get('lhs:acct_coa')||[];
+  const a=coa.find(x=>x.id===id); if(!a) return;
+  oAddCOAAccount();
+  setTimeout(()=>{
+    ['coa-code','coa-name','coa-type','coa-subtype','coa-desc'].forEach(fid=>{
+      const el=document.getElementById(fid); if(!el) return;
+      const key=fid.replace('coa-','').replace('desc','description').replace('subtype','subtype');
+      if(key==='description') el.value=a.description||'';
+      else if(key==='code') el.value=a.code||'';
+      else if(key==='name') el.value=a.name||'';
+      else if(key==='type') el.value=a.type||'Expense';
+      else if(key==='subtype') el.value=a.subtype||'';
+    });
+    const btn=document.querySelector('.modal-footer .btn-n');
+    if(btn) btn.onclick=()=>saveCOAAccount(id);
+  },50);
+}
+
+async function delCOAAccount(id){
+  if(!confirm('Delete this account?')) return;
+  const coa=S.get('lhs:acct_coa')||[];
+  S.set('lhs:acct_coa',coa.filter(a=>a.id!==id));
+  try{await DB.from('lhs_acct_coa').delete().eq('id',id);}catch{}
+  showPage('acct-coa');
+}
+
+// ─── JOURNAL ENTRIES ──────────────────────────────────────────────────────────
+function bAcctJournal(){
+  const entries=S.get('lhs:acct_journal')||[];
+  const df=window._acctDateFrom||'';
+  const dt=window._acctDateTo||'9';
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const filtered=entries.filter(e=>{
+    const d=(e.entry_date||e.created_at||'').slice(0,10);
+    if(df && d<df) return false;
+    if(dt && d>dt) return false;
+    return true;
+  }).sort((a,b)=>(b.entry_date||b.created_at||'').localeCompare(a.entry_date||a.created_at||''));
+
+  const totDebits=filtered.reduce((s,e)=>s+(e.total_debits||0),0);
+  const totCredits=filtered.reduce((s,e)=>s+(e.total_credits||0),0);
+  const balanced=Math.abs(totDebits-totCredits)<0.01;
+
+  return`<div class="pt">&#128221; Journal</div>
+  <div class="ps">General journal — record manual double-entry transactions with full debit/credit lines</div>
+
+  ${_acctDateBar("showPage('acct-journal')")}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px">
+    ${[
+      {l:'Total Entries',v:filtered.length,c:'n'},
+      {l:'Total Debits',v:fmt(totDebits),c:'n'},
+      {l:'Total Credits',v:fmt(totCredits),c:'n'},
+      {l:'Balanced',v:balanced?'✓ Yes':'✗ No',c:balanced?'gr':'r'},
+    ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv" style="font-size:${typeof s.v==='string'&&s.v.length>8?'20px':'32px'}">${s.v}</div></div>`).join('')}
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:600;color:var(--navy)">${filtered.length} entr${filtered.length!==1?'ies':'y'}</div>
+    ${canEdit?`<button class="btn btn-n" onclick="oAddJournalEntry()">+ New Entry</button>`:''}
+  </div>
+
+  ${!filtered.length
+    ?`<div class="card" style="text-align:center;padding:48px;color:var(--muted)">
+        <div style="font-size:36px;margin-bottom:12px">&#128221;</div>
+        <div style="font-weight:600;font-size:15px;color:var(--navy);margin-bottom:6px">No journal entries yet</div>
+        ${canEdit?`<button class="btn btn-n" onclick="oAddJournalEntry()">+ Create First Entry</button>`:''}
+      </div>`
+    :filtered.map(entry=>{
+      const lines=entry.lines||[];
+      const isBalanced=Math.abs((entry.total_debits||0)-(entry.total_credits||0))<0.01;
+      return`<div class="card" style="margin-bottom:12px;padding:0;overflow:hidden">
+        <div style="padding:12px 16px;background:var(--surf);border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:12px">
+          <div>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">JE-${esc(entry.entry_number||entry.id?.slice(-6)||'—')}</div>
+            <div style="font-size:12px;color:var(--muted)">${fmtDate(entry.entry_date)} · ${esc(entry.created_by||'—')}</div>
+          </div>
+          <div style="flex:1;font-size:13px;color:var(--text)">${esc(entry.description||'')}</div>
+          <span style="background:${isBalanced?'#e8f5e9':'#ffebee'};color:${isBalanced?'var(--green)':'var(--red)'};
+            border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${isBalanced?'Balanced':'⚠ Unbalanced'}</span>
+          ${canEdit?`<button class="btn sm btn-r" onclick="delJournalEntry('${esc(entry.id)}')">&#215;</button>`:''}
+        </div>
+        <div class="tw"><table>
+          <thead><tr><th>Account</th><th>Description</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead>
+          <tbody>
+            ${lines.map(l=>`<tr>
+              <td style="font-family:'DM Mono',monospace;font-size:13px">${esc(l.account_code||'')} ${esc(l.account_name||'')}</td>
+              <td style="font-size:13px;color:var(--muted)">${esc(l.description||'')}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:${l.debit?'600':'400'};color:${l.debit?'var(--navy)':'var(--muted)'}">${l.debit?fmt(l.debit):'—'}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:${l.credit?'600':'400'};color:${l.credit?'var(--navy)':'var(--muted)'}">${l.credit?fmt(l.credit):'—'}</td>
+            </tr>`).join('')}
+            <tr style="background:var(--surf);border-top:2px solid var(--bdr)">
+              <td colspan="2" style="font-weight:700;font-size:13px">TOTAL</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(entry.total_debits||0)}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(entry.total_credits||0)}</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>`;
+    }).join('')}`;
+}
+
+function oAddJournalEntry(){
+  const coa=S.get('lhs:acct_coa')||[];
+  const today=new Date().toISOString().slice(0,10);
+  const lineRow=(i)=>`
+    <div id="je-line-${i}" style="display:grid;grid-template-columns:2fr 3fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">
+      <select id="je-acct-${i}" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+        <option value="">-- Account --</option>
+        ${coa.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${esc(a.code)}|${esc(a.name)}">${esc(a.code)} ${esc(a.name)}</option>`).join('')}
+      </select>
+      <input id="je-desc-${i}" placeholder="Line description" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+      <input type="number" id="je-dr-${i}" placeholder="Debit" step="0.01" min="0" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit" oninput="if(this.value)document.getElementById('je-cr-${i}').value=''">
+      <input type="number" id="je-cr-${i}" placeholder="Credit" step="0.01" min="0" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit" oninput="if(this.value)document.getElementById('je-dr-${i}').value=''">
+      <button onclick="document.getElementById('je-line-${i}').remove();_jeRecalc()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:0 4px">&#215;</button>
+    </div>`;
+
+  oMod('+ New Journal Entry',`
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Entry # *</label>
+        <input id="je-num" placeholder="JE-0001"></div>
+      <div class="fl" style="margin:0"><label>Description *</label>
+        <input id="je-desc-main" placeholder="e.g. Month-end accrual"></div>
+    </div>
+    <div class="fl" style="margin-bottom:14px"><label>Entry Date</label>
+      <input type="date" id="je-date" value="${today}" style="width:auto"></div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.06em">Journal Lines</div>
+    <div style="display:grid;grid-template-columns:2fr 3fr 1fr 1fr auto;gap:6px;margin-bottom:6px">
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase">Account</div>
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase">Description</div>
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase">Debit</div>
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase">Credit</div>
+      <div></div>
+    </div>
+    <div id="je-lines-container">
+      ${lineRow(0)}${lineRow(1)}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 14px">
+      <button class="btn btn-o sm" onclick="_jeAddLine()">+ Add Line</button>
+      <div id="je-balance-indicator" style="font-size:13px;font-weight:600;color:var(--muted)">Debits: $0 · Credits: $0</div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveJournalEntry()">Save Entry</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+  window._jeLineCount=2;
+}
+
+window._jeLineCount=0;
+window._jeAddLine=function(){
+  const i=window._jeLineCount++;
+  const coa=S.get('lhs:acct_coa')||[];
+  const container=document.getElementById('je-lines-container');
+  if(!container) return;
+  const div=document.createElement('div');
+  div.id=`je-line-${i}`;
+  div.style.cssText='display:grid;grid-template-columns:2fr 3fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+  div.innerHTML=`
+    <select id="je-acct-${i}" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+      <option value="">-- Account --</option>
+      ${coa.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<option value="${esc(a.code)}|${esc(a.name)}">${esc(a.code)} ${esc(a.name)}</option>`).join('')}
+    </select>
+    <input id="je-desc-${i}" placeholder="Line description" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+    <input type="number" id="je-dr-${i}" placeholder="Debit" step="0.01" min="0" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit" oninput="if(this.value)document.getElementById('je-cr-${i}').value=''">
+    <input type="number" id="je-cr-${i}" placeholder="Credit" step="0.01" min="0" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit" oninput="if(this.value)document.getElementById('je-dr-${i}').value=''">
+    <button onclick="document.getElementById('je-line-${i}').remove();_jeRecalc()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:0 4px">&#215;</button>`;
+  container.appendChild(div);
+  _jeRecalc();
+};
+
+window._jeRecalc=function(){
+  const lines=document.querySelectorAll('[id^="je-line-"]');
+  let dr=0,cr=0;
+  lines.forEach(line=>{
+    const idx=line.id.split('-').pop();
+    dr+=parseFloat(document.getElementById('je-dr-'+idx)?.value||0)||0;
+    cr+=parseFloat(document.getElementById('je-cr-'+idx)?.value||0)||0;
+  });
+  const el=document.getElementById('je-balance-indicator');
+  if(!el) return;
+  const fmt=v=>'$'+v.toFixed(2);
+  const bal=Math.abs(dr-cr)<0.01;
+  el.textContent=`Debits: ${fmt(dr)} · Credits: ${fmt(cr)}`;
+  el.style.color=bal&&dr>0?'var(--green)':'var(--amber)';
+};
+
+async function saveJournalEntry(){
+  const num=(document.getElementById('je-num')?.value||'').trim();
+  const descMain=(document.getElementById('je-desc-main')?.value||'').trim();
+  if(!num||!descMain){tst('Entry number and description required','error');return;}
+
+  const lineEls=document.querySelectorAll('[id^="je-line-"]');
+  const lines=[];
+  lineEls.forEach(line=>{
+    const idx=line.id.split('-').pop();
+    const acctVal=(document.getElementById('je-acct-'+idx)?.value||'');
+    const [acctCode,acctName]=(acctVal||'|').split('|');
+    const dr=parseFloat(document.getElementById('je-dr-'+idx)?.value||0)||0;
+    const cr=parseFloat(document.getElementById('je-cr-'+idx)?.value||0)||0;
+    if(acctCode&&(dr||cr)) lines.push({account_code:acctCode,account_name:acctName||'',
+      description:document.getElementById('je-desc-'+idx)?.value||'',debit:dr||null,credit:cr||null});
+  });
+
+  if(lines.length<2){tst('At least 2 journal lines required','error');return;}
+  const totDr=lines.reduce((s,l)=>s+(l.debit||0),0);
+  const totCr=lines.reduce((s,l)=>s+(l.credit||0),0);
+  if(Math.abs(totDr-totCr)>0.01){tst(`Entry is not balanced — Debits $${totDr.toFixed(2)} ≠ Credits $${totCr.toFixed(2)}`,'error');return;}
+
+  const rec={
+    id:crypto.randomUUID(),
+    entry_number:num,
+    entry_date:document.getElementById('je-date')?.value||new Date().toISOString().slice(0,10),
+    description:descMain,
+    lines,
+    total_debits:totDr,
+    total_credits:totCr,
+    created_by:CU?.name||null,
+    created_at:new Date().toISOString(),
+  };
+  await dbInsert('lhs:acct_journal',rec);
+  cMod(); showPage('acct-journal');
+}
+
+async function delJournalEntry(id){
+  if(!confirm('Delete this journal entry? This cannot be undone.')) return;
+  const entries=S.get('lhs:acct_journal')||[];
+  S.set('lhs:acct_journal',entries.filter(e=>e.id!==id));
+  try{await DB.from('lhs_acct_journal').delete().eq('id',id);}catch{}
+  showPage('acct-journal');
+}
+
+// ─── BANK & RECONCILIATION ────────────────────────────────────────────────────
+function bAcctBank(){
+  const accounts=S.get('lhs:acct_bank_accounts')||[];
+  const txns=S.get('lhs:acct_bank_txns')||[];
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const fmt=v=>'$'+Number(Math.abs(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const selAcct=window._bankAcctSel||accounts[0]?.id||null;
+  const activeAcct=accounts.find(a=>a.id===selAcct)||accounts[0]||null;
+  const acctTxns=txns.filter(t=>t.bank_account_id===(activeAcct?.id||null))
+    .sort((a,b)=>(b.txn_date||b.created_at||'').localeCompare(a.txn_date||a.created_at||''));
+
+  const balance=activeAcct?.current_balance||0;
+  const totalCredits=acctTxns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const totalDebits=acctTxns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const unreconciled=acctTxns.filter(t=>!t.reconciled).length;
+
+  return`<div class="pt">&#127974; Bank</div>
+  <div class="ps">Bank accounts, transaction register, and reconciliation</div>
+
+  <!-- Account selector -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px">
+    ${accounts.map(a=>`<button onclick="window._bankAcctSel='${esc(a.id)}';showPage('acct-bank')"
+      style="padding:8px 18px;border-radius:20px;border:2px solid ${(selAcct||accounts[0]?.id)===a.id?'var(--navy)':'var(--bdr)'};
+      background:${(selAcct||accounts[0]?.id)===a.id?'var(--navy)':'white'};
+      color:${(selAcct||accounts[0]?.id)===a.id?'white':'var(--text)'};
+      cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">
+      ${esc(a.name)} <span style="font-size:11px;opacity:.7">${esc(a.account_type||'')}</span>
+    </button>`).join('')}
+    ${canEdit?`<button class="btn btn-o sm" onclick="oAddBankAccount()">+ Add Account</button>`:''}
+  </div>
+
+  ${!accounts.length
+    ?`<div class="card" style="text-align:center;padding:48px;color:var(--muted)">
+        <div style="font-size:36px;margin-bottom:12px">&#127974;</div>
+        <div style="font-weight:600;font-size:15px;color:var(--navy);margin-bottom:6px">No bank accounts yet</div>
+        <div style="font-size:13px;margin-bottom:20px">Add your bank accounts to start tracking transactions and reconciling.</div>
+        ${canEdit?`<button class="btn btn-n" onclick="oAddBankAccount()">+ Add Bank Account</button>`:''}
+      </div>`
+    :`
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      ${[
+        {l:'Current Balance',v:(balance<0?'-':'')+fmt(balance),c:balance>=0?'gr':'r'},
+        {l:'Credits (In)',v:'+'+fmt(totalCredits),c:'gr'},
+        {l:'Debits (Out)',v:'-'+fmt(totalDebits),c:'r'},
+        {l:'Unreconciled',v:unreconciled,c:unreconciled>0?'a':'gr'},
+      ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
+    </div>
+
+    <!-- Account info bar -->
+    ${activeAcct?`<div class="card" style="padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:700;font-size:16px;color:var(--navy)">${esc(activeAcct.name)}</div>
+        <div style="font-size:12px;color:var(--muted)">${esc(activeAcct.account_type||'')} · ${esc(activeAcct.institution||'')} · ****${esc(activeAcct.last4||'????')}</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        ${canEdit?`<button class="btn btn-n sm" onclick="oAddBankTxn('${esc(activeAcct.id)}')">+ Transaction</button>
+        <button class="btn btn-o sm" onclick="oEditBankAccount('${esc(activeAcct.id)}')">Edit Account</button>`:''}
+      </div>
+    </div>`:''}
+
+    <!-- Transaction register -->
+    <div class="card" style="padding:0">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:12px">
+        <div style="font-weight:700;font-size:14px;color:var(--navy)">Transaction Register</div>
+        ${unreconciled>0&&canEdit?`<button class="btn btn-o sm" onclick="reconcileAll('${esc(activeAcct?.id||'')}')">Reconcile All</button>`:''}
+      </div>
+      ${!acctTxns.length
+        ?`<div style="padding:32px;text-align:center;color:var(--muted)">
+            <div style="font-size:28px;margin-bottom:10px">&#128203;</div>
+            <div style="font-size:13px">No transactions yet for this account.</div>
+          </div>`
+        :`<div class="tw" style="overflow-x:auto"><table>
+          <thead><tr>
+            <th>Date</th><th>Description</th><th>Division</th><th>GL Code</th>
+            <th style="text-align:right">Amount</th>
+            <th style="text-align:right">Balance</th>
+            <th>Reconciled</th>
+            ${canEdit?'<th></th>':''}
+          </tr></thead>
+          <tbody>
+            ${(()=>{
+              let runBal=balance;
+              const sorted=[...acctTxns];
+              return sorted.map((t,i)=>{
+                const isCredit=t.amount>=0;
+                const rowBal=runBal;
+                if(i===sorted.length-1) runBal=0; // approximate
+                return`<tr style="${!t.reconciled?'background:#fffbf0':''}">
+                  <td style="white-space:nowrap">${fmtDate(t.txn_date)}</td>
+                  <td style="font-weight:500">${esc(t.description||'—')}</td>
+                  <td style="font-size:12px">${esc(t.division||'—')}</td>
+                  <td style="font-family:'DM Mono',monospace;font-size:12px">${esc(t.gl_code||'—')}</td>
+                  <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${isCredit?'var(--green)':'var(--red)'}">
+                    ${isCredit?'+':'-'}${fmt(t.amount)}
+                  </td>
+                  <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted)">${fmt(rowBal)}</td>
+                  <td style="text-align:center">
+                    ${t.reconciled
+                      ?`<span style="color:var(--green);font-size:16px">&#10003;</span>`
+                      :`${canEdit?`<button class="btn sm btn-g" onclick="reconcileTxn('${esc(t.id)}')">Reconcile</button>`:'<span style="color:var(--amber)">Pending</span>'}`}
+                  </td>
+                  ${canEdit?`<td style="text-align:right"><button class="btn sm btn-r" onclick="delBankTxn('${esc(t.id)}')">&#215;</button></td>`:''}
+                </tr>`;
+              }).join('');
+            })()}
+          </tbody>
+        </table></div>`}
+    </div>`}`;
+}
+
+function oAddBankAccount(){
+  oMod('+ Add Bank Account',`
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Account Name *</label>
+        <input id="bank-name" placeholder="e.g. Chase Business Checking"></div>
+      <div class="fl" style="margin:0"><label>Last 4 Digits</label>
+        <input id="bank-last4" placeholder="1234" maxlength="4"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Account Type</label>
+        <select id="bank-type">
+          <option>Checking</option><option>Savings</option><option>Credit Card</option><option>Line of Credit</option>
+        </select></div>
+      <div class="fl" style="margin:0"><label>Institution</label>
+        <input id="bank-inst" placeholder="e.g. Chase, Wells Fargo"></div>
+    </div>
+    <div class="fl" style="margin-bottom:16px"><label>Current Balance ($)</label>
+      <input type="number" id="bank-bal" step="0.01" placeholder="0.00"></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveBankAccount()">Save Account</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function saveBankAccount(editId){
+  const name=(document.getElementById('bank-name')?.value||'').trim();
+  if(!name){tst('Account name required','error');return;}
+  const rec={
+    name, institution:document.getElementById('bank-inst')?.value||null,
+    account_type:document.getElementById('bank-type')?.value||'Checking',
+    last4:document.getElementById('bank-last4')?.value||null,
+    current_balance:parseFloat(document.getElementById('bank-bal')?.value||'0')||0,
+    updated_by:CU?.name||null,
+  };
+  if(editId){
+    await dbUpdate('lhs:acct_bank_accounts',editId,rec);
+  } else {
+    rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString(); rec.created_by=CU?.name||null;
+    await dbInsert('lhs:acct_bank_accounts',rec);
+    window._bankAcctSel=rec.id;
+  }
+  cMod(); showPage('acct-bank');
+}
+
+function oEditBankAccount(id){
+  const accounts=S.get('lhs:acct_bank_accounts')||[];
+  const a=accounts.find(x=>x.id===id); if(!a) return;
+  oAddBankAccount();
+  setTimeout(()=>{
+    document.getElementById('bank-name')&&(document.getElementById('bank-name').value=a.name||'');
+    document.getElementById('bank-inst')&&(document.getElementById('bank-inst').value=a.institution||'');
+    document.getElementById('bank-type')&&(document.getElementById('bank-type').value=a.account_type||'Checking');
+    document.getElementById('bank-last4')&&(document.getElementById('bank-last4').value=a.last4||'');
+    document.getElementById('bank-bal')&&(document.getElementById('bank-bal').value=a.current_balance||'');
+    const btn=document.querySelector('.modal-footer .btn-n');
+    if(btn) btn.onclick=()=>saveBankAccount(id);
+  },50);
+}
+
+function oAddBankTxn(acctId){
+  const codes=S.get('lhs:acct_coa')||[];
+  const today=new Date().toISOString().slice(0,10);
+  oMod('+ Add Transaction',`
+    <div class="fl" style="margin-bottom:12px"><label>Description *</label>
+      <input id="btxn-desc" placeholder="e.g. Home Depot — materials"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>Amount * (neg = debit)</label>
+        <input type="number" id="btxn-amt" step="0.01" placeholder="-150.00 or 2500.00"></div>
+      <div class="fl" style="margin:0"><label>Date</label>
+        <input type="date" id="btxn-date" value="${today}"></div>
+      <div class="fl" style="margin:0"><label>Type</label>
+        <select id="btxn-type">
+          <option value="Debit">Debit (expense/payment)</option>
+          <option value="Credit">Credit (deposit/income)</option>
+          <option value="Transfer">Transfer</option>
+        </select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="fl" style="margin:0"><label>Division</label>
+        <select id="btxn-div"><option value="">-- None --</option>
+          ${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+        </select></div>
+      <div class="fl" style="margin:0"><label>GL Code</label>
+        <select id="btxn-gl"><option value="">-- None --</option>
+          ${codes.sort((a,b)=>a.code.localeCompare(b.code)).map(c=>`<option value="${esc(c.code)}">${esc(c.code)} — ${esc(c.name)}</option>`).join('')}
+        </select></div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="saveBankTxn('${esc(acctId||'')}')">Save Transaction</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function saveBankTxn(acctId){
+  const desc=(document.getElementById('btxn-desc')?.value||'').trim();
+  const rawAmt=parseFloat(document.getElementById('btxn-amt')?.value||'0');
+  const type=document.getElementById('btxn-type')?.value||'Debit';
+  if(!desc){tst('Description required','error');return;}
+  if(!rawAmt){tst('Amount required','error');return;}
+  const amount=type==='Debit'?-Math.abs(rawAmt):Math.abs(rawAmt);
+  const rec={
+    id:crypto.randomUUID(),
+    bank_account_id:acctId||null,
+    description:desc,
+    amount,
+    txn_type:type,
+    txn_date:document.getElementById('btxn-date')?.value||new Date().toISOString().slice(0,10),
+    division:document.getElementById('btxn-div')?.value||null,
+    gl_code:document.getElementById('btxn-gl')?.value||null,
+    reconciled:false,
+    created_by:CU?.name||null,
+    created_at:new Date().toISOString(),
+  };
+  await dbInsert('lhs:acct_bank_txns',rec);
+  // Update account balance
+  const accounts=S.get('lhs:acct_bank_accounts')||[];
+  const acct=accounts.find(a=>a.id===acctId);
+  if(acct){
+    acct.current_balance=(acct.current_balance||0)+amount;
+    S.set('lhs:acct_bank_accounts',accounts);
+    try{await DB.from('lhs_acct_bank_accounts').update({current_balance:acct.current_balance}).eq('id',acctId);}catch{}
+  }
+  cMod(); showPage('acct-bank');
+}
+
+async function reconcileTxn(txnId){
+  await dbUpdate('lhs:acct_bank_txns',txnId,{reconciled:true,reconciled_at:new Date().toISOString(),reconciled_by:CU?.name||null});
+  showPage('acct-bank');
+}
+
+async function reconcileAll(acctId){
+  if(!confirm('Mark all transactions for this account as reconciled?')) return;
+  const txns=S.get('lhs:acct_bank_txns')||[];
+  const now=new Date().toISOString();
+  txns.forEach(t=>{if(t.bank_account_id===acctId&&!t.reconciled){t.reconciled=true;t.reconciled_at=now;t.reconciled_by=CU?.name||null;}});
+  S.set('lhs:acct_bank_txns',txns);
+  try{await DB.from('lhs_acct_bank_txns').update({reconciled:true,reconciled_at:now,reconciled_by:CU?.name||null})
+    .eq('bank_account_id',acctId).eq('reconciled',false);}catch{}
+  tst('All transactions reconciled','success');
+  showPage('acct-bank');
+}
+
+async function delBankTxn(id){
+  if(!confirm('Delete this transaction?')) return;
+  const txns=S.get('lhs:acct_bank_txns')||[];
+  S.set('lhs:acct_bank_txns',txns.filter(t=>t.id!==id));
+  try{await DB.from('lhs_acct_bank_txns').delete().eq('id',id);}catch{}
+  showPage('acct-bank');
 }
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
