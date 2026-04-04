@@ -7970,14 +7970,31 @@ function bAcctInvoices(){
 }
 
 function oAddInvoice(d){
+  const custs=S.get('lhs:customers')||[];
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.status==='Completed'||w.status==='Invoiced');
   const today=new Date().toISOString().slice(0,10);
   const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
   const editId=d?.id||'';
-  // Pre-fill customer display name if editing
+  const existCustId=d?.customer_id||'';
   const existCustName=d?.customer_name||'';
-  window._invSelCustId=d?.customer_id||'';
+  window._invSelCustId=existCustId;
   window._invSelCustName=existCustName;
+
+  // Pre-render ALL customers as static rows — filtering done by show/hide via oninput
+  const custRows=custs.map(c=>{
+    const fullName=`${c.first_name||''} ${c.last_name||''}`.trim();
+    const display=fullName+(c.company?' — '+c.company:'');
+    const searchKey=(fullName+' '+(c.company||'')+' '+(c.phone||'')).toLowerCase();
+    const isSelected=c.id===existCustId;
+    return`<div class="inv-ci" data-s="${esc(searchKey)}" data-id="${esc(c.id)}" data-n="${esc(display)}"
+      onclick="invSelectCust('${esc(c.id)}','${esc(display)}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px;background:${isSelected?'var(--surf)':'white'}"
+      onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background='${isSelected?'var(--surf)':'white'}'">
+      <div style="font-weight:600;color:var(--navy)">${esc(display)}${isSelected?' <span style="color:var(--green);font-size:11px">&#10003; selected</span>':''}</div>
+      <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.city?' · '+esc(c.city):''}</div>
+    </div>`;
+  }).join('');
+
   oMod((editId?'Edit':'+ New')+' Invoice',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Invoice # *</label>
@@ -7988,19 +8005,19 @@ function oAddInvoice(d){
         </select></div>
     </div>
 
-    <!-- Customer live search -->
+    <!-- Customer picker — pre-rendered, filtered by show/hide -->
     <div class="fl" style="margin-bottom:10px">
-      <label>Customer</label>
-      <div style="position:relative">
-        <input id="inv-cust-search" autocomplete="off" placeholder="Type name or phone to search..."
-          value="${esc(existCustName)}"
-          style="width:100%;padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:14px;font-family:inherit">
-        <div id="inv-cust-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-          background:white;border:1px solid var(--bdr);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:220px;overflow-y:auto"></div>
-        <input type="hidden" id="inv-cust-id" value="${esc(d?.customer_id||'')}">
+      <label>Customer ${existCustName?`<span style="color:var(--green);font-weight:600;font-size:12px">&#10003; ${esc(existCustName)}</span>`:''}
+        ${existCustName?`<a href="#" onclick="invClearCust();return false" style="color:var(--muted);font-size:11px;font-weight:400;margin-left:6px">change</a>`:''}
+      </label>
+      <input id="inv-cust-search" autocomplete="off" placeholder="Search by name or phone..."
+        value=""
+        oninput="var q=this.value.toLowerCase();document.querySelectorAll('.inv-ci').forEach(function(el){el.style.display=el.dataset.s.includes(q)?'block':'none'});document.getElementById('inv-cust-list').style.display='block'"
+        style="width:100%;padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px 8px 0 0;font-size:14px;font-family:inherit;border-bottom:none">
+      <div id="inv-cust-list" style="border:1.5px solid var(--bdr);border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto;display:${existCustId?'none':'block'}">
+        ${custRows||'<div style="padding:12px;font-size:13px;color:var(--muted)">No customers found</div>'}
       </div>
-      ${existCustName?`<div id="inv-cust-selected" style="margin-top:5px;font-size:12px;color:var(--green);font-weight:600">&#10003; ${esc(existCustName)} <a href="#" onclick="invClearCust();return false" style="color:var(--muted);margin-left:6px;font-weight:400">change</a></div>`
-        :`<div id="inv-cust-selected" style="display:none;margin-top:5px;font-size:12px;color:var(--green);font-weight:600"></div>`}
+      <input type="hidden" id="inv-cust-id" value="${esc(existCustId)}">
     </div>
 
     <div class="fl" style="margin-bottom:10px"><label>Link Work Order (optional)</label>
@@ -8029,69 +8046,30 @@ function oAddInvoice(d){
       <button class="btn btn-n" onclick="saveInvoice('${esc(editId)}')">${editId?'Save Changes':'Save Invoice'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
-  // Attach listener after DOM is ready — inline handlers unreliable on dynamic content
-  setTimeout(()=>{
-    const inp=document.getElementById('inv-cust-search');
-    if(!inp) return;
-    inp.addEventListener('input', invSearchCust);
-    inp.addEventListener('keyup', invSearchCust);
-    inp.addEventListener('focus', invSearchCust);
-    inp.addEventListener('click', invSearchCust);
-    // Hide results when clicking outside
-    document.addEventListener('click', function _invOutside(e){
-      if(!document.getElementById('inv-cust-results')?.contains(e.target) && e.target.id!=='inv-cust-search'){
-        const r=document.getElementById('inv-cust-results'); if(r) r.style.display='none';
-        document.removeEventListener('click',_invOutside);
-      }
-    });
-  }, 60);
-}
-
-function invSearchCust(){
-  const inp=document.getElementById('inv-cust-search');
-  const res=document.getElementById('inv-cust-results');
-  if(!inp||!res) return;
-  const q=(inp.value||'').trim();
-  const custs=S.get('lhs:customers')||[];
-  const matches=q.length<1
-    ? custs
-    : custs.filter(c=>{
-        const name=`${c.first_name||''} ${c.last_name||''} ${c.company||''}`.toLowerCase();
-        const ph=(c.phone||'').replace(/\D/g,'');
-        return name.includes(q.toLowerCase())||ph.includes(q.replace(/\D/g,''));
-      });
-  if(!matches.length){
-    res.style.display='block';
-    res.innerHTML=`<div style="padding:12px 14px;font-size:13px;color:var(--muted)">No customers match "${esc(q)}"</div>`;
-    return;
-  }
-  res.style.display='block';
-  res.innerHTML=matches.map(c=>{
-    const fullName=`${c.first_name||''} ${c.last_name||''}`.trim();
-    const display=fullName+(c.company?' — '+c.company:'');
-    return`<div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
-      onmousedown="invSelectCust('${esc(c.id)}','${esc(display)}')"
-      onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
-      <div style="font-weight:600;color:var(--navy)">${esc(display)}</div>
-      <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.address?' · '+esc(c.address)+' '+esc(c.city||''):''}</div>
-    </div>`;
-  }).join('');
 }
 
 function invSelectCust(id,name){
   window._invSelCustId=id; window._invSelCustName=name;
-  const inp=document.getElementById('inv-cust-search'); if(inp) inp.value=name;
   const hid=document.getElementById('inv-cust-id'); if(hid) hid.value=id;
-  const res=document.getElementById('inv-cust-results'); if(res) res.style.display='none';
-  const sel=document.getElementById('inv-cust-selected');
-  if(sel){sel.style.display='block';sel.innerHTML=`&#10003; ${esc(name)} <a href="#" onclick="invClearCust();return false" style="color:var(--muted);margin-left:6px;font-weight:400">change</a>`;}
+  const list=document.getElementById('inv-cust-list'); if(list) list.style.display='none';
+  const inp=document.getElementById('inv-cust-search'); if(inp) inp.value='';
+  // Update label to show selected name
+  const lbl=document.querySelector('#inv-cust-list')?.closest('.fl')?.querySelector('label');
+  if(lbl) lbl.innerHTML=`Customer <span style="color:var(--green);font-weight:600;font-size:12px">&#10003; ${esc(name)}</span> <a href="#" onclick="invClearCust();return false" style="color:var(--muted);font-size:11px;font-weight:400;margin-left:6px">change</a>`;
+  // Highlight selected row
+  document.querySelectorAll('.inv-ci').forEach(el=>{
+    el.style.background=el.dataset.id===id?'var(--surf)':'white';
+  });
 }
 
 function invClearCust(){
   window._invSelCustId=''; window._invSelCustName='';
-  const inp=document.getElementById('inv-cust-search'); if(inp){inp.value='';inp.focus();}
   const hid=document.getElementById('inv-cust-id'); if(hid) hid.value='';
-  const sel=document.getElementById('inv-cust-selected'); if(sel) sel.style.display='none';
+  const inp=document.getElementById('inv-cust-search'); if(inp){inp.value='';inp.focus();}
+  const list=document.getElementById('inv-cust-list');
+  if(list){list.style.display='block';list.querySelectorAll('.inv-ci').forEach(el=>el.style.display='block');}
+  const lbl=list?.closest('.fl')?.querySelector('label');
+  if(lbl) lbl.innerHTML='Customer';
 }
 
 async function saveInvoice(editId){
