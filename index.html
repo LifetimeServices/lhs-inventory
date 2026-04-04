@@ -19043,11 +19043,10 @@ window._prPanelTab= window._prPanelTab|| 'details';
 // Compute Monday of the week containing date d (or today)
 function prWeekStart(d){
   const dt=d?new Date(d+'T12:00:00'):new Date();
-  const day=dt.getDay();
-  const diff=day===0?-6:1-day;
-  const mon=new Date(dt);
-  mon.setDate(dt.getDate()+diff);
-  return mon.toISOString().slice(0,10);
+  const day=dt.getDay(); // 0=Sun,1=Mon,...,6=Sat — Sunday is week start
+  const sun=new Date(dt);
+  sun.setDate(dt.getDate()-day);
+  return sun.toISOString().slice(0,10);
 }
 
 // Format a YYYY-MM-DD as "Mon, Apr 7"
