@@ -12741,7 +12741,7 @@ function dispDragStart(e,aptId,woId,techName){
   window._dragOffsetX=e.clientX-rect.left;
   setTimeout(()=>{ if(e.target) e.target.style.opacity='0.4'; },0);
 }
-function dispDragEnd(e){ if(e.target) e.target.style.opacity='1'; _dragApt=null; window._dragOffsetX=0; }
+function dispDragEnd(e){ if(e.target) e.target.style.opacity='1'; _dragApt=null; window._dragOffsetX=0; const tip=document.getElementById('_disp_drag_tip'); if(tip) tip.style.display='none'; }
 
 // Grey block drag — managers only
 function greyBlockDragStart(e,blockId,techName){
@@ -12770,6 +12770,7 @@ function greyBlockResizeStart(e,blockId,side){
 
 async function dispDrop(e,newTech,newDiv){
   e.preventDefault();
+  const _dragTip=document.getElementById('_disp_drag_tip'); if(_dragTip) _dragTip.style.display='none';
   // Handle grey block drag-drop
   if(_dragGreyBlock){
     const {blockId,techName:origTech}=_dragGreyBlock; _dragGreyBlock=null;
@@ -12831,12 +12832,12 @@ async function dispDrop(e,newTech,newDiv){
   if(apt&&apt.scheduled_time!==finalTime){
     apt.scheduled_time=finalTime;
     S.set('lhs:appointments',apts);
-    if(apt.id) await dbUpdate('lhs:appointments',apt.id,{scheduled_time:finalTime});
     timeChanged=true;
   }
 
   // Reassign tech only if dropped on a different tech row
   let techChanged=false;
+  let techRowId=null, techRowPayload=null;
   if(newTech&&techName!==newTech){
     const techs=S.get('lhs:apt_techs')||[];
     const techRow=techs.find(t=>t.appointment_id===aptId&&t.tech_name===techName);
@@ -12846,7 +12847,8 @@ async function dispDrop(e,newTech,newDiv){
       techRow.tech_email=newUser?.email||'';
       techRow.vehicle_id=newUser?.loc||'';
       S.set('lhs:apt_techs',techs);
-      if(techRow.id) await dbUpdate('lhs:apt_techs',techRow.id,{tech_name:newTech,tech_email:techRow.tech_email,vehicle_id:techRow.vehicle_id});
+      techRowId=techRow.id;
+      techRowPayload={tech_name:newTech,tech_email:techRow.tech_email,vehicle_id:techRow.vehicle_id};
       techChanged=true;
     }
   }
@@ -12854,7 +12856,11 @@ async function dispDrop(e,newTech,newDiv){
   if(timeChanged||techChanged){
     const msg=techChanged?`Moved to ${newTech} at ${finalTime}`:`Rescheduled to ${finalTime}`;
     tst(msg,'success');
+    // Re-render immediately from updated local cache — before any async DB call
     showPage('dispatch-board');
+    // Save to DB in background (fire-and-forget so warmCache race can't corrupt the render)
+    if(timeChanged&&apt?.id) dbUpdate('lhs:appointments',apt.id,{scheduled_time:finalTime}).catch(err=>console.warn('Apt time save:',err?.message));
+    if(techChanged&&techRowId) dbUpdate('lhs:apt_techs',techRowId,techRowPayload).catch(err=>console.warn('Apt tech save:',err?.message));
   }
 }
 
@@ -12890,7 +12896,29 @@ function checkOverlap(techName, date, newStartMin, newDurMin, excludeAptId){
 
 function dispDragOverPanel(event, techName){
   event.preventDefault();
-  // Visual feedback — could add highlight here if needed
+  // Show a floating time preview while dragging
+  const pxPerHr=window._dispPxPerHr||80;
+  const startHr=window._dispStartHr||6;
+  const panelRect=event.currentTarget.getBoundingClientRect();
+  const relX=Math.max(0,(event.clientX-(window._dragOffsetX||0))-panelRect.left);
+  const hrFloat=startHr+(relX/pxPerHr);
+  const hrs=Math.floor(hrFloat);
+  const mins=Math.round((hrFloat-hrs)*60/15)*15%60;
+  const hFinal=mins===60?hrs+1:hrs;
+  const mFinal=mins===60?0:mins;
+  const ap=hFinal>=12?'PM':'AM';
+  const label=`${hFinal%12||12}:${mFinal<10?'0':''}${mFinal} ${ap}`;
+  let tip=document.getElementById('_disp_drag_tip');
+  if(!tip){
+    tip=document.createElement('div');
+    tip.id='_disp_drag_tip';
+    tip.style.cssText='position:fixed;pointer-events:none;z-index:9999;background:rgba(26,43,73,.92);color:white;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.25);white-space:nowrap;transition:none';
+    document.body.appendChild(tip);
+  }
+  tip.textContent=label;
+  tip.style.left=(event.clientX+12)+'px';
+  tip.style.top=(event.clientY-22)+'px';
+  tip.style.display='block';
 }
 
 // ── DISPATCH TOOLTIP ─────────────────────────────────────────────────────────
@@ -13003,10 +13031,11 @@ document.addEventListener('mouseup',async e=>{
     const b=blocks.find(x=>x.id===blockId); if(!b) return;
     b.time=newTime; b.duration=newDur;
     S.set('lhs:grey_blocks',blocks);
-    try{await DB.from('lhs_grey_blocks').update({time:newTime,duration:newDur}).eq('id',blockId);}catch(err){console.warn('grey block resize failed',err?.message);}
     const d2h=Math.floor(newDur/60),d2m=newDur%60;
     tst(`Block: ${newTime} · ${d2h>0?d2h+'h ':''}${d2m>0?d2m+'m':''}`.trim(),'success');
-    showPage('dispatch-board'); return;
+    showPage('dispatch-board');
+    DB.from('lhs_grey_blocks').update({time:newTime,duration:newDur}).eq('id',blockId).catch(err=>console.warn('grey block resize failed',err?.message));
+    return;
   }
   if(!_dispResize) return;
   const {aptId,side,startX,origTime,origDur}=_dispResize;
@@ -13047,11 +13076,13 @@ document.addEventListener('mouseup',async e=>{
   apt.scheduled_time=newTime;
   apt.estimated_duration=newDur;
   S.set('lhs:appointments',apts);
-  if(apt.id) await dbUpdate('lhs:appointments',apt.id,{scheduled_time:newTime,estimated_duration:newDur});
 
   const dur2h=Math.floor(newDur/60), dur2m=newDur%60;
   tst(`Appointment: ${newTime} · ${dur2h>0?dur2h+'h ':''}${dur2m>0?dur2m+'m':''}`.trim(),'success');
+  // Re-render immediately from updated local cache before any async DB call
   showPage('dispatch-board');
+  // Save to DB in background
+  if(apt.id) dbUpdate('lhs:appointments',apt.id,{scheduled_time:newTime,estimated_duration:newDur}).catch(err=>console.warn('Apt resize save:',err?.message));
 });
 
 // Grey blocks (task blocks without a WO)
