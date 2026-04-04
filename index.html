@@ -16230,30 +16230,49 @@ async function openCustomer(id){
 }
 
 // ── GLOBAL SEARCH ────────────────────────────────────────────────────────────
+let _gsTimer=null;
 function globalSearch(q){
   const res=document.getElementById('gsresults');
   if(!q||q.length<2){res.style.display='none';return}
+  // Show local results immediately, then enrich with Supabase customers
+  _gsRender(q,[]);
+  clearTimeout(_gsTimer);
+  _gsTimer=setTimeout(()=>_gsAsync(q),200);
+}
+function _gsRender(q,supaCustomers){
+  const res=document.getElementById('gsresults');
+  if(!res) return;
   const ql=q.toLowerCase();
   const results=[];
+  // Work orders from cache
   (S.get('lhs:work_orders')||[]).filter(w=>
     w.wo_number?.toLowerCase().includes(ql)||
     w.customer_name?.toLowerCase().includes(ql)||
     w.division?.toLowerCase().includes(ql)
   ).slice(0,4).forEach(w=>results.push({
-    type:'WO',icon:'&#128203;',color:'var(--navy)',
+    type:'WO',icon:'&#128203;',
     title:w.wo_number,sub:`${w.customer_name} — ${w.division}`,
     action:`openWO('${w.id}')`
   }));
+  // Customers — Supabase results first, then any local cache hits not already included
+  const seenIds=new Set();
+  supaCustomers.forEach(c=>{
+    seenIds.add(c.id);
+    results.push({type:'Customer',icon:'&#128100;',
+      title:`${c.first_name||''} ${c.last_name||''}${c.company?' ('+c.company+')':''}`.trim(),
+      sub:`${c.phone||''} ${c.city||''} ${c.state||''}`.trim(),
+      action:`openCustomer('${c.id}')`});
+  });
   (S.get('lhs:customers')||[]).filter(c=>
-    `${c.first_name||''} ${c.last_name||''}`.toLowerCase().includes(ql)||
-    (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||
-    (c.email||'').toLowerCase().includes(ql)
-  ).slice(0,4).forEach(c=>results.push({
-    type:'Customer',icon:'&#128100;',color:'var(--green)',
+    !seenIds.has(c.id)&&(
+      `${c.first_name||''} ${c.last_name||''}`.toLowerCase().includes(ql)||
+      (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||
+      (c.email||'').toLowerCase().includes(ql))
+  ).slice(0,3).forEach(c=>results.push({type:'Customer',icon:'&#128100;',
     title:`${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}`,
     sub:`${c.phone||''} ${c.city||''} ${c.state||''}`.trim(),
-    action:`openCustomer('${c.id}')`
-  }));
+    action:`openCustomer('${c.id}')`}));
+  // Properties from cache
   (S.get('lhs:props')||[]).filter(p=>
     (p.address||'').toLowerCase().includes(ql)||
     (p.city||'').toLowerCase().includes(ql)||
@@ -16261,16 +16280,14 @@ function globalSearch(q){
     (p.county||'').toLowerCase().includes(ql)
   ).slice(0,3).forEach(p=>{
     const cust=(S.get('lhs:customers')||[]).find(c=>c.id===p.current_customer_id);
-    results.push({
-      type:'Property',icon:'&#127968;',color:'var(--teal)',
+    results.push({type:'Property',icon:'&#127968;',
       title:`${p.address}, ${p.city} ${p.state}`,
       sub:`${p.property_type||''}${p.foundation_type?' · '+p.foundation_type:''}${cust?' · '+cust.first_name+' '+cust.last_name:''}`,
-      action:`openProperty('${p.id}')`
-    });
+      action:`openProperty('${p.id}')`});
   });
-  if(!results.length){res.style.display='block';
-    res.innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No results found</div>';return;}
   res.style.display='block';
+  if(!results.length){
+    res.innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No results found</div>';return;}
   res.innerHTML=results.map(r=>`
     <div onclick="${r.action};document.getElementById('gsresults').style.display='none';document.getElementById('gsearch').value=''"
       style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:10px"
@@ -16281,6 +16298,25 @@ function globalSearch(q){
         <div style="font-size:11px;color:var(--muted)">${bx(r.type,r.type==='WO'?'bn':r.type==='Property'?'bb':'bg')} ${r.sub}</div>
       </div>
     </div>`).join('');
+}
+async function _gsAsync(q){
+  try{
+    const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
+    const clauses=words.flatMap(w=>[
+      `first_name.ilike.%${w}%`,
+      `last_name.ilike.%${w}%`,
+      `company.ilike.%${w}%`,
+      `phone.ilike.%${w}%`
+    ]);
+    const{data}=await DB.from('lhs_customers')
+      .select('id,first_name,last_name,company,phone,city,state')
+      .or(clauses.join(','))
+      .order('last_name',{ascending:true})
+      .range(0,4);
+    // Only update if the search box still has the same query
+    const cur=(document.getElementById('gsearch')?.value||'').trim();
+    if(cur===q.trim()) _gsRender(q,data||[]);
+  }catch{}
 }
 
 
