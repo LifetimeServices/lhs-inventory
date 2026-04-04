@@ -8038,12 +8038,17 @@ async function saveInvoice(editId){
     notes:document.getElementById('inv-notes')?.value||null,
     created_by:CU?.name||null,
   };
+  const invs=S.get('lhs:acct_invoices')||[];
   if(editId){
-    await dbUpdate('lhs:acct_invoices',editId,rec);
+    const idx=invs.findIndex(i=>i.id===editId);
+    if(idx>=0) invs[idx]={...invs[idx],...rec};
+    else invs.push({id:editId,...rec});
+    S.set('lhs:acct_invoices',invs);
+    try{await DB.from('lhs_acct_invoices').update(rec).eq('id',editId);}catch{}
   } else {
-    rec.id=crypto.randomUUID();
-    rec.created_at=new Date().toISOString();
-    await dbInsert('lhs:acct_invoices',rec);
+    rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString();
+    invs.push(rec); S.set('lhs:acct_invoices',invs);
+    try{await DB.from('lhs_acct_invoices').insert(rec);}catch{}
   }
   cMod(); showPage('acct-invoices');
 }
@@ -8301,11 +8306,17 @@ async function saveBill(editId){
     notes:document.getElementById('bill-notes')?.value||null,
     updated_by:CU?.name||null,
   };
+  const bills=S.get('lhs:acct_bills')||[];
   if(editId){
-    await dbUpdate('lhs:acct_bills',editId,rec);
+    const idx=bills.findIndex(b=>b.id===editId);
+    if(idx>=0) bills[idx]={...bills[idx],...rec};
+    else bills.push({id:editId,...rec});
+    S.set('lhs:acct_bills',bills);
+    try{await DB.from('lhs_acct_bills').update(rec).eq('id',editId);}catch{}
   } else {
     rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString(); rec.created_by=CU?.name||null;
-    await dbInsert('lhs:acct_bills',rec);
+    bills.push(rec); S.set('lhs:acct_bills',bills);
+    try{await DB.from('lhs_acct_bills').insert(rec);}catch{}
   }
   cMod(); showPage('acct-ap');
 }
@@ -8332,7 +8343,9 @@ async function delBill(id){
 
 // ─── CHART OF ACCOUNTS ────────────────────────────────────────────────────────
 function bAcctCOA(){
-  const coa=S.get('lhs:acct_coa')||_defaultCOA();
+  // Always ensure COA is persisted to localStorage so Edit/Delete can find records
+  let coa=S.get('lhs:acct_coa');
+  if(!coa||!coa.length){coa=_defaultCOA();S.set('lhs:acct_coa',coa);}
   const canEdit=['God View','Admin','Director'].includes(CU?.role);
 
   const types=['Asset','Liability','Equity','Revenue','Cost of Goods Sold','Expense','Other Income','Other Expense'];
@@ -8482,11 +8495,19 @@ async function saveCOAAccount(editId){
     description:document.getElementById('coa-desc')?.value||null,
     updated_by:CU?.name||null,
   };
+  const coa=S.get('lhs:acct_coa')||[];
   if(editId){
-    await dbUpdate('lhs:acct_coa',editId,rec);
+    // Update in localStorage
+    const idx=coa.findIndex(a=>a.id===editId);
+    if(idx>=0) coa[idx]={...coa[idx],...rec};
+    else coa.push({id:editId,...rec});
+    S.set('lhs:acct_coa',coa);
+    try{await DB.from('lhs_acct_coa').update(rec).eq('id',editId);}catch{}
   } else {
     rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString(); rec.created_by=CU?.name||null;
-    await dbInsert('lhs:acct_coa',rec);
+    coa.push(rec);
+    S.set('lhs:acct_coa',coa);
+    try{await DB.from('lhs_acct_coa').insert(rec);}catch{}
   }
   cMod(); showPage('acct-coa');
 }
