@@ -2933,8 +2933,9 @@ async function postXfr(){
       if(!ok) dbErrs.push(`van-inv update failed for ${r.sku} (id=${r.id})`);
     }else{
       const now=new Date().toISOString();
+      // vehicle_id mirrors vehicle (name string) — required NOT NULL in lhs_van_inventory
       const saved=await dbInsert('lhs:vi',{sku:r.sku,item:r.item,vehicle:r.vehicle,
-        qty:r.qty,qty_on_hand:r.qty,min:r.min||0,max:r.max||0,created_at:now});
+        vehicle_id:r.vehicle,qty:r.qty,qty_on_hand:r.qty,min:r.min||0,max:r.max||0,created_at:now});
       if(saved?.id) r.id=saved.id;
       else dbErrs.push(`van-inv insert failed for ${r.sku} on ${r.vehicle}`);
     }
@@ -2953,7 +2954,12 @@ async function postXfr(){
   }
   for(const xfrRow of newXfrs){
     const now=new Date().toISOString();
-    const saved=await dbInsert('lhs:xfrs',{...xfrRow,created_at:now});
+    // Omit 'by' — column doesn't exist in lhs_transfers schema; kept in localStorage for display
+    const saved=await dbInsert('lhs:xfrs',{
+      date:xfrRow.date,from:xfrRow.from,to:xfrRow.to,
+      sku:xfrRow.sku,item:xfrRow.item,qty:xfrRow.qty,
+      reason:xfrRow.reason,notes:xfrRow.notes||'',created_at:now
+    });
     if(saved?.id) xfrRow.id=saved.id;
     else dbErrs.push(`transfer log insert failed for ${xfrRow.sku}`);
   }
