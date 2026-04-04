@@ -2922,29 +2922,49 @@ async function postXfr(){
 
   if(errs.length){tst(errs[0],'error');return}
 
-  // Await ALL Supabase saves BEFORE updating localStorage — prevents warmCache
-  // from fetching stale data and overwriting our changes mid-save
+  // Save to Supabase first — check every return value explicitly (dbInsert/dbUpdate
+  // never throw; they return null/false on failure, so Promise.all can't catch them)
   tst('Saving transfer…','info');
-  try{
-    const saves=[];
-    for(const r of changedVi){
-      if(r.id) saves.push(dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty}));
-      else saves.push(dbInsert('lhs:vi',r).then(saved=>{if(saved?.id) r.id=saved.id;}));
+  const dbErrs=[];
+
+  for(const r of changedVi){
+    if(r.id){
+      const ok=await dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty});
+      if(!ok) dbErrs.push(`van-inv update failed for ${r.sku} (id=${r.id})`);
+    }else{
+      const now=new Date().toISOString();
+      const saved=await dbInsert('lhs:vi',{sku:r.sku,item:r.item,vehicle:r.vehicle,
+        qty:r.qty,qty_on_hand:r.qty,min:r.min||0,max:r.max||0,created_at:now});
+      if(saved?.id) r.id=saved.id;
+      else dbErrs.push(`van-inv insert failed for ${r.sku} on ${r.vehicle}`);
     }
-    for(const r of changedLs){
-      if(r.id) saves.push(dbUpdate('lhs:ls',r.id,{qty:r.qty}));
-      else saves.push(dbInsert('lhs:ls',r).then(saved=>{if(saved?.id) r.id=saved.id;}));
+  }
+  for(const r of changedLs){
+    if(r.id){
+      const ok=await dbUpdate('lhs:ls',r.id,{qty:r.qty});
+      if(!ok) dbErrs.push(`loc-stock update failed for ${r.sku} (id=${r.id})`);
+    }else{
+      const now=new Date().toISOString();
+      const saved=await dbInsert('lhs:ls',{sku:r.sku,item:r.item,location:r.location,
+        qty:r.qty,min:r.min||0,max:r.max||0,bin:r.bin||'',created_at:now});
+      if(saved?.id) r.id=saved.id;
+      else dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}`);
     }
-    for(const xfrRow of newXfrs){
-      saves.push(dbInsert('lhs:xfrs',xfrRow).then(saved=>{if(saved?.id) xfrRow.id=saved.id;}));
-    }
-    await Promise.all(saves);
-  }catch(e){
-    console.warn('Transfer DB save error:',e?.message);
-    tst('Transfer saved locally — sync may be pending','warning');
+  }
+  for(const xfrRow of newXfrs){
+    const now=new Date().toISOString();
+    const saved=await dbInsert('lhs:xfrs',{...xfrRow,created_at:now});
+    if(saved?.id) xfrRow.id=saved.id;
+    else dbErrs.push(`transfer log insert failed for ${xfrRow.sku}`);
   }
 
-  // Now commit to localStorage (with newly assigned IDs from inserts) and re-render
+  if(dbErrs.length){
+    console.error('Transfer DB errors:',dbErrs);
+    tst(`Save error — ${dbErrs[0]}`,'error');
+    return; // Don't update localStorage if DB failed — don't mislead user
+  }
+
+  // All saves confirmed — commit to localStorage (IDs now populated) and re-render
   S.set('lhs:ls',ls); S.set('lhs:vi',vi); S.set('lhs:xfrs',xfrs);
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
