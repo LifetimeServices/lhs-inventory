@@ -8058,18 +8058,18 @@ async function _invCustSearch(q){
   res.style.display='block';
   res.innerHTML='<div style="padding:12px 14px;font-size:13px;color:var(--muted)">Searching...</div>';
   try{
+    // Build filters BEFORE modifiers (limit) — same pattern as the working custLoadPage search
     let qb=DB.from('lhs_customers')
-      .select('id,first_name,last_name,company,phone,city,state')
-      .limit(40);
+      .select('id,first_name,last_name,company,phone,city,state');
     if(term.length>=1){
       // Strip non-digits to detect phone searches (e.g. "414-659-7273" → "4146597273")
       const digits=term.replace(/\D/g,'');
       let orParts=`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%`;
       if(digits.length>=7){
-        // Build a wildcard phone pattern that matches any formatting:
+        // Build wildcard phone pattern matching any format:
         // "4146597273" → "%414%659%7273%" matches "(414) 659-7273", "414.659.7273", etc.
-        const phonePat=`%${digits.slice(0,3)}%${digits.slice(3,6)}%${digits.slice(6)}%`;
-        orParts+=`,phone.ilike.${phonePat}`;
+        const p3=digits.slice(0,3), p6=digits.slice(3,6), p7=digits.slice(6);
+        orParts+=`,phone.ilike.%${p3}%${p6}%${p7}%`;
       } else if(digits.length>=3){
         orParts+=`,phone.ilike.%${digits}%`;
       } else {
@@ -8079,6 +8079,8 @@ async function _invCustSearch(q){
     } else {
       qb=qb.order('created_at',{ascending:false});
     }
+    // Apply limit LAST — modifiers must come after filters in Supabase JS v2
+    qb=qb.limit(40);
     const{data,error}=await qb;
     if(error) throw error;
     if(!document.getElementById('inv-cust-results')) return;
@@ -8097,8 +8099,9 @@ async function _invCustSearch(q){
       </div>`;
     }).join('');
   }catch(e){
+    console.error('Invoice customer search error:',e);
     if(document.getElementById('inv-cust-results'))
-      res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--red)">Search error — try again</div>`;
+      res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--red)">Search error: ${e?.message||'try again'}</div>`;
   }
 }
 
