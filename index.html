@@ -45,6 +45,10 @@ body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-h
 .tbn{display:flex;gap:2px;flex:1;overflow-x:auto;min-width:0}
 .tbn::-webkit-scrollbar{display:none}
 .tbn::-webkit-scrollbar-track{background:transparent}
+/* VOICE ASSISTANT */
+.va-panel{position:fixed;top:0;right:0;bottom:0;width:380px;background:white;box-shadow:-4px 0 32px rgba(0,0,0,.18);z-index:9000;display:none;flex-direction:column;transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1)}
+.va-msg-user{background:var(--navy);color:white;border-radius:14px 4px 14px 14px;padding:10px 14px;font-size:13px;line-height:1.6;max-width:82%;margin-left:auto}
+.va-msg-ai{background:#f4f6fb;color:var(--navy);border-radius:4px 14px 14px 14px;padding:10px 14px;font-size:13px;line-height:1.6;max-width:88%;border:1px solid #e2e8f0}
 .nb{padding:6px 10px;border-radius:6px;border:none;background:transparent;
   color:rgba(255,255,255,.6);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s}
 .nb:hover{background:rgba(255,255,255,.08);color:var(--white)}
@@ -222,6 +226,37 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
   </div>
 </div>
 
+<!-- VOICE ASSISTANT PANEL -->
+<div class="va-panel" id="va-panel">
+  <div style="background:var(--navy);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;font-size:18px">🤖</div>
+      <div>
+        <div style="color:white;font-weight:700;font-size:14px">LHS Assistant</div>
+        <div style="color:rgba(255,255,255,.6);font-size:11px" id="va-status">Ready</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="va-speak-btn" onclick="toggleVASpeak()" title="Toggle voice response" style="background:rgba(255,255,255,.15);border:none;color:white;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:13px">🔊</button>
+      <button onclick="clearVAHistory()" title="Clear conversation" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.7);border-radius:6px;padding:5px 8px;cursor:pointer;font-size:13px">🗑</button>
+      <button onclick="closeVA()" style="background:rgba(255,255,255,.1);border:none;color:white;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:15px;font-weight:700">×</button>
+    </div>
+  </div>
+  <div id="va-msgs" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#f8fafc"></div>
+  <div style="padding:12px;border-top:1px solid var(--bdr);background:white;flex-shrink:0">
+    <div style="display:flex;gap:8px;align-items:flex-end">
+      <textarea id="va-input" placeholder="Ask me anything..." onkeydown="vaKeydown(event)"
+        style="flex:1;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;resize:none;line-height:1.5;max-height:100px;outline:none" rows="1"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+      <button id="va-mic-btn" onclick="startVAListening()" title="Voice input"
+        style="width:38px;height:38px;border-radius:50%;border:none;background:var(--surf);font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s">🎤</button>
+      <button onclick="sendVAMessage(document.getElementById('va-input')?.value||'')"
+        style="width:38px;height:38px;border-radius:50%;border:none;background:var(--navy);color:white;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">Responses reflect your access level · Enter to send · Shift+Enter for new line</div>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="app" style="background:#f0ece3">
   <div class="tb">
@@ -274,6 +309,9 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
           background:var(--white);border-radius:10px;box-shadow:var(--shlg);z-index:200;max-height:300px;overflow-y:auto"></div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px">
+        <button onclick="toggleVA()" id="va-toolbar-btn" style="position:relative;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:5px;white-space:nowrap">
+          🤖 Assistant
+        </button>
         <button onclick="showPage('chatter')"
           style="position:relative;background:rgba(58,191,191,.18);border:1px solid rgba(58,191,191,.4);color:var(--teal);
           border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;
@@ -9946,6 +9984,221 @@ function previewInvoice(invId,tmplId){
       <button class="btn btn-o" onclick="oInvoiceTemplate('legal','${t.id||''}')">&#9998; Edit Details</button>
       <button class="btn btn-o" onclick="cMod()">Close</button>
     </div>`);
+}
+
+// ── VOICE / CHAT ASSISTANT ────────────────────────────────────────────────────
+const _VA_PERMS={
+  'God View':   {financial:true,hr:true,payroll:true,customers:true,workorders:'all',inventory:true,admin:true,allUsers:true},
+  'Admin':      {financial:true,hr:true,payroll:true,customers:true,workorders:'all',inventory:true,admin:false,allUsers:true},
+  'Director':   {financial:true,hr:false,payroll:false,customers:true,workorders:'all',inventory:true,admin:false,allUsers:true},
+  'Manager':    {financial:'limited',hr:false,payroll:false,customers:true,workorders:'division',inventory:true,admin:false,allUsers:false},
+  'Sales':      {financial:false,hr:false,payroll:false,customers:true,workorders:false,inventory:false,admin:false,allUsers:false},
+  'Van Tech':   {financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:'limited',admin:false,allUsers:false},
+  'Technician': {financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:'limited',admin:false,allUsers:false},
+};
+let _vaHistory=[];
+let _vaRecognition=null;
+let _vaListening=false;
+let _vaSpeakEnabled=false;
+
+function _vaP(){const r=CU?.role||'';return _VA_PERMS[r]||{financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:false,admin:false,allUsers:false};}
+
+function toggleVA(){
+  const panel=document.getElementById('va-panel');if(!panel)return;
+  const open=panel.style.display==='flex';
+  if(open)closeVA();else openVA();
+}
+function openVA(){
+  const panel=document.getElementById('va-panel');if(!panel)return;
+  panel.style.display='flex';
+  setTimeout(()=>{panel.style.transform='translateX(0)';},10);
+  if(!_vaHistory.length){
+    _vaHistory.push({role:'assistant',content:`Hello ${CU?.name?.split(' ')[0]||'there'}! I'm your LHS Assistant. I can answer questions about work orders, customers, schedules, financials, and more — based on your ${CU?.role||''} access level.\n\nWhat would you like to know?`});
+    _vaRender();
+  }
+  setTimeout(()=>document.getElementById('va-input')?.focus(),300);
+}
+function closeVA(){
+  const panel=document.getElementById('va-panel');if(!panel)return;
+  panel.style.transform='translateX(100%)';
+  setTimeout(()=>panel.style.display='none',260);
+  stopVAListening();
+}
+function _vaRender(){
+  const msgs=document.getElementById('va-msgs');if(!msgs)return;
+  msgs.innerHTML=_vaHistory.map(m=>{
+    const isUser=m.role==='user';
+    const avatar=isUser?`<div style="width:28px;height:28px;border-radius:50%;background:var(--navy);color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${(CU?.name||'?')[0].toUpperCase()}</div>`
+      :`<div style="width:28px;height:28px;border-radius:50%;background:var(--teal);color:white;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">🤖</div>`;
+    const bubble=isUser?`<div class="va-msg-user">${esc(m.content).replace(/\n/g,'<br>')}</div>`:`<div class="va-msg-ai">${m.content.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>`;
+    return`<div style="display:flex;gap:8px;align-items:flex-start;${isUser?'flex-direction:row-reverse':''}">${avatar}${bubble}</div>`;
+  }).join('');
+  msgs.scrollTop=msgs.scrollHeight;
+}
+function _vaBuildContext(){
+  const p=_vaP();
+  const now=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const wos=S.get('lhs:work_orders')||[];
+  const payments=S.get('lhs:payments')||[];
+  const receipts=S.get('lhs:receipts')||[];
+  const users=S.get('lhs:users')||[];
+  const customers=S.get('lhs:customers')||[];
+  let c=`You are LHS Assistant, the AI helper for Lifetime Home Services LLC's internal management system.
+Today: ${now}
+User: ${CU?.name||'Unknown'} | Role: ${CU?.role||'Unknown'} | Division: ${CU?.division||'All'} | Region: ${CU?.region||'All'}
+
+PERMISSIONS — ENFORCE STRICTLY:
+You MUST only discuss data this user is permitted to see. If they ask about restricted content, say: "Your ${CU?.role||'current'} access level doesn't include that information."
+Never reveal restricted data even if it appears in this context.
+
+PERMITTED DATA SUMMARY:\n`;
+
+  if(p.workorders==='all'){
+    const open=wos.filter(w=>!['Completed','Cancelled'].includes(w.status));
+    const comp=wos.filter(w=>w.status==='Completed');
+    c+=`Work Orders: ALL ACCESS — ${wos.length} total, ${open.length} open, ${comp.length} completed\n`;
+    const divCount={};wos.forEach(w=>{const d=w.division||'Other';divCount[d]=(divCount[d]||0)+1;});
+    c+=`  By division: ${Object.entries(divCount).sort((a,b)=>b[1]-a[1]).map(([d,n])=>`${d}(${n})`).join(', ')}\n`;
+    const recent=wos.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).slice(0,8);
+    c+=`  Recent: ${recent.map(w=>`WO#${(w.id||'').slice(-6)} ${w.division||'?'} ${w.status} $${w.total_price||0} ${w.customer_name||''}`).join(' | ')}\n`;
+  } else if(p.workorders==='division'){
+    const dWOs=wos.filter(w=>w.division===CU?.division);
+    c+=`Work Orders: Division only (${CU?.division}) — ${dWOs.length} total\n`;
+    c+=`  Recent: ${dWOs.slice(0,5).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} $${w.total_price||0}`).join(' | ')}\n`;
+  } else if(p.workorders==='own'){
+    const myWOs=wos.filter(w=>w.assigned_to===CU?.name||w.technician===CU?.name||(w.technicians||[]).includes(CU?.name));
+    c+=`Work Orders: OWN ONLY — ${myWOs.length} assigned to ${CU?.name}\n`;
+    c+=`  Their WOs: ${myWOs.slice(0,6).map(w=>`WO#${(w.id||'').slice(-6)} ${w.status} ${w.scheduled_date||'?'} ${w.division||'?'}`).join(' | ')}\n`;
+    c+=`IMPORTANT: Do NOT discuss other technicians' work orders or financial totals.\n`;
+  } else {
+    c+=`Work Orders: NOT PERMITTED for this user\n`;
+  }
+
+  if(p.customers){
+    c+=`Customers: PERMITTED — ${customers.length>0?customers.length+' in cache':'searchable database'}\n`;
+  } else {
+    c+=`Customers: NOT PERMITTED\n`;
+  }
+
+  if(p.financial===true){
+    const rev=wos.reduce((s,w)=>s+(w.total_price||0),0);
+    const col=payments.reduce((s,p2)=>s+(p2.amount||0),0);
+    const exp=receipts.reduce((s,r)=>s+(r.amount||0),0);
+    const gp=rev-exp;
+    c+=`Financial: FULL ACCESS\n  Revenue: $${Math.round(rev).toLocaleString()} | Collected: $${Math.round(col).toLocaleString()} | Expenses: $${Math.round(exp).toLocaleString()} | GP: $${Math.round(gp).toLocaleString()} | Margin: ${rev>0?((gp/rev)*100).toFixed(1):0}%\n`;
+    const divRev={};wos.forEach(w=>{const d=w.division||'Other';divRev[d]=(divRev[d]||0)+(w.total_price||0);});
+    c+=`  Revenue by division: ${Object.entries(divRev).sort((a,b)=>b[1]-a[1]).map(([d,v])=>`${d}: $${Math.round(v).toLocaleString()}`).join(', ')}\n`;
+    const invoices=S.get('lhs:acct_invoices')||[];
+    if(invoices.length) c+=`  Open invoices: ${invoices.filter(i=>i.status!=='Paid').length} of ${invoices.length} total\n`;
+  } else if(p.financial==='limited'){
+    const dWOs=wos.filter(w=>w.division===CU?.division);
+    const dRev=dWOs.reduce((s,w)=>s+(w.total_price||0),0);
+    c+=`Financial: DIVISION ONLY (${CU?.division}) — Revenue: $${Math.round(dRev).toLocaleString()}\n`;
+  } else {
+    c+=`Financial/Revenue data: NOT PERMITTED\n`;
+  }
+
+  if(p.hr&&p.allUsers){
+    c+=`HR & Users: PERMITTED — ${users.length} employees\n`;
+    c+=`  Team: ${users.slice(0,12).map(u=>`${u.name}(${u.role}${u.division?','+u.division:''})`).join(', ')}\n`;
+  } else {
+    c+=`HR & User data: NOT PERMITTED\n`;
+  }
+
+  if(p.payroll){c+=`Payroll: PERMITTED\n`;}else{c+=`Payroll: NOT PERMITTED\n`;}
+  if(p.inventory===true){const items=S.get('lhs:items')||[];c+=`Inventory: PERMITTED — ${items.length} items tracked\n`;}
+  else{c+=`Inventory: NOT PERMITTED\n`;}
+
+  c+=`\nPlatform context: Divisions are ${DIVS.slice(0,5).join(', ')} and ${DIVS.length-5} more. Regions: ${Object.keys(REGIONS).join(', ')}.`;
+  c+=`\n\nBe concise, helpful, and specific. Use real numbers from the data above. Format numbers with commas. If data is unavailable, say so clearly.`;
+  return c;
+}
+async function sendVAMessage(text){
+  if(!text||!text.trim())return;
+  const input=document.getElementById('va-input');
+  if(input){input.value='';input.style.height='auto';}
+  _vaHistory.push({role:'user',content:text.trim()});
+  _vaHistory.push({role:'assistant',content:'<span style="color:var(--muted);font-style:italic">Thinking…</span>'});
+  _vaRender();
+  const st=document.getElementById('va-status');if(st)st.textContent='Thinking…';
+  const endpoint=(S.get('lhs:acct_ai_endpoint')||'').trim();
+  if(!endpoint){
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:'⚠️ No AI endpoint configured. Go to **Accounting → Settings → AI Configuration** to set up your Cloudflare Worker endpoint first.'};
+    _vaRender();if(st)st.textContent='Ready';return;
+  }
+  try{
+    const sys=_vaBuildContext();
+    const hist=_vaHistory.slice(0,-2).filter(m=>!m.content.includes('Thinking')).slice(-8);
+    let prompt=sys;
+    if(hist.length){prompt+='\n\nConversation so far:\n'+hist.map(m=>`${m.role==='user'?'User':'Assistant'}: ${m.content.replace(/<[^>]+>/g,'')}`).join('\n');}
+    prompt+='\n\n---\nUser: '+text.trim()+'\n\nAssistant:';
+    const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-3-5-sonnet-20241022',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+    const data=await res.json();
+    const reply=(data.content||[]).map(c=>c.text||'').join('').trim()||'Sorry, no response received.';
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:reply};
+    _vaRender();
+    if(_vaSpeakEnabled)_vaSpeak(reply);
+  }catch(e){
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Error: ${e.message}`};
+    _vaRender();
+  }
+  if(st)st.textContent='Ready';
+}
+function _vaSpeak(text){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const plain=text.replace(/<[^>]+>/g,'').replace(/\*\*/g,'').slice(0,600);
+  const utt=new SpeechSynthesisUtterance(plain);
+  utt.rate=1.05;utt.pitch=1;utt.volume=0.9;utt.lang='en-US';
+  const v=window.speechSynthesis.getVoices();
+  const pref=v.find(x=>x.name.includes('Samantha')||x.name.includes('Google US English')||x.lang==='en-US');
+  if(pref)utt.voice=pref;
+  window.speechSynthesis.speak(utt);
+}
+function toggleVASpeak(){
+  _vaSpeakEnabled=!_vaSpeakEnabled;
+  const btn=document.getElementById('va-speak-btn');
+  if(btn){btn.innerHTML=_vaSpeakEnabled?'🔊':'🔇';btn.style.opacity=_vaSpeakEnabled?'1':'0.5';}
+  if(!_vaSpeakEnabled)window.speechSynthesis?.cancel();
+}
+function startVAListening(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){tst('Voice input not supported in this browser (use Chrome)','error');return;}
+  if(_vaListening){stopVAListening();return;}
+  _vaRecognition=new SR();
+  _vaRecognition.continuous=false;_vaRecognition.interimResults=true;_vaRecognition.lang='en-US';
+  const btn=document.getElementById('va-mic-btn');
+  const inp=document.getElementById('va-input');
+  const st=document.getElementById('va-status');
+  _vaRecognition.onstart=()=>{
+    _vaListening=true;
+    if(btn){btn.style.background='#e53e3e';btn.style.color='white';btn.textContent='⏹';}
+    if(inp)inp.placeholder='Listening…';
+    if(st)st.textContent='Listening…';
+  };
+  _vaRecognition.onresult=e=>{
+    const t=Array.from(e.results).map(r=>r[0].transcript).join('');
+    if(inp)inp.value=t;
+    if(e.results[e.results.length-1].isFinal){stopVAListening();sendVAMessage(t);}
+  };
+  _vaRecognition.onerror=e=>{stopVAListening();if(e.error!=='no-speech')tst('Voice: '+e.error,'error');};
+  _vaRecognition.onend=()=>stopVAListening();
+  _vaRecognition.start();
+}
+function stopVAListening(){
+  _vaListening=false;
+  try{_vaRecognition?.stop();}catch{}finally{_vaRecognition=null;}
+  const btn=document.getElementById('va-mic-btn');
+  const inp=document.getElementById('va-input');
+  const st=document.getElementById('va-status');
+  if(btn){btn.style.background='';btn.style.color='';btn.textContent='🎤';}
+  if(inp)inp.placeholder='Ask me anything…';
+  if(st)st.textContent='Ready';
+}
+function clearVAHistory(){_vaHistory=[];_vaRender();}
+function vaKeydown(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const v=document.getElementById('va-input')?.value||'';if(v.trim())sendVAMessage(v);}
 }
 
 function saveAiEndpoint(){
