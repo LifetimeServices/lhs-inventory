@@ -2829,11 +2829,12 @@ function bXfr(){
   <div class="card"><div class="ct">Transfer History</div>
   <div class="tw"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>Qty</th><th>Reason</th><th>By</th></tr></thead>
   <tbody>${xfrs.length?[...xfrs].reverse().slice(0,20).map(t=>`<tr>
-    <td style="font-size:12px;color:var(--muted)">${t.date}</td><td>${t.from}</td><td>${t.to}</td>
-    <td style="font-weight:500">${t.item}</td>
+    <td style="font-size:12px;color:var(--muted)">${t.transfer_date||t.date||'&#8212;'}</td>
+    <td>${t.from_location||t.from||'&#8212;'}</td><td>${t.to_location||t.to||'&#8212;'}</td>
+    <td style="font-weight:500">${t.item_name||t.item||'&#8212;'}</td>
     <td style="font-family:'DM Mono',monospace;font-weight:700">${t.qty}</td>
-    <td style="color:var(--muted);font-size:12px">${t.reason}</td>
-    <td style="color:var(--muted);font-size:12px">${t.by||'&#8212;'}</td>
+    <td style="color:var(--muted);font-size:12px">${t.reason||'&#8212;'}</td>
+    <td style="color:var(--muted);font-size:12px">${t.transferred_by||t.by||'&#8212;'}</td>
   </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No transfers yet</td></tr>'}
   </tbody></table></div></div>`;
 }
@@ -2929,13 +2930,17 @@ async function postXfr(){
 
   for(const r of changedVi){
     if(r.id){
-      const ok=await dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty});
+      // Schema has qty_on_hand only (no bare qty column)
+      const ok=await dbUpdate('lhs:vi',r.id,{qty_on_hand:r.qty,last_updated:new Date().toISOString()});
       if(!ok) dbErrs.push(`van-inv update failed for ${r.sku} (id=${r.id})`);
     }else{
       const now=new Date().toISOString();
-      // vehicle_id mirrors vehicle (name string) — required NOT NULL in lhs_van_inventory
-      const saved=await dbInsert('lhs:vi',{sku:r.sku,item:r.item,vehicle:r.vehicle,
-        vehicle_id:r.vehicle,qty:r.qty,qty_on_hand:r.qty,min:r.min||0,max:r.max||0,created_at:now});
+      // Use actual lhs_van_inventory column names (item_name, qty_on_hand, van_min, van_max)
+      const saved=await dbInsert('lhs:vi',{
+        sku:r.sku, item_name:r.item, vehicle_id:r.vehicle,
+        qty_on_hand:r.qty, van_min:r.min||0, van_max:r.max||0,
+        last_updated:now
+      });
       if(saved?.id) r.id=saved.id;
       else dbErrs.push(`van-inv insert failed for ${r.sku} on ${r.vehicle}`);
     }
@@ -2953,12 +2958,17 @@ async function postXfr(){
     }
   }
   for(const xfrRow of newXfrs){
-    const now=new Date().toISOString();
-    // Omit 'by' — column doesn't exist in lhs_transfers schema; kept in localStorage for display
+    // Use actual lhs_transfers column names (schema uses transfer_date, from_location, etc.)
     const saved=await dbInsert('lhs:xfrs',{
-      date:xfrRow.date,from:xfrRow.from,to:xfrRow.to,
-      sku:xfrRow.sku,item:xfrRow.item,qty:xfrRow.qty,
-      reason:xfrRow.reason,notes:xfrRow.notes||'',created_at:now
+      transfer_date:xfrRow.date,
+      from_location:xfrRow.from,
+      to_location:xfrRow.to,
+      sku:xfrRow.sku,
+      item_name:xfrRow.item,
+      qty:xfrRow.qty,
+      reason:xfrRow.reason,
+      notes:xfrRow.notes||'',
+      transferred_by:xfrRow.by||CU?.name||''
     });
     if(saved?.id) xfrRow.id=saved.id;
     else dbErrs.push(`transfer log insert failed for ${xfrRow.sku}`);
@@ -3247,7 +3257,7 @@ async function editVanQty(rowId, vehicle, sku, newQty){
   const old=row.qty;
   row.qty=qty; row.qty_on_hand=qty;
   S.set('lhs:vi',vi);
-  if(row.id) await dbUpdate('lhs:vi',row.id,{qty:qty,qty_on_hand:qty});
+  if(row.id) await dbUpdate('lhs:vi',row.id,{qty_on_hand:qty,last_updated:new Date().toISOString()});
   tst(`${sku} on ${vehicle}: ${old} → ${qty}`,'success');
 }
 
