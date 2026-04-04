@@ -14654,31 +14654,36 @@ function matRowHTML(m, aptId, woId){
 
   const custExt=fN(qty*(m.customer_cost||0));
   const isGod=CU?.role==='God View';
-  return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;position:relative">
-    <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;flex-wrap:wrap;background:${isPreset?'var(--surf)':'white'};border-radius:6px">
-      ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);min-width:120px;flex-shrink:0">${esc(ql)}</span>`:''}
-      <div style="flex:1;min-width:180px;position:relative;z-index:10">
+  return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;background:${isPreset?'var(--surf)':'white'}">
+    <!-- Row 1: label + item picker -->
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px 4px;position:relative">
+      ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);white-space:nowrap;flex-shrink:0">${esc(ql)}</span>`:''}
+      <div style="flex:1;position:relative;z-index:10;min-width:0">
         ${mkItemPicker('mat-item-'+safeId, m.sku||'')}
       </div>
+    </div>
+    <!-- Row 2: qty + prices + actions -->
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 10px 7px;flex-wrap:nowrap">
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--muted)">Qty</span>
         <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
-          style="width:48px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center">
+          style="width:52px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center">
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--muted)">Cust&nbsp;$</span>
         <input type="number" id="mat-ccost-${safeId}" value="${m.customer_cost||0}" min="0" step="0.01"
-          style="width:68px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right">
+          style="width:72px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right">
       </div>
       ${isGod?`<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--muted)">Co&nbsp;$</span>
         <input type="number" id="mat-ucost-${safeId}" value="${m.unit_cost||0}" min="0" step="0.01"
-          style="width:68px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right;background:#fff8f0;border-color:#e8b87a">
+          style="width:72px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:right;background:#fff8f0;border-color:#e8b87a">
       </div>`:''}
+      <div style="flex:1"></div>
       <button onclick="saveMatRow('${safeId}','${safeApt}','${safeWo}')"
-        style="background:var(--navy);color:white;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Save</button>
+        style="background:var(--navy);color:white;border:none;border-radius:5px;padding:4px 14px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0">Save</button>
       <button onclick="deleteMaterial('${safeId}','${safeApt}','${safeWo}')"
-        style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:12px;flex-shrink:0">&#215;</button>
+        style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px;flex-shrink:0">&#215;</button>
     </div>
     ${customFields.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;padding:6px 10px 8px;background:#f0fafa;border-top:1px solid #d4f0f0;border-radius:0 0 6px 6px">
       ${customFields.map((cf,ci)=>`<div style="flex:1;min-width:150px">
