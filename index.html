@@ -8036,14 +8036,18 @@ function oAddInvoice(d){
 function invSearchCust(q){
   const res=document.getElementById('inv-cust-results'); if(!res) return;
   const custs=S.get('lhs:customers')||[];
-  const matches=q.length<1
-    ? custs.slice(0,10)
+  const matches=q.trim().length<1
+    ? custs
     : custs.filter(c=>{
         const name=`${c.first_name||''} ${c.last_name||''} ${c.company||''}`.toLowerCase();
         const ph=(c.phone||'').replace(/\D/g,'');
         return name.includes(q.toLowerCase())||ph.includes(q.replace(/\D/g,''));
-      }).slice(0,10);
-  if(!matches.length){res.style.display='none';return;}
+      });
+  if(!matches.length){
+    res.style.display='block';
+    res.innerHTML=`<div style="padding:12px 14px;font-size:13px;color:var(--muted)">No customers found for "${esc(q)}"</div>`;
+    return;
+  }
   res.style.display='block';
   res.innerHTML=matches.map(c=>{
     const name=`${c.first_name||''} ${c.last_name||''}`.trim();
@@ -8052,7 +8056,7 @@ function invSearchCust(q){
       onmousedown="invSelectCust('${esc(c.id)}','${esc(display)}')"
       onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
       <div style="font-weight:600;color:var(--navy)">${esc(display)}</div>
-      <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.address?' · '+c.address+' '+c.city:''}  </div>
+      <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.address?' · '+esc(c.address)+' '+esc(c.city||''):''}</div>
     </div>`;
   }).join('');
 }
