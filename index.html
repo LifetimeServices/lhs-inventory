@@ -9180,23 +9180,14 @@ function bAcctSettings(){
 const _IT_AUTH_DEFAULT=`This invoice is agreed and acknowledged. Payment is due upon receipt. A service fee will be charged for any returned checks, and a financing charge of 1% per month shall be applied for overdue amounts. If payment is not received within 90 days of service, a lien will be put on the property until received.`;
 const _IT_ACK_DEFAULT=`I find and agree that all work performed by Lifetime Home Services LLC has been completed in a satisfactory and workmanlike manner. I have been given the opportunity to address concerns and/or discrepancies in the work provided, and I either have no such concerns or have found no discrepancies or they have been addressed to my satisfaction. My signature here signifies my full and final acceptance of all work performed by the contractor.`;
 
-// 5 curated design presets — same clean layout, different color personalities
+// 2 curated design presets
 const _INVOICE_STYLES=[
   {id:'navy_sky',    name:'Navy & Sky Blue',   feel:'Trustworthy · Established',
    accent:'#1565C0', header:'#0D1B3E', row_tint:'#EEF4FF', total_bg:'#0D1B3E', total_fg:'#FFFFFF',
    swatches:['#0D1B3E','#1565C0','#EEF4FF']},
-  {id:'forest',      name:'Forest Green',       feel:'Reliable · Grounded',
-   accent:'#1B5E20', header:'#1B5E20', row_tint:'#F0FDF4', total_bg:'#1B5E20', total_fg:'#FFFFFF',
-   swatches:['#1B5E20','#4CAF50','#F0FDF4']},
   {id:'slate_amber', name:'Slate & Amber',      feel:'Modern · Premium',
    accent:'#B45309', header:'#334155', row_tint:'#FFFBEB', total_bg:'#334155', total_fg:'#FFFFFF',
    swatches:['#334155','#B45309','#FFFBEB']},
-  {id:'teal',        name:'Ocean Teal',          feel:'Fresh · Contemporary',
-   accent:'#0D7377', header:'#0D7377', row_tint:'#F0FDFA', total_bg:'#0D7377', total_fg:'#FFFFFF',
-   swatches:['#0D7377','#14BDAC','#F0FDFA']},
-  {id:'minimal',     name:'Minimal Charcoal',   feel:'Clean · Sophisticated',
-   accent:'#374151', header:'#111827', row_tint:'#F9FAFB', total_bg:'#111827', total_fg:'#FFFFFF',
-   swatches:['#111827','#374151','#F9FAFB']},
 ];
 
 function selectInvoiceStyle(){
@@ -9204,7 +9195,7 @@ function selectInvoiceStyle(){
   const current=t.style_id||'';
   oMod('&#127912; Choose Invoice Style',`
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
-      Five designs — all use your logo and the same clean layout as your existing invoices. Select one to preview or apply.
+      Two designs — both use your logo and the same clean layout. Select one to preview or apply.
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
       ${_INVOICE_STYLES.map(s=>`
@@ -9482,6 +9473,50 @@ function addInvoicePdfPage(input){
   reader.readAsDataURL(file);
 }
 
+function oAddInvoicePage(){
+  const t=S.get('lhs:invoice_template')||{};
+  const wiOn=t.show_wi_cure!==false;
+  // Show a quick picker panel — overlay on top of the preview
+  const panel=document.createElement('div');
+  panel.id='add-page-panel';
+  panel.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:white;border-radius:12px;box-shadow:0 8px 48px rgba(0,0,0,.28);padding:24px 28px;min-width:340px;max-width:440px';
+  panel.innerHTML=`
+    <div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:16px">&#128196; Add Page to Invoice</div>
+    <div style="margin-bottom:12px">
+      <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1.5px solid ${wiOn?'var(--navy)':'var(--bdr)'};border-radius:8px;cursor:pointer;gap:12px">
+        <div>
+          <div style="font-weight:600;font-size:13px">Wisconsin Right to Cure Law</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Standard legal disclosure — pre-built</div>
+        </div>
+        <input type="checkbox" id="ap-wi-cure" ${wiOn?'checked':''} style="width:17px;height:17px;flex-shrink:0">
+      </label>
+    </div>
+    <div style="margin-bottom:18px">
+      <div style="padding:12px 14px;border:1.5px solid var(--bdr);border-radius:8px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px">Upload a PDF</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Any document (max 5 MB) — saved to this template</div>
+        <label class="btn btn-o sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          &#8679; Choose PDF
+          <input type="file" accept=".pdf,application/pdf" style="display:none" onchange="addInvoicePdfPage(this);document.getElementById('add-page-panel')?.remove()">
+        </label>
+        ${(t.additional_pdfs||[]).length?`<div style="margin-top:10px;font-size:11px;color:var(--muted)">${(t.additional_pdfs||[]).map((p,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px"><span>&#128196; ${esc(p.name)}</span><button onclick="removeInvoicePdfPage(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">&#10005;</button></div>`).join('')}</div>`:''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-o sm" onclick="document.getElementById('add-page-panel')?.remove()">Cancel</button>
+      <button class="btn btn-n sm" onclick="_apSaveAndClose()">&#10003; Save &amp; Refresh</button>
+    </div>`;
+  document.body.appendChild(panel);
+  window._apSaveAndClose=function(){
+    const el=document.getElementById('ap-wi-cure');
+    const t2=S.get('lhs:invoice_template')||{};
+    t2.show_wi_cure=el?el.checked:t2.show_wi_cure;
+    S.set('lhs:invoice_template',t2);
+    document.getElementById('add-page-panel')?.remove();
+    previewInvoice();
+  };
+}
+
 function removeInvoicePdfPage(idx){
   const t=S.get('lhs:invoice_template')||{};
   const pages=t.additional_pdfs||[];
@@ -9534,38 +9569,38 @@ function previewInvoice(invId){
     <div style="max-width:720px;margin:0 auto;font-family:'DM Sans',Arial,sans-serif;font-size:13px;color:#222;background:white;padding:32px">
 
       <!-- PAGE 1 HEADER: Logo left, company info right -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">
-        <div>
-          ${t.logo_url
-            ?`<img src="${esc(t.logo_url)}" style="max-height:80px;max-width:200px;object-fit:contain;display:block" onerror="this.style.display='none'">`
-            :`<div style="font-size:20px;font-weight:800;color:${hc}">${esc(co)}</div>`}
-          ${inv?.division?`<div style="font-size:11px;color:#555;margin-top:5px;font-weight:600;letter-spacing:.04em">${esc(inv.division)}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <img src="${t.logo_url||document.querySelector('.tbl img')?.src||''}" style="max-height:64px;max-width:180px;object-fit:contain;display:block" onerror="this.style.display='none'">
+          <div style="font-size:11px;font-weight:600;color:#555;letter-spacing:.04em">${esc(inv?.division||'Lifetime Home Services')}</div>
         </div>
-        <div style="text-align:right;font-size:12px;line-height:1.8;color:#333">
-          ${esc(co)}<br>
-          ${t.address1?esc(t.address1)+'<br>':''}
-          ${t.address2?esc(t.address2)+'<br>':''}
-          ${t.phone?esc(t.phone):''}
-          ${t.show_website&&t.website?`<br>${esc(t.website)}`:''}
-          ${t.show_license&&t.license?`<br>Lic# ${esc(t.license)}`:''}
+        <div style="text-align:right;font-size:11.5px;line-height:1.8;color:#333">
+          <div style="font-weight:700;font-size:12px">${esc(co)}</div>
+          ${t.address1?`<div>${esc(t.address1)}</div>`:''}
+          ${t.address2?`<div>${esc(t.address2)}</div>`:''}
+          ${t.phone?`<div>${esc(t.phone)}</div>`:''}
+          ${t.show_website&&t.website?`<div>${esc(t.website)}</div>`:''}
+          ${t.show_license&&t.license?`<div>Lic# ${esc(t.license)}</div>`:''}
         </div>
       </div>
 
-      <!-- BILL TO + Invoice number box (compact) -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;gap:20px">
+      <hr style="border:none;border-top:2px solid ${hc};margin:0 0 16px 0">
+
+      <!-- BILL TO + compact Invoice # box -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:16px">
         <div style="flex:1">
-          <div style="font-weight:700;font-size:11px;letter-spacing:.08em;margin-bottom:6px">BILL TO</div>
-          <div style="font-weight:600;font-size:14px">${esc(custName)}</div>
-          <div style="font-size:12px;color:#555;line-height:1.7">${inv?.customer_address||''}</div>
+          <div style="font-weight:700;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#888;margin-bottom:5px">Bill To</div>
+          <div style="font-weight:700;font-size:16px;color:#111;line-height:1.3">${esc(custName)}</div>
+          <div style="font-size:12px;color:#555;line-height:1.7;margin-top:2px">${inv?.customer_address||''}</div>
         </div>
-        <table style="border-collapse:collapse;border:1px solid #bbb;font-size:11px;flex-shrink:0;background:white">
-          <tr>
-            <td style="padding:5px 14px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;color:#222">INVOICE</td>
-            <td style="padding:5px 14px;border:1px solid #bbb;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;color:#222">INVOICE DATE</td>
+        <table style="border-collapse:collapse;font-size:10px;flex-shrink:0;border:1.5px solid #bbb">
+          <tr style="background:#f5f5f5">
+            <td style="padding:4px 10px;border-right:1px solid #bbb;font-weight:700;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;color:#555;font-size:9px">INV #</td>
+            <td style="padding:4px 10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;color:#555;font-size:9px">Date</td>
           </tr>
           <tr>
-            <td style="padding:5px 14px;border:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:600;font-size:12px;color:#111">${esc(num)}</td>
-            <td style="padding:5px 14px;border:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:600;font-size:12px;color:#111">${fmtD(invDate)}</td>
+            <td style="padding:5px 10px;border-right:1px solid #bbb;border-top:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:700;font-size:11px;color:#111;white-space:nowrap">${esc(num)}</td>
+            <td style="padding:5px 10px;border-top:1px solid #bbb;font-family:'DM Mono',monospace;font-weight:700;font-size:11px;color:#111;white-space:nowrap">${fmtD(invDate)}</td>
           </tr>
         </table>
       </div>
@@ -9573,20 +9608,18 @@ function previewInvoice(invId){
       <hr style="border:none;border-top:1px solid #ddd;margin:16px 0">
 
       <!-- JOB ADDRESS + completion details -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
         <div>
-          <div style="font-weight:700;font-size:11px;letter-spacing:.08em;margin-bottom:6px">JOB ADDRESS</div>
-          <div style="font-weight:600">${esc(custName)}</div>
-          <div style="font-size:12px;color:#555;line-height:1.7">${inv?.customer_address||'Customer Address'}</div>
+          <div style="font-weight:700;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#888;margin-bottom:4px">Job Address</div>
+          <div style="font-weight:600;font-size:13px">${esc(custName)}</div>
+          <div style="font-size:12px;color:#555;line-height:1.6">${inv?.customer_address||'Customer Address'}</div>
         </div>
-        <div style="font-size:13px;line-height:1.9">
-          <div><strong>Completed Date:</strong> ${fmtD(invDate)}</div>
-          <div><strong>Payment Term:</strong> ${esc(t.payment_terms||'Due on Receipt')}</div>
-          <div><strong>Due Date:</strong> ${fmtD(dueDate)}</div>
+        <div style="font-size:12px;line-height:1.8;text-align:right">
+          <div><span style="color:#888">Completed:</span> ${fmtD(invDate)}</div>
+          <div><span style="color:#888">Terms:</span> ${esc(t.payment_terms||'Due on Receipt')}</div>
+          <div><span style="color:#888">Due:</span> ${fmtD(dueDate)}</div>
         </div>
       </div>
-
-      <hr style="border:none;border-top:1px solid #ddd;margin:16px 0">
 
       <!-- LINE ITEMS -->
       <table style="width:100%;border-collapse:collapse;margin-bottom:28px">
@@ -9712,9 +9745,19 @@ function previewInvoice(invId){
       }).join('')}
 
     </div>
-    <div class="br2" style="margin-top:16px">
+
+    <!-- ADD PAGE button area — inside the preview, below invoice content -->
+    <div style="border:2px dashed #ccc;border-radius:8px;padding:14px 20px;margin-top:12px;display:flex;align-items:center;justify-content:space-between;background:#fafafa">
+      <div style="font-size:12px;color:#666">
+        <strong>Additional Pages:</strong>
+        ${(t.show_wi_cure?['Wisconsin Right to Cure']:[]).concat((t.additional_pdfs||[]).map(p=>p.name)).map(n=>`<span style="display:inline-block;background:#e8eef8;border-radius:4px;padding:2px 7px;font-size:11px;margin-left:6px">${esc(n)}</span>`).join('')||'<span style="color:#aaa;font-style:italic;margin-left:6px">None added yet</span>'}
+      </div>
+      <button class="btn btn-n sm" onclick="oAddInvoicePage()">&#43; Add Page</button>
+    </div>
+
+    <div class="br2" style="margin-top:12px">
       <button class="btn btn-n" onclick="selectInvoiceStyle()">&#127912; Change Style</button>
-      <button class="btn btn-o" onclick="oInvoiceTemplate()">&#9998; Edit Details</button>
+      <button class="btn btn-o" onclick="oInvoiceTemplate('legal')">&#9998; Edit Details</button>
       <button class="btn btn-o" onclick="cMod()">Close</button>
     </div>`);
 }
