@@ -190,14 +190,24 @@ const SUPA_URL = 'https://vuwcnqvrgmdknvbajhtt.supabase.co';
 const SUPA_KEY = 'sb_publishable_Pr4OYz2a2rvhEtRjH_Nqkg_8PHTIeCb';
 const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-// ── GLOBAL DELEGATED INPUT HANDLER ───────────────────────────────────────────
-// Attached once to document so it works on ALL dynamically injected inputs
-document.addEventListener('input', function(e){
-  if(e.target && e.target.id==='inv-cust-search') _invCustSearch(e.target.value);
-}, true);
-document.addEventListener('focus', function(e){
-  if(e.target && e.target.id==='inv-cust-search') _invCustSearch(e.target.value);
-}, true);
+// ── CUSTOMER SEARCH FIELD WATCHER ────────────────────────────────────────────
+// MutationObserver: the instant #inv-cust-search appears in the DOM,
+// attach input/keyup/focus listeners directly to the element.
+// This is more reliable than event delegation for dynamically injected content.
+(function(){
+  const obs=new MutationObserver(function(){
+    const inp=document.getElementById('inv-cust-search');
+    if(inp && !inp._lhsBound){
+      inp._lhsBound=true;
+      const fn=function(){ _invCustSearch(inp.value); };
+      inp.addEventListener('input', fn);
+      inp.addEventListener('keyup', fn);
+      inp.addEventListener('focus', fn);
+      inp.addEventListener('click', fn);
+    }
+  });
+  obs.observe(document.body,{childList:true,subtree:true});
+})();
 
 // ── EMAILJS CONFIG ────────────────────────────────────────────────────────────
 const EJS_SERVICE  = 'service_rvkfyrn';
