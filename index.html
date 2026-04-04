@@ -7969,52 +7969,49 @@ function bAcctInvoices(){
   </div>`;
 }
 
-function oAddInvoice(){
+function oAddInvoice(d){
   const customers=S.get('lhs:customers')||[];
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.status==='Completed'||w.status==='Invoiced');
   const today=new Date().toISOString().slice(0,10);
   const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
-  oMod('+ New Invoice',`
+  const editId=d?.id||'';
+  oMod((editId?'Edit':'+ New')+' Invoice',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Invoice # *</label>
-        <input id="inv-num" placeholder="INV-0001"></div>
+        <input id="inv-num" placeholder="INV-0001" value="${esc(d?.invoice_number||'')}"></div>
       <div class="fl" style="margin:0"><label>Division</label>
         <select id="inv-div"><option value="">-- Select --</option>
-          ${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+          ${DIVS.map(dv=>`<option value="${esc(dv)}"${d?.division===dv?' selected':''}>${esc(dv)}</option>`).join('')}
         </select></div>
     </div>
-    <div class="fl" style="margin-bottom:10px"><label>Customer *</label>
+    <div class="fl" style="margin-bottom:10px"><label>Customer</label>
       <select id="inv-cust"><option value="">-- Select customer --</option>
-        ${customers.map(c=>`<option value="${esc(c.id)}" data-name="${esc(c.name)}">${esc(c.name)}</option>`).join('')}
+        ${customers.map(c=>`<option value="${esc(c.id)}" data-name="${esc(c.name)}"${d?.customer_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}
       </select></div>
     <div class="fl" style="margin-bottom:10px"><label>Link Work Order (optional)</label>
       <select id="inv-wo"><option value="">-- None --</option>
-        ${wos.map(w=>`<option value="${esc(w.id)}">WO #${esc(w.wo_number||w.id?.slice(-6))} — ${esc(w.customer_name||'')} (${esc(w.division||'')})</option>`).join('')}
+        ${wos.map(w=>`<option value="${esc(w.id)}"${d?.work_order_id===w.id?' selected':''}>WO #${esc(w.wo_number||w.id?.slice(-6))} — ${esc(w.customer_name||'')} (${esc(w.division||'')})</option>`).join('')}
       </select></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Amount *</label>
-        <input type="number" id="inv-amt" step="0.01" min="0" placeholder="0.00"></div>
+        <input type="number" id="inv-amt" step="0.01" min="0" placeholder="0.00" value="${d?.amount||''}"></div>
       <div class="fl" style="margin:0"><label>Invoice Date</label>
-        <input type="date" id="inv-date" value="${today}"></div>
+        <input type="date" id="inv-date" value="${d?.invoice_date||today}"></div>
       <div class="fl" style="margin:0"><label>Due Date</label>
-        <input type="date" id="inv-due" value="${due30}"></div>
+        <input type="date" id="inv-due" value="${d?.due_date||due30}"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Status</label>
         <select id="inv-status">
-          <option value="Open">Open</option>
-          <option value="Paid">Paid</option>
-          <option value="Overdue">Overdue</option>
-          <option value="Draft">Draft</option>
-          <option value="Void">Void</option>
+          ${['Open','Paid','Overdue','Draft','Void'].map(s=>`<option value="${s}"${(d?.status||'Open')===s?' selected':''}>${s}</option>`).join('')}
         </select></div>
       <div class="fl" style="margin:0"><label>Tax Amount ($)</label>
-        <input type="number" id="inv-tax" step="0.01" min="0" placeholder="0.00"></div>
+        <input type="number" id="inv-tax" step="0.01" min="0" placeholder="0.00" value="${d?.tax_amount||''}"></div>
     </div>
     <div class="fl" style="margin-bottom:16px"><label>Notes</label>
-      <textarea id="inv-notes" rows="2" placeholder="Invoice notes..."></textarea></div>
+      <textarea id="inv-notes" rows="2" placeholder="Invoice notes...">${esc(d?.notes||'')}</textarea></div>
     <div class="br2">
-      <button class="btn btn-n" onclick="saveInvoice()">Save Invoice</button>
+      <button class="btn btn-n" onclick="saveInvoice('${esc(editId)}')">${editId?'Save Changes':'Save Invoice'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
 }
@@ -8054,21 +8051,7 @@ async function saveInvoice(editId){
 function oEditInvoice(id){
   const invs=S.get('lhs:acct_invoices')||[];
   const i=invs.find(x=>x.id===id); if(!i) return;
-  oAddInvoice();
-  setTimeout(()=>{
-    document.getElementById('inv-num')&&(document.getElementById('inv-num').value=i.invoice_number||'');
-    document.getElementById('inv-div')&&(document.getElementById('inv-div').value=i.division||'');
-    document.getElementById('inv-cust')&&(document.getElementById('inv-cust').value=i.customer_id||'');
-    document.getElementById('inv-wo')&&(document.getElementById('inv-wo').value=i.work_order_id||'');
-    document.getElementById('inv-amt')&&(document.getElementById('inv-amt').value=i.amount||'');
-    document.getElementById('inv-tax')&&(document.getElementById('inv-tax').value=i.tax_amount||'');
-    document.getElementById('inv-date')&&(document.getElementById('inv-date').value=i.invoice_date||'');
-    document.getElementById('inv-due')&&(document.getElementById('inv-due').value=i.due_date||'');
-    document.getElementById('inv-status')&&(document.getElementById('inv-status').value=i.status||'Open');
-    document.getElementById('inv-notes')&&(document.getElementById('inv-notes').value=i.notes||'');
-    const btn=document.querySelector('.modal-footer .btn-n');
-    if(btn) btn.onclick=()=>saveInvoice(id);
-  },50);
+  oAddInvoice(i);
 }
 
 async function delInvoice(id){
@@ -8387,8 +8370,8 @@ function bAcctCOA(){
       <div class="tw" style="overflow-x:auto;margin-top:6px"><table>
         <thead><tr><th>Code</th><th>Account Name</th><th>Sub-type</th><th>Description</th>${canEdit?'<th></th>':''}</tr></thead>
         <tbody>${accounts.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<tr>
-          <td style="font-family:'DM Mono',monospace;font-weight:700;color:${color}">${esc(a.code)}</td>
-          <td style="font-weight:600">${esc(a.name)}</td>
+          <td><span style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--navy);background:var(--surf);padding:2px 8px;border-radius:5px;border:1px solid var(--bdr)">${esc(a.code)}</span></td>
+          <td style="font-weight:600;color:var(--text)">${esc(a.name)}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.subtype||'')}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.description||'')}</td>
           ${canEdit?`<td style="white-space:nowrap;text-align:right">
@@ -8464,25 +8447,26 @@ function loadDefaultCOA(){
   showPage('acct-coa');
 }
 
-function oAddCOAAccount(){
+function oAddCOAAccount(d){
   const types=['Asset','Liability','Equity','Revenue','Cost of Goods Sold','Expense','Other Income','Other Expense'];
-  oMod('+ Add Account',`
+  const editId=d?.id||'';
+  oMod((editId?'Edit':'+ Add')+' Account',`
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Account Code *</label>
-        <input id="coa-code" placeholder="e.g. 6050"></div>
+        <input id="coa-code" placeholder="e.g. 6050" value="${esc(d?.code||'')}"></div>
       <div class="fl" style="margin:0"><label>Account Name *</label>
-        <input id="coa-name" placeholder="e.g. Office Supplies"></div>
+        <input id="coa-name" placeholder="e.g. Office Supplies" value="${esc(d?.name||'')}"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Type *</label>
-        <select id="coa-type">${types.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+        <select id="coa-type">${types.map(t=>`<option value="${t}"${(d?.type||'Expense')===t?' selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fl" style="margin:0"><label>Sub-type</label>
-        <input id="coa-subtype" placeholder="e.g. Current Asset"></div>
+        <input id="coa-subtype" placeholder="e.g. Current Asset" value="${esc(d?.subtype||'')}"></div>
     </div>
     <div class="fl" style="margin-bottom:16px"><label>Description</label>
-      <textarea id="coa-desc" rows="2" placeholder="What this account tracks..."></textarea></div>
+      <textarea id="coa-desc" rows="2" placeholder="What this account tracks...">${esc(d?.description||'')}</textarea></div>
     <div class="br2">
-      <button class="btn btn-n" onclick="saveCOAAccount()">Save Account</button>
+      <button class="btn btn-n" onclick="saveCOAAccount('${esc(editId)}')">${editId?'Save Changes':'Save Account'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
 }
@@ -8510,20 +8494,7 @@ async function saveCOAAccount(editId){
 function oEditCOAAccount(id){
   const coa=S.get('lhs:acct_coa')||[];
   const a=coa.find(x=>x.id===id); if(!a) return;
-  oAddCOAAccount();
-  setTimeout(()=>{
-    ['coa-code','coa-name','coa-type','coa-subtype','coa-desc'].forEach(fid=>{
-      const el=document.getElementById(fid); if(!el) return;
-      const key=fid.replace('coa-','').replace('desc','description').replace('subtype','subtype');
-      if(key==='description') el.value=a.description||'';
-      else if(key==='code') el.value=a.code||'';
-      else if(key==='name') el.value=a.name||'';
-      else if(key==='type') el.value=a.type||'Expense';
-      else if(key==='subtype') el.value=a.subtype||'';
-    });
-    const btn=document.querySelector('.modal-footer .btn-n');
-    if(btn) btn.onclick=()=>saveCOAAccount(id);
-  },50);
+  oAddCOAAccount(a);
 }
 
 async function delCOAAccount(id){
@@ -8852,26 +8823,27 @@ function bAcctBank(){
     </div>`}`;
 }
 
-function oAddBankAccount(){
-  oMod('+ Add Bank Account',`
+function oAddBankAccount(d){
+  const editId=d?.id||'';
+  oMod((editId?'Edit':'+ Add')+' Bank Account',`
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Account Name *</label>
-        <input id="bank-name" placeholder="e.g. Chase Business Checking"></div>
+        <input id="bank-name" placeholder="e.g. Chase Business Checking" value="${esc(d?.name||'')}"></div>
       <div class="fl" style="margin:0"><label>Last 4 Digits</label>
-        <input id="bank-last4" placeholder="1234" maxlength="4"></div>
+        <input id="bank-last4" placeholder="1234" maxlength="4" value="${esc(d?.last4||'')}"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Account Type</label>
         <select id="bank-type">
-          <option>Checking</option><option>Savings</option><option>Credit Card</option><option>Line of Credit</option>
+          ${['Checking','Savings','Credit Card','Line of Credit'].map(t=>`<option value="${t}"${(d?.account_type||'Checking')===t?' selected':''}>${t}</option>`).join('')}
         </select></div>
       <div class="fl" style="margin:0"><label>Institution</label>
-        <input id="bank-inst" placeholder="e.g. Chase, Wells Fargo"></div>
+        <input id="bank-inst" placeholder="e.g. Chase, Wells Fargo" value="${esc(d?.institution||'')}"></div>
     </div>
     <div class="fl" style="margin-bottom:16px"><label>Current Balance ($)</label>
-      <input type="number" id="bank-bal" step="0.01" placeholder="0.00"></div>
+      <input type="number" id="bank-bal" step="0.01" placeholder="0.00" value="${d?.current_balance||''}"></div>
     <div class="br2">
-      <button class="btn btn-n" onclick="saveBankAccount()">Save Account</button>
+      <button class="btn btn-n" onclick="saveBankAccount('${esc(editId)}')">${editId?'Save Changes':'Save Account'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
 }
@@ -8899,16 +8871,7 @@ async function saveBankAccount(editId){
 function oEditBankAccount(id){
   const accounts=S.get('lhs:acct_bank_accounts')||[];
   const a=accounts.find(x=>x.id===id); if(!a) return;
-  oAddBankAccount();
-  setTimeout(()=>{
-    document.getElementById('bank-name')&&(document.getElementById('bank-name').value=a.name||'');
-    document.getElementById('bank-inst')&&(document.getElementById('bank-inst').value=a.institution||'');
-    document.getElementById('bank-type')&&(document.getElementById('bank-type').value=a.account_type||'Checking');
-    document.getElementById('bank-last4')&&(document.getElementById('bank-last4').value=a.last4||'');
-    document.getElementById('bank-bal')&&(document.getElementById('bank-bal').value=a.current_balance||'');
-    const btn=document.querySelector('.modal-footer .btn-n');
-    if(btn) btn.onclick=()=>saveBankAccount(id);
-  },50);
+  oAddBankAccount(a);
 }
 
 function oAddBankTxn(acctId){
