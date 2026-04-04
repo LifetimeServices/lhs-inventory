@@ -8383,7 +8383,7 @@ function bAcctCOA(){
       <div class="tw" style="overflow-x:auto;margin-top:6px"><table>
         <thead><tr><th>Code</th><th>Account Name</th><th>Sub-type</th><th>Description</th>${canEdit?'<th></th>':''}</tr></thead>
         <tbody>${accounts.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<tr>
-          <td><span style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--navy);background:var(--surf);padding:2px 8px;border-radius:5px;border:1px solid var(--bdr)">${esc(a.code)}</span></td>
+          <td style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:var(--navy)">${esc(a.code)}</td>
           <td style="font-weight:600;color:var(--text)">${esc(a.name)}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.subtype||'')}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.description||'')}</td>
