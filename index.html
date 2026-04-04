@@ -10128,19 +10128,34 @@ async function sendVAMessage(text){
   }
   try{
     const sys=_vaBuildContext();
-    const hist=_vaHistory.slice(0,-2).filter(m=>!m.content.includes('Thinking')).slice(-8);
-    let prompt=sys;
-    if(hist.length){prompt+='\n\nConversation so far:\n'+hist.map(m=>`${m.role==='user'?'User':'Assistant'}: ${m.content.replace(/<[^>]+>/g,'')}`).join('\n');}
-    prompt+='\n\n---\nUser: '+text.trim()+'\n\nAssistant:';
+    // Build proper messages array: prior history + current user message
+    const hist=_vaHistory.slice(0,-2).filter(m=>m.role&&!m.content.includes('Thinking')).slice(-8);
+    const messages=hist.map(m=>({role:m.role,content:m.content.replace(/<[^>]+>/g,'').replace(/\*\*/g,'').trim()})).filter(m=>m.content);
+    messages.push({role:'user',content:text.trim()});
     const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-3-5-sonnet-20241022',max_tokens:800,messages:[{role:'user',content:prompt}]})});
-    const data=await res.json();
-    const reply=(data.content||[]).map(c=>c.text||'').join('').trim()||'Sorry, no response received.';
+      body:JSON.stringify({model:'claude-3-5-sonnet-20241022',max_tokens:800,system:sys,messages})});
+    let data;
+    try{data=await res.json();}catch(je){
+      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Invalid response from endpoint (status ${res.status}). Check your Cloudflare Worker URL in Accounting → Settings.`};
+      _vaRender();if(st)st.textContent='Ready';return;
+    }
+    // Surface API errors clearly
+    if(data.error){
+      const errMsg=typeof data.error==='object'?(data.error.message||JSON.stringify(data.error)):String(data.error);
+      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ API Error: ${errMsg}`};
+      _vaRender();if(st)st.textContent='Ready';return;
+    }
+    const reply=(data.content||[]).map(c=>c.text||'').join('').trim();
+    if(!reply){
+      const raw=JSON.stringify(data).slice(0,200);
+      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Unexpected response format. Raw: ${raw}`};
+      _vaRender();if(st)st.textContent='Ready';return;
+    }
     _vaHistory[_vaHistory.length-1]={role:'assistant',content:reply};
     _vaRender();
     if(_vaSpeakEnabled)_vaSpeak(reply);
   }catch(e){
-    _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Error: ${e.message}`};
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Connection error: ${e.message}. Check your endpoint URL in Accounting → Settings.`};
     _vaRender();
   }
   if(st)st.textContent='Ready';
