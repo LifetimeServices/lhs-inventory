@@ -1776,6 +1776,8 @@ async function startApp(){
   // Show loading spinner while Supabase warms up
   document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading LHS data...</div></div>';
   await warmCache();
+  // Sync invoice templates from Supabase (overrides localStorage so templates are shared across devices)
+  await _syncTemplatesFromDB();
   // Load dispatch pins from Supabase user row (overrides localStorage so pins sync across devices)
   if(CU?.dispatch_pins&&Object.keys(CU.dispatch_pins).length>0){
     _dispPinned=CU.dispatch_pins;
@@ -4801,6 +4803,28 @@ function bInt(){
       </div>
       <div class="id2">Inventory insights, reorder recommendations, and anomaly detection. Ask questions in plain English.</div>
       <button class="btn btn-g sm" onclick="oAI()">Open AI Assistant &#8594;</button>
+    </div>
+    <div class="ic" style="border-color:#10b981;grid-column:span 2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#10b981;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:13px">&#129302;</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="in2">LHS Assistant — Groq AI</div>
+            <span style="background:#10b981;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em">FREE</span>
+          </div>
+          <div class="is2 ${(S.get('lhs:groq_api_key')||'').trim()?'on':'off'}">${(S.get('lhs:groq_api_key')||'').trim()?'&#9679; Active':'&#9679; Not Configured'}</div>
+        </div>
+      </div>
+      <div class="id2">Powers the 🤖 Assistant chat panel. Free AI via Groq's Llama 3.3 (70B) model — no credit card required. Get your free key at <a href="https://console.groq.com" target="_blank" style="color:var(--teal)">console.groq.com →</a></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <input id="groq-key-input" type="password" value="${esc(S.get('lhs:groq_api_key')||'')}" placeholder="gsk_..."
+          style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Mono',monospace;max-width:420px">
+        <button class="btn btn-n sm" onclick="saveGroqKey()">Save Key</button>
+        ${(S.get('lhs:groq_api_key')||'').trim()?`<button class="btn btn-g sm" onclick="toggleVA()">Open Assistant &#8594;</button>`:''}
+      </div>
+      ${(S.get('lhs:groq_api_key')||'').trim()
+        ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Groq key configured — Assistant is active</div>`
+        :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Paste your Groq API key above and click Save to activate the Assistant</div>`}
     </div>
     <div class="ic" style="border-color:var(--bdr)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -9200,12 +9224,33 @@ function _getTemplates(){
   let arr=S.get('lhs:invoice_templates');
   if(!arr||!Array.isArray(arr)||!arr.length){
     const old=S.get('lhs:invoice_template')||{};
-    arr=[{...old,id:old.id||crypto.randomUUID(),name:old.name||'Standard Invoice',is_default:true,created_at:old.created_at||new Date().toISOString(),updated_at:old.updated_at||new Date().toISOString()}];
+    arr=[{...old,id:old.id||crypto.randomUUID(),name:old.name||'Standard Invoice',is_default:true,created_at:old.created_at||new Date().toISOString(),updated_at:new Date().toISOString()}];
     S.set('lhs:invoice_templates',arr);
   }
   return arr;
 }
-function _saveTemplates(arr){S.set('lhs:invoice_templates',arr);}
+function _saveTemplates(arr){
+  S.set('lhs:invoice_templates',arr);
+  // Persist to Supabase in background
+  (async()=>{
+    try{
+      const rows=arr.map(t=>({id:t.id,name:t.name||'Invoice Template',is_default:t.is_default||false,data:t,updated_at:new Date().toISOString()}));
+      await DB.from('lhs_invoice_templates').upsert(rows,{onConflict:'id',ignoreDuplicates:false});
+      // Remove any deleted templates from DB
+      const ids=arr.map(t=>t.id);
+      if(ids.length){await DB.from('lhs_invoice_templates').delete().not('id','in',`(${ids.map(i=>`"${i}"`).join(',')})`);}
+    }catch(e){console.warn('Invoice template DB sync error:',e);}
+  })();
+}
+async function _syncTemplatesFromDB(){
+  try{
+    const{data,error}=await DB.from('lhs_invoice_templates').select('*').order('created_at',{ascending:true});
+    if(!error&&data&&data.length){
+      const templates=data.map(r=>({...r.data,id:r.id,name:r.name,is_default:r.is_default}));
+      S.set('lhs:invoice_templates',templates);
+    }
+  }catch(e){console.warn('Could not load templates from DB:',e);}
+}
 function _getTmpl(id){
   const arr=_getTemplates();
   if(id){const f=arr.find(t=>t.id===id);if(f)return f;}
@@ -9267,7 +9312,6 @@ function bAcctSettings(){
   const codes=S.get('lhs:accounting_codes')||[];
   const canEdit=['God View','Admin','Director'].includes(CU?.role);
   const aiEndpoint=S.get('lhs:acct_ai_endpoint')||'';
-  const groqKey=S.get('lhs:groq_api_key')||'';
   return`<div class="pt">&#9881;&#65039; Accounting Settings</div>
   <div class="ps">Invoice templates, chart of accounts, and system configuration</div>
 
@@ -9343,27 +9387,6 @@ function bAcctSettings(){
         <button class="btn btn-n" onclick="saveDivDisplayNames()">&#10003; Save Display Names</button>
       </div>`:''}`;
     })()}
-  </div>
-
-  <!-- AI Configuration — Groq (Free Assistant) -->
-  <div class="card" style="margin-bottom:18px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="font-weight:700;font-size:14px;color:var(--navy)">&#129302; LHS Assistant — Groq API Key</span>
-      <span style="background:#10b981;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em">FREE</span>
-    </div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Groq provides free, fast AI for the LHS Assistant. Get your free key at
-      <a href="https://console.groq.com" target="_blank" style="color:var(--teal)">console.groq.com →</a>
-      — no credit card required. Uses Llama 3.3 (70B) model.
-    </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <input id="groq-key-input" type="password" value="${esc(groqKey)}" placeholder="gsk_..."
-        style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Mono',monospace">
-      <button class="btn btn-n" onclick="saveGroqKey()">Save</button>
-    </div>
-    ${groqKey
-      ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Groq key configured — Assistant is active</div>`
-      :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; No Groq key — Assistant will fall back to Cloudflare Worker below</div>`}
   </div>
 
   <!-- AI Configuration — Cloudflare Worker (Claude / Receipt Analysis) -->
@@ -10268,7 +10291,7 @@ function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
   S.set('lhs:groq_api_key',val);
   tst(val?'Groq API key saved — Assistant is ready!':'Groq key cleared','success');
-  showPage('acct-settings');
+  showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
 }
 function saveAiEndpoint(){
   const val=(document.getElementById('ai-endpoint-input')?.value||'').trim();
