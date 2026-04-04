@@ -14654,11 +14654,11 @@ function matRowHTML(m, aptId, woId){
 
   const custExt=fN(qty*(m.customer_cost||0));
   const isGod=CU?.role==='God View';
-  return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;background:${isPreset?'var(--surf)':'white'}">
+  return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;background:${isPreset?'var(--surf)':'white'};overflow:visible">
     <!-- Row 1: label + item picker -->
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px 4px;position:relative">
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px 4px">
       ${ql?`<span style="font-weight:600;font-size:13px;color:var(--navy);white-space:nowrap;flex-shrink:0">${esc(ql)}</span>`:''}
-      <div style="flex:1;position:relative;z-index:10;min-width:0">
+      <div style="flex:1;min-width:0">
         ${mkItemPicker('mat-item-'+safeId, m.sku||'')}
       </div>
     </div>
