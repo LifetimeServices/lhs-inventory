@@ -2749,13 +2749,18 @@ async function postRecv(pi3){
     p.packing_slip_storage=slip.storagePath;
   }
 
+  const changedLs=new Set();
+  const newLsRows=[];
   (p.lines||[]).forEach((l,i)=>{
     const now=pi2('rl'+i);
     l.qtyReceived=(l.qtyReceived||0)+now;
     l.status=l.qtyReceived>=l.qtyOrdered?'Received':'Short';
     if(l.status==='Short') short=true;
-    if(now>0){const ex=ls.find(r=>r.sku===l.sku&&r.location===p.location);
-      if(ex) ex.qty+=now; else ls.push({sku:l.sku,item:l.item,location:p.location,qty:now,min:0,max:0,bin:''});}
+    if(now>0){
+      const ex=ls.find(r=>r.sku===l.sku&&r.location===p.location);
+      if(ex){ex.qty+=now; changedLs.add(ex);}
+      else{const nr={sku:l.sku,item:l.item,location:p.location,qty:now,min:0,max:0,bin:''};ls.push(nr);newLsRows.push(nr);}
+    }
   });
   p.status=(p.lines||[]).every(l=>l.status==='Received')?'Received in Full':'Partial - Awaiting Balance';
   p.receivedDate=dt;p.receivedBy=CU.name;
@@ -2766,6 +2771,15 @@ async function postRecv(pi3){
   tst(p.status==='Received in Full'?`${p.id} fully received`:`${p.id} partial — balance due`,
     p.status==='Received in Full'?'success':'info');
   showPage('receive');
+  // Save PO update to Supabase
+  if(p.id) dbUpdate('lhs:pos',p.id,{status:p.status,receivedDate:p.receivedDate,receivedBy:p.receivedBy,receiptValue:p.receiptValue,lines:p.lines,notes:p.notes||null,packing_slip_url:p.packing_slip_url||null,packing_slip_name:p.packing_slip_name||null}).catch(e=>console.warn('PO update:',e?.message));
+  // Save location stock changes to Supabase
+  for(const r of changedLs){
+    if(r.id) dbUpdate('lhs:ls',r.id,{qty:r.qty}).catch(e=>console.warn('ls update:',e?.message));
+  }
+  for(const nr of newLsRows){
+    dbInsert('lhs:ls',nr).then(saved=>{if(saved) nr.id=saved.id;}).catch(e=>console.warn('ls insert:',e?.message));
+  }
 }
 
 // ─── TRANSFER ────────────────────────────────────────────────────────────────
@@ -3195,7 +3209,7 @@ async function editVanQty(rowId, vehicle, sku, newQty){
   const old=row.qty;
   row.qty=qty; row.qty_on_hand=qty;
   S.set('lhs:vi',vi);
-  if(row.id) await dbUpdate('lhs:vi',row.id,{qty_on_hand:qty});
+  if(row.id) await dbUpdate('lhs:vi',row.id,{qty:qty,qty_on_hand:qty});
   tst(`${sku} on ${vehicle}: ${old} → ${qty}`,'success');
 }
 
@@ -3895,13 +3909,17 @@ function oAddLS(){
   <div class="fl" style="margin-bottom:16px"><label>Bin / Shelf</label><input id="lsa5" placeholder="e.g. A-12"></div>
   <div class="br2"><button class="btn btn-n" onclick="svAddLS()">Add Entry</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
 }
-function svAddLS(){
+async function svAddLS(){
   const sku=v('lsa0');const it=(S.get('lhs:items')||[]).find(i=>i.sku===sku);
   if(!sku){tst('Select an item','error');return}
   const ls=S.get('lhs:ls')||[];
   const loc=v('lsa1');
   if(ls.find(r=>r.sku===sku&&r.location===loc)){tst('Entry already exists for this item at this location. Use Edit to update.','error');return}
-  ls.push({sku,item:it?.name||sku,location:loc,qty:pi('lsa2'),min:pi('lsa3'),max:pi('lsa4'),bin:v('lsa5'),updated:td()});
+  const newRow={sku,item:it?.name||sku,location:loc,qty:pi('lsa2'),min:pi('lsa3'),max:pi('lsa4'),bin:v('lsa5'),updated:td()};
+  const saved=await dbInsert('lhs:ls',newRow);
+  if(saved) newRow.id=saved.id;
+  else tst('Warning: saved locally only — check connection','info');
+  ls.push(newRow);
   S.set('lhs:ls',ls);cMod();tst('Stock entry added','success');showPage('locstock');
 }
 function oEditLS(idx){
@@ -3919,15 +3937,23 @@ function oEditLS(idx){
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
 }
-function svEditLS(idx){
+async function svEditLS(idx){
   const ls=S.get('lhs:ls')||[];
-  ls[idx].qty=pi('lse0');ls[idx].min=pi('lse1');ls[idx].max=pi('lse2');ls[idx].bin=v('lse3');ls[idx].updated=td();
-  S.set('lhs:ls',ls);cMod();tst('Stock updated','success');showPage('locstock');
+  const r=ls[idx];
+  r.qty=pi('lse0');r.min=pi('lse1');r.max=pi('lse2');r.bin=v('lse3');r.updated=td();
+  S.set('lhs:ls',ls);
+  if(r.id) await dbUpdate('lhs:ls',r.id,{qty:r.qty,min:r.min,max:r.max,bin:r.bin,updated:r.updated});
+  else tst('Warning: no DB id — saved locally only','info');
+  cMod();tst('Stock updated','success');showPage('locstock');
 }
-function delLS(idx){
+async function delLS(idx){
   if(!confirm('Remove this stock entry?'))return;
-  const ls=S.get('lhs:ls')||[];ls.splice(idx,1);
-  S.set('lhs:ls',ls);cMod();tst('Removed','info');showPage('locstock');
+  const ls=S.get('lhs:ls')||[];
+  const r=ls[idx];
+  ls.splice(idx,1);
+  S.set('lhs:ls',ls);
+  if(r.id) await dbDelete('lhs:ls',r.id);
+  cMod();tst('Removed','info');showPage('locstock');
 }
 
 // ─── TESTERS ─────────────────────────────────────────────────────────────────
