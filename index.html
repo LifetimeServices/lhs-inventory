@@ -9267,6 +9267,7 @@ function bAcctSettings(){
   const codes=S.get('lhs:accounting_codes')||[];
   const canEdit=['God View','Admin','Director'].includes(CU?.role);
   const aiEndpoint=S.get('lhs:acct_ai_endpoint')||'';
+  const groqKey=S.get('lhs:groq_api_key')||'';
   return`<div class="pt">&#9881;&#65039; Accounting Settings</div>
   <div class="ps">Invoice templates, chart of accounts, and system configuration</div>
 
@@ -9344,11 +9345,32 @@ function bAcctSettings(){
     })()}
   </div>
 
-  <!-- AI Configuration -->
+  <!-- AI Configuration — Groq (Free Assistant) -->
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-weight:700;font-size:14px;color:var(--navy)">&#129302; LHS Assistant — Groq API Key</span>
+      <span style="background:#10b981;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em">FREE</span>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Groq provides free, fast AI for the LHS Assistant. Get your free key at
+      <a href="https://console.groq.com" target="_blank" style="color:var(--teal)">console.groq.com →</a>
+      — no credit card required. Uses Llama 3.3 (70B) model.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="groq-key-input" type="password" value="${esc(groqKey)}" placeholder="gsk_..."
+        style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Mono',monospace">
+      <button class="btn btn-n" onclick="saveGroqKey()">Save</button>
+    </div>
+    ${groqKey
+      ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Groq key configured — Assistant is active</div>`
+      :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; No Groq key — Assistant will fall back to Cloudflare Worker below</div>`}
+  </div>
+
+  <!-- AI Configuration — Cloudflare Worker (Claude / Receipt Analysis) -->
   <div class="card" style="margin-bottom:18px">
     <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:10px">&#129302; AI Receipt Analysis — Cloudflare Worker Endpoint</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Paste your Cloudflare Worker URL here. The Worker proxies requests to Claude so your API key stays secure and never touches the browser.
+      Used for AI receipt photo analysis. Paste your Cloudflare Worker URL below. The Worker proxies requests to Claude so your API key stays secure.
       <a href="https://dash.cloudflare.com" target="_blank" style="color:var(--teal)">Set up at dash.cloudflare.com →</a>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
@@ -9358,7 +9380,7 @@ function bAcctSettings(){
       ${aiEndpoint?`<button class="btn btn-g sm" onclick="testAiEndpoint()">Test</button>`:''}
     </div>
     ${aiEndpoint?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Endpoint configured</div>`
-      :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Not configured — AI analysis disabled until set</div>`}
+      :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Not configured — AI receipt analysis disabled until set</div>`}
   </div>
 
   ${canEdit?`<div style="display:flex;justify-content:flex-end;margin-bottom:16px">
@@ -10128,34 +10150,60 @@ async function sendVAMessage(text){
   }
   try{
     const sys=_vaBuildContext();
-    // Build proper messages array: prior history + current user message
     const hist=_vaHistory.slice(0,-2).filter(m=>m.role&&!m.content.includes('Thinking')).slice(-8);
     const messages=hist.map(m=>({role:m.role,content:m.content.replace(/<[^>]+>/g,'').replace(/\*\*/g,'').trim()})).filter(m=>m.content);
     messages.push({role:'user',content:text.trim()});
-    const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-3-5-sonnet-20241022',max_tokens:800,system:sys,messages})});
-    let data;
-    try{data=await res.json();}catch(je){
-      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Invalid response from endpoint (status ${res.status}). Check your Cloudflare Worker URL in Accounting → Settings.`};
+
+    const groqKey=(S.get('lhs:groq_api_key')||'').trim();
+    let res,data,reply;
+
+    if(groqKey){
+      // ── Groq (free, direct CORS call) ──────────────────────────────
+      res=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqKey}`},
+        body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:800,
+          messages:[{role:'system',content:sys},...messages]})
+      });
+      try{data=await res.json();}catch(je){
+        _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Groq returned an invalid response (status ${res.status}). Check your API key in Accounting → Settings.`};
+        _vaRender();if(st)st.textContent='Ready';return;
+      }
+      if(data.error){
+        const errMsg=typeof data.error==='object'?(data.error.message||JSON.stringify(data.error)):String(data.error);
+        _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Groq Error: ${errMsg}`};
+        _vaRender();if(st)st.textContent='Ready';return;
+      }
+      reply=(data.choices||[])[0]?.message?.content?.trim()||'';
+    } else if(endpoint){
+      // ── Cloudflare Worker / Anthropic fallback ──────────────────────
+      res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-3-5-sonnet-20241022',max_tokens:800,system:sys,messages})});
+      try{data=await res.json();}catch(je){
+        _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Invalid response from endpoint (status ${res.status}). Check your Cloudflare Worker URL in Accounting → Settings.`};
+        _vaRender();if(st)st.textContent='Ready';return;
+      }
+      if(data.error){
+        const errMsg=typeof data.error==='object'?(data.error.message||JSON.stringify(data.error)):String(data.error);
+        _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ API Error: ${errMsg}`};
+        _vaRender();if(st)st.textContent='Ready';return;
+      }
+      reply=(data.content||[]).map(c=>c.text||'').join('').trim();
+    } else {
+      _vaHistory[_vaHistory.length-1]={role:'assistant',content:'⚠️ No AI configured. Go to **Accounting → Settings** and add a free Groq API key to enable the Assistant.'};
       _vaRender();if(st)st.textContent='Ready';return;
     }
-    // Surface API errors clearly
-    if(data.error){
-      const errMsg=typeof data.error==='object'?(data.error.message||JSON.stringify(data.error)):String(data.error);
-      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ API Error: ${errMsg}`};
-      _vaRender();if(st)st.textContent='Ready';return;
-    }
-    const reply=(data.content||[]).map(c=>c.text||'').join('').trim();
+
     if(!reply){
       const raw=JSON.stringify(data).slice(0,200);
-      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Unexpected response format. Raw: ${raw}`};
+      _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Empty response received. Raw: ${raw}`};
       _vaRender();if(st)st.textContent='Ready';return;
     }
     _vaHistory[_vaHistory.length-1]={role:'assistant',content:reply};
     _vaRender();
     if(_vaSpeakEnabled)_vaSpeak(reply);
   }catch(e){
-    _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Connection error: ${e.message}. Check your endpoint URL in Accounting → Settings.`};
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:`⚠️ Connection error: ${e.message}`};
     _vaRender();
   }
   if(st)st.textContent='Ready';
@@ -10216,6 +10264,12 @@ function vaKeydown(e){
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const v=document.getElementById('va-input')?.value||'';if(v.trim())sendVAMessage(v);}
 }
 
+function saveGroqKey(){
+  const val=(document.getElementById('groq-key-input')?.value||'').trim();
+  S.set('lhs:groq_api_key',val);
+  tst(val?'Groq API key saved — Assistant is ready!':'Groq key cleared','success');
+  showPage('acct-settings');
+}
 function saveAiEndpoint(){
   const val=(document.getElementById('ai-endpoint-input')?.value||'').trim();
   S.set('lhs:acct_ai_endpoint',val);
