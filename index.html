@@ -20305,6 +20305,7 @@ function bHREmployeeDetail(){
     {id:'employment', l:'Employment'},
     {id:'compensation',l:'Compensation'},
     {id:'fieldservice',l:'Field Service'},
+    {id:'uniform',    l:'👕 Uniform'},
     {id:'timeoff',    l:'Time Off'},
     {id:'documents',  l:'Documents'},
   ];
@@ -20432,6 +20433,24 @@ function bHREmployeeDetail(){
           </div>`;}).join('')}</div>`
         :`<div style="padding:24px;text-align:center;color:var(--muted);background:var(--surf);border-radius:8px">No certifications on file${canEdit?' — click + Add to record one':''}</div>`}
       </div>`,
+    uniform:`
+      ${(()=>{
+        const uni=_parseUniform(u.uniform);
+        const sh=uni.shirts; const sw=uni.sweatshirts; const bt=uni.boots;
+        const SIZES=['XS','S','M','L','XL','2XL','3XL'];
+        return`
+        <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--navy)">Uniform Program</div>
+            <div style="font-size:12px;color:var(--muted)">À la carte — Rent or Buyout per item</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
+          ${_uniCard('Shirts','👕',[{label:'Size',val:sh.size},{label:'Program',val:sh.program},{label:'Quantity',val:sh.quantity},{label:'Cost',val:sh.cost?'$'+sh.cost:''}])}
+          ${_uniCard('Sweatshirts','🧥',[{label:'Size',val:sw.size},{label:'Program',val:sw.program},{label:'Quantity',val:sw.quantity},{label:'Cost',val:sw.cost?'$'+sw.cost:''}])}
+          ${_uniCard('Boots','👢',[{label:'Brand',val:bt.brand},{label:'Type',val:bt.type},{label:'Size',val:bt.size},{label:'Cost',val:bt.cost?'$'+bt.cost:''},{label:'Purchased',val:bt.purchase_date?fmtDate(bt.purchase_date):''}])}
+        </div>`;
+      })()}`,
     timeoff:`
       <div>
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">PTO / Leave Balances</div>
@@ -20493,6 +20512,26 @@ function bHREmployeeDetail(){
       <button style="background:var(--navy);color:var(--teal);border:none;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer" onclick="oEditHREmployee('${u.id||u.email}')">✏️ Edit Employee</button>
     </div>`:''}
     ${tabContent[tab]||tabContent.profile}
+  </div>`;
+}
+
+// Parse uniform JSON — returns {shirts:{},sweatshirts:{},boots:{}}
+function _parseUniform(raw){
+  const def={shirts:{size:'',program:'',quantity:'',cost:''},sweatshirts:{size:'',program:'',quantity:'',cost:''},boots:{brand:'',type:'',size:'',cost:'',purchase_date:''}};
+  if(!raw) return def;
+  try{const p=typeof raw==='string'?JSON.parse(raw):raw;return{...def,...p};}catch{return def;}
+}
+
+// Render a uniform category card for the read view
+function _uniCard(label, icon, fields){
+  const filled=fields.filter(f=>f.val);
+  if(!filled.length) return`<div style="padding:16px;background:var(--surf);border-radius:10px;border:1px solid var(--bdr);text-align:center;color:var(--muted);font-size:13px">${icon} ${label}<br><span style="font-size:11px">Not configured</span></div>`;
+  return`<div style="padding:16px;background:var(--surf);border-radius:10px;border:1px solid var(--bdr)">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--navy)">${icon} ${label}</div>
+    ${fields.map(f=>f.val?`<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
+      <span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;align-self:center">${f.label}</span>
+      <span style="font-weight:600">${esc(String(f.val))}</span>
+    </div>`:'').join('')}
   </div>`;
 }
 
@@ -20691,6 +20730,49 @@ function _hrEmployeeForm(u, saveFn){
     </select></div>
   </div>
 
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">👕 Uniform Program</div>
+  ${(()=>{
+    const uni=_parseUniform(u.uniform);
+    const sh=uni.shirts; const sw=uni.sweatshirts; const bt=uni.boots;
+    const SIZES=['XS','S','M','L','XL','2XL','3XL'];
+    const sizeOpts=v=>SIZES.map(s=>`<option${v===s?' selected':''}>${s}</option>`).join('');
+    const progOpts=v=>['','Rent','Buyout'].map(p=>`<option value="${p}"${v===p?' selected':''}>${p||'— Select —'}</option>`).join('');
+    const bootTypes=['Steel Toe','Composite Toe','Soft Toe','Waterproof Steel Toe','Waterproof Composite','Slip Resistant','EH Rated'];
+    const btTypeOpts=v=>[''].concat(bootTypes).map(t=>`<option value="${t}"${v===t?' selected':''}>${t||'— Select —'}</option>`).join('');
+    return`
+    <!-- Shirts -->
+    <div style="background:var(--surf);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">👕 Shirts</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+        <div><label>Size</label><select id="hef-sh-size"><option value="">—</option>${sizeOpts(sh.size)}</select></div>
+        <div><label>Program</label><select id="hef-sh-prog">${progOpts(sh.program)}</select></div>
+        <div><label>Quantity</label><input id="hef-sh-qty" type="number" min="0" step="1" placeholder="0" value="${esc(String(sh.quantity||''))}"></div>
+        <div><label>Unit Cost ($)</label><input id="hef-sh-cost" type="number" min="0" step="0.01" placeholder="0.00" value="${esc(String(sh.cost||''))}"></div>
+      </div>
+    </div>
+    <!-- Sweatshirts -->
+    <div style="background:var(--surf);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">🧥 Sweatshirts</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+        <div><label>Size</label><select id="hef-sw-size"><option value="">—</option>${sizeOpts(sw.size)}</select></div>
+        <div><label>Program</label><select id="hef-sw-prog">${progOpts(sw.program)}</select></div>
+        <div><label>Quantity</label><input id="hef-sw-qty" type="number" min="0" step="1" placeholder="0" value="${esc(String(sw.quantity||''))}"></div>
+        <div><label>Unit Cost ($)</label><input id="hef-sw-cost" type="number" min="0" step="0.01" placeholder="0.00" value="${esc(String(sw.cost||''))}"></div>
+      </div>
+    </div>
+    <!-- Boots -->
+    <div style="background:var(--surf);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">👢 Boots</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px">
+        <div><label>Brand</label><input id="hef-bt-brand" placeholder="e.g. Wolverine" value="${esc(bt.brand||'')}"></div>
+        <div><label>Type</label><select id="hef-bt-type">${btTypeOpts(bt.type)}</select></div>
+        <div><label>Size</label><input id="hef-bt-size" placeholder="e.g. 11 or 11W" value="${esc(bt.size||'')}"></div>
+        <div><label>Cost ($)</label><input id="hef-bt-cost" type="number" min="0" step="0.01" placeholder="0.00" value="${esc(String(bt.cost||''))}"></div>
+        <div><label>Purchase Date</label><input id="hef-bt-date" type="date" value="${bt.purchase_date||''}"></div>
+      </div>
+    </div>`;
+  })()}
+
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">System Access</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div><label>Show on Dispatch Board?</label><select id="hef-disp">
@@ -20817,6 +20899,11 @@ function _hrEmployeePayload(){
     work_end:v('hef-wend')||'17:00',
     timezone:v('hef-tz')||'America/Chicago',
     work_days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter(d=>document.getElementById('hef-wd-'+d)?.checked).join(',')||'Mon,Tue,Wed,Thu,Fri',
+    uniform:JSON.stringify({
+      shirts:{size:v('hef-sh-size')||'',program:v('hef-sh-prog')||'',quantity:v('hef-sh-qty')||'',cost:v('hef-sh-cost')||''},
+      sweatshirts:{size:v('hef-sw-size')||'',program:v('hef-sw-prog')||'',quantity:v('hef-sw-qty')||'',cost:v('hef-sw-cost')||''},
+      boots:{brand:v('hef-bt-brand')||'',type:v('hef-bt-type')||'',size:v('hef-bt-size')||'',cost:v('hef-bt-cost')||'',purchase_date:v('hef-bt-date')||''},
+    }),
     vehicle_assigned:v('hef-vehicle')||null,
     service_territory:v('hef-territory')||null,
     equipment_issued:(()=>{
