@@ -6463,16 +6463,22 @@ function renderRegionMap(){
 function aDivs(){
   const raw=S.get('lhs:divs')||[];
   const divs=raw.length>0?raw:DIVS.map(d=>({name:d,code:'',service_type:''}));
+  const map=S.get('lhs:div_display_names')||{};
   return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddDiv()">+ Add Division</button></div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Division Name</th><th>Code</th><th>Type</th><th></th></tr></thead>
-  <tbody>${divs.map((d,i)=>`<tr>
-    <td style="font-weight:600">${typeof d==='string'?d:d.name}</td>
+  <thead><tr><th>Division Name</th><th>Code</th><th>Type</th><th>Invoice/Est. Display Name</th><th></th></tr></thead>
+  <tbody>${divs.map((d,i)=>{
+    const name=typeof d==='string'?d:d.name;
+    const displayName=map[name]||'';
+    return`<tr>
+    <td style="font-weight:600">${name}</td>
     <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${typeof d==='string'?'':d.code||''}</td>
     <td style="color:var(--muted)">${typeof d==='string'?'':d.type||''}</td>
+    <td style="font-size:12px;color:${displayName?'var(--navy)':'var(--muted)'};font-style:${displayName?'normal':'italic'}">${displayName||'— same as internal —'}</td>
     <td><button class="btn sm btn-r" onclick="delDiv(${i})">&#215;</button></td>
-  </tr>`).join('')}
+  </tr>`;}).join('')}
   </tbody></table></div></div>
+  <div style="padding:8px 0;font-size:12px;color:var(--muted)">&#128712; Set customer-facing display names in <strong>Accounting → Settings → Division Display Names</strong></div>
   `;
 }
 function oAddDiv(){
@@ -9081,6 +9087,22 @@ async function delBankTxn(id){
   showPage('acct-bank');
 }
 
+// ── DIVISION DISPLAY NAMES ────────────────────────────────────────────────────
+function getDivDisplayName(internalName){
+  const map=S.get('lhs:div_display_names')||{};
+  return map[internalName]||internalName||'';
+}
+function saveDivDisplayNames(){
+  const map={};
+  DIVS.forEach(d=>{
+    const el=document.getElementById('ddn-'+btoa(d).replace(/=/g,''));
+    if(el) map[d]=el.value.trim();
+  });
+  S.set('lhs:div_display_names',map);
+  tst('Division display names saved','success');
+  showPage('acct-settings');
+}
+
 // ── INVOICE TEMPLATE HELPERS ──────────────────────────────────────────────────
 function _getTemplates(){
   let arr=S.get('lhs:invoice_templates');
@@ -9188,6 +9210,45 @@ function bAcctSettings(){
             ${tmpls.length>1&&canEdit?`<button class="btn btn-r sm" onclick="deleteInvoiceTemplate('${t.id}')">&#10005;</button>`:''}
           </div>
         </div>`).join('');
+    })()}
+  </div>
+
+  <!-- Division Display Names -->
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-weight:700;font-size:15px;color:var(--navy)">&#127970; Division Display Names</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Map internal division names to customer-facing DBA names used on invoices &amp; estimates. Leave blank to use the internal name.</div>
+      </div>
+      ${canEdit?`<button class="btn btn-n sm" onclick="saveDivDisplayNames()">&#10003; Save</button>`:''}
+    </div>
+    ${(()=>{
+      const map=S.get('lhs:div_display_names')||{};
+      const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+      if(!divs.length) return`<div style="font-size:13px;color:var(--muted);font-style:italic">No divisions found. Add divisions in Admin first.</div>`;
+      return`<div class="tw" style="margin:0"><table style="width:100%">
+        <thead><tr>
+          <th style="width:42%;text-align:left">Internal Division</th>
+          <th style="text-align:left">Invoice / Estimate Display Name <span style="font-weight:400;color:var(--muted)">(customer-facing)</span></th>
+        </tr></thead>
+        <tbody>${divs.map(d=>{
+          const safeId='ddn-'+btoa(d).replace(/=/g,'');
+          const existing=map[d]||'';
+          return`<tr style="border-bottom:1px solid var(--bdr)">
+            <td style="padding:10px 12px 10px 0;font-weight:600;color:var(--navy);font-size:13px;vertical-align:middle">${esc(d)}</td>
+            <td style="padding:8px 0;vertical-align:middle">
+              ${canEdit
+                ?`<input id="${safeId}" value="${esc(existing)}" placeholder="e.g. Lifetime Radon Solutions"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">`
+                :`<span style="font-size:13px;color:${existing?'var(--navy)':'var(--muted)'}">${existing||'— same as internal —'}</span>`}
+            </td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table></div>
+      ${canEdit?`<div style="margin-top:12px;text-align:right">
+        <button class="btn btn-n" onclick="saveDivDisplayNames()">&#10003; Save Display Names</button>
+      </div>`:''}`;
     })()}
   </div>
 
@@ -9639,7 +9700,7 @@ function previewInvoice(invId,tmplId){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
         <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
           <img src="${t.logo_url||document.querySelector('.tbl img')?.src||''}" style="max-height:60px;max-width:170px;object-fit:contain;display:block" onerror="this.style.display='none'">
-          <div style="font-size:11px;font-weight:600;color:#555;letter-spacing:.04em;text-align:center;min-height:15px">${esc(inv?.division||'[ Division ]')}</div>
+          <div style="font-size:11px;font-weight:600;color:#555;letter-spacing:.04em;text-align:center;min-height:15px">${esc(inv?.division?getDivDisplayName(inv.division):'[ Division ]')}</div>
         </div>
         <div style="text-align:right;font-size:11.5px;line-height:1.8;color:#333">
           <div style="font-weight:700;font-size:12px">${esc(co)}</div>
@@ -9705,7 +9766,7 @@ function previewInvoice(invId,tmplId){
         </thead>
         <tbody>
           <tr style="border-bottom:1px solid #eee;vertical-align:top;background:${rowTint}">
-            <td style="padding:12px 8px 12px 0;font-size:12px;color:#555">${esc(inv?.division||'SVC')}</td>
+            <td style="padding:12px 8px 12px 0;font-size:12px;color:#555">${esc(inv?.division?getDivDisplayName(inv.division):'SVC')}</td>
             <td style="padding:12px 8px;font-size:13px">
               <strong>${esc(inv?.notes||'Services rendered — see work order for full detail')}</strong>
             </td>
