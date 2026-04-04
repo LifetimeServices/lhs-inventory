@@ -2990,7 +2990,13 @@ function bVans(){
       const mc=matCost(v.name);
       const tc=toolCost(v.driver);
       const tot=mc+tc;
-      const driverLabel=v.driver?` &nbsp;<span style="font-size:11px;font-weight:400;color:var(--muted)">— ${esc(v.driver)}</span>`:'';
+      // Cross-reference: also check employee record for vehicle_assigned match
+      const empUsers=S.get('lhs:users')||[];
+      const linkedEmp=empUsers.find(u=>u.vehicle_assigned===v.name||(v.driver&&u.name===v.driver));
+      const driverName=v.driver||(linkedEmp?.name)||'';
+      // If van.driver and employee.vehicle_assigned disagree, show sync needed indicator
+      const outOfSync=linkedEmp&&linkedEmp.vehicle_assigned!==v.name&&v.driver;
+      const driverLabel=driverName?` &nbsp;<span style="font-size:11px;font-weight:400;color:var(--muted)">— ${esc(driverName)}${outOfSync?'⚠':''}</span>`:'';
       const reg=v.region?`<span style="background:${REGIONS[v.region]?.light||'#f3f4f6'};color:${REGIONS[v.region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:12px;font-weight:600">${v.region}</span>`:'—';
       return`<tr id="vrow-${esc(v.name)}" style="cursor:pointer" onclick="toggleVanDetail('${esc(v.name)}',this)">
         <td style="font-weight:700;color:var(--navy)">${esc(v.name)}${driverLabel}</td>
@@ -3618,11 +3624,93 @@ function locRegionChangeEdit(region,selected){
   sel.innerHTML='<option value="">— Select State —</option>'+stateOpts(region,selected);
 }
 
+// ── Two-way Van ↔ Employee sync ──────────────────────────────────────────────
+// Called after saving a van: syncs driver→employee.vehicle_assigned
+async function syncVanDriverChange(vanName, oldDriver, newDriver){
+  const users=S.get('lhs:users')||[];
+  const updates=[];
+
+  // 1. Clear old driver's vehicle_assigned (if they had this van)
+  if(oldDriver && oldDriver!==newDriver){
+    const idx=users.findIndex(u=>u.name===oldDriver);
+    if(idx>=0 && users[idx].vehicle_assigned===vanName){
+      users[idx]={...users[idx],vehicle_assigned:null};
+      updates.push({id:users[idx].id,data:{vehicle_assigned:null}});
+    }
+  }
+
+  // 2. If new driver already had a DIFFERENT van, remove them from that van
+  if(newDriver){
+    const newDriverIdx=users.findIndex(u=>u.name===newDriver);
+    if(newDriverIdx>=0){
+      const prevVan=users[newDriverIdx].vehicle_assigned;
+      if(prevVan && prevVan!==vanName){
+        const locs=S.get('lhs:locs')||[];
+        const vIdx=locs.findIndex(l=>l.name===prevVan);
+        if(vIdx>=0&&locs[vIdx].driver===newDriver){
+          locs[vIdx]={...locs[vIdx],driver:''};
+          S.set('lhs:locs',locs);
+          if(locs[vIdx].id) try{await DB.from('lhs_locations').update({driver:''}).eq('id',locs[vIdx].id);}catch{}
+        }
+      }
+      // 3. Set new driver's vehicle_assigned = this van
+      users[newDriverIdx]={...users[newDriverIdx],vehicle_assigned:vanName};
+      updates.push({id:users[newDriverIdx].id,data:{vehicle_assigned:vanName}});
+    }
+  }
+
+  // Flush user cache and persist each changed employee
+  S.set('lhs:users',users);
+  for(const u of updates){
+    if(u.id) try{await DB.from('lhs_users').update(u.data).eq('id',u.id);}catch{}
+  }
+}
+
+// Called after saving an employee: syncs vehicle_assigned→van.driver
+async function syncEmpVehicleChange(empName, empId, oldVan, newVan){
+  const locs=S.get('lhs:locs')||[];
+  const users=S.get('lhs:users')||[];
+
+  // 1. Clear old van's driver
+  if(oldVan && oldVan!==newVan){
+    const idx=locs.findIndex(l=>l.name===oldVan);
+    if(idx>=0 && locs[idx].driver===empName){
+      locs[idx]={...locs[idx],driver:''};
+      saveLocExtras(locs[idx].id||locs[idx].name,{driver:''});
+      if(locs[idx].id) try{await DB.from('lhs_locations').update({driver:''}).eq('id',locs[idx].id);}catch{}
+    }
+  }
+
+  // 2. Assign new van's driver = empName, and un-assign any previous driver of that van
+  if(newVan){
+    const idx=locs.findIndex(l=>l.name===newVan);
+    if(idx>=0){
+      const prevDriver=locs[idx].driver;
+      // Clear previous driver's vehicle_assigned
+      if(prevDriver && prevDriver!==empName){
+        const uIdx=users.findIndex(u=>u.name===prevDriver);
+        if(uIdx>=0){
+          users[uIdx]={...users[uIdx],vehicle_assigned:null};
+          if(users[uIdx].id) try{await DB.from('lhs_users').update({vehicle_assigned:null}).eq('id',users[uIdx].id);}catch{}
+        }
+      }
+      locs[idx]={...locs[idx],driver:empName};
+      saveLocExtras(locs[idx].id||locs[idx].name,{driver:empName});
+      if(locs[idx].id) try{await DB.from('lhs_locations').update({driver:empName}).eq('id',locs[idx].id);}catch{}
+    }
+  }
+
+  S.set('lhs:locs',locs);
+  S.set('lhs:users',users);
+  VH=locs.filter(l=>l.active&&(l.type==='Service Van'||l.type==='Sales Vehicle')).map(l=>l.name);
+}
+
 async function svEditLoc(i){
   const locs=S.get('lhs:locs')||[];
   const l=locs[i]; if(!l) return;
   const type=v('el1');
   const isVeh=type==='Service Van'||type==='Sales Vehicle';
+  const oldDriver=l.driver||''; // capture before overwrite for sync
   let updates={name:v('el0'),type};
   let vehExtras={};
   if(isVeh){
@@ -3665,6 +3753,11 @@ async function svEditLoc(i){
     const dbRow=locBasePick({...l,...updates});
     const saved=await dbInsert('lhs:locs',dbRow);
     if(saved){locs[i]={...locs[i],...saved};S.set('lhs:locs',locs);}
+  }
+  // Two-way sync: van driver → employee.vehicle_assigned
+  if(isVeh){
+    const newDriver=updates.driver||'';
+    if(oldDriver!==newDriver) await syncVanDriverChange(updates.name||l.name, oldDriver, newDriver);
   }
   document.getElementById('mo').classList.remove('open');
   tst('Location updated','success');showPage('locations');
@@ -20706,8 +20799,19 @@ function _hrEmployeeForm(u, saveFn){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div><label>Vehicle / Van Assignment</label><select id="hef-vehicle">
       <option value="">— None —</option>
-      ${VH.map(v=>`<option${u.vehicle_assigned===v?' selected':''}>${v}</option>`).join('')}
-    </select></div>
+      ${(()=>{const locs=S.get('lhs:locs')||[];
+        return VH.map(vn=>{
+          const loc=locs.find(l=>l.name===vn);
+          const drv=loc?.driver||'';
+          const isMine=u.vehicle_assigned===vn;
+          const taken=drv&&drv!==u.name;
+          return`<option value="${esc(vn)}"${isMine?' selected':''}${taken?' disabled':''}>
+            ${esc(vn)}${taken?' — assigned to '+esc(drv):isMine?' ✓ Your van':''}
+          </option>`;
+        }).join('');
+      })()}
+    </select>
+    <div style="font-size:11px;color:var(--muted);margin-top:3px">Grayed = already assigned to another employee</div></div>
     <div><label>Service Territory</label><input id="hef-territory" placeholder="e.g. Chicago North, Metro East" value="${esc(u.service_territory||'')}"></div>
     <div style="grid-column:1/-1">
       <label style="display:block;margin-bottom:6px">Equipment Issued</label>
@@ -20854,6 +20958,7 @@ async function svEditHREmployee(){
   const users=S.get('lhs:users')||[];
   const idx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
   if(idx<0){tst('Employee not found','error');return}
+  const oldVan=users[idx].vehicle_assigned||''; // capture before overwrite
   const rec=_hrEmployeePayload();
   rec.name=v('hef-name')||users[idx].name;
   rec.email=v('hef-email')||users[idx].email;
@@ -20862,6 +20967,9 @@ async function svEditHREmployee(){
     const{error}=await DB.from('lhs_users').update(rec).eq('id',users[idx].id);
     if(error) console.warn('Supabase update:',error.message);
     users[idx]=updated; S.set('lhs:users',users);
+    // Two-way sync: employee.vehicle_assigned → van.driver
+    const newVan=rec.vehicle_assigned||'';
+    if(oldVan!==newVan) await syncEmpVehicleChange(rec.name, users[idx].id, oldVan, newVan);
     cMod(); tst('Saved','success');
     showPage('hr-employees');
   }catch(e){tst('Save failed — '+e.message,'error')}
