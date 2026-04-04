@@ -13986,19 +13986,20 @@ async function openWO(woId){
         <!-- Techs assigned with inline dispatch/arrive buttons -->
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
           ${aptTechs.map(t=>{
+            const isComp=apt.status==='Completed'||t.status==='Completed';
             const isArr=!!t.arrived_at,isDis=!!t.dispatched_at;
-            const bg=isArr?'var(--green)':isDis?'var(--amber)':'var(--surf)';
-            const tc=isArr||isDis?'white':'var(--text)';
-            const icon=isArr?'&#128994;':isDis?'&#128992;':'&#9711;';
-            const lbl=isArr?' · On Site':isDis?' · En Route':'';
+            const bg=isComp?'var(--navy)':isArr?'var(--green)':isDis?'var(--amber)':'var(--surf)';
+            const tc=isComp||isArr||isDis?'white':'var(--text)';
+            const icon=isComp?'&#10003;':isArr?'&#128994;':isDis?'&#128992;':'&#9711;';
+            const lbl=isComp?' · Completed':isArr?' · On Site':isDis?' · En Route':'';
             return`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <div style="background:${bg};border:1px solid var(--bdr);border-radius:20px;padding:4px 12px;font-size:12px;display:flex;align-items:center;gap:4px">
                 <span style="font-size:10px">${icon}</span>
                 <span style="font-weight:500;color:${tc}">${t.tech_name}${lbl}</span>
               </div>
-              ${canEdit&&!isArr&&!isDis?`<button class="btn btn-n sm" style="padding:3px 10px;font-size:11px" onclick="aptDispatchTech('${t.id}','${apt.id}','${woId}','wo')">&#9654; Dispatch</button>`:''}
-              ${canEdit&&isDis&&!isArr?`<button class="btn sm" style="padding:3px 10px;font-size:11px;background:var(--green);color:white;border:none;border-radius:6px;cursor:pointer" onclick="aptArriveTech('${t.id}','${apt.id}','${woId}','wo')">&#128205; Arrive</button>`:''}
-              ${canEdit&&(isDis||isArr)?`<button class="btn btn-o sm" style="padding:3px 8px;font-size:11px" onclick="aptCancelDispatch('${t.id}','${apt.id}','${woId}','wo')">&#8635; Undo</button>`:''}
+              ${canEdit&&!isComp&&!isArr&&!isDis?`<button class="btn btn-n sm" style="padding:3px 10px;font-size:11px" onclick="aptDispatchTech('${t.id}','${apt.id}','${woId}','wo')">&#9654; Dispatch</button>`:''}
+              ${canEdit&&!isComp&&isDis&&!isArr?`<button class="btn sm" style="padding:3px 10px;font-size:11px;background:var(--green);color:white;border:none;border-radius:6px;cursor:pointer" onclick="aptArriveTech('${t.id}','${apt.id}','${woId}','wo')">&#128205; Arrive</button>`:''}
+              ${canEdit&&!isComp&&(isDis||isArr)?`<button class="btn btn-o sm" style="padding:3px 8px;font-size:11px" onclick="aptCancelDispatch('${t.id}','${apt.id}','${woId}','wo')">&#8635; Undo</button>`:''}
             </div>`;}).join('')}
           ${!aptTechs.length?`<span style="font-size:12px;color:var(--muted)">No techs assigned</span>`:''}
           ${canEdit?`<button class="btn btn-n sm" style="padding:4px 10px;font-size:12px;align-self:flex-start" onclick="oAddTechToApt('${apt.id}','${woId}')">+ Assign Tech</button>`:''}
