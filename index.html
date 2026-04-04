@@ -4796,14 +4796,6 @@ function bInt(){
         &#8212; API key found in Intermedia Control Panel &#8594; My Services &#8594; Extend &#8594; API Access
       </div>
     </div>
-    <div class="ic" style="border-color:var(--bdr)">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <div style="width:36px;height:36px;background:var(--navy);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--teal);font-weight:800;font-size:13px">AI</div>
-        <div><div class="in2">Claude AI Assistant</div><div class="is2 on">&#9679; Active</div></div>
-      </div>
-      <div class="id2">Inventory insights, reorder recommendations, and anomaly detection. Ask questions in plain English.</div>
-      <button class="btn btn-g sm" onclick="oAI()">Open AI Assistant &#8594;</button>
-    </div>
     <div class="ic" style="border-color:#10b981;grid-column:span 2">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <div style="width:36px;height:36px;background:#10b981;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:13px">&#129302;</div>
@@ -10044,7 +10036,7 @@ const _VA_PERMS={
 let _vaHistory=[];
 let _vaRecognition=null;
 let _vaListening=false;
-let _vaSpeakEnabled=false;
+let _vaSpeakEnabled=true;
 
 function _vaP(){const r=CU?.role||'';return _VA_PERMS[r]||{financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:false,admin:false,allUsers:false};}
 
@@ -10146,8 +10138,18 @@ PERMITTED DATA SUMMARY:\n`;
   if(p.hr&&p.allUsers){
     c+=`HR & Users: PERMITTED — ${users.length} employees\n`;
     c+=`  Team: ${users.slice(0,12).map(u=>`${u.name}(${u.role}${u.division?','+u.division:''})`).join(', ')}\n`;
+    // Time off requests
+    const tor=S.get('lhs:time_off_requests')||[];
+    const pending=tor.filter(r=>r.status==='Pending'||!r.status);
+    const approved=tor.filter(r=>r.status==='Approved');
+    c+=`Time Off Requests: ${tor.length} total | ${pending.length} PENDING | ${approved.length} approved\n`;
+    if(pending.length){c+=`  Pending: ${pending.slice(0,8).map(r=>`${r.employee_name||r.name||'?'} (${r.type||'PTO'} ${r.start_date||'?'}→${r.end_date||r.start_date||'?'})`).join(' | ')}\n`;}
   } else {
     c+=`HR & User data: NOT PERMITTED\n`;
+    // Show own time off to any user
+    const tor=S.get('lhs:time_off_requests')||[];
+    const myTOR=tor.filter(r=>(r.employee_name||r.name||'').toLowerCase()===( CU?.name||'').toLowerCase());
+    if(myTOR.length){c+=`Your Time Off Requests: ${myTOR.length} total | ${myTOR.filter(r=>r.status==='Pending'||!r.status).length} pending | ${myTOR.filter(r=>r.status==='Approved').length} approved\n`;}
   }
 
   if(p.payroll){c+=`Payroll: PERMITTED\n`;}else{c+=`Payroll: NOT PERMITTED\n`;}
