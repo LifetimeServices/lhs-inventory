@@ -16117,9 +16117,15 @@ async function svAddCustomer(){
   cMod();tst(`${fn} ${ln} added`,'success');showPage('customers');
 }
 
-function oEditCustomer(id){
-  const c=(S.get('lhs:customers')||[]).find(x=>x.id===id);
-  if(!c) return;
+async function oEditCustomer(id){
+  let c=(S.get('lhs:customers')||[]).find(x=>x.id===id);
+  if(!c){
+    const{data}=await DB.from('lhs_customers').select('*').eq('id',id).maybeSingle();
+    if(!data){tst('Customer not found','error');return;}
+    c=data;
+    const custs=S.get('lhs:customers')||[];
+    if(!custs.find(x=>x.id===id)){custs.push(c);S.set('lhs:customers',custs);}
+  }
   window._editCustId=id;
   oMod(`Edit: ${c.first_name} ${c.last_name}`,custForm(c,'svEditCustomer'));
 }
@@ -16143,9 +16149,15 @@ async function svEditCustomer(){
   cMod();tst('Customer updated','success');showPage('customers');
 }
 
-function openCustomer(id){
-  const c=(S.get('lhs:customers')||[]).find(x=>x.id===id);
-  if(!c){tst('Customer not found','error');return}
+async function openCustomer(id){
+  let c=(S.get('lhs:customers')||[]).find(x=>x.id===id);
+  if(!c){
+    const{data}=await DB.from('lhs_customers').select('*').eq('id',id).maybeSingle();
+    if(!data){tst('Customer not found','error');return;}
+    c=data;
+    const custs=S.get('lhs:customers')||[];
+    if(!custs.find(x=>x.id===id)){custs.push(c);S.set('lhs:customers',custs);}
+  }
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.customer_id===id);
   const totalSpent=wos.reduce((s,w)=>s+(w.total_paid||0),0);
   // Find properties where this customer is current owner OR has WOs
