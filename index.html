@@ -8062,13 +8062,26 @@ async function _invCustSearch(q){
       .select('id,first_name,last_name,company,phone,city,state')
       .limit(40);
     if(term.length>=1){
-      qb=qb.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%,phone.ilike.%${term}%`);
+      // Strip non-digits to detect phone searches (e.g. "414-659-7273" → "4146597273")
+      const digits=term.replace(/\D/g,'');
+      let orParts=`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%`;
+      if(digits.length>=7){
+        // Build a wildcard phone pattern that matches any formatting:
+        // "4146597273" → "%414%659%7273%" matches "(414) 659-7273", "414.659.7273", etc.
+        const phonePat=`%${digits.slice(0,3)}%${digits.slice(3,6)}%${digits.slice(6)}%`;
+        orParts+=`,phone.ilike.${phonePat}`;
+      } else if(digits.length>=3){
+        orParts+=`,phone.ilike.%${digits}%`;
+      } else {
+        orParts+=`,phone.ilike.%${term}%`;
+      }
+      qb=qb.or(orParts);
     } else {
       qb=qb.order('created_at',{ascending:false});
     }
     const{data,error}=await qb;
     if(error) throw error;
-    if(!res.isConnected&&!document.getElementById('inv-cust-results')) return; // modal closed
+    if(!document.getElementById('inv-cust-results')) return;
     if(!data||!data.length){
       res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted);text-align:center">No customers found${term?' for "'+esc(term)+'"':''}</div>`;
       return;
