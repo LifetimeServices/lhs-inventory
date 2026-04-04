@@ -8061,7 +8061,15 @@ async function _invCustSearch(q){
     let qb=DB.from('lhs_customers')
       .select('id,first_name,last_name,company,phone,city,state');
     if(term){
-      qb=qb.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%,phone.ilike.%${term}%`);
+      // Split on spaces so "Anne 414" searches for "Anne" OR "414" across all fields
+      const words=[...new Set(term.split(/\s+/).filter(w=>w.length>0))];
+      const clauses=words.flatMap(w=>[
+        `first_name.ilike.%${w}%`,
+        `last_name.ilike.%${w}%`,
+        `company.ilike.%${w}%`,
+        `phone.ilike.%${w}%`
+      ]);
+      qb=qb.or(clauses.join(','));
     }
     qb=qb.order('last_name',{ascending:true}).range(0,39);
     const{data,error}=await qb;
