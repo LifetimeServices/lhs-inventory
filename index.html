@@ -1487,6 +1487,11 @@ async function warmCache(){
       }catch(e){console.warn('Failed to load',tbl,e.message);}
     });
     await Promise.all(loads);
+    // Store live customer count (table too large to cache fully)
+    try{
+      const{count}=await DB.from('lhs_customers').select('*',{count:'exact',head:true});
+      if(count!==null) S.set('lhs:customers_count',count);
+    }catch{}
     // Load PO sequence
     try{
       const{data:seq}=await DB.from('lhs_po_sequence').select('last_seq').eq('id',1).single();
@@ -10112,7 +10117,8 @@ PERMITTED DATA SUMMARY:\n`;
   }
 
   if(p.customers){
-    c+=`Customers: PERMITTED — ${customers.length>0?customers.length+' in cache':'searchable database'}\n`;
+    const custCount=S.get('lhs:customers_count')||customers.length||'unknown number of';
+    c+=`Customers: PERMITTED — ${custCount.toLocaleString()} total customers in database\n`;
   } else {
     c+=`Customers: NOT PERMITTED\n`;
   }
