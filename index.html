@@ -190,24 +190,6 @@ const SUPA_URL = 'https://vuwcnqvrgmdknvbajhtt.supabase.co';
 const SUPA_KEY = 'sb_publishable_Pr4OYz2a2rvhEtRjH_Nqkg_8PHTIeCb';
 const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-// ── CUSTOMER SEARCH FIELD WATCHER ────────────────────────────────────────────
-// MutationObserver: the instant #inv-cust-search appears in the DOM,
-// attach input/keyup/focus listeners directly to the element.
-// This is more reliable than event delegation for dynamically injected content.
-(function(){
-  const obs=new MutationObserver(function(){
-    const inp=document.getElementById('inv-cust-search');
-    if(inp && !inp._lhsBound){
-      inp._lhsBound=true;
-      const fn=function(){ _invCustSearch(inp.value); };
-      inp.addEventListener('input', fn);
-      inp.addEventListener('keyup', fn);
-      inp.addEventListener('focus', fn);
-      inp.addEventListener('click', fn);
-    }
-  });
-  obs.observe(document.body,{childList:true,subtree:true});
-})();
 
 // ── EMAILJS CONFIG ────────────────────────────────────────────────────────────
 const EJS_SERVICE  = 'service_rvkfyrn';
@@ -8008,13 +7990,13 @@ function oAddInvoice(d){
         </select></div>
     </div>
 
-    <!-- Customer search — results shown only on focus/type, delegated listener handles input -->
+    <!-- Customer search — queries Supabase directly (52k+ records) -->
     <div class="fl" style="margin-bottom:10px">
       <label>Customer</label>
       <div style="position:relative">
         <input id="inv-cust-search" autocomplete="off"
-          placeholder="${existCustName?'&#10003; '+existCustName:'Click to search customers...'}"
-          style="width:100%;padding:8px 12px;border:1.5px solid ${existCustId?'var(--green)':'var(--bdr)'};border-radius:8px;font-size:14px;font-family:inherit;color:${existCustId?'var(--green)':'var(--text)'}">
+          placeholder="${existCustName?'✓ '+existCustName:'Type to search all customers...'}"
+          style="width:100%;padding:8px 12px;border:1.5px solid ${existCustId?'var(--green)':'var(--bdr)'};border-radius:8px;font-size:14px;font-family:inherit">
         <div id="inv-cust-results"
           style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:9999;
           background:white;border:1.5px solid var(--bdr);border-radius:8px;
@@ -8049,40 +8031,62 @@ function oAddInvoice(d){
       <button class="btn btn-n" onclick="saveInvoice('${esc(editId)}')">${editId?'Save Changes':'Save Invoice'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
+
+  // Poll until the input exists, then bind directly — handles all browsers/Safari
+  window._invPoll && clearInterval(window._invPoll);
+  window._invPoll=setInterval(function(){
+    const inp=document.getElementById('inv-cust-search');
+    if(!inp) return;
+    clearInterval(window._invPoll);
+    let _invTimer=null;
+    inp.addEventListener('input',function(){
+      clearTimeout(_invTimer);
+      _invTimer=setTimeout(function(){_invCustSearch(inp.value);},200);
+    });
+    inp.addEventListener('keyup',function(){
+      clearTimeout(_invTimer);
+      _invTimer=setTimeout(function(){_invCustSearch(inp.value);},200);
+    });
+    inp.addEventListener('focus',function(){ _invCustSearch(inp.value); });
+  },30);
 }
 
-// Called by the global delegated listener — fires reliably for all browsers
-function _invCustSearch(q){
+// Queries Supabase directly — works with full 52k+ customer database
+async function _invCustSearch(q){
   const res=document.getElementById('inv-cust-results'); if(!res) return;
-  const custs=S.get('lhs:customers')||[];
-  const term=(q||'').trim().toLowerCase();
-  const matches=term.length<1
-    ? custs.slice(0,30)   // show first 30 when no query
-    : custs.filter(c=>{
-        const name=`${c.first_name||''} ${c.last_name||''} ${c.company||''}`.toLowerCase();
-        const ph=(c.phone||'').replace(/\D/g,'');
-        return name.includes(term)||ph.includes(term.replace(/\D/g,''));
-      }).slice(0,50);     // up to 50 filtered results
+  const term=(q||'').trim();
   res.style.display='block';
-  if(!matches.length){
-    res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted);text-align:center">No customers match "${esc(q)}"</div>`;
-    return;
-  }
-  const total=term.length<1?custs.length:custs.filter(c=>{
-    const name=`${c.first_name||''} ${c.last_name||''} ${c.company||''}`.toLowerCase();
-    return name.includes(term)||(c.phone||'').includes(term);
-  }).length;
-  res.innerHTML=(total>matches.length?`<div style="padding:6px 14px;font-size:11px;color:var(--muted);background:var(--surf);border-bottom:1px solid var(--bdr)">Showing ${matches.length} of ${total} — type to narrow down</div>`:'')+
-    matches.map(c=>{
+  res.innerHTML='<div style="padding:12px 14px;font-size:13px;color:var(--muted)">Searching...</div>';
+  try{
+    let qb=DB.from('lhs_customers')
+      .select('id,first_name,last_name,company,phone,city,state')
+      .limit(40);
+    if(term.length>=1){
+      qb=qb.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%,phone.ilike.%${term}%`);
+    } else {
+      qb=qb.order('created_at',{ascending:false});
+    }
+    const{data,error}=await qb;
+    if(error) throw error;
+    if(!res.isConnected&&!document.getElementById('inv-cust-results')) return; // modal closed
+    if(!data||!data.length){
+      res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted);text-align:center">No customers found${term?' for "'+esc(term)+'"':''}</div>`;
+      return;
+    }
+    res.innerHTML=data.map(c=>{
       const fullName=`${c.first_name||''} ${c.last_name||''}`.trim();
       const display=fullName+(c.company?' — '+c.company:'');
       return`<div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
         onmousedown="invSelectCust('${esc(c.id)}','${esc(display)}')"
         onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
         <div style="font-weight:600;color:var(--navy)">${esc(display)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.city?' · '+esc(c.city):''}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.city?' · '+esc(c.city):''} ${esc(c.state||'')}</div>
       </div>`;
     }).join('');
+  }catch(e){
+    if(document.getElementById('inv-cust-results'))
+      res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--red)">Search error — try again</div>`;
+  }
 }
 
 function invSelectCust(id,name){
