@@ -251,6 +251,7 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
             <div id="um-punch-area" style="padding:12px 16px;border-bottom:1px solid var(--bdr)"></div>
             <div style="padding:8px">
               <button class="btn btn-n" style="width:100%;margin-bottom:6px" onclick="cUserMenu();prViewMyTimecard()">&#128196; View My Time Card</button>
+              <button class="btn btn-o" style="width:100%;margin-bottom:6px" onclick="cUserMenu();goMyTimeOff()">&#127958; Time Off Request</button>
               <button class="btn btn-o" style="width:100%" onclick="cUserMenu();showPage('payroll')">&#9776; Full Payroll</button>
             </div>
           </div>
@@ -1786,6 +1787,7 @@ async function startApp(){
     <div class="page" id="p-hr-state"></div>
     <div class="page" id="p-hr-timeoff"></div>
     <div class="page" id="p-hr-settings"></div>
+    <div class="page" id="p-my-timeoff"></div>
     <div class="page" id="p-sales-marketing"></div>
   `;
   seed(); buildNav();
@@ -1797,6 +1799,7 @@ async function startApp(){
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
+    'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-receipts','acct-settings',
     'reports','operations','admin'];
   // Replace current history entry with a base dashboard state so back never leaves the app
@@ -2133,6 +2136,7 @@ function buildPage(id){
     'hr-state':bHRState,
     'hr-timeoff':bHRTimeOff,
     'hr-settings':bHRSettings,
+    'my-timeoff':bMyTimeOff,
     payroll:bPayroll,
     reports:bReports, operations:bOperations, admin:bAdmin,
   };
@@ -18164,6 +18168,179 @@ function svHRSettings(){
   };
   S.set('lhs:hr_config',cfg);
   cMod(); tst('HR Settings saved','success'); showPage('hr-settings');
+}
+
+// ─── MY TIME OFF (self-service landing page) ──────────────────────────────────
+function goMyTimeOff(){
+  renderMainNav();          // back to main nav context
+  showPage('my-timeoff');
+}
+
+function bMyTimeOff(){
+  const user=CU;
+  if(!user) return`<div class="al al-r">Not logged in.</div>`;
+  const users=S.get('lhs:users')||[];
+  const emp=users.find(u=>u.email===user.email||u.name===user.name)||{};
+  const allReqs=S.get('lhs:time_off_requests')||[];
+  const myReqs=allReqs.filter(r=>r.employee_name===user.name||r.created_by===user.name).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+  const pending=myReqs.filter(r=>!r.status||r.status==='Pending');
+  const approved=myReqs.filter(r=>r.status==='Approved');
+  const denied=myReqs.filter(r=>r.status==='Denied'||r.status==='Cancelled');
+  const tab=window._myTORTab||'new';
+
+  // Compute YTD hours used
+  const thisYear=new Date().getFullYear();
+  const ytdPTO=approved.filter(r=>r.leave_type==='PTO'&&(r.start_date||'').startsWith(thisYear)).reduce((s,r)=>s+(r.hours||0),0);
+  const ytdUTO=approved.filter(r=>r.leave_type==='UTO'&&(r.start_date||'').startsWith(thisYear)).reduce((s,r)=>s+(r.hours||0),0);
+
+  return`
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+    <div style="width:52px;height:52px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0">
+      ${(user.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('')}
+    </div>
+    <div>
+      <div style="font-size:20px;font-weight:700">${esc(user.name||'—')}</div>
+      <div style="color:var(--muted);font-size:13px">${esc(emp.title||emp.role||'')}${emp.division?' · '+esc(emp.division):''}</div>
+    </div>
+  </div>
+
+  <!-- Balance cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:20px">
+    ${_myTORCard('🏖️','PTO Available', emp.pto_balance!=null?emp.pto_balance+'  hrs':'—', 'var(--green)')}
+    ${_myTORCard('🤒','UTO Available', emp.uto_balance!=null?emp.uto_balance+' hrs':'—', '#7c3aed')}
+    ${_myTORCard('🏛️','Holiday Bank', emp.holiday_balance!=null?emp.holiday_balance+' hrs':'—', '#d97706')}
+    ${_myTORCard('📅','PTO Used (YTD)', ytdPTO+' hrs', '#0d9488')}
+    ${_myTORCard('⏳','Pending Requests', pending.length+(pending.length===1?' request':' requests'), pending.length?'#e67e22':'var(--muted)')}
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" style="margin-bottom:14px">
+    <button class="tab${tab==='new'?' active':''}"     onclick="window._myTORTab='new';showPage('my-timeoff')">+ New Request</button>
+    <button class="tab${tab==='pending'?' active':''}" onclick="window._myTORTab='pending';showPage('my-timeoff')">⏳ Pending${pending.length?` <span style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:11px">${pending.length}</span>`:''}</button>
+    <button class="tab${tab==='approved'?' active':''}" onclick="window._myTORTab='approved';showPage('my-timeoff')">✅ Approved</button>
+    <button class="tab${tab==='history'?' active':''}" onclick="window._myTORTab='history';showPage('my-timeoff')">📋 Full History</button>
+  </div>
+
+  ${tab==='new'    ? _myTORNewForm(user, emp) : ''}
+  ${tab==='pending' ? _myTORTable(pending, false) : ''}
+  ${tab==='approved'? _myTORTable(approved, false) : ''}
+  ${tab==='history' ? _myTORTable(myReqs, true) : ''}`;
+}
+
+function _myTORCard(icon, label, value, color){
+  return`<div style="background:var(--surf);border-radius:12px;padding:16px;border-top:3px solid ${color}">
+    <div style="font-size:22px;margin-bottom:6px">${icon}</div>
+    <div style="font-size:20px;font-weight:700;color:${color};line-height:1.1">${value}</div>
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-top:4px">${label}</div>
+  </div>`;
+}
+
+function _myTORNewForm(user, emp){
+  const cfg=S.get('lhs:hr_config')||{};
+  return`
+  <div class="card">
+    <div style="font-size:15px;font-weight:700;margin-bottom:16px">Submit a Time Off Request</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Leave Type <span style="color:var(--red)">*</span></label>
+        <select id="my-tor-type" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text)">
+          ${HR_LEAVE_TYPES.map(t=>`<option>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Hours Requested</label>
+        <input type="number" id="my-tor-hours" step="0.5" placeholder="e.g. 8"
+          style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">From Date <span style="color:var(--red)">*</span></label>
+        <input type="date" id="my-tor-start"
+          style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">To Date</label>
+        <input type="date" id="my-tor-end"
+          style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Leave blank if single day</div>
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Reason / Notes</label>
+      <textarea id="my-tor-notes" rows="3" placeholder="Optional — describe your request or provide any context for your manager"
+        style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+    </div>
+    <div style="background:var(--surf);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
+      <span>🏖️ PTO Available: <strong style="color:var(--text)">${emp.pto_balance!=null?emp.pto_balance+' hrs':'Not set'}</strong></span>
+      <span>🤒 UTO Available: <strong style="color:var(--text)">${emp.uto_balance!=null?emp.uto_balance+' hrs':'Not set'}</strong></span>
+      ${cfg.pto_waiting_days!=null?`<span>⏱ Waiting period: <strong style="color:var(--text)">${cfg.pto_waiting_days} days</strong></span>`:''}
+    </div>
+    <button class="btn btn-n" onclick="svMyTimeOffRequest()" style="min-width:160px">Submit Request</button>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">Your manager will be notified. You'll see the status update in Pending and History.</div>
+  </div>`;
+}
+
+function _myTORTable(list, showStatus){
+  if(!list.length) return`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">
+    <div style="font-size:36px;margin-bottom:10px">📭</div>
+    <div style="font-size:14px">No requests here yet</div>
+  </div>`;
+  return`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr>
+      <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Submitted</th><th>Notes</th>
+      <th>Status</th><th>Reviewed By</th>
+    </tr></thead>
+    <tbody>${list.map(r=>`<tr>
+      <td><span class="bx bn" style="font-size:11px">${esc(r.leave_type||'PTO')}</span></td>
+      <td style="font-size:13px;white-space:nowrap">${r.start_date?fmtDate(r.start_date):'—'}</td>
+      <td style="font-size:13px;white-space:nowrap">${r.end_date&&r.end_date!==r.start_date?fmtDate(r.end_date):'—'}</td>
+      <td style="font-size:13px;text-align:center">${r.hours||'—'}</td>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.created_at?fmtDate(r.created_at.slice(0,10)):'—'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px">${esc(r.notes||'')}</td>
+      <td>${_myTORBadge(r.status)}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.approved_by?esc(r.approved_by):'—'}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div></div>`;
+}
+
+function _myTORBadge(s){
+  if(!s||s==='Pending') return`<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#d97706;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">⏳ Pending</span>`;
+  if(s==='Approved')    return`<span style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">✅ Approved</span>`;
+  if(s==='Denied')      return`<span style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">❌ Denied</span>`;
+  if(s==='Cancelled')   return`<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surf);color:var(--muted);font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">✕ Cancelled</span>`;
+  return`<span class="bx bn">${esc(s)}</span>`;
+}
+
+async function svMyTimeOffRequest(){
+  const startDate=v('my-tor-start');
+  if(!startDate){tst('Please select a start date','error');return}
+  const leaveType=v('my-tor-type')||'PTO';
+  const endDate=v('my-tor-end')||startDate;
+  const hours=parseFloat(v('my-tor-hours'))||null;
+  const notes=v('my-tor-notes')||null;
+  const rec={
+    employee_name:CU?.name||'',
+    employee_id:CU?.email||'',
+    leave_type:leaveType,
+    start_date:startDate,
+    end_date:endDate,
+    hours,
+    status:'Pending',
+    notes,
+    created_by:CU?.name||null,
+    created_at:new Date().toISOString(),
+  };
+  try{
+    const{data,error}=await DB.from('lhs_time_off_requests').insert(rec).select().single();
+    if(error){tst('Submit failed: '+error.message,'error');return}
+    const reqs=S.get('lhs:time_off_requests')||[];
+    reqs.push(data||rec);
+    S.set('lhs:time_off_requests',reqs);
+    tst('Request submitted — your manager will review it shortly','success');
+    window._myTORTab='pending';
+    showPage('my-timeoff');
+  }catch(e){tst('Submit failed — '+e.message,'error')}
 }
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
