@@ -13967,7 +13967,8 @@ async function openWO(woId){
       const aptPmts=payments.filter(p=>p.appointment_id===apt.id);
       const aptPaid=aptPmts.reduce((s,p)=>s+(p.amount||0),0);
 
-      return`<div style="border:1px solid var(--bdr);border-radius:10px;padding:16px;margin-bottom:10px">
+      const aptBorderColor=apt.status==='Completed'?'var(--green)':apt.status==='On Site'?'#2563eb':apt.status==='En Route'?'var(--amber)':'var(--bdr)';
+      return`<div style="border:2.5px solid ${aptBorderColor};border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="background:var(--navy);color:var(--teal);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">${ai+1}</div>
@@ -13982,20 +13983,25 @@ async function openWO(woId){
           </div>
         </div>
 
-        <!-- Techs assigned with status -->
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+        <!-- Techs assigned with inline dispatch/arrive buttons -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
           ${aptTechs.map(t=>{
             const isArr=!!t.arrived_at,isDis=!!t.dispatched_at;
             const bg=isArr?'var(--green)':isDis?'var(--amber)':'var(--surf)';
             const tc=isArr||isDis?'white':'var(--text)';
             const icon=isArr?'&#128994;':isDis?'&#128992;':'&#9711;';
             const lbl=isArr?' · On Site':isDis?' · En Route':'';
-            return`<div style="background:${bg};border:1px solid var(--bdr);border-radius:20px;padding:4px 12px;font-size:12px;display:flex;align-items:center;gap:4px">
-              <span style="font-size:10px">${icon}</span>
-              <span style="font-weight:500;color:${tc}">${t.tech_name}${lbl}</span>
+            return`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <div style="background:${bg};border:1px solid var(--bdr);border-radius:20px;padding:4px 12px;font-size:12px;display:flex;align-items:center;gap:4px">
+                <span style="font-size:10px">${icon}</span>
+                <span style="font-weight:500;color:${tc}">${t.tech_name}${lbl}</span>
+              </div>
+              ${canEdit&&!isArr&&!isDis?`<button class="btn btn-n sm" style="padding:3px 10px;font-size:11px" onclick="aptDispatchTech('${t.id}','${apt.id}','${woId}','wo')">&#9654; Dispatch</button>`:''}
+              ${canEdit&&isDis&&!isArr?`<button class="btn sm" style="padding:3px 10px;font-size:11px;background:var(--green);color:white;border:none;border-radius:6px;cursor:pointer" onclick="aptArriveTech('${t.id}','${apt.id}','${woId}','wo')">&#128205; Arrive</button>`:''}
+              ${canEdit&&(isDis||isArr)?`<button class="btn btn-o sm" style="padding:3px 8px;font-size:11px" onclick="aptCancelDispatch('${t.id}','${apt.id}','${woId}','wo')">&#8635; Undo</button>`:''}
             </div>`;}).join('')}
           ${!aptTechs.length?`<span style="font-size:12px;color:var(--muted)">No techs assigned</span>`:''}
-          ${canEdit?`<button class="btn btn-n sm" style="padding:4px 10px;font-size:12px" onclick="oAddTechToApt('${apt.id}','${woId}')">+ Assign Tech</button>`:''}
+          ${canEdit?`<button class="btn btn-n sm" style="padding:4px 10px;font-size:12px;align-self:flex-start" onclick="oAddTechToApt('${apt.id}','${woId}')">+ Assign Tech</button>`:''}
         </div>
 
         <!-- Progress bar -->
@@ -14789,7 +14795,7 @@ function refreshPhotoList(aptId,woId,allPhotos){
 }
 
 
-async function aptDispatchTech(techId,aptId,woId){
+async function aptDispatchTech(techId,aptId,woId,source='apt'){
   const techs=S.get('lhs:apt_techs')||[];
   const t=techs.find(x=>x.id===techId);
   if(t){t.status='Dispatched';t.dispatched_at=new Date().toISOString();}
@@ -14801,10 +14807,10 @@ async function aptDispatchTech(techId,aptId,woId){
     await dbUpdate('lhs:appointments',aptId,{status:'En Route'});}
   logWOAudit(woId,'Tech Dispatched',`${t?.tech_name} en route`);
   tst(`${t?.tech_name||'Tech'} dispatched!`,'success');
-  oAptDetail(aptId,woId);
+  if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
-async function aptArriveTech(techId,aptId,woId){
+async function aptArriveTech(techId,aptId,woId,source='apt'){
   const techs=S.get('lhs:apt_techs')||[];
   const t=techs.find(x=>x.id===techId);
   if(t){t.status='On Site';t.arrived_at=new Date().toISOString();}
@@ -14824,10 +14830,10 @@ async function aptArriveTech(techId,aptId,woId){
   }
   logWOAudit(woId,'Tech Arrived',`${t?.tech_name} on site`);
   tst(`${t?.tech_name||'Tech'} arrived on site — WO set to In Progress`,'success');
-  oAptDetail(aptId,woId);
+  if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
-async function aptCancelDispatch(techId,aptId,woId){
+async function aptCancelDispatch(techId,aptId,woId,source='apt'){
   if(!confirm('Undo dispatch? This resets the tech back to Scheduled.')) return;
   const techs=S.get('lhs:apt_techs')||[];
   const t=techs.find(x=>x.id===techId);
@@ -14835,7 +14841,7 @@ async function aptCancelDispatch(techId,aptId,woId){
   S.set('lhs:apt_techs',techs);
   await dbUpdate('lhs:apt_techs',techId,{status:'Scheduled',dispatched_at:null,arrived_at:null});
   tst('Dispatch cancelled','info');
-  oAptDetail(aptId,woId);
+  if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
 async function aptRemoveTech(techId,aptId,woId){
