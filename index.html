@@ -1463,6 +1463,7 @@ const TBL={
   'lhs:acct_journal':'lhs_acct_journal',
   'lhs:acct_bank_accounts':'lhs_acct_bank_accounts',
   'lhs:acct_bank_txns':'lhs_acct_bank_txns',
+  'lhs:job_time_entries':'lhs_job_time_entries',
 };
 
 // Pull all data from Supabase into cache on login
@@ -12424,26 +12425,49 @@ function renderDispBoard(){
         </div>`;
       }).join('');
 
+      const _today=new Date().toISOString().slice(0,10);
+      const _techPunches=(S.get('lhs:time_punches')||[]).filter(p=>p.employee===techName&&p.date===_today);
+      const _ciCount=_techPunches.filter(p=>p.punch_type==='clock_in').length;
+      const _coCount=_techPunches.filter(p=>p.punch_type==='clock_out').length;
+      const _isClockedIn=_ciCount>_coCount;
+      const _clockInPunch=_techPunches.filter(p=>p.punch_type==='clock_in').slice(-1)[0];
+      const _clockInTime=_clockInPunch?new Date(_clockInPunch.punched_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
+      const _canClockMgr=['God View','Admin','Director','Regional Manager','Location Manager','Manager'].includes(CU?.role);
       return`<div style="display:flex;border-bottom:1px solid var(--bdr)">
-        <div style="width:${labelW}px;min-width:${labelW}px;padding:8px 10px;border-right:1px solid var(--bdr);display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <div style="width:28px;height:28px;border-radius:50%;background:var(--navy);color:var(--teal);
-            display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">
-            ${techName.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
-          </div>
-          <div style="min-width:0">
-            <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${techName}</div>
-            ${techUser?.division?`<div style="font-size:10px;color:${techUser.division===div?'var(--muted)':'var(--amber)'}">${techUser.division===div?techUser.division:'⚡ '+techUser.division}</div>`:''}
-          </div>
-          ${(()=>{
-            const tu=calcUtilization(techName,dates[0]);
-            const tc=tu>=80?'var(--red)':tu>=50?'var(--amber)':'var(--green)';
-            return`<div style="margin-left:auto;text-align:center;flex-shrink:0">
-              <div style="font-size:11px;font-weight:700;color:${tc}">${tu}%</div>
-              <div style="width:28px;height:3px;background:var(--bdr);border-radius:2px;margin-top:2px">
-                <div style="width:${tu}%;height:3px;background:${tc};border-radius:2px"></div>
+        <div style="width:${labelW}px;min-width:${labelW}px;padding:6px 8px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="position:relative;flex-shrink:0">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--navy);color:var(--teal);
+                display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">
+                ${techName.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
               </div>
-            </div>`;
-          })()}
+              <div style="position:absolute;bottom:-1px;right:-1px;width:9px;height:9px;border-radius:50%;
+                background:${_isClockedIn?'var(--green)':'#ccc'};border:1.5px solid white"
+                title="${_isClockedIn?'Clocked in '+_clockInTime:'Not clocked in'}"></div>
+            </div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${techName}</div>
+              <div style="font-size:10px;color:${_isClockedIn?'var(--green)':'var(--muted)'}">
+                ${_isClockedIn?'&#9679; In '+_clockInTime:'&#9675; Not clocked in'}
+              </div>
+            </div>
+            ${(()=>{
+              const tu=calcUtilization(techName,dates[0]);
+              const tc=tu>=80?'var(--red)':tu>=50?'var(--amber)':'var(--green)';
+              return`<div style="text-align:center;flex-shrink:0">
+                <div style="font-size:11px;font-weight:700;color:${tc}">${tu}%</div>
+                <div style="width:24px;height:3px;background:var(--bdr);border-radius:2px;margin-top:2px">
+                  <div style="width:${tu}%;height:3px;background:${tc};border-radius:2px"></div>
+                </div>
+              </div>`;
+            })()}
+          </div>
+          ${techUser?.division?`<div style="font-size:10px;color:${techUser.division===div?'var(--muted)':'var(--amber)'};padding-left:34px">${techUser.division===div?techUser.division:'⚡ '+techUser.division}</div>`:''}
+          ${_canClockMgr?`<div style="padding-left:34px">
+            ${!_isClockedIn
+              ?`<button onclick="dispClockIn('${techName}')" style="font-size:10px;padding:2px 8px;background:var(--green);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600">Clock In</button>`
+              :`<button onclick="dispClockOut('${techName}')" style="font-size:10px;padding:2px 8px;background:#E53935;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600">Clock Out</button>`}
+          </div>`:''}
         </div>
         <div style="display:flex;flex:1">${dayPanels}</div>
       </div>`;
@@ -12459,6 +12483,38 @@ function renderDispBoard(){
     ${timeHeader}
     ${divRows}
   </div>`;
+}
+
+async function dispClockIn(techName){
+  const now=new Date();
+  const date=now.toISOString().slice(0,10);
+  const ws=typeof prWeekStart==='function'?prWeekStart(date):date;
+  const punch={id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    employee:techName,employee_id:'',punch_type:'clock_in',
+    punched_at:now.toISOString(),date,week_start:ws};
+  const punches=S.get('lhs:time_punches')||[];
+  punches.push(punch);
+  S.set('lhs:time_punches',punches);
+  try{await DB.from('lhs_time_punches').insert(punch);}catch(e){console.warn('dispClockIn:',e?.message);}
+  if(typeof prCalcTimesheetFromPunches==='function') prCalcTimesheetFromPunches(techName,date,ws);
+  tst(`${techName} clocked in`,'success');
+  showPage('dispatch');
+}
+async function dispClockOut(techName){
+  if(!confirm(`Clock out ${techName}?`)) return;
+  const now=new Date();
+  const date=now.toISOString().slice(0,10);
+  const ws=typeof prWeekStart==='function'?prWeekStart(date):date;
+  const punch={id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    employee:techName,employee_id:'',punch_type:'clock_out',
+    punched_at:now.toISOString(),date,week_start:ws};
+  const punches=S.get('lhs:time_punches')||[];
+  punches.push(punch);
+  S.set('lhs:time_punches',punches);
+  try{await DB.from('lhs_time_punches').insert(punch);}catch(e){console.warn('dispClockOut:',e?.message);}
+  if(typeof prCalcTimesheetFromPunches==='function') prCalcTimesheetFromPunches(techName,date,ws);
+  tst(`${techName} clocked out`,'info');
+  showPage('dispatch');
 }
 
 // Dispatch nav
@@ -14460,6 +14516,7 @@ async function svAptDetail(aptId, woId){
     S.set('lhs:work_orders',wos);
     await dbUpdate('lhs:work_orders',woId,{pct_complete:woPct,status:wo2.status});
   }
+  if(status==='Completed') await _endAllJobEntries('working',aptId);
   logWOAudit(woId,'Appointment Updated',`Status:${status} | ${finalPct}%`);
   cMod();tst('Appointment updated','success');openWO(woId);
 }
@@ -14796,6 +14853,48 @@ function refreshPhotoList(aptId,woId,allPhotos){
 }
 
 
+// ── JOB TIME ENTRY HELPERS (ServiceTitan-style: Driving → Working per appointment) ─
+function _jteId(){return 'jte_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);}
+async function _startJobEntry(type,techName,techId,aptId,woId){
+  const now=new Date();
+  const date=now.toISOString().slice(0,10);
+  const ws=typeof prWeekStart==='function'?prWeekStart(date):date;
+  const entry={id:_jteId(),tech_name:techName,tech_id:techId||'',appointment_id:aptId,wo_id:woId,
+    entry_type:type,start_at:now.toISOString(),end_at:null,duration_minutes:null,
+    date,week_start:ws,status:'active',created_at:now.toISOString()};
+  const entries=S.get('lhs:job_time_entries')||[];
+  entries.push(entry);
+  S.set('lhs:job_time_entries',entries);
+  try{await DB.from('lhs_job_time_entries').insert(entry);}catch(e){console.warn('JTE insert:',e?.message);}
+  return entry;
+}
+async function _endJobEntry(type,techName,aptId){
+  const now=new Date();
+  const entries=S.get('lhs:job_time_entries')||[];
+  let entry=null;
+  for(let i=entries.length-1;i>=0;i--){
+    const e=entries[i];
+    if(e.entry_type===type&&e.appointment_id===aptId&&e.tech_name===techName&&e.status==='active'&&!e.end_at){entry=e;break;}
+  }
+  if(!entry) return null;
+  const dur=Math.max(0,Math.round((now.getTime()-new Date(entry.start_at).getTime())/60000));
+  entry.end_at=now.toISOString();entry.duration_minutes=dur;entry.status='completed';
+  S.set('lhs:job_time_entries',entries);
+  try{await DB.from('lhs_job_time_entries').upsert({...entry},{onConflict:'id'});}catch(e){console.warn('JTE update:',e?.message);}
+  return entry;
+}
+async function _endAllJobEntries(type,aptId){
+  const now=new Date();
+  const entries=S.get('lhs:job_time_entries')||[];
+  const active=entries.filter(e=>e.entry_type===type&&e.appointment_id===aptId&&e.status==='active'&&!e.end_at);
+  for(const entry of active){
+    const dur=Math.max(0,Math.round((now.getTime()-new Date(entry.start_at).getTime())/60000));
+    entry.end_at=now.toISOString();entry.duration_minutes=dur;entry.status='completed';
+    try{await DB.from('lhs_job_time_entries').upsert({...entry},{onConflict:'id'});}catch(e){console.warn('JTE end all:',e?.message);}
+  }
+  if(active.length) S.set('lhs:job_time_entries',entries);
+}
+
 async function aptDispatchTech(techId,aptId,woId,source='apt'){
   const techs=S.get('lhs:apt_techs')||[];
   const t=techs.find(x=>x.id===techId);
@@ -14806,6 +14905,7 @@ async function aptDispatchTech(techId,aptId,woId,source='apt'){
   const apt=apts.find(a=>a.id===aptId);
   if(apt&&apt.status==='Scheduled'){apt.status='En Route';S.set('lhs:appointments',apts);
     await dbUpdate('lhs:appointments',aptId,{status:'En Route'});}
+  await _startJobEntry('driving',t?.tech_name,t?.employee_id||t?.tech_id||'',aptId,woId);
   logWOAudit(woId,'Tech Dispatched',`${t?.tech_name} en route`);
   tst(`${t?.tech_name||'Tech'} dispatched!`,'success');
   if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
@@ -14829,6 +14929,8 @@ async function aptArriveTech(techId,aptId,woId,source='apt'){
     S.set('lhs:work_orders',wos);
     await dbUpdate('lhs:work_orders',woId,{status:'In Progress'});
   }
+  await _endJobEntry('driving',t?.tech_name,aptId);
+  await _startJobEntry('working',t?.tech_name,t?.employee_id||t?.tech_id||'',aptId,woId);
   logWOAudit(woId,'Tech Arrived',`${t?.tech_name} on site`);
   tst(`${t?.tech_name||'Tech'} arrived on site — WO set to In Progress`,'success');
   if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
@@ -19411,6 +19513,54 @@ function bPayrollDetail(){
   const prevPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()-7);return d.toISOString().slice(0,10);})();
   const nextPeriod=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+7);return d.toISOString().slice(0,10);})();
 
+  // Job time entries breakdown
+  let jobTimeHTML='';
+  const jtes=(S.get('lhs:job_time_entries')||[]).filter(e=>e.tech_name===emp&&e.week_start===period);
+  if(jtes.length){
+    const drivingMins=jtes.filter(e=>e.entry_type==='driving'&&e.duration_minutes).reduce((s,e)=>s+(e.duration_minutes||0),0);
+    const workingMins=jtes.filter(e=>e.entry_type==='working'&&e.duration_minutes).reduce((s,e)=>s+(e.duration_minutes||0),0);
+    const fmtMins=m=>`${Math.floor(m/60)}h ${m%60}m`;
+    jobTimeHTML=`<div style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">&#128338; Job Time Breakdown</div>
+      <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="background:#e3f2fd;border-radius:8px;padding:10px 16px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Driving</div>
+          <div style="font-size:18px;font-weight:700;color:#1565C0">${fmtMins(drivingMins)}</div>
+        </div>
+        <div style="background:#e8f5e9;border-radius:8px;padding:10px 16px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Working</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green)">${fmtMins(workingMins)}</div>
+        </div>
+        <div style="background:var(--surf);border-radius:8px;padding:10px 16px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Total Job Time</div>
+          <div style="font-size:18px;font-weight:700;color:var(--navy)">${fmtMins(drivingMins+workingMins)}</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--navy);color:white">
+          <th style="padding:6px 10px;text-align:left">Date</th>
+          <th style="padding:6px 10px;text-align:left">Type</th>
+          <th style="padding:6px 10px;text-align:left">Start</th>
+          <th style="padding:6px 10px;text-align:left">End</th>
+          <th style="padding:6px 10px;text-align:left">Duration</th>
+          <th style="padding:6px 10px;text-align:left">WO</th>
+        </tr></thead>
+        <tbody>
+          ${jtes.sort((a,b)=>a.start_at.localeCompare(b.start_at)).map((e,i)=>`<tr style="background:${i%2?'var(--surf)':'white'}">
+            <td style="padding:5px 10px">${e.date}</td>
+            <td style="padding:5px 10px">
+              <span style="background:${e.entry_type==='driving'?'#1565C0':'var(--green)'};color:white;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600">${e.entry_type==='driving'?'Driving':'Working'}</span>
+            </td>
+            <td style="padding:5px 10px;font-family:monospace">${e.start_at?new Date(e.start_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'-'}</td>
+            <td style="padding:5px 10px;font-family:monospace">${e.end_at?new Date(e.end_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'<span style="color:var(--amber);font-weight:600">Active</span>'}</td>
+            <td style="padding:5px 10px;font-weight:600">${e.duration_minutes?fmtMins(e.duration_minutes):'—'}</td>
+            <td style="padding:5px 10px;font-size:11px;color:var(--muted)">${(e.wo_id||'').slice(-6)||'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
   return`
   <!-- Header -->
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
@@ -19526,6 +19676,8 @@ function bPayrollDetail(){
       </tfoot>
     </table></div>
   </div>
+
+  ${jobTimeHTML}
 
   <!-- Action Buttons -->
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
