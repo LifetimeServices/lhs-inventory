@@ -1984,7 +1984,7 @@ function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payrol
 
 const ACCT_NAV=[
   {id:'acct-dashboard', l:'&#128200; Dashboard'},
-  {id:'acct-division',  l:'&#127963; Division P&amp;L'},
+  {id:'acct-division',  l:'&#128200; P&amp;L'},
   {id:'acct-invoices',  l:'&#128203; Invoices'},
   {id:'acct-ar',        l:'&#128198; AR Aging'},
   {id:'acct-ap',        l:'&#128179; Payables'},
@@ -7173,6 +7173,42 @@ window._acctDateTo = window._acctDateTo || new Date().toISOString().slice(0,10);
 window._acctRegion  = window._acctRegion  || '';
 window._acctState   = window._acctState   || '';
 window._acctEmp     = window._acctEmp     || '';
+window._plGroupBy   = window._plGroupBy   || 'division';
+window._plFilterDiv = window._plFilterDiv || '';
+
+function printPL(){
+  const area=document.getElementById('pl-print-area');
+  if(!area){tst('Nothing to print','error');return;}
+  const groupLabel={company:'Company',division:'Division',region:'Region',state:'State',territory:'Territory'}[window._plGroupBy||'division']||'Division';
+  const df=window._acctDateFrom||'';const dt=window._acctDateTo||'';
+  const hc=`<html><head><title>P&amp;L Report</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:24px}
+    h1{font-size:18px;color:#0D1B3E;margin-bottom:4px}
+    .sub{font-size:11px;color:#666;margin-bottom:16px}
+    .kpis{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+    .kpi{background:#f4f6fb;border:1px solid #dde3f0;border-radius:6px;padding:9px 14px;min-width:120px}
+    .kl{font-size:9px;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+    .kv{font-size:16px;font-weight:700;color:#0D1B3E}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    thead tr{background:#0D1B3E}
+    thead th{color:white;padding:7px 10px;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+    tbody td{padding:7px 10px;border-bottom:1px solid #eee}
+    tbody tr:last-child td{font-weight:700;background:#f0f4ff;border-top:2px solid #0D1B3E}
+    .num{text-align:right;font-family:'Courier New',monospace}
+    .red{color:#c62828}.grn{color:#2e7d32}
+    .card{border:1px solid #dde;border-radius:8px;padding:14px;margin-bottom:18px}
+    .ct{font-weight:700;font-size:13px;color:#0D1B3E;margin-bottom:10px}
+    @media print{@page{margin:15mm 12mm}body{padding:0}}
+  </style></head><body>
+  <h1>Lifetime Home Services LLC — P&amp;L Report</h1>
+  <div class="sub">Grouped by: <strong>${groupLabel}</strong>${df?' · From: '+df:''}${dt?' · To: '+dt:''} · Generated: ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+  ${area.innerHTML}
+  <script>setTimeout(()=>{window.print();},400);<\/script>
+  </body></html>`;
+  const w=window.open('','_blank');if(!w){tst('Allow pop-ups to print','error');return;}
+  w.document.write(hc);w.document.close();
+}
 
 function _acctDateBar(onchange){
   const regions=Object.keys(REGIONS);
@@ -7742,112 +7778,101 @@ async function rejectReceipt(id){
   tst('Receipt rejected','warning'); showPage('acct-receipts');
 }
 
-// ─── DIVISION P&L ─────────────────────────────────────────────────────────────
+// ─── P&L ──────────────────────────────────────────────────────────────────────
 function bAcctDivision(){
   const wos=S.get('lhs:work_orders')||[];
   const payments=S.get('lhs:payments')||[];
   const receipts=S.get('lhs:receipts')||[];
   const df=window._acctDateFrom||'';
   const dt=window._acctDateTo||'9';
+  const groupBy=window._plGroupBy||'division';
+  const filterDiv=window._plFilterDiv||'';
+  const territories=S.get('lhs:territories')||[];
 
-  // Build per-division metrics — driven entirely by DIVS constant
-  const rows=DIVS.map(div=>{
-    const divWOs=wos.filter(w=>{
-      const cd=(w.completed_at||w.scheduled_date||'').slice(0,10);
-      if(df && cd<df) return false;
-      if(dt && cd>dt) return false;
-      return (w.division||w.job_type||'')===div;
-    });
-    const revenue=divWOs.reduce((s,w)=>s+(w.total_price||0),0);
-    const divPmts=payments.filter(p=>{
-      const pd=(p.posted_at||'').slice(0,10);
-      if(df && pd<df) return false;
-      if(dt && pd>dt) return false;
-      return divWOs.some(w=>w.id===p.work_order_id);
-    });
-    const collected=divPmts.reduce((s,p)=>s+(p.amount||0),0);
-    const divExp=receipts.filter(r=>{
-      if(df && (r.receipt_date||'')< df) return false;
-      if(dt && (r.receipt_date||'')> dt) return false;
-      return (r.division||r.job_type||'')===div;
-    });
-    const expenses=divExp.reduce((s,r)=>s+(r.amount||0),0);
+  const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
+  const pct=v=>v.toFixed(1)+'%';
+  const gpColor=v=>v>=0?'var(--green)':'var(--red)';
+  const mgnBadge=m=>`<span style="background:${m>=40?'#e8f5e9':m>=20?'#fff8e1':'#ffebee'};color:${m>=40?'var(--green)':m>=20?'var(--amber)':'var(--red)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(m)}</span>`;
+  const colBar=p2=>`<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="width:60px;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(p2,100).toFixed(1)}%;background:${p2>=90?'var(--green)':p2>=60?'var(--amber)':'var(--red)'};border-radius:3px"></div></div><span style="font-size:12px;font-family:'DM Mono',monospace">${pct(p2)}</span></div>`;
+
+  // Step 1: base date filter
+  let baseWOs=wos.filter(w=>{
+    const cd=(w.completed_at||w.scheduled_date||'').slice(0,10);
+    if(df&&cd&&cd<df) return false;
+    if(dt&&dt!=='9'&&cd&&cd>dt) return false;
+    return true;
+  });
+
+  // Step 2: apply cross-filters
+  if(window._acctRegion){const sts=REGIONS[window._acctRegion]?.states||[];baseWOs=baseWOs.filter(w=>sts.includes((w.state||'').trim()));}
+  if(window._acctState) baseWOs=baseWOs.filter(w=>(w.state||'').trim()===window._acctState);
+  if(filterDiv) baseWOs=baseWOs.filter(w=>(w.division||w.job_type||'')===filterDiv);
+
+  // Step 3: build row metrics for a group of WOs
+  const buildRow=(label,groupWOs)=>{
+    const revenue=groupWOs.reduce((s,w)=>s+(w.total_price||0),0);
+    const woIds=new Set(groupWOs.map(w=>w.id));
+    const collected=payments.filter(p=>woIds.has(p.work_order_id)).reduce((s,p)=>s+(p.amount||0),0);
+    const exp=(groupBy==='division'
+      ?receipts.filter(r=>{if(df&&r.receipt_date&&r.receipt_date<df)return false;if(dt&&dt!=='9'&&r.receipt_date&&r.receipt_date>dt)return false;return(r.division||r.job_type||'')===label;})
+      :receipts.filter(r=>{if(df&&r.receipt_date&&r.receipt_date<df)return false;if(dt&&dt!=='9'&&r.receipt_date&&r.receipt_date>dt)return false;return r.work_order_id&&woIds.has(r.work_order_id);}));
+    const expenses=exp.reduce((s,r)=>s+(r.amount||0),0);
     const gp=revenue-expenses;
-    const margin=revenue>0?((gp/revenue)*100):0;
-    const jobs=divWOs.length;
-    return{div,revenue,collected,expenses,gp,margin,jobs};
-  }).filter(r=>r.jobs>0||true); // show all divs
+    return{label,jobs:groupWOs.length,revenue,collected,expenses,gp,margin:revenue>0?(gp/revenue)*100:0};
+  };
+
+  // Step 4: build groups based on groupBy
+  let rows=[];
+  if(groupBy==='company'){
+    rows=[buildRow('Lifetime Home Services LLC',baseWOs)];
+  } else if(groupBy==='division'){
+    const buckets={};DIVS.forEach(d=>buckets[d]=[]);
+    baseWOs.forEach(w=>{const k=w.division||w.job_type||'Other';if(!buckets[k])buckets[k]=[];buckets[k].push(w);});
+    rows=Object.entries(buckets).map(([l,g])=>buildRow(l,g));
+  } else if(groupBy==='region'){
+    const rn=Object.keys(REGIONS);const buckets={};rn.forEach(r=>buckets[r]=[]);buckets['Other']=[];
+    baseWOs.forEach(w=>{const st=(w.state||'').trim();const found=rn.find(r=>REGIONS[r].states.includes(st));(buckets[found||'Other']).push(w);});
+    rows=Object.entries(buckets).map(([l,g])=>buildRow(l,g)).filter(r=>r.jobs>0);
+  } else if(groupBy==='state'){
+    const buckets={};
+    baseWOs.forEach(w=>{const k=(w.state||'Unknown').trim();if(!buckets[k])buckets[k]=[];buckets[k].push(w);});
+    rows=Object.entries(buckets).sort((a,b)=>a[0].localeCompare(b[0])).map(([l,g])=>buildRow(l,g));
+  } else if(groupBy==='territory'){
+    const buckets={};territories.forEach(t=>buckets[t.name]=[]);buckets['Unassigned']=[];
+    baseWOs.forEach(w=>{const k=w.territory||'Unassigned';if(!buckets[k])buckets[k]=[];buckets[k].push(w);});
+    rows=Object.entries(buckets).map(([l,g])=>buildRow(l,g)).filter(r=>r.jobs>0);
+  }
 
   const totRev=rows.reduce((s,r)=>s+r.revenue,0);
   const totCol=rows.reduce((s,r)=>s+r.collected,0);
   const totExp=rows.reduce((s,r)=>s+r.expenses,0);
   const totGP=totRev-totExp;
-  const totMgn=totRev>0?((totGP/totRev)*100):0;
+  const totMgn=totRev>0?(totGP/totRev)*100:0;
   const totJobs=rows.reduce((s,r)=>s+r.jobs,0);
+  const groupLabel={company:'Company',division:'Division',region:'Region',state:'State',territory:'Territory'}[groupBy];
 
-  const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
-  const pct=v=>v.toFixed(1)+'%';
-  const gpColor=v=>v>=0?'var(--green)':'var(--red)';
+  const gbBtn=(id,lbl)=>`<button onclick="window._plGroupBy='${id}';showPage('acct-division')" style="padding:6px 14px;border-radius:20px;border:1.5px solid ${groupBy===id?'var(--navy)':'var(--bdr)'};background:${groupBy===id?'var(--navy)':'white'};color:${groupBy===id?'white':'var(--muted)'};font-size:12px;font-weight:${groupBy===id?700:400};cursor:pointer">${lbl}</button>`;
 
-  return`<div class="pt">&#127963; Division P&amp;L</div>
-  <div class="ps">Profit &amp; loss by division — driven by <code>DIVS</code> constant, add a division once and it appears everywhere</div>
-
-  ${_acctDateBar("showPage('acct-division')")}
-
-  <!-- Summary KPIs -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px">
-    ${[
-      {l:'Total Revenue',v:fmt(totRev),c:'n'},
-      {l:'Collected',v:fmt(totCol),c:'g'},
-      {l:'Total Expenses',v:fmt(totExp),c:'r'},
-      {l:'Gross Profit',v:fmt(totGP),c:totGP>=0?'gr':'r'},
-      {l:'Avg Margin',v:pct(totMgn),c:totMgn>=40?'gr':totMgn>=20?'a':'r'},
-      {l:'Total Jobs',v:totJobs,c:'n'},
-    ].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
-  </div>
-
-  <!-- Division table -->
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--bdr);font-weight:700;font-size:14px;color:var(--navy)">
-      &#127963; All Divisions &mdash; <span style="font-weight:400;font-size:13px;color:var(--muted)">${rows.filter(r=>r.jobs>0).length} active this period</span>
-    </div>
+  const tableHTML=`<div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--bdr);font-weight:700;font-size:14px;color:var(--navy)">&#128200; P&amp;L by ${groupLabel} <span style="font-weight:400;font-size:13px;color:var(--muted)">— ${rows.filter(r=>r.jobs>0).length} with activity</span></div>
     <div class="tw" style="overflow-x:auto"><table>
       <thead><tr>
-        <th>Division</th><th>Jobs</th>
-        <th style="text-align:right">Revenue</th>
-        <th style="text-align:right">Collected</th>
-        <th style="text-align:right">Expenses</th>
-        <th style="text-align:right">Gross Profit</th>
-        <th style="text-align:right">Margin</th>
-        <th style="text-align:right">Collection %</th>
+        <th>${groupLabel}</th><th>Jobs</th>
+        <th style="text-align:right">Revenue</th><th style="text-align:right">Collected</th>
+        <th style="text-align:right">Expenses</th><th style="text-align:right">Gross Profit</th>
+        <th style="text-align:right">Margin</th><th style="text-align:right">Collection %</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r=>{
-          const colPct=r.revenue>0?((r.collected/r.revenue)*100):0;
-          const isActive=r.jobs>0;
-          return`<tr style="${!isActive?'opacity:0.45':''}">
-            <td style="font-weight:600;color:var(--navy)">${esc(r.div)}</td>
-            <td><span style="background:var(--surf);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${r.jobs}</span></td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${fmt(r.revenue)}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(r.collected)}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--red)">${fmt(r.expenses)}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${gpColor(r.gp)}">${fmt(r.gp)}</td>
-            <td style="text-align:right">
-              <span style="background:${r.margin>=40?'#e8f5e9':r.margin>=20?'#fff8e1':'#ffebee'};
-                color:${r.margin>=40?'var(--green)':r.margin>=20?'var(--amber)':'var(--red)'};
-                border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(r.margin)}</span>
-            </td>
-            <td style="text-align:right">
-              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-                <div style="width:60px;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden">
-                  <div style="height:100%;width:${Math.min(colPct,100).toFixed(1)}%;background:${colPct>=90?'var(--green)':colPct>=60?'var(--amber)':'var(--red)'};border-radius:3px"></div>
-                </div>
-                <span style="font-size:12px;font-family:'DM Mono',monospace">${pct(colPct)}</span>
-              </div>
-            </td>
-          </tr>`;
-        }).join('')}
-        <!-- Totals row -->
+        ${rows.map(r=>{const cp=r.revenue>0?(r.collected/r.revenue)*100:0;return`<tr style="${r.jobs===0?'opacity:0.4':''}">
+          <td style="font-weight:600;color:var(--navy)">${esc(r.label)}</td>
+          <td><span style="background:var(--surf);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${r.jobs}</span></td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${fmt(r.revenue)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(r.collected)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--red)">${fmt(r.expenses)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${gpColor(r.gp)}">${fmt(r.gp)}</td>
+          <td style="text-align:right">${mgnBadge(r.margin)}</td>
+          <td style="text-align:right">${colBar(cp)}</td>
+        </tr>`;}).join('')}
         <tr style="background:var(--surf);border-top:2px solid var(--bdr)">
           <td style="font-weight:700;color:var(--navy)">TOTAL</td>
           <td><span style="background:var(--navy);color:var(--teal);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${totJobs}</span></td>
@@ -7855,17 +7880,50 @@ function bAcctDivision(){
           <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${fmt(totCol)}</td>
           <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--red)">${fmt(totExp)}</td>
           <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${gpColor(totGP)}">${fmt(totGP)}</td>
-          <td style="text-align:right"><span style="background:${totMgn>=40?'#e8f5e9':totMgn>=20?'#fff8e1':'#ffebee'};color:${totMgn>=40?'var(--green)':totMgn>=20?'var(--amber)':'var(--red)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(totMgn)}</span></td>
+          <td style="text-align:right">${mgnBadge(totMgn)}</td>
           <td></td>
         </tr>
       </tbody>
     </table></div>
   </div>
-
-  <!-- Monthly trend chart placeholder -->
   <div class="card" style="margin-top:0">
     <div class="ct">Monthly Revenue Trend</div>
     <div id="div-trend-chart" style="height:180px;display:flex;align-items:flex-end;gap:3px;padding-bottom:4px"></div>
+  </div>`;
+
+  return`<div class="pt">&#128200; P&amp;L</div>
+  <div class="ps">Profit &amp; loss — group by any dimension and filter by date, region, state, or division</div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <span style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-right:4px">Group By</span>
+    ${gbBtn('company','&#127970; Company')}
+    ${gbBtn('division','&#127963; Division')}
+    ${gbBtn('region','&#127757; Region')}
+    ${gbBtn('state','&#128205; State')}
+    ${gbBtn('territory','&#128204; Territory')}
+    <div style="margin-left:auto"><button class="btn btn-n sm" onclick="printPL()">&#128438; Print / Export</button></div>
+  </div>
+
+  ${_acctDateBar("showPage('acct-division')")}
+
+  ${groupBy!=='division'?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:600;color:var(--muted)">Filter Division:</span>
+    <select onchange="window._plFilterDiv=this.value;showPage('acct-division')" style="padding:5px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+      <option value="">All Divisions</option>
+      ${DIVS.map(d=>`<option value="${esc(d)}"${filterDiv===d?' selected':''}>${esc(d)}</option>`).join('')}
+    </select>
+    ${filterDiv?`<button class="btn btn-o sm" onclick="window._plFilterDiv='';showPage('acct-division')">&#10005; Clear</button>`:''}
+  </div>`:''}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px">
+    ${[{l:'Total Revenue',v:fmt(totRev),c:'n'},{l:'Collected',v:fmt(totCol),c:'g'},{l:'Total Expenses',v:fmt(totExp),c:'r'},{l:'Gross Profit',v:fmt(totGP),c:totGP>=0?'gr':'r'},{l:'Avg Margin',v:pct(totMgn),c:totMgn>=40?'gr':totMgn>=20?'a':'r'},{l:'Total Jobs',v:totJobs,c:'n'}].map(s=>`<div class="sc ${s.c}"><div class="sl">${s.l}</div><div class="sv">${s.v}</div></div>`).join('')}
+  </div>
+
+  <div id="pl-print-area">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      ${[{l:'Revenue',v:fmt(totRev)},{l:'Expenses',v:fmt(totExp)},{l:'Gross Profit',v:fmt(totGP)}].map(k=>`<div style="background:#f4f6fb;border:1px solid #dde3f0;border-radius:6px;padding:9px 14px"><div style="font-size:9px;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${k.l}</div><div style="font-size:16px;font-weight:700;color:#0D1B3E">${k.v}</div></div>`).join('')}
+    </div>
+    ${tableHTML}
   </div>
 
   <script>
@@ -7873,11 +7931,7 @@ function bAcctDivision(){
     const wos=window._S?._cache?.['lhs:work_orders']||JSON.parse(localStorage.getItem('lhs:work_orders')||'[]');
     const el=document.getElementById('div-trend-chart'); if(!el) return;
     const months={};
-    wos.forEach(w=>{
-      const d=(w.completed_at||w.scheduled_date||'').slice(0,7);
-      if(!d) return;
-      months[d]=(months[d]||0)+(w.total_price||0);
-    });
+    wos.forEach(w=>{const d=(w.completed_at||w.scheduled_date||'').slice(0,7);if(!d)return;months[d]=(months[d]||0)+(w.total_price||0);});
     const keys=Object.keys(months).sort().slice(-12);
     if(!keys.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;margin:auto">No data yet</div>';return;}
     const max=Math.max(...keys.map(k=>months[k]),1);
