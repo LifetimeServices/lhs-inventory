@@ -13467,16 +13467,32 @@ var _acctImp={rows:[],headers:[],mapping:{},step:1,target:'business'};
 
 const _ACCT_IMP_FIELDS={
   properties:[
-    {key:'address',      label:'Address',        required:true,  hint:'Street address — REQUIRED'},
-    {key:'city',         label:'City',            required:true,  hint:'City — REQUIRED'},
-    {key:'state',        label:'State',           required:false, hint:'2-letter state code'},
-    {key:'zip',          label:'Zip Code',        required:false, hint:''},
-    {key:'property_type',label:'Property Type',   required:false, hint:'Residential, Commercial, etc.'},
-    {key:'foundation_type',label:'Foundation',    required:false, hint:''},
-    {key:'sq_ft',        label:'Sq Ft',           required:false, hint:''},
-    {key:'year_built',   label:'Year Built',      required:false, hint:''},
-    {key:'region',       label:'Region',          required:false, hint:''},
-    {key:'notes',        label:'Notes',           required:false, hint:''},
+    // Core location
+    {key:'address',         label:'Address',              required:true,  hint:'Street address — REQUIRED (maps from "Location Street")'},
+    {key:'city',            label:'City',                 required:true,  hint:'City — REQUIRED (maps from "Location City")'},
+    {key:'state',           label:'State',                required:false, hint:'2-letter state code'},
+    {key:'zip',             label:'Zip Code',             required:false, hint:'Location Zip or Customer Zip'},
+    {key:'unit',            label:'Unit / Apt',           required:false, hint:'Location Unit'},
+    // Property details
+    {key:'property_type',   label:'Property Type',        required:false, hint:'Type column — Residential, Commercial, etc.'},
+    {key:'foundation_type', label:'Foundation',           required:false, hint:''},
+    {key:'sq_ft',           label:'Sq Ft',                required:false, hint:''},
+    {key:'year_built',      label:'Year Built',           required:false, hint:''},
+    {key:'region',          label:'Region',               required:false, hint:''},
+    // Customer / contact info from ServiceTitan
+    {key:'customer_name',   label:'Customer Name',        required:false, hint:'"Customer Name" or "Location Name"'},
+    {key:'phone',           label:'Phone',                required:false, hint:'"Location Phone" or "Customer Phone"'},
+    {key:'email',           label:'Email',                required:false, hint:'"Location Emails" or "Customer Email"'},
+    // ServiceTitan reference IDs
+    {key:'st_location_id',  label:'ST Location ID',       required:false, hint:'"Location ID" from ServiceTitan'},
+    {key:'st_customer_id',  label:'ST Customer ID',       required:false, hint:'"Customer ID" from ServiceTitan'},
+    // ServiceTitan extras
+    {key:'zone',            label:'Zone / Tech',          required:false, hint:'ServiceTitan Zone field'},
+    {key:'do_not_service',  label:'Do Not Service',       required:false, hint:'TRUE / FALSE'},
+    {key:'completed_jobs',  label:'Completed Jobs',       required:false, hint:'Job count from ServiceTitan'},
+    {key:'lifetime_revenue',label:'Lifetime Revenue',     required:false, hint:'"Locations Lifetime Revenue" or "Completed Revenue"'},
+    {key:'tags',            label:'Tags',                 required:false, hint:'"Location Tags" or "Customer Tags"'},
+    {key:'notes',           label:'Notes',                required:false, hint:''},
   ],
   business:[
     {key:'business_name',label:'Business Name',   required:true,  hint:'REQUIRED'},
@@ -13516,28 +13532,57 @@ const _ACCT_IMP_FIELDS={
 };
 
 const _ACCT_IMP_ALIASES={
-  address:['address','streetaddress','street','addr','street_address','fulladdress','propertyaddress'],
-  city:['city','town','municipality'],
-  state:['state','st','province'],
-  zip:['zip','zipcode','postalcode','zip_code'],
-  property_type:['type','propertytype','property_type','proptype','kind'],
+  // ── Properties / ServiceTitan Locations ──────────────────────────────────
+  address:        ['address','streetaddress','street','addr','street_address','fulladdress',
+                   'propertyaddress','locationstreet','locationaddress','customerstreet',
+                   'customeraddress','location_street','location_address'],
+  city:           ['city','town','municipality','locationcity','location_city',
+                   'customercity','customer_city'],
+  state:          ['state','st','province','locationstate','location_state',
+                   'customerstate','customer_state'],
+  zip:            ['zip','zipcode','postalcode','zip_code','locationzip','location_zip',
+                   'customerzip','customer_zip','postal'],
+  unit:           ['unit','apt','suite','locationunit','location_unit','apartment'],
+  property_type:  ['type','propertytype','property_type','proptype','kind','locationtype',
+                   'location_type','customertype','customer_type'],
   foundation_type:['foundation','foundationtype','basementtype','foundtype'],
-  sq_ft:['sqft','squarefeet','squarefootage','sq_ft','area','size'],
-  year_built:['yearbuilt','year_built','builtyear','constructed'],
-  region:['region'],
-  notes:['notes','note','comments','comment','memo','remarks'],
-  business_name:['businessname','business_name','name','company','companyname','firm','organization'],
-  business_type:['type','businesstype','business_type','category','kind'],
+  sq_ft:          ['sqft','squarefeet','squarefootage','sq_ft','area','size'],
+  year_built:     ['yearbuilt','year_built','builtyear','constructed'],
+  region:         ['region'],
+  customer_name:  ['customername','customer_name','locationname','location_name',
+                   'name','ownername','owner'],
+  phone:          ['phone','phonenumber','telephone','tel','mobile','cell',
+                   'locationphone','location_phone','customerphone','customer_phone'],
+  email:          ['email','emailaddress','email-address','locationemail','locationemails',
+                   'location_email','location_emails','customeremail','customer_email'],
+  st_location_id: ['locationid','location_id','st_location_id','stlocationid','servicetitanid',
+                   'servicetitanlocationid','externalid'],
+  st_customer_id: ['customerid','customer_id','st_customer_id','stcustomerid'],
+  zone:           ['zone','territory','techzone','assignedtech','assignedzone'],
+  do_not_service: ['donotservice','do_not_service','donot','dontservice','blocked'],
+  completed_jobs: ['completedjobs','completed_jobs','jobcount','jobs','totalcompleted',
+                   'completedjobnumber'],
+  lifetime_revenue:['lifetimerevenue','lifetime_revenue','totalrevenue','locationstotalsales',
+                    'locations_lifetime_revenue','locationslifetimerevenue',
+                    'completedrevenue','completed_revenue','totallifetimerevenue'],
+  tags:           ['tags','locationtags','location_tags','customertags','customer_tags',
+                   'label','labels'],
+  notes:          ['notes','note','comments','comment','memo','remarks'],
+  // ── Business Accounts ────────────────────────────────────────────────────
+  business_name:  ['businessname','business_name','name','company','companyname','firm',
+                   'organization'],
+  business_type:  ['type','businesstype','business_type','category','kind'],
   account_category:['category','accountcategory','account_category','accounttype'],
-  account_status:['status','accountstatus'],
-  contact_name:['contactname','contact_name','contact','primarycontact','ownername','owner'],
-  contact_title:['title','contacttitle','jobtitle','role','position'],
-  phone:['phone','phonenumber','telephone','tel','mobile','cell'],
-  email:['email','emailaddress','e-mail'],
-  website:['website','web','url','homepage','siteurl'],
-  account_name:['accountname','account_name','name','company','companyname','firm','organization'],
-  account_type:['type','accounttype','account_type','firmtype'],
-  license_number:['license','licensenumber','license_number','licnum','certnum','certification'],
+  account_status: ['status','accountstatus','account_status'],
+  contact_name:   ['contactname','contact_name','contact','primarycontact','ownername','owner'],
+  contact_title:  ['title','contacttitle','jobtitle','role','position'],
+  website:        ['website','web','url','homepage','siteurl'],
+  // ── Commercial Accounts ──────────────────────────────────────────────────
+  account_name:   ['accountname','account_name','name','company','companyname','firm',
+                   'organization'],
+  account_type:   ['type','accounttype','account_type','firmtype'],
+  license_number: ['license','licensenumber','license_number','licnum','certnum',
+                   'certification'],
 };
 
 function oImportAccounts(target){
@@ -13708,6 +13753,14 @@ function _acctImpGoStep3(){
 function _acctImpStep3(){
   const fields=_ACCT_IMP_FIELDS[_acctImp.target]||[];
   const get=(row,key)=>{const idx=_acctImp.mapping[key];return idx!==undefined?String(row[idx]===undefined||row[idx]===null?'':row[idx]).trim():'';};
+  // ServiceTitan value cleaners
+  const cleanCurrency=v=>parseFloat(v.replace(/[$,\s]/g,''))||null;
+  const cleanBool=v=>{const l=v.toLowerCase();return l==='true'||l==='yes'||l==='1';};
+  const cleanInt=v=>parseInt(v.replace(/[^0-9]/g,''))||null;
+  // Keys that need special type handling
+  const currencyKeys=new Set(['lifetime_revenue','completed_revenue']);
+  const boolKeys=new Set(['do_not_service']);
+  const intKeys=new Set(['completed_jobs','sq_ft','year_built']);
   const reqKey=fields.find(f=>f.required)?.key;
   const reqLabel=fields.find(f=>f.required)?.label||'Name';
   let toAdd=[],errs=[];
@@ -13715,7 +13768,18 @@ function _acctImpStep3(){
     const req=reqKey?get(row,reqKey):'';
     if(reqKey&&!req){errs.push({row:i+2,issue:`Missing ${reqLabel}`});return;}
     const rec={created_by:CU?.name||'',created_at:new Date().toISOString()};
-    fields.forEach(f=>{ const val=get(row,f.key); if(val) rec[f.key]=val; });
+    fields.forEach(f=>{
+      const val=get(row,f.key);
+      if(!val) return;
+      if(currencyKeys.has(f.key)) rec[f.key]=cleanCurrency(val);
+      else if(boolKeys.has(f.key)) rec[f.key]=cleanBool(val);
+      else if(intKeys.has(f.key)) rec[f.key]=cleanInt(val);
+      else rec[f.key]=val;
+    });
+    // Normalize state to uppercase 2-letter
+    if(rec.state) rec.state=String(rec.state).trim().toUpperCase().slice(0,2);
+    // Normalize property_type: map ServiceTitan "Residential" → keep as-is
+    if(rec.property_type) rec.property_type=rec.property_type.trim();
     toAdd.push(rec);
   });
   _acctImp.toAdd=toAdd;
