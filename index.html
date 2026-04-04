@@ -11630,6 +11630,11 @@ try{_dispPinned=JSON.parse(localStorage.getItem('lms_disp_pin')||'{}');}catch{}
 // Restore pinned region filter
 if(_dispPinned['__region__']) _dispRegion=_dispPinned['__region__'];
 try{_dispCollapsed=JSON.parse(localStorage.getItem('lms_disp_collapsed')||'[]');}catch{}
+// Restore date and view so refresh lands on the same board state
+try{const _sd=localStorage.getItem('lms_disp_date'); if(_sd) _dispDate=_sd;}catch{}
+try{const _sv=localStorage.getItem('lms_disp_view'); if(_sv) _dispView=_sv;}catch{}
+try{const _sr=localStorage.getItem('lms_disp_region'); if(_sr) _dispRegion=_sr;}catch{}
+try{const _st=localStorage.getItem('lms_disp_territory'); if(_st) _dispTerritory=_st;}catch{}
 // Restore saved division order
 try{
   const savedOrder=JSON.parse(localStorage.getItem('lms_disp_order')||'null');
@@ -12645,17 +12650,23 @@ async function dispClockOut(techName){
 // Dispatch nav
 // Navigate to dispatch board — activates sub-nav if coming from elsewhere
 function goDispBoard(){ if(_navMode!=='dispatch') renderDispatchNav(); showPage('dispatch-board'); }
+function _dispSave(){
+  try{localStorage.setItem('lms_disp_date',_dispDate);}catch{}
+  try{localStorage.setItem('lms_disp_view',_dispView);}catch{}
+  try{localStorage.setItem('lms_disp_region',_dispRegion);}catch{}
+  try{localStorage.setItem('lms_disp_territory',_dispTerritory);}catch{}
+}
 function dispNav(dir){
   const d=new Date(_dispDate+'T12:00:00');
   d.setDate(d.getDate()+dir);
   _dispDate=d.toISOString().split('T')[0];
-  showPage('dispatch-board');
+  _dispSave(); showPage('dispatch-board');
 }
-function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; showPage('dispatch-board'); }
-function dispSetDate(val){ if(val){ _dispDate=val; showPage('dispatch-board'); } }
-function dispSetView(v){ _dispView=v; showPage('dispatch-board'); }
-function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; showPage('dispatch-board'); }
-function dispSetTerritory(t){ _dispTerritory=t; showPage('dispatch-board'); }
+function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; _dispSave(); showPage('dispatch-board'); }
+function dispSetDate(val){ if(val){ _dispDate=val; _dispSave(); showPage('dispatch-board'); } }
+function dispSetView(v){ _dispView=v; _dispSave(); showPage('dispatch-board'); }
+function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; _dispSave(); showPage('dispatch-board'); }
+function dispSetTerritory(t){ _dispTerritory=t; _dispSave(); showPage('dispatch-board'); }
 
 function dispToggleDiv(div){
   const idx=_dispCollapsed.indexOf(div);
