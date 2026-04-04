@@ -2922,24 +2922,33 @@ async function postXfr(){
 
   if(errs.length){tst(errs[0],'error');return}
 
-  // Update local cache and re-render immediately
+  // Await ALL Supabase saves BEFORE updating localStorage — prevents warmCache
+  // from fetching stale data and overwriting our changes mid-save
+  tst('Saving transfer…','info');
+  try{
+    const saves=[];
+    for(const r of changedVi){
+      if(r.id) saves.push(dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty}));
+      else saves.push(dbInsert('lhs:vi',r).then(saved=>{if(saved?.id) r.id=saved.id;}));
+    }
+    for(const r of changedLs){
+      if(r.id) saves.push(dbUpdate('lhs:ls',r.id,{qty:r.qty}));
+      else saves.push(dbInsert('lhs:ls',r).then(saved=>{if(saved?.id) r.id=saved.id;}));
+    }
+    for(const xfrRow of newXfrs){
+      saves.push(dbInsert('lhs:xfrs',xfrRow).then(saved=>{if(saved?.id) xfrRow.id=saved.id;}));
+    }
+    await Promise.all(saves);
+  }catch(e){
+    console.warn('Transfer DB save error:',e?.message);
+    tst('Transfer saved locally — sync may be pending','warning');
+  }
+
+  // Now commit to localStorage (with newly assigned IDs from inserts) and re-render
   S.set('lhs:ls',ls); S.set('lhs:vi',vi); S.set('lhs:xfrs',xfrs);
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
   showPage('transfer');
-
-  // Persist to Supabase in background so data survives refresh
-  for(const r of changedVi){
-    if(r.id) dbUpdate('lhs:vi',r.id,{qty:r.qty,qty_on_hand:r.qty}).catch(e=>console.warn('vi update:',e?.message));
-    else dbInsert('lhs:vi',r).then(saved=>{if(saved) r.id=saved.id;}).catch(e=>console.warn('vi insert:',e?.message));
-  }
-  for(const r of changedLs){
-    if(r.id) dbUpdate('lhs:ls',r.id,{qty:r.qty}).catch(e=>console.warn('ls update:',e?.message));
-    else dbInsert('lhs:ls',r).then(saved=>{if(saved) r.id=saved.id;}).catch(e=>console.warn('ls insert:',e?.message));
-  }
-  for(const xfrRow of newXfrs){
-    dbInsert('lhs:xfrs',xfrRow).catch(e=>console.warn('xfr insert:',e?.message));
-  }
 }
 function restMax(){
   const to=v('xt');const from=v('xf');
