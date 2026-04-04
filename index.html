@@ -20609,6 +20609,27 @@ function _hrEmployeeForm(u, saveFn){
     <div><label>PTO Accrual (hrs/period)</label><input id="hef-pto-accrual" type="number" step="0.25" value="${u.pto_accrual!=null?u.pto_accrual:''}"></div>
   </div>
 
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Schedule &amp; Availability</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:8px">
+    <div><label>Work Start</label><select id="hef-wstart">
+      ${['05:00','06:00','07:00','08:00','09:00','10:00','11:00','12:00'].map(t=>`<option value="${t}"${(u.work_start||'08:00')===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+    <div><label>Work End</label><select id="hef-wend">
+      ${['12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'].map(t=>`<option value="${t}"${(u.work_end||'17:00')===t?' selected':''}>${t}</option>`).join('')}
+    </select></div>
+    <div><label>Timezone</label><select id="hef-tz">
+      ${['America/Chicago','America/New_York','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu'].map(tz=>`<option value="${tz}"${(u.timezone||'America/Chicago')===tz?' selected':''}>${tz}</option>`).join('')}
+    </select></div>
+  </div>
+  <div style="margin-bottom:16px">
+    <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500">Work Days</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:5px 10px;border:1px solid var(--bdr);border-radius:6px;background:${(u.work_days||'Mon,Tue,Wed,Thu,Fri').includes(d)?'var(--navy)':'transparent'};color:${(u.work_days||'Mon,Tue,Wed,Thu,Fri').includes(d)?'var(--teal)':'var(--text)'}">
+        <input type="checkbox" id="hef-wd-${d}" style="width:auto;margin:0" ${(u.work_days||'Mon,Tue,Wed,Thu,Fri').includes(d)?'checked':''}> ${d}
+      </label>`).join('')}
+    </div>
+  </div>
+
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Field Service</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div><label>Vehicle / Van Assignment</label><select id="hef-vehicle">
@@ -20746,6 +20767,10 @@ function _hrEmployeePayload(){
     commission_rate:parseFloat(v('hef-comm'))||null,
     pto_balance:v('hef-pto')!==''?parseFloat(v('hef-pto')):null,
     pto_accrual:v('hef-pto-accrual')!==''?parseFloat(v('hef-pto-accrual')):null,
+    work_start:v('hef-wstart')||'08:00',
+    work_end:v('hef-wend')||'17:00',
+    timezone:v('hef-tz')||'America/Chicago',
+    work_days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter(d=>document.getElementById('hef-wd-'+d)?.checked).join(',')||'Mon,Tue,Wed,Thu,Fri',
     vehicle_assigned:v('hef-vehicle')||null,
     service_territory:v('hef-territory')||null,
     equipment_issued:v('hef-equip')||null,
