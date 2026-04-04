@@ -8932,7 +8932,7 @@ function _getCalEvents(year, month){
         if(cur.getFullYear()===year&&cur.getMonth()===month){
           const key=`${year}-${String(month+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
           const t=CAL_EVENT_TYPES[ev.event_type]||CAL_EVENT_TYPES.custom;
-          push(key,{...t, name:ev.title+(ev.user_name?` (${ev.user_name})`:'')} );
+          push(key,{...t, name:ev.title, evId:ev.id, startDate:ev.start_date, endDate:ev.end_date||ev.start_date});
         }
         cur.setDate(cur.getDate()+1);
       }
@@ -8957,20 +8957,22 @@ function bCompanyCalendar(){
   let cells='';
   // Leading blanks
   for(let i=0;i<firstDay;i++){
-    cells+=`<div style="min-height:90px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
+    cells+=`<div style="min-height:72px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
   }
   for(let d=1;d<=daysInMonth;d++){
     const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday=dateStr===todayStr;
     const isSelected=dateStr===_calSelectedDay;
     const dayEvts=events[dateStr]||[];
-    const maxShow=3;
-    const evtChips=dayEvts.slice(0,maxShow).map(e=>
-      `<div title="${e.name}" style="background:${e.bg};color:${e.color};font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;border-left:2px solid ${e.color};margin-bottom:1px">${e.icon} ${e.name}</div>`
-    ).join('');
+    const maxShow=2;
+    const evtChips=dayEvts.slice(0,maxShow).map(e=>{
+      // Short label: for OOO-style "First Last — Type" show just first name + icon
+      const shortLabel=e.name.includes(' — ')?e.name.split(' ')[0]:e.name.split(' ')[0];
+      return`<div title="${esc(e.name)}" style="background:${e.bg};color:${e.color};font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;border-left:2px solid ${e.color};margin-bottom:1px">${e.icon} ${shortLabel}</div>`;
+    }).join('');
     const overflow=dayEvts.length>maxShow?`<div style="font-size:10px;color:var(--muted);padding:1px 5px">+${dayEvts.length-maxShow} more</div>`:'';
 
-    cells+=`<div onclick="calSelectDay('${dateStr}')" style="min-height:90px;padding:6px;cursor:pointer;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr);
+    cells+=`<div onclick="calSelectDay('${dateStr}')" style="min-height:72px;padding:5px;cursor:pointer;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr);
       background:${isSelected?'#f0fdf4':isToday?'#eff6ff':'white'};
       transition:background .1s;position:relative"
       onmouseover="this.style.background='${isSelected?'#dcfce7':'#f8fafc'}'"
@@ -8989,7 +8991,7 @@ function bCompanyCalendar(){
   const total=firstDay+daysInMonth;
   const trailing=(7-total%7)%7;
   for(let i=0;i<trailing;i++){
-    cells+=`<div style="min-height:90px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
+    cells+=`<div style="min-height:72px;background:#fafafa;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr)"></div>`;
   }
 
   // Selected day detail panel
@@ -9021,17 +9023,43 @@ function bCompanyCalendar(){
     </div>`;
   }
 
-  // Upcoming events sidebar list (next 30 days)
+  // Upcoming events sidebar — deduplicated so multi-day spans show once
   const upcomingEvents=[];
-  for(let i=0;i<60;i++){
-    const dt=new Date(today);
-    dt.setDate(today.getDate()+i);
+  const _seenEvtIds=new Set();
+  const todayStr0=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  // 1. Real calendar events from cache (deduplicated by id)
+  const _upCalEvts=(S.get('lhs:cal_events')||[]).filter(ev=>{
+    if(!ev.start_date) return false;
+    const end=ev.end_date||ev.start_date;
+    return end>=todayStr0 && ev.start_date<=(()=>{const d=new Date(today);d.setDate(d.getDate()+60);return d.toISOString().slice(0,10);})();
+  });
+  _upCalEvts.sort((a,b)=>a.start_date.localeCompare(b.start_date));
+  _upCalEvts.forEach(ev=>{
+    const key=ev.id||('e-'+ev.title+ev.start_date);
+    if(_seenEvtIds.has(key)) return;
+    _seenEvtIds.add(key);
+    const t=CAL_EVENT_TYPES[ev.event_type]||CAL_EVENT_TYPES.custom;
+    const sd=new Date(ev.start_date+'T12:00:00');
+    const dateLabel=sd.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const endLabel=ev.end_date&&ev.end_date!==ev.start_date?'–'+new Date(ev.end_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+    upcomingEvents.push({dateStr:ev.start_date,date:dateLabel,dateRange:endLabel,name:ev.title,...t,evId:ev.id});
+    if(upcomingEvents.length>=15) return;
+  });
+
+  // 2. Computed events: holidays, birthdays, anniversaries (loop days, skip if already have enough)
+  for(let i=0;i<60&&upcomingEvents.length<15;i++){
+    const dt=new Date(today); dt.setDate(today.getDate()+i);
     const ds=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-    const allY=_getCalEvents(dt.getFullYear(),dt.getMonth());
-    const dayEvts2=allY[ds]||[];
-    dayEvts2.forEach(e=>upcomingEvents.push({dateStr:ds,date:dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}),...e}));
-    if(upcomingEvents.length>=12) break;
+    const computedEvts=(_getCalEvents(dt.getFullYear(),dt.getMonth())[ds]||[]).filter(e=>!e.evId); // evId means it's from cache, skip
+    computedEvts.forEach(e=>{
+      const key='c-'+ds+'-'+e.name;
+      if(_seenEvtIds.has(key)) return;
+      _seenEvtIds.add(key);
+      upcomingEvents.push({dateStr:ds,date:dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}),dateRange:'',...e});
+    });
   }
+  upcomingEvents.sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
 
   return`<div style="display:flex;gap:20px;align-items:flex-start">
   <!-- MAIN CALENDAR -->
@@ -9075,16 +9103,17 @@ function bCompanyCalendar(){
       </div>
       <div style="max-height:480px;overflow-y:auto">
         ${upcomingEvents.length?upcomingEvents.map(e=>`
-          <div onclick="calSelectDay('${e.dateStr}')" style="padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:background .1s"
+          <div style="padding:9px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:8px;align-items:flex-start;transition:background .1s"
             onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background='white'">
-            <div style="flex-shrink:0;width:36px;text-align:center">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${e.date.split(' ')[0]}</div>
-              <div style="font-size:18px;font-weight:700;color:var(--navy);line-height:1">${e.date.split(' ')[1]}</div>
+            <div onclick="calSelectDay('${e.dateStr}')" style="flex-shrink:0;width:34px;text-align:center;cursor:pointer">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;line-height:1.2">${e.date.split(' ')[0]}</div>
+              <div style="font-size:17px;font-weight:700;color:var(--navy);line-height:1.1">${e.date.split(' ')[1]}</div>
             </div>
-            <div style="min-width:0">
-              <div style="font-size:12px;font-weight:600;color:${e.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.icon} ${e.name}</div>
-              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${e.label}</div>
+            <div onclick="calSelectDay('${e.dateStr}')" style="min-width:0;flex:1;cursor:pointer">
+              <div style="font-size:12px;font-weight:600;color:${e.color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.icon} ${e.name}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${e.label}${e.dateRange?` <span style="font-weight:400;text-transform:none">${e.dateRange}</span>`:''}</div>
             </div>
+            ${e.evId?`<button onclick="delCalEvent('${e.evId}')" title="Remove" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 2px;line-height:1" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>`:''}
           </div>`).join(''):`<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No upcoming events in the next 60 days.</div>`}
       </div>
     </div>
@@ -9093,7 +9122,15 @@ function bCompanyCalendar(){
     <div style="margin-top:14px;background:white;border:1px solid var(--bdr);border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
       <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:10px">📊 This Month</div>
       ${Object.entries(CAL_EVENT_TYPES).map(([k,v])=>{
-        const cnt=Object.values(events).flat().filter(e=>e.label===v.label).length;
+        // Count unique events (not days) for this month
+        const seenThisMonth=new Set();
+        Object.values(events).flat().forEach(e=>{
+          if(e.label===v.label){
+            const uid=e.evId||(e.name+e.startDate);
+            seenThisMonth.add(uid);
+          }
+        });
+        const cnt=seenThisMonth.size;
         return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdr)">
           <span style="font-size:12px;color:var(--text)">${v.icon} ${v.label}</span>
           <span style="font-size:12px;font-weight:700;color:${cnt?v.color:'var(--muted)'}">${cnt}</span>
@@ -9277,6 +9314,19 @@ async function svCalEvent(){
   _calYear=new Date(ev.start_date+'T12:00:00').getFullYear();
   _calMonth=new Date(ev.start_date+'T12:00:00').getMonth();
   _calSelectedDay=ev.start_date;
+  const pg=document.getElementById('p-dispatch-calendar');
+  if(pg) pg.innerHTML=bCompanyCalendar();
+}
+
+async function delCalEvent(id){
+  if(!confirm('Remove this calendar event?')) return;
+  try{
+    const{error}=await DB.from('lhs_calendar_events').delete().eq('id',id);
+    if(error) console.warn('Cal delete:',error.message);
+  }catch(e){console.warn('Cal delete:',e.message);}
+  const evts=(S.get('lhs:cal_events')||[]).filter(e=>e.id!==id);
+  S.set('lhs:cal_events',evts);
+  tst('Event removed','success');
   const pg=document.getElementById('p-dispatch-calendar');
   if(pg) pg.innerHTML=bCompanyCalendar();
 }
@@ -18288,20 +18338,91 @@ function _myTORTable(list, showStatus){
   return`<div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr>
       <th>Type</th><th>From</th><th>To</th><th>Hours</th><th>Submitted</th><th>Notes</th>
-      <th>Status</th><th>Reviewed By</th>
+      <th>Status</th><th>Reviewed By</th><th></th>
     </tr></thead>
-    <tbody>${list.map(r=>`<tr>
+    <tbody>${list.map(r=>{
+      const isPending=!r.status||r.status==='Pending';
+      return`<tr>
       <td><span class="bx bn" style="font-size:11px">${esc(r.leave_type||'PTO')}</span></td>
       <td style="font-size:13px;white-space:nowrap">${r.start_date?fmtDate(r.start_date):'—'}</td>
       <td style="font-size:13px;white-space:nowrap">${r.end_date&&r.end_date!==r.start_date?fmtDate(r.end_date):'—'}</td>
       <td style="font-size:13px;text-align:center">${r.hours||'—'}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.created_at?fmtDate(r.created_at.slice(0,10)):'—'}</td>
-      <td style="font-size:12px;color:var(--muted);max-width:200px">${esc(r.notes||'')}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:180px">${esc(r.notes||'')}</td>
       <td>${_myTORBadge(r.status)}</td>
       <td style="font-size:12px;color:var(--muted)">${r.approved_by?esc(r.approved_by):'—'}</td>
-    </tr>`).join('')}
+      <td style="white-space:nowrap">
+        ${isPending?`<button class="btn sm btn-o" onclick="oEditMyTOR('${r.id}')">Edit</button> <button class="btn sm btn-r" onclick="svCancelMyTOR('${r.id}')">Cancel</button>`:''}
+      </td>
+    </tr>`;}).join('')}
     </tbody>
   </table></div></div>`;
+}
+
+function oEditMyTOR(id){
+  const reqs=S.get('lhs:time_off_requests')||[];
+  const r=reqs.find(x=>x.id===id);
+  if(!r){tst('Request not found','error');return}
+  oMod('Edit Time Off Request',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div><label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Leave Type</label>
+      <select id="etor-type" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text)">
+        ${HR_LEAVE_TYPES.map(t=>`<option${r.leave_type===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div><label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Hours</label>
+      <input type="number" id="etor-hours" step="0.5" value="${r.hours||''}"
+        style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+    </div>
+    <div><label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">From Date</label>
+      <input type="date" id="etor-start" value="${r.start_date||''}"
+        style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+    </div>
+    <div><label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">To Date</label>
+      <input type="date" id="etor-end" value="${r.end_date||''}"
+        style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box">
+    </div>
+  </div>
+  <div style="margin-bottom:14px"><label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Notes / Reason</label>
+    <textarea id="etor-notes" rows="3" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical">${esc(r.notes||'')}</textarea>
+  </div>
+  <div style="border-top:1px solid var(--bdr);padding-top:12px;display:flex;gap:8px">
+    <button class="btn btn-n" onclick="svEditMyTOR('${id}')">Save Changes</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svEditMyTOR(id){
+  const upd={
+    leave_type:v('etor-type')||'PTO',
+    start_date:v('etor-start'),
+    end_date:v('etor-end')||v('etor-start'),
+    hours:parseFloat(v('etor-hours'))||null,
+    notes:v('etor-notes')||null,
+  };
+  if(!upd.start_date){tst('Start date required','error');return}
+  try{
+    const{error}=await DB.from('lhs_time_off_requests').update(upd).eq('id',id);
+    if(error) console.warn('TOR edit:',error.message);
+    const reqs=S.get('lhs:time_off_requests')||[];
+    const idx=reqs.findIndex(r=>r.id===id);
+    if(idx>=0) reqs[idx]={...reqs[idx],...upd};
+    S.set('lhs:time_off_requests',reqs);
+    cMod(); tst('Request updated','success'); showPage('my-timeoff');
+  }catch(e){tst('Update failed','error')}
+}
+
+async function svCancelMyTOR(id){
+  if(!confirm('Cancel this time off request?')) return;
+  try{
+    const{error}=await DB.from('lhs_time_off_requests').update({status:'Cancelled'}).eq('id',id);
+    if(error) console.warn('TOR cancel:',error.message);
+    const reqs=S.get('lhs:time_off_requests')||[];
+    const idx=reqs.findIndex(r=>r.id===id);
+    if(idx>=0) reqs[idx].status='Cancelled';
+    S.set('lhs:time_off_requests',reqs);
+    tst('Request cancelled','success'); showPage('my-timeoff');
+  }catch(e){tst('Cancel failed','error')}
 }
 
 function _myTORBadge(s){
