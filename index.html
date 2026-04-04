@@ -7994,9 +7994,6 @@ function oAddInvoice(d){
       <div style="position:relative">
         <input id="inv-cust-search" autocomplete="off" placeholder="Type name or phone to search..."
           value="${esc(existCustName)}"
-          oninput="invSearchCust()"
-          onfocus="invSearchCust()"
-          onkeyup="invSearchCust()"
           style="width:100%;padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:14px;font-family:inherit">
         <div id="inv-cust-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
           background:white;border:1px solid var(--bdr);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:220px;overflow-y:auto"></div>
@@ -8032,6 +8029,22 @@ function oAddInvoice(d){
       <button class="btn btn-n" onclick="saveInvoice('${esc(editId)}')">${editId?'Save Changes':'Save Invoice'}</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
+  // Attach listener after DOM is ready — inline handlers unreliable on dynamic content
+  setTimeout(()=>{
+    const inp=document.getElementById('inv-cust-search');
+    if(!inp) return;
+    inp.addEventListener('input', invSearchCust);
+    inp.addEventListener('keyup', invSearchCust);
+    inp.addEventListener('focus', invSearchCust);
+    inp.addEventListener('click', invSearchCust);
+    // Hide results when clicking outside
+    document.addEventListener('click', function _invOutside(e){
+      if(!document.getElementById('inv-cust-results')?.contains(e.target) && e.target.id!=='inv-cust-search'){
+        const r=document.getElementById('inv-cust-results'); if(r) r.style.display='none';
+        document.removeEventListener('click',_invOutside);
+      }
+    });
+  }, 60);
 }
 
 function invSearchCust(){
