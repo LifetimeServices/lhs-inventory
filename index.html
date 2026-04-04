@@ -20387,7 +20387,6 @@ function bHREmployeeDetail(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
           <div>
             ${_hrField('Vehicle / Van', u.vehicle_assigned)}
-            ${_hrField('Equipment Issued', u.equipment_issued)}
             ${_hrField('Service Territory', u.service_territory)}
             ${_hrField('GPS Tracking', u.gps_enabled?'Enabled':'Not configured')}
           </div>
@@ -20396,6 +20395,18 @@ function bHREmployeeDetail(){
             ${_hrField('Work End', u.work_end||'17:00')}
             ${_hrField('Home Location', u.home_location)}
           </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Equipment Issued</div>
+          ${(()=>{const items=_parseEquipment(u.equipment_issued);
+            if(!items.length) return`<div style="font-size:13px;color:var(--muted)">— No equipment on file</div>`;
+            return`<div style="display:flex;flex-direction:column;gap:6px">
+              ${items.map(it=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surf);border-radius:8px;border-left:3px solid var(--navy)">
+                <div style="flex:1;font-weight:600;font-size:13px">${esc(it.name||'—')}</div>
+                ${it.serial?`<div style="font-size:12px;color:var(--muted);font-family:monospace">${esc(it.serial)}</div>`:''}
+              </div>`).join('')}
+            </div>`;
+          })()}
         </div>
       </div>
       <div>
@@ -20483,6 +20494,28 @@ function bHREmployeeDetail(){
     </div>`:''}
     ${tabContent[tab]||tabContent.profile}
   </div>`;
+}
+
+// Parse equipment_issued — supports legacy string OR JSON array [{name,serial}]
+function _parseEquipment(raw){
+  if(!raw) return[];
+  if(typeof raw==='object'&&Array.isArray(raw)) return raw;
+  try{const p=JSON.parse(raw);if(Array.isArray(p)) return p;}catch{}
+  // Legacy plain string — treat entire value as one item with no serial
+  return raw.trim()?[{name:raw.trim(),serial:''}]:[];
+}
+
+// Add a new equipment row to the edit form
+function hrAddEquipRow(name='',serial=''){
+  const c=document.getElementById('hef-equip-rows');
+  if(!c) return;
+  const idx=c.children.length;
+  const row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;margin-bottom:6px';
+  row.innerHTML=`<input placeholder="Equipment name (e.g. Company Phone)" value="${esc(name)}" style="padding:8px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:6px;width:100%;box-sizing:border-box">
+    <input placeholder="Serial / ID (e.g. 111-111-1111)" value="${esc(serial)}" style="padding:8px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:6px;width:100%;box-sizing:border-box">
+    <button type="button" onclick="this.closest('div').remove()" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:13px;white-space:nowrap">✕</button>`;
+  c.appendChild(row);
 }
 
 function _hrField(label, value){
@@ -20637,7 +20670,20 @@ function _hrEmployeeForm(u, saveFn){
       ${VH.map(v=>`<option${u.vehicle_assigned===v?' selected':''}>${v}</option>`).join('')}
     </select></div>
     <div><label>Service Territory</label><input id="hef-territory" placeholder="e.g. Chicago North, Metro East" value="${esc(u.service_territory||'')}"></div>
-    <div><label>Equipment Issued</label><input id="hef-equip" placeholder="e.g. Radalink RM, Fantech HRV-85" value="${esc(u.equipment_issued||'')}"></div>
+    <div style="grid-column:1/-1">
+      <label style="display:block;margin-bottom:6px">Equipment Issued</label>
+      <div id="hef-equip-rows" style="margin-bottom:6px">
+        ${(()=>{const items=_parseEquipment(u.equipment_issued);
+          const rows=items.length?items:[{name:'',serial:''}];
+          return rows.map(it=>`<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;margin-bottom:6px">
+            <input placeholder="Equipment name (e.g. Company Phone)" value="${esc(it.name||'')}" style="padding:8px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:6px;width:100%;box-sizing:border-box">
+            <input placeholder="Serial / ID (e.g. 111-111-1111)" value="${esc(it.serial||'')}" style="padding:8px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:6px;width:100%;box-sizing:border-box">
+            <button type="button" onclick="this.closest('div').remove()" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:13px">✕</button>
+          </div>`).join('');
+        })()}
+      </div>
+      <button type="button" onclick="hrAddEquipRow()" style="background:var(--surf);border:1px dashed var(--bdr);border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;color:var(--navy);font-weight:600;width:100%">+ Add Equipment Row</button>
+    </div>
     <div><label>GPS Tracking</label><select id="hef-gps">
       <option value="">Not configured</option>
       <option value="true"${u.gps_enabled?'selected':''}>Enabled</option>
@@ -20773,7 +20819,11 @@ function _hrEmployeePayload(){
     work_days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter(d=>document.getElementById('hef-wd-'+d)?.checked).join(',')||'Mon,Tue,Wed,Thu,Fri',
     vehicle_assigned:v('hef-vehicle')||null,
     service_territory:v('hef-territory')||null,
-    equipment_issued:v('hef-equip')||null,
+    equipment_issued:(()=>{
+      const rows=[...document.querySelectorAll('#hef-equip-rows > div')];
+      const items=rows.map(r=>{const ins=[...r.querySelectorAll('input')];return{name:(ins[0]?.value||'').trim(),serial:(ins[1]?.value||'').trim()};}).filter(i=>i.name);
+      return items.length?JSON.stringify(items):null;
+    })(),
     gps_enabled:document.getElementById('hef-gps')?.value==='true'?true:document.getElementById('hef-gps')?.value==='false'?false:null,
     include_dispatch:document.getElementById('hef-disp')?.value!=='false',
     timesheet_needed:document.getElementById('hef-ts')?.value!=='false',
