@@ -24497,6 +24497,7 @@ async function pbLoadServices(el){
         <th>Code</th>
         <th>Category</th>
         <th>Description</th>
+        <th style="text-align:center">Materials</th>
         <th style="text-align:right">Hours</th>
         <th style="text-align:right">Price</th>
         <th style="text-align:center">Status</th>
@@ -24512,7 +24513,8 @@ async function pbLoadServices(el){
         <td style="font-weight:600;color:var(--navy)">${esc(s.name)}</td>
         <td style="font-family:monospace;font-size:12px;color:var(--muted)">${esc(s.code||'')}</td>
         <td><span style="background:#f0f4f9;border:1px solid var(--bdr);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600">${esc(s.category||'—')}</span></td>
-        <td style="font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((s.description||'').split('\n')[0].replace(/^#+\s*/,''))}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((s.description||'').split('\n')[0].replace(/^[•\-]\s*/,''))}</td>
+        <td style="text-align:center;font-size:12px">${(Array.isArray(s.materials)?s.materials.length:(s.materials?JSON.parse(s.materials||'[]').length:0))||'—'}</td>
         <td style="text-align:right;font-size:13px">${s.hours>0?s.hours+'h':'—'}</td>
         <td style="text-align:right;font-weight:700;color:var(--navy)">${s.price!=null&&s.price>0?'$'+Number(s.price).toFixed(2):'—'}</td>
         <td style="text-align:center">
@@ -24551,73 +24553,177 @@ async function pbEditService(id){
 async function pbViewService(id){pbEditService(id);}
 
 let _pbEditSvcId=null;
-let _pbSvcTab='details';
+let _pbFormTab='details';
+// In-memory materials list for current service being edited
+let _pbSvcMaterials=[];
 
 function pbServiceForm(s){
+  _pbFormTab='details';
+  _pbSvcMaterials=Array.isArray(s.materials)?[...s.materials]:(s.materials?JSON.parse(s.materials):[]);
   const cats=_C['lhs:pb_categories']||[];
   const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
-  const desc=s.description||'';
-  const warr=s.warranty_description||'';
-  // Parse description into bullet-friendly display
-  return`<div style="min-width:580px;max-width:700px">
-  <!-- Status toggle -->
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-      <input type="checkbox" id="pbs-active" ${s.is_active!==false?'checked':''} style="width:16px;height:16px"> Active
-    </label>
-    ${s.code?`<span style="font-size:11px;background:#f0f4f9;border:1px solid var(--bdr);border-radius:6px;padding:2px 10px;font-family:monospace">Code: ${esc(s.code)}</span>`:''}
+  return`<div style="min-width:600px;max-width:720px">
+  <!-- Tab bar -->
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:16px">
+    <button id="pbf-tab-details" onclick="pbFormSetTab('details')" style="padding:9px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid var(--navy);color:var(--navy);margin-bottom:-2px">Details</button>
+    <button id="pbf-tab-materials" onclick="pbFormSetTab('materials')" style="padding:9px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;color:var(--muted);margin-bottom:-2px">Materials <span id="pbf-mat-count" style="font-size:11px;background:#e3f2fd;color:#1565C0;border-radius:10px;padding:1px 7px;margin-left:4px">${_pbSvcMaterials.length||0}</span></button>
   </div>
-  <!-- Code + Name row -->
-  <div class="fr">
-    <div class="fl"><label>Code</label><input id="pbs-code" value="${esc(s.code||'')}" placeholder="e.g. 3G" style="font-family:monospace"></div>
-    <div class="fl" style="flex:2"><label>Service Name</label><input id="pbs-name" value="${esc(s.name||'')}" placeholder="e.g. 3&quot; Residential Garage"></div>
-  </div>
-  <!-- Division + Category row -->
-  <div class="fr">
-    <div class="fl"><label>Division</label>
-      <select id="pbs-div">
-        <option value="">— Division —</option>
-        ${divs.map(d=>`<option value="${esc(d)}"${s.division===d?' selected':''}>${esc(d)}</option>`).join('')}
-      </select>
+  <!-- DETAILS TAB -->
+  <div id="pbf-details">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+        <input type="checkbox" id="pbs-active" ${s.is_active!==false?'checked':''} style="width:16px;height:16px"> Active
+      </label>
+      ${s.code?`<span style="font-size:11px;background:#f0f4f9;border:1px solid var(--bdr);border-radius:6px;padding:2px 10px;font-family:monospace">Code: ${esc(s.code)}</span>`:''}
     </div>
-    <div class="fl"><label>Category
-      <button onclick="pbAddCategory()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--teal);padding:0 0 0 6px">+ New</button>
-    </label>
-      <select id="pbs-cat">
-        <option value="">— Category —</option>
-        ${cats.map(c=>`<option value="${esc(c.name)}"${s.category===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
-      </select>
+    <div class="fr">
+      <div class="fl"><label>Code</label><input id="pbs-code" value="${esc(s.code||'')}" placeholder="e.g. 3G" style="font-family:monospace"></div>
+      <div class="fl" style="flex:2"><label>Service Name</label><input id="pbs-name" value="${esc(s.name||'')}" placeholder="e.g. 3&quot; Residential Garage"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Division</label>
+        <select id="pbs-div">
+          <option value="">— Division —</option>
+          ${divs.map(d=>`<option value="${esc(d)}"${s.division===d?' selected':''}>${esc(d)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>Category <button onclick="pbAddCategory()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--teal);padding:0 0 0 6px">+ New</button></label>
+        <select id="pbs-cat">
+          <option value="">— Category —</option>
+          ${cats.map(c=>`<option value="${esc(c.name)}"${s.category===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Price $</label><input type="number" id="pbs-price" value="${s.price!=null?s.price:''}" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="fl"><label>Est. Hours</label><input type="number" id="pbs-hours" value="${s.hours||''}" step="0.5" min="0" placeholder="0"></div>
+    </div>
+    <div class="fl"><label>Item Description <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:4px">Start lines with • or - for bullets</span></label>
+      <textarea id="pbs-desc" rows="5" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="• 3&quot; schedule 40 PVC sub-slab depressurization system&#10;• 1 Custom-fitted Sump Crock cover&#10;• 1 U-Tube monitoring device">${esc(s.description||'')}</textarea>
+    </div>
+    <div class="fl"><label>Warranty Description</label>
+      <textarea id="pbs-warr" rows="3" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="Lifetime Home Services LLC guarantees…">${esc(s.warranty_description||'')}</textarea>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;padding:12px;background:#f8f7f4;border-radius:8px;border:1px solid var(--bdr)">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-taxable" ${s.taxable?'checked':''}> Taxable</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-discounts" ${s.allow_discounts!==false?'checked':''}> Allow Discount Codes</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-memb" ${s.allow_membership_discounts?'checked':''}> Allow Membership Discounts</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-labor" ${s.is_labor?'checked':''}> Labor Service</label>
     </div>
   </div>
-  <!-- Price + Hours row -->
-  <div class="fr">
-    <div class="fl"><label>Price $</label><input type="number" id="pbs-price" value="${s.price!=null?s.price:''}" step="0.01" min="0" placeholder="0.00"></div>
-    <div class="fl"><label>Est. Hours</label><input type="number" id="pbs-hours" value="${s.hours||''}" step="0.5" min="0" placeholder="0"></div>
+  <!-- MATERIALS TAB (hidden by default) -->
+  <div id="pbf-materials" style="display:none">
+    <!-- Search bar to find items -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input id="pbf-mat-search" placeholder="&#128269; Search inventory items to add…"
+        oninput="clearTimeout(window._pbmST);window._pbmST=setTimeout(pbRenderMatSearch,250)"
+        style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:inherit">
+    </div>
+    <!-- Search results -->
+    <div id="pbf-mat-searchresults" style="max-height:160px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;margin-bottom:14px;display:none"></div>
+    <!-- Linked materials list -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Included Materials</div>
+    <div id="pbf-mat-list"></div>
   </div>
-  <!-- Item Description -->
-  <div class="fl"><label>Item Description
-    <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px">Start lines with • or - for bullet points</span>
-  </label>
-    <textarea id="pbs-desc" rows="6" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="• 3&quot; schedule 40 PVC sub-slab depressurization system&#10;• 1 Custom-fitted Sump Crock cover&#10;• 1 U-Tube monitoring device">${esc(desc)}</textarea>
-  </div>
-  <!-- Warranty Description -->
-  <div class="fl"><label>Warranty Description</label>
-    <textarea id="pbs-warr" rows="4" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="Lifetime Home Services LLC guarantees…">${esc(warr)}</textarea>
-  </div>
-  <!-- Flags -->
-  <div style="display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;padding:12px;background:#f8f7f4;border-radius:8px;border:1px solid var(--bdr)">
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-taxable" ${s.taxable?'checked':''}> Taxable</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-discounts" ${s.allow_discounts!==false?'checked':''}> Allow Discount Codes</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-memb" ${s.allow_membership_discounts?'checked':''}> Allow Membership Discounts</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-labor" ${s.is_labor?'checked':''}> Labor Service</label>
-  </div>
-  <!-- Actions -->
-  <div class="br2" style="margin-top:14px">
+  <!-- Actions (always visible) -->
+  <div class="br2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
     <button class="btn btn-n" onclick="pbSaveService()">Save Service</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
     ${_pbEditSvcId?`<button class="btn btn-r" style="margin-left:auto" onclick="pbDeleteService('${_pbEditSvcId}')">Delete</button>`:''}
   </div>
   </div>`;
+}
+
+function pbFormSetTab(tab){
+  _pbFormTab=tab;
+  document.getElementById('pbf-details').style.display=tab==='details'?'':'none';
+  document.getElementById('pbf-materials').style.display=tab==='materials'?'':'none';
+  ['details','materials'].forEach(t=>{
+    const b=document.getElementById('pbf-tab-'+t);
+    if(b){b.style.borderBottomColor=t===tab?'var(--navy)':'transparent';b.style.color=t===tab?'var(--navy)':'var(--muted)';}
+  });
+  if(tab==='materials') pbRenderMatList();
+}
+
+function pbRenderMatList(){
+  const el=document.getElementById('pbf-mat-list');
+  if(!el) return;
+  if(!_pbSvcMaterials.length){
+    el.innerHTML=`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No materials added yet. Search above to add inventory items.</div>`;
+    return;
+  }
+  el.innerHTML=`<div class="card" style="padding:0;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#f8f7f4">
+      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">SKU</th>
+      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Name</th>
+      <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);width:80px">Qty</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Unit Cost</th>
+      <th style="width:36px"></th>
+    </tr></thead>
+    <tbody>
+    ${_pbSvcMaterials.map((m,i)=>`<tr style="border-top:1px solid var(--bdr)">
+      <td style="padding:8px 12px;font-family:monospace;font-size:12px;color:var(--muted)">${esc(m.sku||'')}</td>
+      <td style="padding:8px 12px;font-weight:600">${esc(m.name||'')}</td>
+      <td style="padding:8px 12px;text-align:center">
+        <input type="number" value="${m.qty||1}" min="0" step="1"
+          onchange="_pbSvcMaterials[${i}].qty=parseFloat(this.value)||0"
+          style="width:60px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;font-size:13px">
+      </td>
+      <td style="padding:8px 12px;text-align:right;color:var(--muted)">${m.unit_cost!=null?'$'+Number(m.unit_cost).toFixed(2):'—'}</td>
+      <td style="padding:8px 4px;text-align:center">
+        <button onclick="_pbSvcMaterials.splice(${i},1);pbRenderMatList();pbUpdateMatCount()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:2px 6px" title="Remove">×</button>
+      </td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function pbUpdateMatCount(){
+  const el=document.getElementById('pbf-mat-count');
+  if(el) el.textContent=_pbSvcMaterials.length||0;
+}
+
+function pbRenderMatSearch(){
+  const inp=document.getElementById('pbf-mat-search');
+  const q=(inp?.value||'').trim().toLowerCase();
+  const res=document.getElementById('pbf-mat-searchresults');
+  if(!res) return;
+  if(!q){res.style.display='none';res.innerHTML='';return;}
+  const items=S.get('lhs:items')||[];
+  const matches=items.filter(i=>
+    (i.name||'').toLowerCase().includes(q)||
+    (i.sku||'').toLowerCase().includes(q)||
+    (i.category||'').toLowerCase().includes(q)
+  ).slice(0,20);
+  if(!matches.length){
+    res.style.display='block';
+    res.innerHTML=`<div style="padding:12px;color:var(--muted);font-size:13px">No items found for "${q}"</div>`;
+    return;
+  }
+  res.style.display='block';
+  res.innerHTML=matches.map(i=>{
+    const already=_pbSvcMaterials.some(m=>m.sku===i.sku);
+    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--bdr);cursor:${already?'default':'pointer'};background:${already?'#f8f7f4':'white'}"
+      ${already?'':`onclick="pbAddMatItem('${esc(i.sku||'')}','${esc(i.name||'')}',${i.unit_cost||0})"`}>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px">${esc(i.name||'')}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:monospace">${esc(i.sku||'')}${i.category?' · '+esc(i.category):''}</div>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">${i.unit_cost!=null?'$'+Number(i.unit_cost).toFixed(2):'—'}</div>
+      ${already
+        ?`<span style="font-size:11px;color:var(--green);font-weight:700">✓ Added</span>`
+        :`<button class="btn sm btn-n" style="flex-shrink:0">+ Add</button>`}
+    </div>`;
+  }).join('');
+}
+
+function pbAddMatItem(sku,name,unitCost){
+  if(_pbSvcMaterials.some(m=>m.sku===sku)){tst('Already added','info');return;}
+  _pbSvcMaterials.push({sku,name,qty:1,unit_cost:unitCost||null});
+  pbRenderMatList();
+  pbUpdateMatCount();
+  pbRenderMatSearch(); // refresh search results to show ✓
+  tst(`${name} added`,'success');
 }
 
 async function pbSaveService(){
@@ -24637,6 +24743,7 @@ async function pbSaveService(){
     allow_discounts:document.getElementById('pbs-discounts')?.checked!==false,
     allow_membership_discounts:document.getElementById('pbs-memb')?.checked||false,
     is_labor:document.getElementById('pbs-labor')?.checked||false,
+    materials:_pbSvcMaterials,
     last_updated:new Date().toISOString(),
   };
   if(_pbEditSvcId){
