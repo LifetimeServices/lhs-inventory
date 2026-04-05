@@ -1964,6 +1964,8 @@ async function startApp(){
   startNotifPolling();
   // Check for pending TOR approvals that need daily reminders (slight delay so cache is warm)
   setTimeout(checkTORReminders, 3000);
+  // Check if employee needs to review last week's timesheet (Monday 5am block)
+  setTimeout(checkTimesheetBlock, 2000);
 }
 
 // ─── NAV ─────────────────────────────────────────────────────────────────────
@@ -20542,10 +20544,18 @@ function bPayrollDetail(){
   const jtes=(S.get('lhs:job_time_entries')||[]).filter(e=>e.tech_name===emp&&e.week_start===period);
   const wos=S.get('lhs:work_orders')||[];
   const allPunches=S.get('lhs:time_punches')||[];
+  // Hoist division labor + fmtMins to outer scope so the card header can use them
+  const fmtMins=m=>`${Math.floor(m/60)}h ${m%60}m`;
+  const divMins={};
+  jtes.filter(e=>e.entry_type==='working'&&e.duration_minutes).forEach(e=>{
+    const wo=wos.find(w=>w.id===e.wo_id);
+    const div=wo?.division||'General';
+    divMins[div]=(divMins[div]||0)+(e.duration_minutes||0);
+  });
+  const divRows=Object.entries(divMins).filter(([,m])=>m>0).sort((a,b)=>b[1]-a[1]);
   if(jtes.length){
     const drivingMins=jtes.filter(e=>e.entry_type==='driving'&&e.duration_minutes).reduce((s,e)=>s+(e.duration_minutes||0),0);
     const workingMins=jtes.filter(e=>e.entry_type==='working'&&e.duration_minutes).reduce((s,e)=>s+(e.duration_minutes||0),0);
-    const fmtMins=m=>`${Math.floor(m/60)}h ${m%60}m`;
     const fmtTime=ts=>ts?new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'—';
     // Group by date
     const byDate={};
@@ -20553,14 +20563,6 @@ function bPayrollDetail(){
       if(!byDate[e.date]) byDate[e.date]=[];
       byDate[e.date].push(e);
     });
-    // Division labor totals (working time only, grouped by WO division)
-    const divMins={};
-    jtes.filter(e=>e.entry_type==='working'&&e.duration_minutes).forEach(e=>{
-      const wo=wos.find(w=>w.id===e.wo_id);
-      const div=wo?.division||'General';
-      divMins[div]=(divMins[div]||0)+(e.duration_minutes||0);
-    });
-    const divRows=Object.entries(divMins).filter(([,m])=>m>0).sort((a,b)=>b[1]-a[1]);
     jobTimeHTML=`<div style="margin-top:16px">
       <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">&#128338; Job Time Breakdown</div>
       <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
@@ -20577,15 +20579,6 @@ function bPayrollDetail(){
           <div style="font-size:18px;font-weight:700;color:var(--navy)">${fmtMins(drivingMins+workingMins)}</div>
         </div>
       </div>
-      ${divRows.length?`<div style="background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;margin-bottom:16px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:8px">Division Labor — This Week</div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px">
-          ${divRows.map(([div,mins])=>`<div style="background:white;border:1px solid var(--bdr);border-radius:6px;padding:8px 14px">
-            <div style="font-size:11px;color:var(--muted);font-weight:600">${esc(div)}</div>
-            <div style="font-size:16px;font-weight:700;color:var(--navy)">${fmtMins(mins)}</div>
-          </div>`).join('')}
-        </div>
-      </div>`:''}
       ${Object.entries(byDate).map(([date,entries])=>{
         const dayPunches=allPunches.filter(p=>p.employee===emp&&p.date===date).sort((a,b)=>a.punched_at.localeCompare(b.punched_at));
         const clockIn=dayPunches.find(p=>p.punch_type==='clock_in');
@@ -20671,10 +20664,18 @@ function bPayrollDetail(){
 
   <!-- Day Table -->
   <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-    <div style="padding:14px 18px;background:#f8f7f4;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:12px">
-      <span style="font-weight:600;font-size:14px">Week of ${prPeriodLabel(period)}</span>
-      ${prStatusBadge(overallStatus)}
-      ${empStatus?prEmpStatusBadge(empStatus):''}
+    <div style="padding:14px 18px;background:#f8f7f4;border-bottom:1px solid var(--bdr)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:${divRows.length?'10px':'0'}">
+        <span style="font-weight:600;font-size:14px">Week of ${prPeriodLabel(period)}</span>
+        ${prStatusBadge(overallStatus)}
+        ${empStatus?prEmpStatusBadge(empStatus):''}
+      </div>
+      ${divRows.length?`<div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${divRows.map(([div,mins])=>`<div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid var(--bdr);border-radius:6px;padding:5px 12px">
+          <span style="font-size:12px;font-weight:600;color:var(--navy)">${esc(div)} Labor</span>
+          <span style="font-size:13px;font-weight:700;color:var(--green)">${fmtMins(mins)}</span>
+        </div>`).join('')}
+      </div>`:''}
     </div>
     <div class="tw" style="margin:0"><table>
       <thead><tr>
@@ -20743,7 +20744,7 @@ function bPayrollDetail(){
   <!-- Action Buttons -->
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
     ${canApprove&&!isLocked&&overallStatus==='Pending'&&empTS.length>0?`<button class="btn btn-g" onclick="prApproveAll('${esc(emp)}','${period}')">✓ Approve All Days</button>`:''}
-    ${canApprove&&!isLocked&&overallStatus==='Manager Approved'&&!isSent?`<button class="btn btn-n" onclick="prSendToEmployee('${esc(emp)}','${period}')">📤 Send to Employee</button>`:''}
+    ${canApprove&&!isLocked&&(overallStatus==='Manager Approved'||overallStatus==='Pending')&&empTS.length>0&&!isSent?`<button class="btn btn-n" onclick="prSendToEmployee('${esc(emp)}','${period}')">📤 Send to Employee</button>`:''}
     ${canApprove&&!isLocked&&overallStatus==='Manager Approved'&&isSent?`<button class="btn" style="background:#1565C0;color:white" onclick="prLockAll('${esc(emp)}','${period}')">🔒 Lock Timesheet</button>`:''}
     ${canApprove&&!isLocked?`<button class="btn btn-n" onclick="prEditDay('${esc(emp)}','','${period}')">+ Add Entry</button>`:''}
     ${isMyOwn&&isSent&&!isLocked&&empStatus===''?`
@@ -20884,6 +20885,123 @@ async function prResolveDispute(rowId, emp, period){
   try{await DB.from('lhs_timesheets').update({employee_status:'Resolved'}).eq('id',rowId);}catch(e){console.warn('ts resolve failed',e?.message);}
   tst('Dispute marked resolved','success');
   prRenderPanel();
+}
+
+// ── TIMESHEET BLOCK SYSTEM ────────────────────────────────────────────────────
+function prPrevWeekStart(){
+  const d=new Date(); d.setHours(12,0,0,0);
+  const day=d.getDay(); // 0=Sun
+  const diffToLastMon=day===0?-6:(1-day)-7; // go back to PREVIOUS Monday
+  d.setDate(d.getDate()+diffToLastMon);
+  return d.toISOString().slice(0,10);
+}
+
+function isTimesheetBlockActive(){
+  if(!CU) return false;
+  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  if(canApprove) return false; // Managers never get blocked
+  const now=new Date();
+  if(now.getDay()!==1) return false; // Only Mondays
+  if(now.getHours()<5) return false; // Only after 5am
+  const prevPeriod=prPrevWeekStart();
+  const allTS=S.get('lhs:timesheets')||[];
+  const prevRows=allTS.filter(t=>t.employee===CU.name&&t.week_start===prevPeriod&&t.sent_to_employee);
+  if(!prevRows.length) return false; // Nothing sent → no block
+  const unreviewed=prevRows.filter(t=>!t.employee_status||t.employee_status==='');
+  return unreviewed.length>0;
+}
+
+function checkTimesheetBlock(){
+  if(!isTimesheetBlockActive()) return;
+  const period=prPrevWeekStart();
+  showTimesheetBlocker(period);
+}
+
+function showTimesheetBlocker(period){
+  if(document.getElementById('ts-block-overlay')) return;
+  const div=document.createElement('div');
+  div.id='ts-block-overlay';
+  div.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,15,30,0.92);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:inherit';
+  div.innerHTML=`<div style="background:white;border-radius:16px;padding:36px 32px;max-width:480px;width:92%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:52px;margin-bottom:12px">🔒</div>
+    <div style="font-size:20px;font-weight:800;color:#1a2238;margin-bottom:8px">Timesheet Review Required</div>
+    <div style="font-size:14px;color:#555;margin-bottom:6px;line-height:1.5">Your timesheet for <strong style="color:#1a2238">${prPeriodLabel(period)}</strong> is waiting for your review.</div>
+    <div style="font-size:13px;color:#888;margin-bottom:24px">You must approve or dispute before accessing the system.</div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <button onclick="prBlockedApprove('${period}')" style="background:#1B5E20;color:white;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer">✓ Approve My Timesheet</button>
+      <button onclick="prBlockedDispute('${period}')" style="background:#B71C1C;color:white;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer">⚠ Dispute</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+
+function dismissTimesheetBlocker(){
+  const el=document.getElementById('ts-block-overlay');
+  if(el) el.remove();
+}
+
+async function prBlockedApprove(period){
+  if(!confirm('Approve your timesheet for this period?')) return;
+  const allTS=S.get('lhs:timesheets')||[];
+  const now=new Date().toISOString();
+  const rows=allTS.filter(t=>t.employee===CU?.name&&t.week_start===period&&t.sent_to_employee);
+  rows.forEach(r=>{r.employee_status='Approved';r.employee_reviewed_at=now;});
+  S.set('lhs:timesheets',allTS);
+  for(const r of rows){
+    try{await DB.from('lhs_timesheets').update({employee_status:'Approved',employee_reviewed_at:now}).eq('id',r.id);}catch(e){console.warn('ts block approve:',e?.message);}
+  }
+  const users=S.get('lhs:users')||[];
+  const empUser=users.find(u=>u.name===CU?.name);
+  const mgr=empUser?.manager;
+  if(mgr){
+    const mgrUser=users.find(u=>u.name===mgr);
+    if(mgrUser?.email){
+      await sendNotification({user_email:mgrUser.email,user_name:mgr,type:'payroll',title:`${CU.name} Approved Timesheet`,body:`${CU.name} approved their timesheet for ${prPeriodLabel(period)}.`,entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),from_user:CU?.name});
+    }
+  }
+  dismissTimesheetBlocker();
+  tst('Timesheet approved — welcome back!','success');
+}
+
+function prBlockedDispute(period){
+  const div=document.createElement('div');
+  div.id='ts-block-dispute-modal';
+  div.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,15,30,0.95);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:inherit';
+  div.innerHTML=`<div style="background:white;border-radius:16px;padding:32px;max-width:460px;width:92%">
+    <div style="font-size:17px;font-weight:800;color:#1a2238;margin-bottom:8px">⚠ Dispute Timesheet</div>
+    <div style="font-size:13px;color:#666;margin-bottom:14px">Describe what is incorrect on your timesheet for <strong>${prPeriodLabel(period)}</strong>.</div>
+    <textarea id="ts-block-dispute-notes" rows="4" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:13px;resize:vertical" placeholder="Describe what hours are incorrect and what they should be..."></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button onclick="document.getElementById('ts-block-dispute-modal').remove()" style="background:#f0f0f0;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+      <button onclick="prBlockedDisputeSubmit('${period}')" style="background:#B71C1C;color:white;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">Submit Dispute</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+
+async function prBlockedDisputeSubmit(period){
+  const notes=document.getElementById('ts-block-dispute-notes')?.value?.trim();
+  if(!notes){tst('Please enter dispute notes','warning');return;}
+  const allTS=S.get('lhs:timesheets')||[];
+  const now=new Date().toISOString();
+  const rows=allTS.filter(t=>t.employee===CU?.name&&t.week_start===period&&t.sent_to_employee);
+  rows.forEach(r=>{r.employee_status='Disputed';r.employee_notes=notes;r.employee_reviewed_at=now;});
+  S.set('lhs:timesheets',allTS);
+  for(const r of rows){
+    try{await DB.from('lhs_timesheets').update({employee_status:'Disputed',employee_notes:notes,employee_reviewed_at:now}).eq('id',r.id);}catch(e){console.warn('ts block dispute:',e?.message);}
+  }
+  const users=S.get('lhs:users')||[];
+  const empUser=users.find(u=>u.name===CU?.name);
+  const mgr=empUser?.manager;
+  if(mgr){
+    const mgrUser=users.find(u=>u.name===mgr);
+    if(mgrUser?.email){
+      await sendNotification({user_email:mgrUser.email,user_name:mgr,type:'payroll',title:`⚠ ${CU.name} Disputed Timesheet`,body:`${CU.name} disputed their timesheet for ${prPeriodLabel(period)}: "${notes}"`,entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),from_user:CU?.name});
+    }
+  }
+  document.getElementById('ts-block-dispute-modal')?.remove();
+  dismissTimesheetBlocker();
+  tst('Dispute submitted — your manager will be notified','info');
 }
 
 // ── PAYROLL BADGE ON USER NAME ────────────────────────────────────────────────
