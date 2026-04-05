@@ -2949,7 +2949,7 @@ function addXL(){
   </td>
   <td><input id="xls${idx}" readonly placeholder="SKU" style="width:90px;background:#f5f5f5;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:monospace"></td>
   <td id="xla${idx}" style="font-family:'DM Sans',sans-serif;color:var(--muted);text-align:center">&#8212;</td>
-  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:60px;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"></td>
+  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:80px;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:15px;font-weight:600;text-align:center"></td>
   <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
   tb.appendChild(tr);
   document.getElementById('xli'+idx)?.focus();
@@ -3169,7 +3169,7 @@ function restMax(){
     tr.innerHTML=`<td style="font-weight:500">${vi2.item||vi2.sku}</td>
     <td><input id="xls${i}" value="${vi2.sku}" readonly style="width:85px;background:#f5f5f5"></td>
     <td id="xla${i}" style="color:var(--green);font-family:'DM Sans',sans-serif">&#8212;</td>
-    <td><input type="number" id="xlq${i}" value="${vi2.max-vi2.qty}" style="width:55px"></td>
+    <td><input type="number" id="xlq${i}" value="${vi2.max-vi2.qty}" style="width:80px;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:15px;font-weight:600;text-align:center"></td>
     <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
     if(tb) tb.appendChild(tr);
   });
