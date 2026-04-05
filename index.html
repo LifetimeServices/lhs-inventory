@@ -24666,22 +24666,34 @@ async function pbDeleteService(id){
 
 // ── MATERIALS ─────────────────────────────────────────────────────────────────
 async function pbLoadMaterials(el){
-  el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div>`;
+  // Only build the toolbar shell once; re-renders only update the results div
+  if(!el.querySelector('#pb-mat-results')){
+    el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input id="pb-mat-search" placeholder="&#128269; Search materials…"
+        oninput="clearTimeout(window._pbMatST);window._pbMatST=setTimeout(()=>pbFilterMaterials(),200)"
+        style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:20px;font-size:13px;width:280px;outline:none;font-family:inherit">
+      <span id="pb-mat-count" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      <button class="btn btn-n" onclick="oAddItem()">+ Add Material</button>
+    </div>
+    <div id="pb-mat-results"></div>`;
+  }
+  pbFilterMaterials();
+}
+
+function pbFilterMaterials(){
+  const inp=document.getElementById('pb-mat-search');
+  const q=(inp?inp.value:_pbSvcSearch||'').trim().toLowerCase();
   const items=S.get('lhs:items')||[];
-  const q=(_pbSvcSearch||'').trim().toLowerCase();
   const filtered=items.filter(i=>!q||
     (i.name||'').toLowerCase().includes(q)||
     (i.sku||'').toLowerCase().includes(q)||
     (i.category||'').toLowerCase().includes(q));
-  el.innerHTML=`
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <input placeholder="&#128269; Search materials…" value="${esc(_pbSvcSearch)}"
-      oninput="_pbSvcSearch=this.value;pbLoadContent()"
-      style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:20px;font-size:13px;width:280px;outline:none;font-family:inherit">
-    <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} material${filtered.length!==1?'s':''}</span>
-    <button class="btn btn-n" onclick="oAddItem()">+ Add Material</button>
-  </div>
-  <div class="card" style="padding:0;overflow:hidden">
+  const countEl=document.getElementById('pb-mat-count');
+  if(countEl) countEl.textContent=`${filtered.length} material${filtered.length!==1?'s':''}`;
+  const res=document.getElementById('pb-mat-results');
+  if(!res) return;
+  res.innerHTML=`<div class="card" style="padding:0;overflow:hidden">
   <div class="tw" style="margin:0"><table>
     <thead><tr>
       <th>SKU</th><th>Name</th><th>Category</th>
