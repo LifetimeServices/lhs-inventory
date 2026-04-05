@@ -2938,15 +2938,56 @@ function addXL(){
   const idx=_xl.length; _xl.push({sku:'',item:'',qty:1});
   const tb=g('xtb'); if(!tb) return;
   const tr=document.createElement('tr'); tr.id='xl'+idx;
-  tr.innerHTML=`<td><select onchange="xlI(${idx},this)" style="width:160px">
-    <option value="">&#8212; Select &#8212;</option>
-    ${_xi.map(i=>`<option value="${i.sku}">${i.name}</option>`).join('')}
-  </select></td>
-  <td><input id="xls${idx}" readonly style="width:85px;background:#f5f5f5"></td>
-  <td id="xla${idx}" style="font-family:'DM Sans',sans-serif;color:var(--muted)">&#8212;</td>
-  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:55px"></td>
+  tr.innerHTML=`
+  <td style="min-width:220px">
+    <div style="position:relative">
+      <input id="xli${idx}" placeholder="Search item..." autocomplete="off"
+        style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"
+        oninput="xlSearch(${idx})" onfocus="xlSearch(${idx})" onblur="setTimeout(()=>xlDrop(${idx},'hide'),180)">
+      <div id="xld${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border:1px solid var(--bdr);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:999;max-height:220px;overflow-y:auto"></div>
+    </div>
+  </td>
+  <td><input id="xls${idx}" readonly placeholder="SKU" style="width:90px;background:#f5f5f5;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:monospace"></td>
+  <td id="xla${idx}" style="font-family:'DM Sans',sans-serif;color:var(--muted);text-align:center">&#8212;</td>
+  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:60px;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"></td>
   <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
   tb.appendChild(tr);
+  document.getElementById('xli'+idx)?.focus();
+}
+function xlSearch(idx){
+  if(!_xi.length) _xi=S.get('lhs:items')||[];
+  const q=(document.getElementById('xli'+idx)?.value||'').toLowerCase().trim();
+  const drop=document.getElementById('xld'+idx);
+  if(!drop) return;
+  const matches=q.length===0
+    ? _xi.slice(0,60)
+    : _xi.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||(i.brand||'').toLowerCase().includes(q)).slice(0,60);
+  if(!matches.length){
+    drop.innerHTML=`<div style="padding:10px 12px;color:var(--muted);font-size:13px">No items found</div>`;
+  }else{
+    drop.innerHTML=matches.map(i=>`
+      <div onclick="xlPick(${idx},'${i.sku.replace(/'/g,"\\'")}','${(i.name||'').replace(/'/g,"\\'")}',this)"
+        style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center"
+        onmouseenter="this.style.background='var(--ice)'" onmouseleave="this.style.background=''">
+        <span style="font-weight:500">${i.name||i.sku}</span>
+        <span style="font-size:11px;color:var(--muted);font-family:monospace;margin-left:8px">${i.sku}</span>
+      </div>`).join('');
+  }
+  drop.style.display='block';
+}
+function xlDrop(idx,action){
+  const drop=document.getElementById('xld'+idx);
+  if(drop) drop.style.display=action==='hide'?'none':'block';
+}
+function xlPick(idx,sku,name){
+  const inp=document.getElementById('xli'+idx);
+  const skuEl=document.getElementById('xls'+idx);
+  if(inp) inp.value=name;
+  if(skuEl) skuEl.value=sku;
+  if(!_xl[idx]) _xl[idx]={};
+  _xl[idx].sku=sku; _xl[idx].item=name;
+  xlDrop(idx,'hide');
+  xAvail(idx);
 }
 function xlI(i,s){
   const it=_xi.find(x=>x.sku===s.value);
