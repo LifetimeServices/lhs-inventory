@@ -18461,6 +18461,13 @@ async function custLoadPage(){
     const totalPages=Math.ceil(_custTotal/_CUST_PAGE_SIZE);
     if(countEl) countEl.textContent=`${_custTotal.toLocaleString()} customers${q?' matching "'+q+'"':''} — showing ${from+1}–${Math.min(from+(data||[]).length,_custTotal)}`;
     if(listEl) listEl.innerHTML=renderCustTable(data||[]);
+    // Sync fetched rows into memory cache so WO creation / other lookups find them
+    if(data&&data.length){
+      const existing=_C['lhs:customers']||[];
+      const merged=[...existing];
+      data.forEach(r=>{if(!merged.find(x=>x.id===r.id)) merged.push(r);});
+      _C['lhs:customers']=merged;
+    }
     // Pagination controls
     if(pagEl){
       if(totalPages<=1){pagEl.innerHTML='';return;}
@@ -18762,16 +18769,45 @@ async function svAddCustomer(){
   if(!fn||!ln){tst('First and last name required','error');return}
   const state=v('cf-st');
   const region=Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||'';
-  const c={first_name:fn,last_name:ln,company:v('cf-co')||null,
+  // Generate next customer number
+  let custNum='';
+  try{
+    const{data:maxRow}=await DB.from('lhs_customers').select('customer_number').order('created_at',{ascending:false}).limit(200);
+    const nums=(maxRow||[]).map(c=>{const m=(c.customer_number||'').match(/(\d+)$/);return m?parseInt(m[1]):0;});
+    custNum='C-'+String((Math.max(0,...nums))+1).padStart(5,'0');
+  }catch(e){custNum='C-'+Date.now().toString().slice(-5);}
+  const c={
+    first_name:fn,last_name:ln,company:v('cf-co')||null,
     phone:v('cf-ph')||null,email:v('cf-em')||null,
     address:v('cf-ad')||null,city:v('cf-ct')||null,
     state:state||null,zip:v('cf-zip')||null,
     region:region||null,division:v('cf-div')||null,
-    notes:v('cf-notes')||null,source:'Manual'};
-  const saved=await dbInsert('lhs:customers',c);
-  if(!saved){tst('Failed to save customer','error');return}
-  const custs=S.get('lhs:customers')||[];custs.unshift(saved);S.set('lhs:customers',custs);
-  cMod();tst(`${fn} ${ln} added`,'success');showPage('customers');
+    notes:v('cf-notes')||null,
+    source:'Manual',
+    customer_number:custNum,
+    created_at:new Date().toISOString()
+  };
+  // Direct Supabase insert with full error visibility
+  let saved=null;
+  try{
+    const{data,error}=await DB.from('lhs_customers').insert(c).select().single();
+    if(error){
+      console.error('Customer insert error:',error.message,error.details,error.hint);
+      tst('Failed to save customer: '+error.message,'error');
+      return;
+    }
+    saved=data;
+  }catch(e){
+    console.error('Customer insert exception:',e.message);
+    tst('Failed to save customer: '+e.message,'error');
+    return;
+  }
+  if(!saved){tst('Customer save returned no data — check Supabase RLS policies','error');return;}
+  // Update local cache
+  const custs=S.get('lhs:customers')||[];
+  custs.unshift(saved);
+  _C['lhs:customers']=custs;
+  cMod();tst(`${fn} ${ln} added (${custNum})`,'success');showPage('customers');
 }
 
 async function oEditCustomer(id){
