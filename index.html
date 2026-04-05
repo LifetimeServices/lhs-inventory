@@ -2221,8 +2221,8 @@ async function refreshLocStockPage(){
     const{data,error}=await DB.from('lhs_location_stock').select('*');
     if(!error&&data){
       S.set('lhs:ls',data.map(_normLs));
-      const pg=document.getElementById('p-location-stock');
-      if(pg&&pg.classList.contains('active')) pg.innerHTML=buildPage('location-stock');
+      const pg=document.getElementById('p-locstock');
+      if(pg&&pg.classList.contains('active')) pg.innerHTML=buildPage('locstock');
     }
   }catch(e){console.warn('refreshLocStockPage:',e?.message);}
 }
@@ -2253,7 +2253,7 @@ function showPage(id){
   // Van Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='vans') setTimeout(refreshVanInvPage,0);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
-  if(id==='location-stock') setTimeout(refreshLocStockPage,0);
+  if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
