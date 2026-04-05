@@ -13125,6 +13125,8 @@ function aptConflicts(techNames, date, timeStr, durMin, excludeAptId){
   const apts=S.get('lhs:appointments')||[];
   const aptTechs=S.get('lhs:apt_techs')||[];
   const wos=S.get('lhs:work_orders')||[];
+  // Never flag appointments belonging to cancelled work orders
+  const cancelledWOIds=new Set(wos.filter(w=>w.status==='Cancelled').map(w=>w.id));
   const [hh,mm]=(timeStr||'08:00').split(':').map(Number);
   const newStart=hh*60+mm;
   const newEnd=newStart+Math.max(1,durMin);
@@ -13132,6 +13134,7 @@ function aptConflicts(techNames, date, timeStr, durMin, excludeAptId){
   for(const tName of techNames){
     for(const a of apts){
       if(a.id===excludeAptId||a.scheduled_date!==date) continue;
+      if(cancelledWOIds.has(a.wo_id)) continue;
       const isOn=aptTechs.some(t=>t.appointment_id===a.id&&t.tech_name===tName);
       if(!isOn) continue;
       const [ah,am]=(a.scheduled_time||'08:00').split(':').map(Number);
