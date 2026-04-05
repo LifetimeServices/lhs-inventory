@@ -15062,16 +15062,23 @@ async function oAptDetail(aptId, woId){
           const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
           if(!techs.length) return '';
           const vi=S.get('lhs:vi')||[];
-          // Resolve actual vehicle ID for each tech (apt_techs.vehicle_id may be a location name, not a van ID)
+          const locs=S.get('lhs:locs')||[];
+          // Resolve actual vehicle ID for each tech
+          // Priority: 1) direct vehicle_id match in van inventory, 2) driver field in lhs_locations, 3) tech_assigned in van inventory
           const opts=techs.map(t=>{
             const techName=t.tech_name||'';
             let v=t.vehicle_id||t.vehicle||'';
             // Check if v is a real vehicle in van inventory
             const directMatch=vi.find(r=>(r.vehicle||r.vehicle_id||'')===v);
             if(!directMatch){
-              // Fall back to matching by tech_assigned name
-              const nameMatch=vi.find(r=>r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
-              if(nameMatch) v=nameMatch.vehicle||nameMatch.vehicle_id||v;
+              // Try lhs_locations driver field (most reliable — same source as Van Stock page)
+              const locMatch=locs.find(l=>l.driver&&l.driver.toLowerCase()===techName.toLowerCase());
+              if(locMatch) v=locMatch.name||v;
+              else {
+                // Fall back to tech_assigned in van inventory
+                const nameMatch=vi.find(r=>r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
+                if(nameMatch) v=nameMatch.vehicle||nameMatch.vehicle_id||v;
+              }
             }
             if(!v) return '';
             return`<option value="${v}">${v}${techName?' — '+techName:''}</option>`;
@@ -15243,17 +15250,30 @@ async function aptAddMaterial(aptId, woId){
   const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
   const rawVehicleId=document.getElementById('aptd-mvan')?.value||aptTechs[0]?.vehicle_id||aptTechs[0]?.vehicle||'';
   const vi=S.get('lhs:vi')||[];
-  // Resolve actual vehicle — apt_techs.vehicle_id can be a home location name, not a van ID
-  // Try direct match first, then fall back to tech_assigned name lookup
+  const locs=S.get('lhs:locs')||[];
+  // Resolve actual vehicle ID — apt_techs.vehicle_id may be a home location name, not a van ID
+  // Step 1: direct match in van inventory
   let vanRow=vi.find(r=>r.sku===sku&&(r.vehicle===rawVehicleId||r.vehicle_id===rawVehicleId));
-  if(!vanRow&&rawVehicleId){
-    // rawVehicleId might be a location name — look up by tech name instead
+  let resolvedVehicleId=rawVehicleId;
+  if(!vanRow){
+    // Step 2: look up the tech's actual van via lhs_locations.driver (same source as Van Stock page)
     const techForVan=aptTechs.find(t=>(t.vehicle_id||t.vehicle||'')===rawVehicleId);
     const techName=techForVan?.tech_name||aptTechs[0]?.tech_name||'';
-    if(techName) vanRow=vi.find(r=>r.sku===sku&&r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
+    if(techName){
+      const locMatch=locs.find(l=>l.driver&&l.driver.toLowerCase()===techName.toLowerCase());
+      if(locMatch){
+        resolvedVehicleId=locMatch.name||rawVehicleId;
+        vanRow=vi.find(r=>r.sku===sku&&(r.vehicle===resolvedVehicleId||r.vehicle_id===resolvedVehicleId));
+      }
+      // Step 3: fall back to tech_assigned in van inventory
+      if(!vanRow){
+        const byAssigned=vi.find(r=>r.sku===sku&&r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
+        if(byAssigned){vanRow=byAssigned;resolvedVehicleId=byAssigned.vehicle||byAssigned.vehicle_id||rawVehicleId;}
+      }
+    }
   }
-  // Use the resolved vehicle_id from van inventory (the real ID like "WI-R2")
-  const vehicleId=vanRow?(vanRow.vehicle||vanRow.vehicle_id||rawVehicleId):rawVehicleId;
+  // Use the resolved vehicle_id (the real van ID like "WI-R2")
+  const vehicleId=vanRow?(vanRow.vehicle||vanRow.vehicle_id||resolvedVehicleId):resolvedVehicleId;
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
     qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:vehicleId,
     entered_by:CU.name,created_at:new Date().toISOString()};
