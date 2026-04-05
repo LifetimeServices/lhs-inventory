@@ -14394,7 +14394,7 @@ function woCreateForm(){
     <div class="fr">
       <div class="fl"><label>City</label><input id="woc-cct" placeholder="City"></div>
       <div class="fl"><label>State</label>
-        <select id="woc-cst">
+        <select id="woc-cst" onchange="wocRefreshTechList()">
           <option value="">— Select —</option>
           ${ALL_STATES.map(s=>`<option>${s} - ${STATE_NAMES[s]||s}</option>`).join('')}
         </select>
@@ -14435,18 +14435,14 @@ function woCreateForm(){
     </div>
   </div>
   <div class="fr" style="margin-bottom:16px">
-    <div class="fl"><label>Add Tech</label>
-      <select id="woc-addtech" onchange="wocAddTech(this.value)">
+    <div class="fl"><label>Add Tech <span id="woc-tech-region-lbl" style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px">${(()=>{const{techs,region}=_techsForState('');return techs.length+' techs · select state to filter';})()}</span></label>
+      <input type="text" id="woc-tech-search" placeholder="&#128269; Search technicians..."
+        oninput="filterTechSelect(this,'woc-addtech')"
+        data-opts='${(()=>{const{techs}=_techsForState('');return JSON.stringify(_techOptObjs(techs)).replace(/'/g,"&#39;");})()}'
+        style="padding:7px 10px;border:1px solid var(--bdr);border-radius:8px 8px 0 0;font-size:13px;width:100%;border-bottom:none;box-sizing:border-box">
+      <select id="woc-addtech" onchange="wocAddTech(this.value)" style="border-radius:0 0 8px 8px;border-top:none;width:100%">
         <option value="">— Select tech —</option>
-        ${(()=>{
-          const allUsers=S.get('lhs:users')||[];
-          // Show users with include_dispatch=true/null/undefined — only exclude explicit false
-          let dispUsers=allUsers.filter(u=>u.include_dispatch!==false&&u.include_dispatch!=='false');
-          // Fallback: if no one passes the filter, show everyone
-          if(!dispUsers.length) dispUsers=allUsers;
-          return dispUsers.sort((a,b)=>a.name.localeCompare(b.name))
-            .map(u=>`<option value="${u.email||''}|${u.name}|${u.loc||u.home_location||''}">${u.name} (${u.division||u.role})</option>`).join('');
-        })()}
+        ${(()=>{const{techs}=_techsForState('');return _techOptObjs(techs).map(o=>`<option value="${o.v}">${o.t}</option>`).join('');})()}
       </select>
     </div>
   </div>
@@ -14605,6 +14601,58 @@ function wocClearCust(){
   document.getElementById('woc-cform').style.display='block';
   document.getElementById('woc-csearch').style.display='block';
   document.getElementById('woc-cselected').style.display='none';
+}
+
+// ── TECH SELECTOR HELPERS ─────────────────────────────────────────────────────
+// Returns dispatch-eligible techs filtered to a state's region (fallback: all)
+function _techsForState(stateCode){
+  const allUsers=S.get('lhs:users')||[];
+  let disp=allUsers.filter(u=>u.include_dispatch!==false&&u.include_dispatch!=='false'&&u.active!==false);
+  if(!disp.length) disp=allUsers.filter(u=>u.active!==false);
+  disp.sort((a,b)=>a.name.localeCompare(b.name));
+  if(stateCode){
+    const region=Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(stateCode));
+    if(region){
+      const rt=disp.filter(u=>u.region===region);
+      if(rt.length) return{techs:rt,region};
+    }
+  }
+  return{techs:disp,region:null};
+}
+
+// Build option objects array from tech list
+function _techOptObjs(techs){
+  return techs.map(u=>({
+    v:`${u.email||''}|${u.name}|${u.loc||u.home_location||''}`,
+    t:`${u.name}${u.division?' ('+u.division+')':u.role?' ('+u.role+')':''}`
+  }));
+}
+
+// Filter a tech <select> by search query; opts stored as JSON in data-opts on the paired search input
+function filterTechSelect(inputEl,selectId){
+  const q=(inputEl.value||'').toLowerCase().trim();
+  const sel=document.getElementById(selectId);
+  if(!sel) return;
+  const opts=JSON.parse(inputEl.dataset.opts||'[]');
+  sel.innerHTML='<option value="">— Select tech —</option>'+
+    opts.filter(o=>!q||o.t.toLowerCase().includes(q))
+      .map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+}
+
+// Called when woc-cst state changes — re-filters the WO creation tech list
+function wocRefreshTechList(){
+  const stateVal=(document.getElementById('woc-cst')?.value||'').split(' - ')[0].trim();
+  const{techs,region}=_techsForState(stateVal);
+  const opts=_techOptObjs(techs);
+  const searchIn=document.getElementById('woc-tech-search');
+  const sel=document.getElementById('woc-addtech');
+  const lbl=document.getElementById('woc-tech-region-lbl');
+  if(searchIn){searchIn.dataset.opts=JSON.stringify(opts);searchIn.value='';}
+  if(sel) sel.innerHTML='<option value="">— Select tech —</option>'+opts.map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+  if(lbl){
+    lbl.textContent=region?`${region} region · ${techs.length} tech${techs.length!==1?'s':''}`:techs.length+' techs · select state to filter';
+    lbl.style.color=region?'var(--green)':'var(--muted)';
+  }
 }
 
 function wocAddTech(val){
@@ -15205,12 +15253,22 @@ async function oAptDetail(aptId, woId){
         </div>
       </div>`;
     }).join('')}
-    ${canEdit?`<div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-      <select id="aptd-addtech" style="flex:1;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
-        <option value="">+ Add technician...</option>
-        ${(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).map(u=>`<option value="${u.email}|${u.name}|${u.loc||''}">${u.name} (${u.role})</option>`).join('')}
-      </select>
-      <button class="btn btn-n sm" onclick="aptAddTechInline('${aptId}','${woId}')">Add</button>
+    ${canEdit?`<div style="margin-top:8px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--navy)">Add Tech</span>
+        <span style="font-size:10px;color:${(()=>{const s=(wo.state||'').trim();const r=s?Object.keys(REGIONS).find(rk=>REGIONS[rk].states.includes(s)):null;return r?'var(--green)':'var(--muted)';})()}">${(()=>{const s=(wo.state||'').trim();const{techs,region}=_techsForState(s);return region?region+' region · '+techs.length+' tech'+(techs.length!==1?'s':''):techs.length+' techs (all regions)';})()}</span>
+      </div>
+      <input type="text" placeholder="&#128269; Search..."
+        oninput="filterTechSelect(this,'aptd-addtech')"
+        data-opts='${(()=>{const s=(wo.state||'').trim();const{techs}=_techsForState(s);return JSON.stringify(_techOptObjs(techs)).replace(/'/g,"&#39;");})()}'
+        style="width:100%;padding:6px 10px;border:1px solid var(--bdr);border-radius:8px 8px 0 0;font-size:12px;border-bottom:none;box-sizing:border-box">
+      <div style="display:flex;gap:6px">
+        <select id="aptd-addtech" style="flex:1;padding:6px 10px;border:1px solid var(--bdr);border-radius:0 0 8px 8px;border-top:none;font-size:12px">
+          <option value="">— Select tech —</option>
+          ${(()=>{const s=(wo.state||'').trim();const{techs}=_techsForState(s);return _techOptObjs(techs).map(o=>`<option value="${o.v}">${o.t}</option>`).join('');})()}
+        </select>
+        <button class="btn btn-n sm" onclick="aptAddTechInline('${aptId}','${woId}')">Add</button>
+      </div>
     </div>`:''}
   </div>
 
@@ -16298,11 +16356,23 @@ async function svCancelWO(woId){
 }
 
 function oAddTechToApt(aptId,woId){
+  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  const woState=(wo?.state||'').trim();
+  const{techs,region}=_techsForState(woState);
+  const opts=_techOptObjs(techs);
+  const optsJSON=JSON.stringify(opts).replace(/'/g,"&#39;");
   oMod('Add Technician',`
-  <div class="fl" style="margin-bottom:16px"><label>Select Technician</label>
-    <select id="ata-tech">
+  <div class="fl" style="margin-bottom:16px">
+    <label>Select Technician
+      ${region?`<span style="font-size:10px;font-weight:400;color:var(--green);margin-left:8px">${region} region · ${techs.length} tech${techs.length!==1?'s':''}</span>`:`<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${techs.length} techs (all regions)</span>`}
+    </label>
+    <input type="text" placeholder="&#128269; Search technicians..."
+      oninput="filterTechSelect(this,'ata-tech')"
+      data-opts='${optsJSON}'
+      style="padding:7px 10px;border:1px solid var(--bdr);border-radius:8px 8px 0 0;font-size:13px;width:100%;border-bottom:none;box-sizing:border-box">
+    <select id="ata-tech" style="border-radius:0 0 8px 8px;border-top:none;width:100%;padding:7px 10px;font-size:13px">
       <option value="">— Select —</option>
-      ${(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${u.email}|${u.name}|${u.loc||''}">${u.name} (${u.division||u.role})</option>`).join('')}
+      ${opts.map(o=>`<option value="${o.v}">${o.t}</option>`).join('')}
     </select>
   </div>
   <div class="br2">
