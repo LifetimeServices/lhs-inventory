@@ -4909,7 +4909,10 @@ function renderMatPresetsAdmin(){
         </tr></thead>
         <tbody>${rowsHTML}</tbody>
       </table></div>
-      <button class="btn btn-n sm" style="margin-top:10px" onclick="addPresetRow('${esc(key)}')">+ Add Row</button>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+        <button class="btn btn-n sm" onclick="addPresetRow('${esc(key)}')">+ Add Row</button>
+        <button class="btn btn-p sm" onclick="savePresetSection('${esc(key)}',this)">💾 Save Checklist</button>
+      </div>
     </div>`;
   };
 
@@ -5033,7 +5036,7 @@ async function removePresetRow(key, idx){
   g('atab').innerHTML=aWOSettings();
 }
 
-function updatePresetRowField(key, idx, field, val){
+async function updatePresetRowField(key, idx, field, val){
   const map=getMatPresets();
   if(!map[key]?.[idx]) return;
   if(field==='item'){
@@ -5046,7 +5049,21 @@ function updatePresetRowField(key, idx, field, val){
   } else {
     map[key][idx][field]=val;
   }
-  saveMatPresets(map);
+  await saveMatPresets(map);
+  tst('Checklist saved ✓','success');
+}
+
+async function savePresetSection(key, btn){
+  if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    const map=getMatPresets();
+    await saveMatPresets(map);
+    tst('Checklist saved ✓','success');
+  }catch(e){
+    tst('Save failed: '+e?.message,'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='💾 Save Checklist';}
+  }
 }
 
 function addPresetCustomField(key, rowIdx){
