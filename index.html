@@ -1521,8 +1521,12 @@ async function warmCache(){
         let query=DB.from(tbl).select('*');
         // Only order by created_at for tables that have it
         // Tables that use last_updated instead of created_at, or have neither
-        const noOrderTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_estimates','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines','lhs_wo_materials'];
-        if(noOrderTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
+        // Tables that use last_updated (van/location stock, PO lines, etc.)
+        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_estimates','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines'];
+        // Tables with no ordering column at all — just select *
+        const noSortTbls=['lhs_wo_materials'];
+        if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
+        else if(noSortTbls.includes(tbl)) { /* no ordering */ }
         else query=query.order('created_at',{ascending:true});
         const{data,error}=await query;
         if(!error&&data&&data.length>0){
@@ -4688,7 +4692,8 @@ async function applyMatPresets(aptId, woId, div, jobType){
 
     if(saved){
       console.log('Preset row saved OK:',saved.id);
-      mats.push(saved);
+      // Merge saved (real UUID) with original mat (ensures appointment_id etc. stay in cache)
+      mats.push({...mat, question_label:ql, ...saved});
     } else {
       console.error('Preset row FAILED to save — both attempts failed for:',ql||p.sku);
       mats.push({...mat, question_label:ql, id:'mat_preset_'+Date.now()+'_'+Math.random().toString(36).slice(2)});
@@ -14959,6 +14964,16 @@ async function oAptDetail(aptId, woId){
       if(changed) S.set('lhs:wo_photos',all);
     }
   }catch(e){console.warn('Photo prefetch:',e.message);}
+  // Fetch fresh materials from Supabase for this appointment — ensures they always show after reload
+  try{
+    const{data:freshMats}=await DB.from('lhs_wo_materials').select('*').eq('appointment_id',aptId);
+    if(freshMats&&freshMats.length){
+      const allMats=S.get('lhs:wo_materials')||[];
+      // Merge: remove stale entries for this apt, add fresh ones
+      const otherMats=allMats.filter(m=>m.appointment_id!==aptId);
+      S.set('lhs:wo_materials',[...otherMats,...freshMats]);
+    }
+  }catch(e){console.warn('Material prefetch:',e.message);}
   const apt=(S.get('lhs:appointments')||[]).find(a=>a.id===aptId);
   const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
   const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
