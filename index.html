@@ -1594,6 +1594,16 @@ async function warmCache(){
       wos.forEach(w=>{if(tagMap[w.id]) w.tags=tagMap[w.id];});
       S.set('lhs:work_orders',wos);
     }
+    // Load material presets from Supabase (stored there, not in localStorage quota)
+    await loadPresetsFromSupabase();
+    // Free up localStorage space — remove large tables that don't need to persist between sessions
+    // lhs_wo_audit and lhs_job_classifications are large and re-loaded from Supabase each login
+    try{
+      ['lhs:wo_audit','lhs:job_classifications','lhs:wo_creation_audit'].forEach(k=>{
+        const d=S.get(k);
+        if(d&&JSON.stringify(d).length>50000) localStorage.removeItem('lhs:'+k.split(':')[1]);
+      });
+    }catch{}
     console.log('Cache warm complete');
   }catch(e){console.warn('warmCache failed, using local cache:',e.message);}
 }
@@ -4565,7 +4575,34 @@ function aPerms(){
 function getMatPresets(){
   try{return JSON.parse(localStorage.getItem('lms_mat_presets')||'{}');}catch{return{};}
 }
-function saveMatPresets(map){localStorage.setItem('lms_mat_presets',JSON.stringify(map));}
+async function saveMatPresets(map){
+  // Write to localStorage first for immediate sync reads
+  try{localStorage.setItem('lms_mat_presets',JSON.stringify(map));}
+  catch(e){console.warn('localStorage quota hit — presets only saved to Supabase');}
+  // Persist to Supabase so presets survive cache clears and sync across devices
+  try{
+    for(const [key,items] of Object.entries(map)){
+      const parts=key.split('|');
+      const div=parts[0]||''; const jt=parts[1]||'';
+      const{error}=await DB.from('lhs_mat_presets').upsert(
+        {preset_key:key,division:div,job_type:jt,items,updated_at:new Date().toISOString(),updated_by:CU?.name||''},
+        {onConflict:'preset_key'});
+      if(error) console.warn('saveMatPresets Supabase error:',error.message);
+    }
+  }catch(e){console.warn('saveMatPresets Supabase failed:',e?.message);}
+}
+// Load presets from Supabase into localStorage cache (called at login)
+async function loadPresetsFromSupabase(){
+  try{
+    const{data,error}=await DB.from('lhs_mat_presets').select('*');
+    if(!error&&data&&data.length){
+      const map={};
+      data.forEach(row=>{map[row.preset_key]=row.items||[];});
+      try{localStorage.setItem('lms_mat_presets',JSON.stringify(map));}catch{}
+      console.log('Presets loaded from Supabase:',Object.keys(map).length,'keys');
+    }
+  }catch(e){console.warn('loadPresetsFromSupabase failed:',e?.message);}
+}
 
 function getPresetKey(div, jobType){return jobType?div+'|'+jobType:div;}
 
