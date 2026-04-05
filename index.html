@@ -15129,18 +15129,27 @@ async function aptAddMaterial(aptId, woId){
   const qty=parseInt(document.getElementById('aptd-mqty')?.value)||1;
   const unitCost=parseFloat(cost)||0;
   const customerCost=parseFloat(cCost)||0;
+  // Determine which vehicle to deduct from — use the tech's assigned vehicle for this appointment
+  const aptTechs=S.get('lhs:apt_techs')||[];
+  const aptTech=aptTechs.find(t=>t.appointment_id===aptId);
+  const vehicleId=aptTech?.vehicle_id||aptTech?.vehicle||CU.loc||'';
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
-    qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:CU.loc||'',
+    qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:vehicleId,
     entered_by:CU.name,created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:wo_materials',mat);
   if(!saved){tst('Failed to save material','error');return;}
+  // Deduct from the tech's van inventory using direct Supabase upsert
   const vi=S.get('lhs:vi')||[];
-  const vanRow=vi.find(r=>r.sku===sku&&(r.vehicle_id===CU.loc||r.vehicle===CU.loc));
-  if(vanRow){
-    const newQty=Math.max(0,(vanRow.qty_on_hand||vanRow.qty||0)-qty);
-    vanRow.qty_on_hand=newQty;vanRow.qty=newQty;S.set('lhs:vi',vi);
-    if(vanRow.id) await dbUpdate('lhs:vi',vanRow.id,{qty_on_hand:newQty});
-    tst(`${name} x${qty} logged & deducted from van`,'success');
+  const vanRow=vi.find(r=>r.sku===sku&&(r.vehicle===vehicleId||r.vehicle_id===vehicleId));
+  if(vanRow&&vehicleId){
+    const newQty=Math.max(0,(vanRow.qty_on_hand!=null?vanRow.qty_on_hand:(vanRow.qty||0))-qty);
+    vanRow.qty_on_hand=newQty; vanRow.qty=newQty; S.set('lhs:vi',vi);
+    try{
+      const{error}=await DB.from('lhs_van_inventory')
+        .upsert({sku,vehicle_id:vehicleId,item_name:name,qty_on_hand:newQty,last_updated:new Date().toISOString()},{onConflict:'sku,vehicle_id'});
+      if(error) console.warn('van-inv deduct error:',error.message);
+    }catch(e){console.warn('van-inv deduct failed:',e?.message);}
+    tst(`${name} x${qty} logged & deducted from ${vehicleId}`,'success');
   } else {
     tst(`${name} x${qty} logged`,'info');
   }
