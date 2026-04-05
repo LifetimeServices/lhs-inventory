@@ -2216,6 +2216,8 @@ function showPage(id){
   if(id==='dashboard') setTimeout(renderDashCharts,80);
   // Fix dispatch board height so toolbar never scrolls
   if(id==='dispatch'||id==='dispatch-board') setTimeout(fixDispBoardHeight,0);
+  // Render transfer history table after page builds
+  if(id==='transfer') setTimeout(xfrHistRender,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
@@ -2840,13 +2842,14 @@ async function postRecv(pi3){
 // ─── TRANSFER ────────────────────────────────────────────────────────────────
 let _xl=[],_xi=[];
 function bXfr(){
-  const xfrs=S.get('lhs:xfrs')||[];
   const _locs=S.get('lhs:locs')||[];
   const vehOpts=VH.map(vn=>{
     const loc=_locs.find(l=>l.name===vn);
     const drv=loc?.driver?` — ${loc.driver}`:'';
     return`<option value="${vn}">${vn}${drv}</option>`;
   }).join('');
+  const allLocs=[...WH,...VH];
+  const locOpts=allLocs.map(l=>`<option value="${l}">${l}</option>`).join('');
   return`<div class="pt">Vehicle Transfer</div><div class="ps">Move inventory between warehouses and vehicles</div>
   <div class="card"><div class="ct">New Transfer</div>
   <div class="fr">
@@ -2878,18 +2881,58 @@ function bXfr(){
     <button class="btn btn-n" onclick="postXfr()">&#9654; Log Transfer</button>
     <button class="btn btn-g" onclick="restMax()">&#9889; Restock Van to Max</button>
   </div></div>
-  <div class="card"><div class="ct">Transfer History</div>
-  <div class="tw"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>Qty</th><th>Reason</th><th>By</th></tr></thead>
-  <tbody>${xfrs.length?[...xfrs].reverse().slice(0,20).map(t=>`<tr>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div class="ct" style="margin:0">Transfer History</div>
+      <button class="btn sm btn-o" onclick="xfrHistClear()">Clear Filters</button>
+    </div>
+    <div class="fr" style="margin-bottom:14px;gap:10px;flex-wrap:wrap">
+      <div class="fl" style="min-width:120px"><label>Date From</label><input type="date" id="xhdf" onchange="xfrHistRender()"></div>
+      <div class="fl" style="min-width:120px"><label>Date To</label><input type="date" id="xhdt" onchange="xfrHistRender()"></div>
+      <div class="fl" style="min-width:130px"><label>From Location</label><select id="xhfl" onchange="xfrHistRender()">
+        <option value="">All</option>${locOpts}</select></div>
+      <div class="fl" style="min-width:130px"><label>To Location</label><select id="xhtl" onchange="xfrHistRender()">
+        <option value="">All</option>${locOpts}</select></div>
+      <div class="fl" style="min-width:140px"><label>Item / SKU</label><input id="xhiq" placeholder="Search..." oninput="xfrHistRender()"></div>
+    </div>
+    <div id="xfr-hist-table"><div style="text-align:center;color:var(--muted);padding:20px">Loading…</div></div>
+  </div>`;
+}
+function xfrHistRender(){
+  const df=document.getElementById('xhdf')?.value||'';
+  const dt=document.getElementById('xhdt')?.value||'';
+  const fl=(document.getElementById('xhfl')?.value||'').toLowerCase();
+  const tl=(document.getElementById('xhtl')?.value||'').toLowerCase();
+  const iq=(document.getElementById('xhiq')?.value||'').toLowerCase();
+  let xfrs=S.get('lhs:xfrs')||[];
+  if(df) xfrs=xfrs.filter(t=>(t.transfer_date||t.date||'')>=df);
+  if(dt) xfrs=xfrs.filter(t=>(t.transfer_date||t.date||'')<=dt);
+  if(fl) xfrs=xfrs.filter(t=>(t.from_location||t.from||'').toLowerCase()===fl);
+  if(tl) xfrs=xfrs.filter(t=>(t.to_location||t.to||'').toLowerCase()===tl);
+  if(iq) xfrs=xfrs.filter(t=>(t.item_name||t.item||'').toLowerCase().includes(iq)||(t.sku||'').toLowerCase().includes(iq));
+  const sorted=[...xfrs].sort((a,b)=>(b.transfer_date||b.date||'').localeCompare(a.transfer_date||a.date||''));
+  const el=document.getElementById('xfr-hist-table');
+  if(!el) return;
+  el.innerHTML=`<div class="tw"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>SKU</th><th>Qty</th><th>Reason</th><th>By</th></tr></thead>
+  <tbody>${sorted.length?sorted.map(t=>`<tr>
     <td style="font-size:12px;color:var(--muted)">${t.transfer_date||t.date||'&#8212;'}</td>
-    <td>${t.from_location||t.from||'&#8212;'}</td><td>${t.to_location||t.to||'&#8212;'}</td>
+    <td>${t.from_location||t.from||'&#8212;'}</td>
+    <td>${t.to_location||t.to||'&#8212;'}</td>
     <td style="font-weight:500">${t.item_name||t.item||'&#8212;'}</td>
+    <td style="font-size:11px;color:var(--muted);font-family:monospace">${t.sku||'&#8212;'}</td>
     <td style="font-family:'DM Sans',sans-serif;font-weight:700">${t.qty}</td>
     <td style="color:var(--muted);font-size:12px">${t.reason||'&#8212;'}</td>
     <td style="color:var(--muted);font-size:12px">${t.transferred_by||t.by||'&#8212;'}</td>
-  </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No transfers yet</td></tr>'}
-  </tbody></table></div></div>`;
+  </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No transfers match filters</td></tr>'}
+  </tbody></table></div><div style="font-size:12px;color:var(--muted);margin-top:8px;text-align:right">${sorted.length} record${sorted.length!==1?'s':''}</div>`;
 }
+function xfrHistClear(){
+  ['xhdf','xhdt','xhiq'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['xhfl','xhtl'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  xfrHistRender();
+}
+
+
 function addXL(){
   if(!_xi.length) _xi=S.get('lhs:items')||[];
   const idx=_xl.length; _xl.push({sku:'',item:'',qty:1});
@@ -3021,27 +3064,30 @@ async function postXfr(){
       }
     }catch(e){ dbErrs.push(`loc-stock error for ${r.sku}: ${e?.message}`); }
   }
-  for(const xfrRow of newXfrs){
-    // Use actual lhs_transfers column names (schema uses transfer_date, from_location, etc.)
-    const saved=await dbInsert('lhs:xfrs',{
-      transfer_date:xfrRow.date,
-      from_location:xfrRow.from,
-      to_location:xfrRow.to,
-      sku:xfrRow.sku,
-      item_name:xfrRow.item,
-      qty:xfrRow.qty,
-      reason:xfrRow.reason,
-      notes:xfrRow.notes||'',
-      transferred_by:xfrRow.by||CU?.name||''
-    });
-    if(saved?.id) xfrRow.id=saved.id;
-    else dbErrs.push(`transfer log insert failed for ${xfrRow.sku}`);
-  }
-
+  // Check inventory errors BEFORE saving transfer log — don't log a transfer that didn't actually move stock
   if(dbErrs.length){
     console.error('Transfer DB errors:',dbErrs);
     tst(`Save error — ${dbErrs[0]}`,'error');
-    return; // Don't update localStorage if DB failed — don't mislead user
+    return;
+  }
+
+  // Inventory saves confirmed — now log the transfers
+  for(const xfrRow of newXfrs){
+    // Use actual lhs_transfers column names (schema uses transfer_date, from_location, etc.)
+    try{
+      const{data,error}=await DB.from('lhs_transfers').insert({
+        transfer_date:xfrRow.date,
+        from_location:xfrRow.from,
+        to_location:xfrRow.to,
+        sku:xfrRow.sku,
+        item_name:xfrRow.item,
+        qty:xfrRow.qty,
+        reason:xfrRow.reason,
+        notes:xfrRow.notes||'',
+        transferred_by:xfrRow.by||CU?.name||''
+      }).select('id').single();
+      if(!error&&data?.id) xfrRow.id=data.id;
+    }catch(e){ console.warn('transfer log insert error:',e?.message); }
   }
 
   // All saves confirmed — normalize vi rows then commit to localStorage and re-render
