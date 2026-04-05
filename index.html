@@ -2873,7 +2873,7 @@ function bXfr(){
       <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Items</label>
       <button class="btn sm btn-o" onclick="addXL()">+ Add Item</button>
     </div>
-    <div class="tw"><table class="lt"><thead><tr><th>Item</th><th>SKU</th><th>Available</th><th>Qty</th><th></th></tr></thead>
+    <div class="tw"><table class="lt" style="table-layout:fixed;width:100%"><thead><tr><th style="width:55%">Item</th><th style="width:15%;text-align:center">Available</th><th style="width:15%;text-align:center">Qty</th><th style="width:5%"></th></tr></thead>
     <tbody id="xtb"></tbody></table></div>
   </div>
   <div class="fl" style="margin-bottom:16px"><label>Notes</label><input id="xn" placeholder="Optional"></div>
@@ -2939,17 +2939,17 @@ function addXL(){
   const tb=g('xtb'); if(!tb) return;
   const tr=document.createElement('tr'); tr.id='xl'+idx;
   tr.innerHTML=`
-  <td style="min-width:220px">
+  <td style="width:55%">
     <div style="position:relative">
-      <input id="xli${idx}" placeholder="Search item..." autocomplete="off"
-        style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"
-        oninput="xlSearch(${idx})" onfocus="xlSearch(${idx})" onblur="setTimeout(()=>xlDrop(${idx},'hide'),180)">
-      <div id="xld${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border:1px solid var(--bdr);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:999;max-height:220px;overflow-y:auto"></div>
+      <input id="xli${idx}" placeholder="&#128269; Search by name or SKU..." autocomplete="off"
+        style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:14px;box-sizing:border-box"
+        oninput="xlSearch(${idx})" onfocus="xlSearch(${idx})" onblur="setTimeout(()=>xlDrop(${idx},'hide'),200)">
+      <input id="xls${idx}" type="hidden" value="">
+      <div id="xld${idx}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--white);border:1px solid var(--bdr);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:9999;max-height:240px;overflow-y:auto"></div>
     </div>
   </td>
-  <td><input id="xls${idx}" readonly placeholder="SKU" style="width:90px;background:#f5f5f5;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:monospace"></td>
-  <td id="xla${idx}" style="font-family:'DM Sans',sans-serif;color:var(--muted);text-align:center">&#8212;</td>
-  <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:80px;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:15px;font-weight:600;text-align:center"></td>
+  <td id="xla${idx}" style="font-size:14px;font-weight:600;color:var(--muted);text-align:center;padding:0 8px">&#8212;</td>
+  <td style="text-align:center"><input type="number" id="xlq${idx}" value="1" min="1" style="width:80px;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:15px;font-weight:600;text-align:center"></td>
   <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
   tb.appendChild(tr);
   document.getElementById('xli'+idx)?.focus();
@@ -2982,7 +2982,8 @@ function xlDrop(idx,action){
 function xlPick(idx,sku,name){
   const inp=document.getElementById('xli'+idx);
   const skuEl=document.getElementById('xls'+idx);
-  if(inp) inp.value=name;
+  // Show "Name (SKU)" in the visible field; store sku in hidden input
+  if(inp) inp.value=`${name}  (${sku})`;
   if(skuEl) skuEl.value=sku;
   if(!_xl[idx]) _xl[idx]={};
   _xl[idx].sku=sku; _xl[idx].item=name;
@@ -2994,7 +2995,7 @@ function xlI(i,s){
   g('xls'+i).value=s.value; _xl[i]={sku:s.value,item:it?.name||''}; xAvail(i);
 }
 function xAvail(i){
-  const from=v('xf');const sku=_xl[i]?.sku; if(!from||!sku) return;
+  const from=v('xf');const sku=(document.getElementById('xls'+i)?.value)||_xl[i]?.sku; if(!from||!sku) return;
   let q=0;
   if(WH.includes(from)) q=(S.get('lhs:ls')||[]).find(r=>r.sku===sku&&r.location===from)?.qty||0;
   else q=(S.get('lhs:vi')||[]).find(r=>r.sku===sku&&r.vehicle===from)?.qty||0;
@@ -3012,7 +3013,7 @@ async function postXfr(){
   const lines=[];
   if(tb){
     tb.querySelectorAll('tr').forEach(row=>{
-      const skuIn=row.querySelector('input[readonly]');
+      const skuIn=row.querySelector('input[type="hidden"]')||row.querySelector('input[readonly]');
       const qtyIn=row.querySelector('input[type="number"]');
       const sku=(skuIn?.value||'').trim();
       const qty=parseInt(qtyIn?.value)||0;
