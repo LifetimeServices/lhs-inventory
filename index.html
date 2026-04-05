@@ -2945,7 +2945,7 @@ function addXL(){
         style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:14px;box-sizing:border-box"
         oninput="xlSearch(${idx})" onfocus="xlSearch(${idx})" onblur="setTimeout(()=>xlDrop(${idx},'hide'),200)">
       <input id="xls${idx}" type="hidden" value="">
-      <div id="xld${idx}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--white);border:1px solid var(--bdr);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:9999;max-height:240px;overflow-y:auto"></div>
+      <div id="xld${idx}" style="display:none;position:fixed;background:var(--white);border:1px solid var(--bdr);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:9999;max-height:240px;overflow-y:auto;min-width:320px"></div>
     </div>
   </td>
   <td id="xla${idx}" style="font-size:14px;font-weight:600;color:var(--muted);text-align:center;padding:0 8px">&#8212;</td>
@@ -2958,7 +2958,13 @@ function xlSearch(idx){
   if(!_xi.length) _xi=S.get('lhs:items')||[];
   const q=(document.getElementById('xli'+idx)?.value||'').toLowerCase().trim();
   const drop=document.getElementById('xld'+idx);
-  if(!drop) return;
+  const inp=document.getElementById('xli'+idx);
+  if(!drop||!inp) return;
+  // Position fixed dropdown under the input (avoids table overflow clipping)
+  const r=inp.getBoundingClientRect();
+  drop.style.top=(r.bottom+4)+'px';
+  drop.style.left=r.left+'px';
+  drop.style.width=r.width+'px';
   const matches=q.length===0
     ? _xi.slice(0,60)
     : _xi.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||(i.brand||'').toLowerCase().includes(q)).slice(0,60);
