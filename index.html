@@ -1493,14 +1493,17 @@ function _normLs(r){
 // Maps vehicle_id→vehicle, item_name→item, qty_on_hand→qty, van_min→min, van_max→max.
 // Safe to call on already-normalized rows (keeps existing fields).
 function _normVi(r){
+  // Use != null (not !==undefined) so that null values fall through to the fallback
+  const qty=(r.qty!=null)?r.qty:(r.qty_on_hand||0);
+  const qoh=(r.qty_on_hand!=null)?r.qty_on_hand:qty;
   return{
     ...r,
     vehicle:r.vehicle||r.vehicle_id||'',
     item:r.item||r.item_name||r.sku||'',
-    qty:r.qty!==undefined?r.qty:(r.qty_on_hand||0),
-    qty_on_hand:r.qty_on_hand!==undefined?r.qty_on_hand:(r.qty||0),
-    min:r.min!==undefined?r.min:(r.van_min||0),
-    max:r.max!==undefined?r.max:(r.van_max||0),
+    qty:qty,
+    qty_on_hand:qoh,
+    min:(r.min!=null)?r.min:(r.van_min||0),
+    max:(r.max!=null)?r.max:(r.van_max||0),
   };
 }
 
