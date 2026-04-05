@@ -13350,7 +13350,7 @@ const BLOCK_TYPES=['Meeting','Training','Lunch','Drive Time','PTO','UTO','Other'
 // Custom time picker — works in all browsers including Safari
 // Shows a text input + dropdown arrow; clicking opens a list of 15-min increments;
 // user can also type any time directly (e.g. "8:47 AM" or "08:47")
-function mkDispTimeInput(id, selected, disabled){
+function mkDispTimeInput(id, selected, disabled, onChangeFn){
   const times=[];
   for(let h=5;h<23;h++){
     for(let m=0;m<60;m+=15){
@@ -13371,6 +13371,7 @@ function mkDispTimeInput(id, selected, disabled){
         style="flex:1;padding:8px 10px;border:none;outline:none;font-size:13px;
                font-family:inherit;background:${bg};border-radius:8px 0 0 8px"
         oninput="dispTpFilter('${id}',this.value)"
+        onchange="${onChangeFn||''}"
         onfocus="dispTpOpen('${id}')"
         onkeydown="if(event.key==='Escape'||event.key==='Tab')dispTpClose('${id}')">
       <button type="button" tabindex="-1" ${dis}
@@ -13404,7 +13405,8 @@ function dispTpFilter(id,q){
   [...d.children].forEach(el=>{el.style.display=q&&!el.textContent.toLowerCase().includes(q.toLowerCase())?'none':'';});
 }
 function dispTpSelect(id,label){
-  const inp=document.getElementById(id);if(inp)inp.value=label;
+  const inp=document.getElementById(id);
+  if(inp){inp.value=label;inp.dispatchEvent(new Event('change',{bubbles:true}));}
   dispTpClose(id);
 }
 // Close any open time picker when clicking outside
@@ -13424,6 +13426,16 @@ function parseTime12to24(str){
   const ap=m[3].toUpperCase();
   if(ap==='AM'){if(h===12)h=0;}else{if(h!==12)h+=12;}
   return String(h).padStart(2,'0')+':'+String(mn).padStart(2,'0');
+}
+// Set a mkDispTimeInput field to a 24h value (e.g. "14:30" → shows "2:30 PM")
+function setDispTimeVal(id,val24){
+  const el=document.getElementById(id);
+  if(!el||!val24) return;
+  const parts=val24.split(':');
+  const h=parseInt(parts[0]),mn=parseInt(parts[1]||'0');
+  const ap=h>=12?'PM':'AM';
+  const dh=h>12?h-12:(h===0?12:h);
+  el.value=`${dh}:${String(mn).padStart(2,'0')} ${ap}`;
 }
 // Parse display value ("8:47 AM", "08:47", "8:47") → "HH:MM" for saving
 function parseDispTime(val){
@@ -13951,7 +13963,7 @@ function woCreateForm(){
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">First Appointment</div>
   <div class="fr">
     <div class="fl"><label>Date</label><input type="date" id="woc-adate" value="${new Date().toISOString().split('T')[0]}" onchange="wocUpdatePreview()"></div>
-    <div class="fl"><label>Time</label><input type="time" id="woc-atime" value="08:00" onchange="wocUpdateEndTime()"></div>
+    <div class="fl"><label>Start Time</label>${mkDispTimeInput('woc-atime','08:00',false,'wocUpdateEndTime()')}</div>
     <div class="fl"><label>Arrival Window</label>
       <select id="woc-awin">
         ${getArrivalWindows().map(w=>`<option>${w}</option>`).join('')}
@@ -13959,7 +13971,7 @@ function woCreateForm(){
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>End Time</label><input type="time" id="woc-aend" value="${(()=>{const dur=getDivJobDuration(div,type);const endMin=8*60+dur;return String(Math.floor(endMin/60)).padStart(2,'0')+':'+String(endMin%60).padStart(2,'0');})()}"></div>
+    <div class="fl"><label>End Time</label>${mkDispTimeInput('woc-aend',(()=>{const dur=getDivJobDuration(div,type);const endMin=8*60+dur;return String(Math.floor(endMin/60)).padStart(2,'0')+':'+String(endMin%60).padStart(2,'0');})())}</div>
     <div class="fl"><label>Appointment Price $</label><input type="number" id="woc-aprice" step="0.01" placeholder="0.00"></div>
   </div>
   <div class="fl" style="margin-bottom:8px"><label>Assign Technician(s)</label>
@@ -14001,13 +14013,13 @@ function woCreateForm(){
 function wocUpdateEndTime(){
   const div=document.getElementById('woc-div')?.value||window._woDiv||'';
   const type=document.getElementById('woc-type')?.value||window._woType||'Installation';
-  const startTime=document.getElementById('woc-atime')?.value||'08:00';
+  const startRaw=document.getElementById('woc-atime')?.value||'8:00 AM';
+  const startTime=parseTime12to24(startRaw)||'08:00';
   const dur=getDivJobDuration(div,type);
   const [sh,sm]=startTime.split(':').map(Number);
   const endMin=sh*60+sm+dur;
   const endVal=String(Math.floor(endMin/60)%24).padStart(2,'0')+':'+String(endMin%60).padStart(2,'0');
-  const endEl=document.getElementById('woc-aend');
-  if(endEl) endEl.value=endVal;
+  setDispTimeVal('woc-aend',endVal);
 }
 function wocUpdatePreview(){
   const div=document.getElementById('woc-div')?.value||window._woDiv||DIVS[0];
@@ -14260,8 +14272,8 @@ async function svCreateWO(){
   wo.id=savedWO.id;
 
   // Create first appointment — check for scheduling conflicts first
-  const _wocDate=v('woc-adate'), _wocTime=v('woc-atime')||'08:00';
-  const _wocDur=(()=>{const s=_wocTime;const e=v('woc-aend')||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
+  const _wocDate=v('woc-adate'), _wocTime=parseTime12to24(v('woc-atime'))||'08:00';
+  const _wocDur=(()=>{const s=_wocTime;const e=parseTime12to24(v('woc-aend'))||'10:00';const[sh,sm]=s.split(':').map(Number);const[eh,em]=e.split(':').map(Number);return Math.max(15,(eh*60+em)-(sh*60+sm));})();
   const _wocTechNames=(window._wocTechs||[]).map(t=>t.name);
   if(_wocDate&&_wocTime&&_wocTechNames.length){
     const wocConflicts=aptConflicts(_wocTechNames, _wocDate, _wocTime, _wocDur, null);
