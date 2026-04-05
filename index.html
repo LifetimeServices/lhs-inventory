@@ -14231,12 +14231,22 @@ async function svCreateWO(){
   let seq=1;
   try{
     // Pass state to the Supabase sequence function
-    const{data}=await DB.rpc('get_next_wo_seq',{p_year:woYear,p_code:code,p_state:woState});
-    if(data) seq=data;
+    const{data,error}=await DB.rpc('get_next_wo_seq',{p_year:woYear,p_code:code,p_state:woState});
+    if(error||!data) throw new Error(error?.message||'RPC unavailable');
+    seq=data;
   }catch{
     // Local fallback: sequence keyed by year+code+state
+    // Also check Supabase for highest existing seq to avoid duplicates
     const localKey='lhs:wo_seq_'+woYear+'_'+code+'_'+woState;
-    seq=(S.get(localKey)||0)+1;
+    let localSeq=(S.get(localKey)||0)+1;
+    // Scan local cache for existing WOs this year+div+state to avoid dups
+    const prefix=`${woYear}-${code}-${woState}-`;
+    const existingNums=(S.get('lhs:work_orders')||[])
+      .map(w=>w.wo_number||'')
+      .filter(n=>n.startsWith(prefix))
+      .map(n=>parseInt(n.replace(prefix,''))||0);
+    const maxExisting=existingNums.length?Math.max(...existingNums):0;
+    seq=Math.max(localSeq,maxExisting+1);
     S.set(localKey,seq);
   }
   // 5 digits now; naturally extends to 6 when seq reaches 100,000
