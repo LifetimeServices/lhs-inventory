@@ -4676,7 +4676,8 @@ async function applyMatPresets(aptId, woId, div, jobType){
       appointment_id:aptId,
       sku:p.sku||'NA-000',
       item_name:ql||p.name||'N/A',
-      qty_used:p.default_qty||0,
+      qty_used:0,           // Always start at 0 — tech confirms qty on Save, which triggers deduction
+      default_qty:p.default_qty||0, // stored as hint only, not deducted until confirmed
       unit_cost:p.unit_cost||0,
       include_custom_field:customFields.length>0,
       custom_field_label:customFields.length
@@ -15136,7 +15137,9 @@ function matRowHTML(m, aptId, woId){
   const safeId=esc(m.id||'');
   const safeApt=esc(aptId);
   const safeWo=esc(woId);
+  // For unconfirmed preset rows (qty_used=0), pre-fill with default_qty as a suggestion
   const qty=m.qty_used||0;
+  const displayQty=(qty===0&&m.pulled_from==='preset'&&m.default_qty)?m.default_qty:qty;
   const ext=fN(qty*(m.unit_cost||0));
   const ql=(m.question_label||'').trim();
   const isPreset=!!(ql||m.pulled_from==='preset');
@@ -15168,8 +15171,8 @@ function matRowHTML(m, aptId, woId){
     <div style="display:flex;align-items:center;gap:6px;padding:4px 10px 7px;flex-wrap:nowrap">
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--muted)">Qty</span>
-        <input type="number" id="mat-qty-${safeId}" value="${qty}" min="0"
-          style="width:52px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center">
+        <input type="number" id="mat-qty-${safeId}" value="${displayQty}" min="0"
+          style="width:52px;padding:4px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;text-align:center${displayQty&&!qty?';border-color:#f59e0b;background:#fffbeb':''}">
       </div>
       ${canSeeCustCost?`<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <span style="font-size:11px;color:var(--muted)">Cust&nbsp;$</span>
