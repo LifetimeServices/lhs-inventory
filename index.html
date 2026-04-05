@@ -25516,17 +25516,10 @@ function previewEstDocTemplate(id){
     .doc-footer{display:flex;justify-content:space-between;margin-top:32px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#999}
     .no-paras{color:#888;font-size:12px;font-style:italic;padding:14px;border:1px dashed #ddd;border-radius:6px;text-align:center}
     @media print{
-      .preview-banner{display:none}
       body{background:white}
-      .page{box-shadow:none;margin:0;padding:0}
+      .page{box-shadow:none;margin:0;padding:0;width:100%}
     }
   </style></head><body>
-  <div class="preview-banner">
-    PREVIEW — ${esc(t.label||'Unnamed Template')}
-    <span>${t.division?'Division: '+esc(t.division):'All Divisions'}${t.region?' · '+esc(t.region):''}${t.state?' · '+esc(t.state):''}</span>
-    <span style="margin-left:16px;opacity:.5">|</span>
-    <a href="javascript:window.print()" style="color:#3abfbf;margin-left:12px;font-size:11px">🖨 Print</a>
-  </div>
   <div class="page">
     <!-- HEADER -->
     <div class="hdr">
@@ -25619,9 +25612,40 @@ function previewEstDocTemplate(id){
   </div>
   </body></html>`;
 
-  const w=window.open('','_blank','width=920,height=800');
-  if(!w){tst('Allow pop-ups to preview','error');return;}
-  w.document.write(html);w.document.close();
+  // Remove any existing preview overlay
+  document.getElementById('est-preview-overlay')?.remove();
+
+  // Build full-page overlay with iframe (no popup needed)
+  const overlay=document.createElement('div');
+  overlay.id='est-preview-overlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#f0f2f5;display:flex;flex-direction:column;animation:fadeIn .15s ease';
+
+  const scopeLabel=[t.division?'Division: '+t.division:'',t.region||'',t.state||''].filter(Boolean).join(' · ')||'Global Default';
+  const bar=document.createElement('div');
+  bar.style.cssText='background:#1B2A4A;color:white;padding:10px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+  bar.innerHTML=`
+    <div>
+      <div style="font-weight:700;font-size:13px">👁 Preview — ${esc(t.label||'Unnamed Template')}</div>
+      <div style="font-size:11px;opacity:.65;margin-top:1px">${esc(scopeLabel)}</div>
+    </div>
+    <button onclick="document.getElementById('est-preview-frame').contentDocument.execCommand&&document.getElementById('est-preview-frame').contentWindow.print()"
+      style="margin-left:auto;background:#3abfbf;border:none;color:white;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600">🖨 Print</button>
+    <button onclick="document.getElementById('est-preview-overlay').remove()"
+      style="background:rgba(255,255,255,.15);border:none;color:white;padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600">✕ Close</button>
+  `;
+
+  const iframe=document.createElement('iframe');
+  iframe.id='est-preview-frame';
+  iframe.style.cssText='flex:1;border:none;width:100%;background:white';
+
+  overlay.appendChild(bar);
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
+
+  // Write content into iframe (no popup needed, always works)
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
 }
 
 // ── SALES SETTINGS STORAGE ────────────────────────────────────────────────────
