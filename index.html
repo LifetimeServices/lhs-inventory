@@ -25467,6 +25467,18 @@ function renderEstDocSettingsCard(){
   </div>`;
 }
 
+function saveDivDisplayNamesFromSales(){
+  const map=S.get('lhs:div_display_names')||{};
+  DIVS.forEach(d=>{
+    const safeId='ddn-'+btoa(d).replace(/[^a-zA-Z0-9]/g,'_');
+    const el=document.getElementById(safeId);
+    if(el) map[d]=el.value.trim();
+  });
+  S.set('lhs:div_display_names',map);
+  tst('Division display names saved','success');
+  showPage('sales-settings');
+}
+
 function estDocFilterRefresh(){
   const card=document.getElementById('est-doc-settings-card');
   if(card) card.innerHTML=renderEstDocSettingsCard();
@@ -25939,8 +25951,48 @@ function bSalesSettings(){
 
 function renderSalesSettings(){
   const ss=getSalesSettings();
+  const canEdit=['God View','Admin','Director'].includes(CU?.role);
   return`
   <div id="est-doc-settings-card">${renderEstDocSettingsCard()}</div>
+
+  <!-- Division Display Names (shared with Accounting Settings) -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div class="ct" style="margin:0">Division Display Names</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Customer-facing DBA names shown on estimates &amp; invoices. Leave blank to use the internal name. <span style="color:var(--teal);font-weight:600">Shared with Accounting Settings.</span></div>
+      </div>
+      ${canEdit?`<button class="btn btn-n sm" onclick="saveDivDisplayNames();tst('Display names saved','success');showPage('sales-settings')">✓ Save</button>`:''}
+    </div>
+    ${(()=>{
+      const map=S.get('lhs:div_display_names')||{};
+      const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+      if(!divs.length) return`<div style="font-size:13px;color:var(--muted);font-style:italic">No divisions configured. Add divisions in Admin first.</div>`;
+      return`<div class="tw" style="margin:0"><table style="width:100%">
+        <thead><tr>
+          <th style="width:40%;text-align:left">Internal Division</th>
+          <th style="text-align:left">Estimate &amp; Invoice Display Name <span style="font-weight:400;color:var(--muted)">(customer-facing)</span></th>
+        </tr></thead>
+        <tbody>${divs.map(d=>{
+          const safeId='ddn-'+btoa(d).replace(/[^a-zA-Z0-9]/g,'_');
+          const existing=map[d]||'';
+          return`<tr style="border-bottom:1px solid var(--bdr)">
+            <td style="padding:10px 12px 10px 0;font-weight:600;color:var(--navy);font-size:13px">${esc(d)}</td>
+            <td style="padding:8px 0">
+              ${canEdit
+                ?`<input id="${safeId}" value="${esc(existing)}" placeholder="e.g. Lifetime Radon Solutions"
+                    style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box">`
+                :`<span style="font-size:13px;color:${existing?'var(--navy)':'var(--muted)'}">${existing||'— same as internal —'}</span>`}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      ${canEdit?`<div style="margin-top:12px;text-align:right">
+        <button class="btn btn-n" onclick="saveDivDisplayNamesFromSales()">✓ Save Display Names</button>
+      </div>`:''}`;
+    })()}
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
   <!-- Lead Source Categories + Details -->
@@ -27569,9 +27621,8 @@ function printEstimate(id){
   // Logo from the live page navbar
   const logoSrc=document.querySelector('.tbl img')?.src||'';
 
-  // Division sub-brand (e.g. "Radon Mitigation" → "LIFETIME RADON")
-  const divName=(e.division||'').toUpperCase();
-  const divShort=divName.includes('RADON')?'RADON':divName.includes('HAND')?'HANDYMAN':divName.includes('ELEC')?'ELECTRICAL':divName.includes('PLUMB')?'PLUMBING':divName.includes('HVAC')?'HVAC':divName.split(' ')[0]||'HOME SERVICES';
+  // Division display name — use the same getDivDisplayName() map as invoices
+  const divDisplayName=getDivDisplayName(e.division||'');
 
   // Customer / address info
   const custAddr=[cust?.address,cust?.city&&cust?.state?`${cust.city}, ${cust.state} ${cust.zip||''}`:cust?.city||''].filter(Boolean).join('\n');
@@ -27594,9 +27645,11 @@ function printEstimate(id){
       `For your convenience, we accept credit cards with a 3% processing fee added to the total. To save on this fee, please consider paying by check, bank transfer, or cash — no fee applies!`,
     ];
 
+  // Filter out blank/empty lines before printing
+  const printLines=lines.filter(l=>(l.label||l.name||'').trim()||(l.price||0)!==0);
   // Separate service lines from discount lines
-  const svcLines=lines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
-  const discLines=lines.filter(l=>l.type==='Discount'||l.type==='discount');
+  const svcLines=printLines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
+  const discLines=printLines.filter(l=>l.type==='Discount'||l.type==='discount');
   const subtotal=svcLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
   const discTotal=discLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
   const grandTotal=subtotal+discTotal;
@@ -27689,7 +27742,8 @@ function printEstimate(id){
   <!-- HEADER -->
   <div class="hdr">
     <div class="hdr-logo">
-      ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div><div class="logo-sub">${divShort}</div>`}
+      ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div>`}
+      ${divDisplayName?`<div class="logo-sub">${divDisplayName}</div>`:''}
     </div>
     <div class="hdr-co">
       <strong>Lifetime Home Services LLC</strong><br>
