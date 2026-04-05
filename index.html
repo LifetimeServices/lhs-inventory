@@ -14253,7 +14253,8 @@ async function svCreateWO(){
   const savedApt=await dbInsert('lhs:appointments',apt);
   if(savedApt) apt.id=savedApt.id;
 
-  // Assign techs to appointment
+  // Assign techs to appointment — store returned rows (with Supabase UUID) so dispatch/arrive updates work
+  const _wocAptTechs=S.get('lhs:apt_techs')||[];
   for(const tech of (window._wocTechs||[])){
     const techRow={
       appointment_id:apt.id, wo_id:savedWO.id,
@@ -14261,8 +14262,10 @@ async function svCreateWO(){
       vehicle_id:tech.loc, status:'Scheduled',
       created_at:new Date().toISOString(),
     };
-    await dbInsert('lhs:apt_techs',techRow);
+    const savedTech=await dbInsert('lhs:apt_techs',techRow);
+    _wocAptTechs.push(savedTech||{...techRow,id:'tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
   }
+  S.set('lhs:apt_techs',_wocAptTechs);
 
   // Apply preset materials to the appointment — wrapped so errors never block WO save
   try{ await applyMatPresets(apt.id, savedWO.id, div, type); }
@@ -15535,11 +15538,15 @@ async function svAddAppointment(woId,num){
   const saved=await dbInsert('lhs:appointments',apt);
   if(!saved){tst('Failed to save appointment','error');return}
   apt.id=saved.id;
+  const _naAptTechs=S.get('lhs:apt_techs')||[];
   for(const tech of (window._naTechs||[])){
-    await dbInsert('lhs:apt_techs',{appointment_id:apt.id,wo_id:woId,
+    const naRow={appointment_id:apt.id,wo_id:woId,
       tech_name:tech.name,tech_email:tech.email,vehicle_id:tech.loc,
-      status:'Scheduled',created_at:new Date().toISOString()});
+      status:'Scheduled',created_at:new Date().toISOString()};
+    const savedNaTech=await dbInsert('lhs:apt_techs',naRow);
+    _naAptTechs.push(savedNaTech||{...naRow,id:'tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
   }
+  S.set('lhs:apt_techs',_naAptTechs);
   const apts=S.get('lhs:appointments')||[];apts.push(apt);S.set('lhs:appointments',apts);
   // Apply preset materials — wo must be fetched here, it's not in scope
   const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
