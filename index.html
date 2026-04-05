@@ -4573,9 +4573,17 @@ function aPerms(){
 // Keys: "Radon Mitigation" (division only) or "Radon Mitigation|Installation" (div+type)
 // Each value: [{sku, name, unit_cost, default_qty, include_custom_field, custom_field_label}]
 function getMatPresets(){
-  // Always read from in-memory cache first — never depend on localStorage (quota issues)
+  // Always read from in-memory cache — Supabase loads this at login via loadPresetsFromSupabase()
   if(_C['lms_mat_presets']!==undefined) return _C['lms_mat_presets'];
-  try{const v=JSON.parse(localStorage.getItem('lms_mat_presets')||'{}'); _C['lms_mat_presets']=v; return v;}catch{return{};}
+  // Fallback: try localStorage only if cache wasn't populated yet (e.g. called before login)
+  try{
+    const v=JSON.parse(localStorage.getItem('lms_mat_presets')||'{}');
+    _C['lms_mat_presets']=v;
+    return v;
+  }catch{
+    _C['lms_mat_presets']={};
+    return {};
+  }
 }
 async function saveMatPresets(map){
   // Always update in-memory cache immediately so re-renders see the new data
@@ -4602,10 +4610,17 @@ async function loadPresetsFromSupabase(){
     if(!error&&data&&data.length){
       const map={};
       data.forEach(row=>{map[row.preset_key]=row.items||[];});
+      _C['lms_mat_presets']=map; // ← always set memory cache first (localStorage may be full)
       try{localStorage.setItem('lms_mat_presets',JSON.stringify(map));}catch{}
       console.log('Presets loaded from Supabase:',Object.keys(map).length,'keys');
+    } else {
+      // No presets in Supabase yet — init empty map in memory
+      if(_C['lms_mat_presets']===undefined) _C['lms_mat_presets']={};
     }
-  }catch(e){console.warn('loadPresetsFromSupabase failed:',e?.message);}
+  }catch(e){
+    console.warn('loadPresetsFromSupabase failed:',e?.message);
+    if(_C['lms_mat_presets']===undefined) _C['lms_mat_presets']={};
+  }
 }
 
 function getPresetKey(div, jobType){return jobType?div+'|'+jobType:div;}
