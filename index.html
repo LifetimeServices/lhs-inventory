@@ -3022,21 +3022,35 @@ async function postXfr(){
   tst('Saving transfer…','info');
   const dbErrs=[];
 
-  // Van inventory — upsert on (sku, vehicle_id) so INSERT and UPDATE both work
-  // even when rows lack IDs (old localStorage-only data has no Supabase id yet)
+  // Van inventory — explicit find + update-or-insert (more reliable than upsert)
   for(const r of changedVi){
     try{
       const vId=r.vehicle||r.vehicle_id||'';
-      const{data,error}=await DB.from('lhs_van_inventory')
-        .upsert({
-          sku:r.sku, item_name:r.item||r.item_name||r.sku,
-          vehicle_id:vId, qty_on_hand:r.qty,
-          van_min:r.min||0, van_max:r.max||0,
-          last_updated:new Date().toISOString()
-        },{onConflict:'sku,vehicle_id'})
-        .select('id').single();
-      if(error) dbErrs.push(`van-inv save failed for ${r.sku} on ${vId}: ${error.message}`);
-      else if(data?.id) r.id=data.id;
+      const newQty=Math.max(0,parseInt(r.qty)||0);
+      // First try to find existing Supabase row by sku + vehicle_id
+      let rowId=r.id||null;
+      if(!rowId){
+        const{data:found}=await DB.from('lhs_van_inventory')
+          .select('id').eq('sku',r.sku).eq('vehicle_id',vId).maybeSingle();
+        if(found?.id){ rowId=found.id; r.id=rowId; }
+      }
+      if(rowId){
+        // Row exists — update qty
+        const{error}=await DB.from('lhs_van_inventory')
+          .update({qty_on_hand:newQty, last_updated:new Date().toISOString()})
+          .eq('id',rowId);
+        if(error) dbErrs.push(`van-inv update failed for ${r.sku} on ${vId}: ${error.message}`);
+      }else{
+        // Row doesn't exist yet — insert
+        const{data:ins,error}=await DB.from('lhs_van_inventory')
+          .insert({sku:r.sku, item_name:r.item||r.item_name||r.sku,
+            vehicle_id:vId, qty_on_hand:newQty,
+            van_min:r.min||0, van_max:r.max||0,
+            last_updated:new Date().toISOString()})
+          .select('id').single();
+        if(error) dbErrs.push(`van-inv insert failed for ${r.sku} on ${vId}: ${error.message}`);
+        else if(ins?.id) r.id=ins.id;
+      }
     }catch(e){ dbErrs.push(`van-inv error for ${r.sku}: ${e?.message}`); }
   }
 
@@ -3051,16 +3065,20 @@ async function postXfr(){
         if(found?.id){ rowId=found.id; r.id=rowId; }
       }
       if(rowId){
-        const ok=await dbUpdate('lhs:ls',rowId,{qty:r.qty});
-        if(!ok) dbErrs.push(`loc-stock update failed for ${r.sku} at ${r.location}`);
+        // Supabase location_stock uses qty_on_hand column
+        const{error}=await DB.from('lhs_location_stock')
+          .update({qty_on_hand:Math.max(0,parseInt(r.qty)||0), last_updated:new Date().toISOString()})
+          .eq('id',rowId);
+        if(error) dbErrs.push(`loc-stock update failed for ${r.sku} at ${r.location}: ${error.message}`);
       }else{
         // Genuinely new row — insert
-        const saved=await dbInsert('lhs:ls',{
-          sku:r.sku, item:r.item, location:r.location,
-          qty:r.qty, min:r.min||0, max:r.max||0, bin:r.bin||''
-        });
-        if(saved?.id) r.id=saved.id;
-        else dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}`);
+        const{data:ins,error}=await DB.from('lhs_location_stock')
+          .insert({sku:r.sku, item_name:r.item||r.item_name||r.sku,
+            location:r.location, qty_on_hand:Math.max(0,parseInt(r.qty)||0),
+            min_qty:r.min||0, max_qty:r.max||0, bin_shelf:r.bin||''})
+          .select('id').single();
+        if(ins?.id) r.id=ins.id;
+        else if(error) dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}: ${error.message}`);
       }
     }catch(e){ dbErrs.push(`loc-stock error for ${r.sku}: ${e?.message}`); }
   }
