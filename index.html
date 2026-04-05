@@ -20232,6 +20232,7 @@ function bPayrollDashboard(){
     ${disputedCount>0?`<span style="background:#B71C1C;color:white;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin-left:4px;align-self:center">⚠ ${disputedCount} Dispute${disputedCount!==1?'s':''}</span>`:''}
     ${canApprove?`<button class="btn sm btn-n" style="margin-left:auto" onclick="prAddEntry()">+ Add Entry</button>`:''}
     ${canApprove?`<button class="btn sm btn-n" onclick="prSendToAll('${period}')">&#128228; Send to All</button>`:''}
+    ${canApprove?`<button class="btn sm btn-n" style="background:#1565C0;color:white;border-color:#1565C0" onclick="prSendSelected('${period}')">&#128228; Send Selected</button>`:''}
   </div>
 
   <!-- Filters -->
@@ -20292,6 +20293,7 @@ function bPayrollDashboard(){
     </div>`:`
     <div class="tw" style="margin:0"><table>
       <thead><tr>
+        <th style="width:32px"><input type="checkbox" id="pr-sel-all" onchange="document.querySelectorAll('.pr-emp-sel').forEach(c=>c.checked=this.checked)"></th>
         <th>Employee</th><th>Manager</th><th>Division</th>
         <th style="text-align:right">Regular</th>
         <th style="text-align:right">Overtime</th>
@@ -20304,6 +20306,7 @@ function bPayrollDashboard(){
       ${shownList.map(e=>{
         const isDisputed=e.empStatus==='Disputed';
         return`<tr style="${isDisputed?'background:#FFF5F5':''};">
+          <td><input type="checkbox" class="pr-emp-sel" data-uid="${esc(e.user.id||e.user.uid||e.user.user_id||e.user.name||'')}"></td>
           <td style="font-weight:600">
             ${e.user.name}
             ${isDisputed?`<span style="margin-left:6px;font-size:10px;background:#B71C1C;color:white;border-radius:4px;padding:1px 5px">⚠ Dispute</span>`:''}
@@ -21241,6 +21244,38 @@ async function prSendToAll(period){
   const now=new Date().toISOString();
   let sent=0;
   for(const u of tsUsers){
+    const rows=allTS.filter(t=>t.employee===u.name&&t.week_start===period&&(t.status==='Manager Approved'||t.status==='Pending')&&!t.sent_to_employee);
+    if(!rows.length) continue;
+    rows.forEach(r=>{r.sent_to_employee=true;r.sent_at=now;});
+    for(const r of rows){
+      try{await DB.from('lhs_timesheets').update({sent_to_employee:true,sent_at:now}).eq('id',r.id);}catch{}
+    }
+    if(u.email){
+      await sendNotification({user_email:u.email,user_name:u.name,type:'payroll',
+        title:'Timesheet Ready for Review',
+        body:`Your timesheet for ${prPeriodLabel(period)} is ready for your review. Please approve or dispute.`,
+        entity_type:'timesheet',entity_id:period,entity_label:prPeriodLabel(period),
+        from_user:CU?.name||'Manager'});
+    }
+    sent++;
+  }
+  S.set('lhs:timesheets',allTS);
+  tst(`Sent to ${sent} employee${sent!==1?'s':''}`, 'success');
+  showPage('payroll');
+}
+
+async function prSendSelected(period){
+  const checked=[...document.querySelectorAll('.pr-emp-sel:checked')];
+  if(!checked.length){tst('No employees selected','warning');return;}
+  const selectedNames=checked.map(c=>c.dataset.uid).filter(Boolean);
+  const allTS=S.get('lhs:timesheets')||[];
+  const users=S.get('lhs:users')||[];
+  const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
+  const now=new Date().toISOString();
+  let sent=0;
+  for(const u of tsUsers){
+    const uid=u.id||u.uid||u.user_id||u.name||'';
+    if(!selectedNames.includes(uid)) continue;
     const rows=allTS.filter(t=>t.employee===u.name&&t.week_start===period&&(t.status==='Manager Approved'||t.status==='Pending')&&!t.sent_to_employee);
     if(!rows.length) continue;
     rows.forEach(r=>{r.sent_to_employee=true;r.sent_at=now;});
