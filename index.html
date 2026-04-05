@@ -2197,6 +2197,18 @@ function fixDispBoardHeight(){
 }
 window.addEventListener('resize',()=>{if(document.getElementById('disp-wrap')) fixDispBoardHeight();});
 
+// Van Stock — fetch directly from Supabase and re-render page
+async function refreshVanInvPage(){
+  try{
+    const{data,error}=await DB.from('lhs_van_inventory').select('*');
+    if(!error&&data){
+      S.set('lhs:vi',data.map(_normVi));
+      const pg=document.getElementById('p-vans');
+      if(pg&&pg.classList.contains('active')) pg.innerHTML=buildPage('vans');
+    }
+  }catch(e){console.warn('refreshVanInvPage:',e?.message);}
+}
+
 // Live dispatch board refresh — call after any WO/appointment save
 function refreshDispBoard(){
   const pg=document.getElementById('p-dispatch-board');
@@ -2220,6 +2232,8 @@ function showPage(id){
   if(id==='dispatch'||id==='dispatch-board') setTimeout(fixDispBoardHeight,0);
   // Render transfer history table after page builds
   if(id==='transfer') setTimeout(xfrHistRender,0);
+  // Van Stock — always pull fresh from Supabase so quantities are never stale
+  if(id==='vans') setTimeout(refreshVanInvPage,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
@@ -3092,14 +3106,9 @@ async function postXfr(){
         p_van_min:r.min||r.van_min||0,
         p_van_max:r.max||r.van_max||0
       });
-      if(error){
-        alert(`TRANSFER ERROR — please screenshot this:\nSKU: ${r.sku}\nVehicle: ${vId}\nQty: ${newQty}\nError: ${error.message}\nCode: ${error.code||''}`);
-        dbErrs.push(`${r.sku}: ${error.message}`);
-      } else if(data) r.id=data;
-    }catch(e){
-      alert(`TRANSFER EXCEPTION:\n${e?.message}`);
-      dbErrs.push(`${r.sku}: ${e?.message}`);
-    }
+      if(error) dbErrs.push(`${r.sku}: ${error.message}`);
+      else if(data) r.id=data;
+    }catch(e){ dbErrs.push(`${r.sku}: ${e?.message}`); }
   }
 
   // Location stock — rows from old localStorage have no id; look up in Supabase first
@@ -3169,6 +3178,7 @@ async function postXfr(){
   if(!(S.get('lhs:vi')||[]).length) S.set('lhs:vi',vi.map(_normVi));
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
+  refreshVanInvPage();
   showPage('transfer');
 }
 function restMax(){
