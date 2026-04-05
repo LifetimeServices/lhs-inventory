@@ -2195,6 +2195,14 @@ function fixDispBoardHeight(){
 }
 window.addEventListener('resize',()=>{if(document.getElementById('disp-wrap')) fixDispBoardHeight();});
 
+// Live dispatch board refresh — call after any WO/appointment save
+function refreshDispBoard(){
+  const pg=document.getElementById('p-dispatch-board');
+  if(!pg||!pg.classList.contains('active')) return;
+  pg.innerHTML=buildPage('dispatch-board');
+  setTimeout(fixDispBoardHeight,0);
+}
+
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb:not(.nb-back)').forEach(b=>b.classList.remove('active'));
@@ -14341,6 +14349,7 @@ async function svCreateWO(){
   window._wocSelectedCust=null; window._wocTechs=[]; window._wocPropertyId=null;
   cMod();
   tst(`${woNum} created successfully`,'success');
+  refreshDispBoard();
   showPage('workorders');
 }
 
@@ -15013,7 +15022,7 @@ async function svAptDetail(aptId, woId){
   }
   if(status==='Completed') await _endAllJobEntries('working',aptId);
   logWOAudit(woId,'Appointment Updated',`Status:${status} | ${finalPct}%`);
-  cMod();tst('Appointment updated','success');openWO(woId);
+  cMod();tst('Appointment updated','success');openWO(woId);refreshDispBoard();
 }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
@@ -15403,6 +15412,7 @@ async function aptDispatchTech(techId,aptId,woId,source='apt'){
   await _startJobEntry('driving',t?.tech_name,t?.employee_id||t?.tech_id||'',aptId,woId);
   logWOAudit(woId,'Tech Dispatched',`${t?.tech_name} en route`);
   tst(`${t?.tech_name||'Tech'} dispatched!`,'success');
+  refreshDispBoard();
   if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
@@ -15428,6 +15438,7 @@ async function aptArriveTech(techId,aptId,woId,source='apt'){
   await _startJobEntry('working',t?.tech_name,t?.employee_id||t?.tech_id||'',aptId,woId);
   logWOAudit(woId,'Tech Arrived',`${t?.tech_name} on site`);
   tst(`${t?.tech_name||'Tech'} arrived on site — WO set to In Progress`,'success');
+  refreshDispBoard();
   if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
@@ -15439,6 +15450,7 @@ async function aptCancelDispatch(techId,aptId,woId,source='apt'){
   S.set('lhs:apt_techs',techs);
   await dbUpdate('lhs:apt_techs',techId,{status:'Scheduled',dispatched_at:null,arrived_at:null});
   tst('Dispatch cancelled','info');
+  refreshDispBoard();
   if(source==='wo') openWO(woId); else oAptDetail(aptId,woId);
 }
 
@@ -15603,7 +15615,7 @@ async function svAddAppointment(woId,num){
     try{ await applyMatPresets(apt.id, woId, wo.division, wo.job_type); }
     catch(e){ console.warn('applyMatPresets:',e?.message); }
   }
-  cMod();tst('Appointment added','success');openWO(woId);
+  cMod();tst('Appointment added','success');openWO(woId);refreshDispBoard();
 }
 
 async function updateWOStatus(woId,status){
@@ -15614,7 +15626,7 @@ async function updateWOStatus(woId,status){
   if(wo){wo.status=status;wo.updated_at=new Date().toISOString();S.set('lhs:work_orders',wos);}
   await dbUpdate('lhs:work_orders',woId,{status,updated_at:new Date().toISOString()});
   await logWOAudit(woId,'Status Changed',`${prev} → ${status}`);
-  tst(`Status updated to: ${status}`,'success');openWO(woId);
+  tst(`Status updated to: ${status}`,'success');openWO(woId);refreshDispBoard();
 }
 
 // ── CANCEL WO MODAL ───────────────────────────────────────────────────────────
@@ -15709,7 +15721,7 @@ async function svCancelWO(woId){
   await logWOAudit(woId,'Status Changed',`${prev} → Cancelled | Reason: ${reason}${notes?' | Notes: '+notes:''}`);
   cCancelMo();
   tst('Work order cancelled','success');
-  openWO(woId);
+  openWO(woId);refreshDispBoard();
 }
 
 function oAddTechToApt(aptId,woId){
@@ -15736,7 +15748,7 @@ async function svAddTechToApt(aptId,woId){
   if(!saved){tst('Failed to add tech','error');return}
   const techs=S.get('lhs:apt_techs')||[];techs.push(saved);S.set('lhs:apt_techs',techs);
   logWOAudit(woId,'Tech Assigned',`${name} added to appointment`);
-  cMod();tst(`${name} added`,'success');openWO(woId);
+  cMod();tst(`${name} added`,'success');openWO(woId);refreshDispBoard();
 }
 
 function oWOAudit(woId){
@@ -19272,7 +19284,7 @@ async function closeoutWO(woId){
   const wo=wos.find(w=>w.id===woId);
   if(wo){wo.status='Closed with Dispatch';wo.closed_at=new Date().toISOString();wo.closed_by=CU.name;S.set('lhs:work_orders',wos);}
   await dbUpdate('lhs:work_orders',woId,{status:'Closed with Dispatch',closed_at:new Date().toISOString(),closed_by:CU.name});
-  tst('Work order closed','success');showPage('closeout');
+  tst('Work order closed','success');refreshDispBoard();showPage('closeout');
 }
 
 // ── TOOL MANAGEMENT ───────────────────────────────────────────────────────────
