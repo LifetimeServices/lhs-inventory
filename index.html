@@ -24613,16 +24613,7 @@ function pbServiceForm(s){
   </div>
   <!-- MATERIALS TAB (hidden by default) -->
   <div id="pbf-materials" style="display:none">
-    <!-- Search bar to find items -->
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <input id="pbf-mat-search" placeholder="&#128269; Search inventory items to add…"
-        oninput="clearTimeout(window._pbmST);window._pbmST=setTimeout(pbRenderMatSearch,250)"
-        style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:inherit">
-    </div>
-    <!-- Search results -->
-    <div id="pbf-mat-searchresults" style="max-height:160px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;margin-bottom:14px;display:none"></div>
-    <!-- Linked materials list -->
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Included Materials</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Search and add inventory items below. Each row has its own search. Click <strong>+ Add Item</strong> to add more rows.</div>
     <div id="pbf-mat-list"></div>
   </div>
   <!-- Actions (always visible) -->
@@ -24645,47 +24636,47 @@ function pbFormSetTab(tab){
   if(tab==='materials') pbRenderMatList();
 }
 
+// ── PRICEBOOK MATERIALS — transfer-style row system ───────────────────────────
 function pbRenderMatList(){
   const el=document.getElementById('pbf-mat-list');
   if(!el) return;
-  const listHtml=_pbSvcMaterials.length?`<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="background:#f8f7f4">
-      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">SKU</th>
-      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Name</th>
-      <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);width:80px">Qty</th>
-      <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Unit Cost</th>
-      <th style="width:36px"></th>
-    </tr></thead>
-    <tbody>
-    ${_pbSvcMaterials.map((m,i)=>`<tr style="border-top:1px solid var(--bdr)">
-      <td style="padding:6px 12px;font-family:monospace;font-size:12px;color:var(--muted)">
-        ${m.custom
-          ?`<input value="${esc(m.sku||'')}" placeholder="SKU" onchange="_pbSvcMaterials[${i}].sku=this.value" style="width:80px;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:11px;font-family:monospace">`
-          :esc(m.sku||'')}
-      </td>
-      <td style="padding:6px 12px;font-weight:600">
-        ${m.custom
-          ?`<input class="pbm-custom-name" value="${esc(m.name||'')}" placeholder="Material name" onchange="_pbSvcMaterials[${i}].name=this.value" style="width:100%;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:13px">`
-          :esc(m.name||'')}
-      </td>
-      <td style="padding:6px 12px;text-align:center">
-        <input type="number" value="${m.qty||1}" min="0" step="1"
-          onchange="_pbSvcMaterials[${i}].qty=parseFloat(this.value)||0"
-          style="width:60px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;font-size:13px">
-      </td>
-      <td style="padding:6px 12px;text-align:right">
-        ${m.custom
-          ?`<input type="number" value="${m.unit_cost!=null?m.unit_cost:''}" placeholder="Cost" step="0.01" min="0" onchange="_pbSvcMaterials[${i}].unit_cost=parseFloat(this.value)||null" style="width:70px;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:12px;text-align:right">`
-          :`<span style="color:var(--muted)">${m.unit_cost!=null?'$'+Number(m.unit_cost).toFixed(2):'—'}</span>`}
-      </td>
-      <td style="padding:6px 4px;text-align:center">
-        <button onclick="_pbSvcMaterials.splice(${i},1);pbRenderMatList();pbUpdateMatCount()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:2px 6px" title="Remove">×</button>
-      </td>
-    </tr>`).join('')}
-    </tbody>
-  </table></div>`
-  :`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px;margin-bottom:10px">No materials added yet. Search above to add inventory items.</div>`;
-  el.innerHTML=listHtml+`<button class="btn btn-o sm" onclick="pbAddCustomRow()" title="Add a material not in inventory">+ Add Custom Row</button>`;
+  el.innerHTML=`
+    <div style="border:1px solid var(--bdr);border-radius:8px;overflow:visible;margin-bottom:10px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f8f7f4;border-bottom:1px solid var(--bdr)">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Item</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);width:72px">Qty</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);width:88px">Unit Cost</th>
+          <th style="width:32px"></th>
+        </tr></thead>
+        <tbody id="pbm-tbody">
+          ${_pbSvcMaterials.map((m,i)=>`<tr style="${i>0?'border-top:1px solid var(--bdr)':''}">
+            <td style="padding:6px 10px">
+              <div style="position:relative">
+                <input id="pbm-inp-${i}" autocomplete="off"
+                  value="${m.name?esc(m.name)+(m.sku?' ('+esc(m.sku)+')':''):''}"
+                  placeholder="&#128269; Search by name or SKU…"
+                  oninput="pbMatSearch(${i})" onfocus="pbMatSearch(${i})" onblur="setTimeout(()=>pbMatDrop(${i},'hide'),200)"
+                  style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box;font-family:inherit">
+                <div id="pbm-drop-${i}" style="display:none;position:fixed;background:white;border:1px solid var(--bdr);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.16);z-index:99999;max-height:210px;overflow-y:auto;min-width:280px"></div>
+              </div>
+            </td>
+            <td style="padding:6px 8px;text-align:center">
+              <input type="number" value="${m.qty||1}" min="0" step="1"
+                onchange="_pbSvcMaterials[${i}].qty=parseFloat(this.value)||0"
+                style="width:60px;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;font-size:13px">
+            </td>
+            <td id="pbm-cost-${i}" style="padding:6px 10px;text-align:right;color:var(--muted);font-size:12px;white-space:nowrap">
+              ${m.unit_cost!=null?'$'+Number(m.unit_cost).toFixed(2):'—'}
+            </td>
+            <td style="padding:6px 4px;text-align:center">
+              <button onclick="pbMatRemoveRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:2px 6px" title="Remove">×</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-o sm" onclick="pbMatAddRow()">+ Add Item</button>`;
 }
 
 function pbUpdateMatCount(){
@@ -24693,63 +24684,81 @@ function pbUpdateMatCount(){
   if(el) el.textContent=_pbSvcMaterials.length||0;
 }
 
-function pbRenderMatSearch(){
-  const inp=document.getElementById('pbf-mat-search');
-  const q=(inp?.value||'').trim().toLowerCase();
-  const res=document.getElementById('pbf-mat-searchresults');
-  if(!res) return;
-  if(!q){res.style.display='none';res.innerHTML='';return;}
-  const items=S.get('lhs:items')||[];
-  const matches=items.filter(i=>
-    (i.name||'').toLowerCase().includes(q)||
-    (i.sku||'').toLowerCase().includes(q)||
-    (i.category||'').toLowerCase().includes(q)
-  ).slice(0,20);
-  if(!matches.length){
-    res.style.display='block';
-    res.innerHTML=`<div style="padding:12px;color:var(--muted);font-size:13px">No items found for "${q}"</div>`;
-    return;
-  }
-  res.style.display='block';
-  res.innerHTML=matches.map(i=>{
-    const already=_pbSvcMaterials.some(m=>m.sku===i.sku);
-    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--bdr);cursor:${already?'default':'pointer'};background:${already?'#f8f7f4':'white'}"
-      ${already?'':`onclick="pbAddMatItem('${esc(i.sku||'')}','${esc(i.name||'')}',${i.unit_cost||0})"`}>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:13px">${esc(i.name||'')}</div>
-        <div style="font-size:11px;color:var(--muted);font-family:monospace">${esc(i.sku||'')}${i.category?' · '+esc(i.category):''}</div>
-      </div>
-      <div style="font-size:12px;color:var(--muted)">${i.unit_cost!=null?'$'+Number(i.unit_cost).toFixed(2):'—'}</div>
-      ${already
-        ?`<span style="font-size:11px;color:var(--green);font-weight:700">✓ Added</span>`
-        :`<button class="btn sm btn-n" style="flex-shrink:0">+ Add</button>`}
-    </div>`;
-  }).join('');
+function pbMatAddRow(){
+  _pbSvcMaterials.push({sku:'',name:'',qty:1,unit_cost:null});
+  pbRenderMatList();
+  pbUpdateMatCount();
+  setTimeout(()=>{
+    const inp=document.getElementById(`pbm-inp-${_pbSvcMaterials.length-1}`);
+    if(inp){inp.focus();pbMatSearch(_pbSvcMaterials.length-1);}
+  },40);
 }
 
+function pbMatRemoveRow(i){
+  _pbSvcMaterials.splice(i,1);
+  pbRenderMatList();
+  pbUpdateMatCount();
+}
+
+function pbMatSearch(i){
+  const inp=document.getElementById(`pbm-inp-${i}`);
+  const drop=document.getElementById(`pbm-drop-${i}`);
+  if(!inp||!drop) return;
+  const q=(inp.value||'').trim().toLowerCase();
+  const r=inp.getBoundingClientRect();
+  drop.style.top=(r.bottom+4)+'px';
+  drop.style.left=r.left+'px';
+  drop.style.width=Math.max(r.width,300)+'px';
+  const items=S.get('lhs:items')||[];
+  const matches=q.length===0?items.slice(0,60):items.filter(x=>(x.name||'').toLowerCase().includes(q)||(x.sku||'').toLowerCase().includes(q)||(x.category||'').toLowerCase().includes(q)).slice(0,60);
+  if(!matches.length){
+    drop.innerHTML=`<div style="padding:10px 14px;color:var(--muted);font-size:13px">No items found</div>`;
+  } else {
+    drop.innerHTML=matches.map(x=>{
+      const added=_pbSvcMaterials.some((m,j)=>j!==i&&m.sku===x.sku&&x.sku);
+      return`<div data-pbm-idx="${i}" data-pbm-sku="${(x.sku||'').replace(/"/g,'&quot;')}" data-pbm-name="${(x.name||'').replace(/"/g,'&quot;')}" data-pbm-cost="${x.unit_cost!=null?x.unit_cost:''}"
+        style="padding:9px 13px;cursor:${added?'default':'pointer'};font-size:13px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;background:${added?'#f8f7f4':'white'}"
+        onmouseenter="if(!${added})this.style.background='#eef4ff'" onmouseleave="if(!${added})this.style.background='white'">
+        <span>
+          <span style="font-weight:600">${esc(x.name||x.sku)}</span>
+          <span style="font-size:11px;color:var(--muted);font-family:monospace;margin-left:8px">${esc(x.sku||'')}</span>
+        </span>
+        <span style="font-size:12px;color:${added?'var(--green)':'var(--muted)'};font-weight:${added?700:400};margin-left:10px">
+          ${added?'✓ Added':x.unit_cost!=null?'$'+Number(x.unit_cost).toFixed(2):'—'}
+        </span>
+      </div>`;
+    }).join('');
+    drop.onclick=ev=>{
+      const el=ev.target.closest('[data-pbm-idx]');
+      if(!el) return;
+      const dup=_pbSvcMaterials.some((m,j)=>j!==parseInt(el.dataset.pbmIdx)&&m.sku===el.dataset.pbmSku&&el.dataset.pbmSku);
+      if(dup){tst('Item already in list','warning');return;}
+      pbMatPick(parseInt(el.dataset.pbmIdx),el.dataset.pbmSku,el.dataset.pbmName,el.dataset.pbmCost!==''?parseFloat(el.dataset.pbmCost):null);
+    };
+  }
+  drop.style.display='block';
+}
+
+function pbMatDrop(i,action){
+  const drop=document.getElementById(`pbm-drop-${i}`);
+  if(drop) drop.style.display=action==='hide'?'none':'block';
+}
+
+function pbMatPick(i,sku,name,cost){
+  if(!_pbSvcMaterials[i]) return;
+  _pbSvcMaterials[i]={sku,name,qty:_pbSvcMaterials[i].qty||1,unit_cost:cost};
+  const inp=document.getElementById(`pbm-inp-${i}`);
+  if(inp) inp.value=`${name}${sku?' ('+sku+')':''}`;
+  pbMatDrop(i,'hide');
+  const costEl=document.getElementById(`pbm-cost-${i}`);
+  if(costEl) costEl.textContent=cost!=null?'$'+Number(cost).toFixed(2):'—';
+}
+
+// keep old name as alias for any references
 function pbAddMatItem(sku,name,unitCost){
   if(_pbSvcMaterials.some(m=>m.sku===sku)){tst('Already added','info');return;}
   _pbSvcMaterials.push({sku,name,qty:1,unit_cost:unitCost||null});
-  pbRenderMatList();
-  pbUpdateMatCount();
-  // Clear search and refocus so next item can be searched immediately
-  const inp=document.getElementById('pbf-mat-search');
-  if(inp){inp.value='';inp.focus();}
-  const res=document.getElementById('pbf-mat-searchresults');
-  if(res){res.style.display='none';res.innerHTML='';}
-  tst(`${name} added`,'success');
-}
-
-function pbAddCustomRow(){
-  // Add a blank custom material row (not from inventory)
-  _pbSvcMaterials.push({sku:'',name:'',qty:1,unit_cost:null,custom:true});
-  pbRenderMatList();
-  pbUpdateMatCount();
-  // Focus the new name field
-  setTimeout(()=>{
-    const rows=document.querySelectorAll('.pbm-custom-name');
-    if(rows.length) rows[rows.length-1].focus();
-  },50);
+  pbRenderMatList();pbUpdateMatCount();
 }
 
 async function pbSaveService(){
@@ -25417,7 +25426,8 @@ function renderEstDocSettingsCard(){
         <td>${t.region?esc(t.region):'<span style="color:var(--muted)">All</span>'}</td>
         <td>${t.state?esc(t.state):'<span style="color:var(--muted)">All</span>'}</td>
         <td style="color:var(--muted);font-size:12px">${(t.auth_paragraphs||[]).length} paragraph${(t.auth_paragraphs||[]).length!==1?'s':''}</td>
-        <td>
+        <td style="white-space:nowrap">
+          <button class="btn sm" style="background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer;font-weight:600;margin-right:3px" onclick="previewEstDocTemplate('${t.id}')">👁 Preview</button>
           <button class="btn sm btn-o" onclick="oEstDocTemplate('${t.id}')">Edit</button>
           <button class="btn sm btn-r" onclick="delEstDocTemplate('${t.id}')">Delete</button>
         </td>
@@ -25432,6 +25442,186 @@ function renderEstDocSettingsCard(){
 function estDocFilterRefresh(){
   const card=document.getElementById('est-doc-settings-card');
   if(card) card.innerHTML=renderEstDocSettingsCard();
+}
+
+function previewEstDocTemplate(id){
+  const ts=getEstDocSettings();
+  const t=ts.find(x=>x.id===id);
+  if(!t){tst('Template not found','error');return;}
+
+  const logoSrc=document.querySelector('.tbl img')?.src||'';
+  const divName=(t.division||'Lifetime Home Services').toUpperCase();
+  const divShort=divName.includes('RADON')?'RADON':divName.includes('HAND')?'HANDYMAN':divName.includes('ELEC')?'ELECTRICAL':divName.includes('PLUMB')?'PLUMBING':divName.includes('HVAC')?'HVAC':divName.split(' ')[0]||'HOME SERVICES';
+  const thankYouTxt=t.thank_you||'Thank you for choosing Lifetime Home Services LLC.';
+  const authHeader=t.auth_header||'CUSTOMER AUTHORIZATION';
+  const authParas=t.auth_paragraphs||[];
+
+  // Sample data for preview
+  const custName='John & Jane Sample';
+  const siteAddr='123 Sample Street\nMilwaukee, WI 53202';
+  const estNum='EST-00042';
+  const estDate=new Date().toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'});
+  const scope='This estimate covers the full installation of a sub-slab depressurization radon mitigation system at the address listed above.';
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Preview — ${esc(t.label||'Estimate Template')}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#f0f2f5}
+    .preview-banner{background:#1B2A4A;color:white;text-align:center;padding:10px 16px;font-size:12px;font-weight:600;letter-spacing:.04em;position:sticky;top:0;z-index:100}
+    .preview-banner span{opacity:.7;font-weight:400;margin-left:8px}
+    .page{width:750px;margin:24px auto;padding:48px 44px;background:white;box-shadow:0 2px 24px rgba(0,0,0,.12)}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+    .hdr-logo img{max-height:80px;max-width:200px;object-fit:contain;display:block}
+    .hdr-logo .logo-text{font-size:26px;font-weight:900;color:#1B2A4A;letter-spacing:-1px;line-height:1}
+    .hdr-logo .logo-sub{font-size:13px;font-weight:800;color:#3abfbf;text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+    .hdr-co{text-align:right;font-size:11px;color:#444;line-height:1.7}
+    .hdr-co strong{font-size:12px;color:#1B2A4A}
+    .meta-row{display:flex;gap:0;margin-bottom:20px;align-items:stretch}
+    .bill-to{flex:1;padding-right:20px}
+    .bill-to .lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:5px}
+    .bill-to .name{font-size:13px;font-weight:700;color:#1a1a1a}
+    .bill-to .addr{font-size:11px;color:#444;line-height:1.7;margin-top:2px}
+    .est-boxes{display:flex;border:1px solid #ccc}
+    .est-box{text-align:center;min-width:120px}
+    .est-box .bh{background:#1B2A4A;color:white;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:5px 14px}
+    .est-box .bv{padding:7px 14px;font-size:14px;font-weight:700;color:#1B2A4A}
+    .est-box+.est-box{border-left:1px solid #ccc}
+    hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+    .addr-row{display:flex;gap:32px;margin-bottom:20px;font-size:11px}
+    .addr-block .lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:4px}
+    .addr-block .val{color:#333;line-height:1.7}
+    .addr-block .val strong{font-size:12px;color:#1a1a1a}
+    .est-details-hdr{text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:#1B2A4A;padding:6px 0;border-top:1px solid #1B2A4A;border-bottom:1px solid #1B2A4A;margin-bottom:10px}
+    .scope{font-size:12px;color:#333;line-height:1.65;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse;margin-bottom:0}
+    .svc-thead tr{border-top:1px solid #1B2A4A;border-bottom:1px solid #1B2A4A}
+    .svc-thead th{padding:6px 10px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#1B2A4A}
+    .svc-thead th.r{text-align:right}
+    tbody tr{border-bottom:1px solid #eee;vertical-align:top}
+    td{padding:9px 10px;font-size:12px;color:#1a1a1a;vertical-align:top}
+    td.code{font-size:10px;color:#555;width:90px}
+    td.r{text-align:right;white-space:nowrap}
+    .totals{display:flex;justify-content:flex-end;margin-top:16px;margin-bottom:24px}
+    .totals-inner{min-width:200px}
+    .trow{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#444}
+    .trow.grand{border-top:2px solid #1B2A4A;margin-top:6px;padding-top:8px;font-size:15px;font-weight:800;color:#1B2A4A}
+    .thankyou{font-size:12px;color:#333;margin-bottom:16px}
+    .auth-hdr{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#c0392b;margin-bottom:6px}
+    .auth-body{font-size:10.5px;color:#333;line-height:1.65;margin-bottom:10px;padding:8px 12px;background:#fffaf9;border-left:3px solid #e8c9c0;border-radius:0 4px 4px 0}
+    .sig-block{display:flex;gap:48px;margin-top:28px;padding-top:16px;border-top:1px solid #ddd}
+    .sig-line{flex:1}
+    .sig-line .line{border-bottom:1px solid #555;height:30px;margin-bottom:4px}
+    .sig-line .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.06em}
+    .doc-footer{display:flex;justify-content:space-between;margin-top:32px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#999}
+    .no-paras{color:#888;font-size:12px;font-style:italic;padding:14px;border:1px dashed #ddd;border-radius:6px;text-align:center}
+    @media print{
+      .preview-banner{display:none}
+      body{background:white}
+      .page{box-shadow:none;margin:0;padding:0}
+    }
+  </style></head><body>
+  <div class="preview-banner">
+    PREVIEW — ${esc(t.label||'Unnamed Template')}
+    <span>${t.division?'Division: '+esc(t.division):'All Divisions'}${t.region?' · '+esc(t.region):''}${t.state?' · '+esc(t.state):''}</span>
+    <span style="margin-left:16px;opacity:.5">|</span>
+    <a href="javascript:window.print()" style="color:#3abfbf;margin-left:12px;font-size:11px">🖨 Print</a>
+  </div>
+  <div class="page">
+    <!-- HEADER -->
+    <div class="hdr">
+      <div class="hdr-logo">
+        ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div><div class="logo-sub">${divShort}</div>`}
+      </div>
+      <div class="hdr-co">
+        <strong>Lifetime Home Services LLC</strong><br>
+        3485 N 124th St,<br>Brookfield WI 53005<br>
+        608-215-2241
+      </div>
+    </div>
+    <!-- BILL TO + ESTIMATE BOXES -->
+    <div class="meta-row">
+      <div class="bill-to">
+        <div class="lbl">Bill To</div>
+        <div class="name">${custName}</div>
+        <div class="addr">${siteAddr.replace(/\n/g,'<br>')}</div>
+      </div>
+      <div class="est-boxes">
+        <div class="est-box"><div class="bh">Estimate</div><div class="bv">${estNum}</div></div>
+        <div class="est-box"><div class="bh">Estimate Date</div><div class="bv">${estDate}</div></div>
+      </div>
+    </div>
+    <hr>
+    <!-- JOB ADDRESS -->
+    <div class="addr-row">
+      <div class="addr-block">
+        <div class="lbl">Job Address</div>
+        <div class="val"><strong>${custName}</strong><br>${siteAddr.replace(/\n/g,'<br>')}</div>
+      </div>
+      <div class="addr-block" style="margin-left:auto;text-align:right">
+        <div class="lbl">Project</div>
+        <div class="val">${estNum}</div>
+      </div>
+    </div>
+    <!-- ESTIMATE DETAILS -->
+    <div class="est-details-hdr">Estimate Details</div>
+    <div class="scope">${scope}</div>
+    <!-- SAMPLE LINE ITEMS -->
+    <table>
+      <thead class="svc-thead"><tr>
+        <th style="width:90px">Service</th><th>Description</th>
+        <th class="r" style="width:50px">Qty</th>
+        <th class="r" style="width:80px">Price</th>
+        <th class="r" style="width:80px">Total</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="code">3G</td>
+          <td><strong>3" Exterior Radon Mitigation System</strong><br>
+            <ul style="margin:4px 0 0 16px;font-size:11px;color:#333;line-height:1.55">
+              <li>3" schedule 40 PVC sub-slab depressurization system</li>
+              <li>1 Festa Radon Fan – Maverick</li>
+              <li>1 Custom-fitted sump crock cover</li>
+              <li>1 U-Tube monitoring device</li>
+            </ul>
+          </td>
+          <td class="r">1.00</td>
+          <td class="r">$1,130.00</td>
+          <td class="r">$1,130.00</td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- TOTALS -->
+    <div class="totals">
+      <div class="totals-inner">
+        <div class="trow grand"><span>Total</span><span>$1,130.00</span></div>
+      </div>
+    </div>
+    <!-- THANK YOU + AUTH (template-specific) -->
+    <div class="thankyou">${thankYouTxt}</div>
+    <div class="auth-hdr">${authHeader}</div>
+    ${authParas.length
+      ?authParas.map(p=>`<div class="auth-body">${p.replace(/{site_address}/g,siteAddr.replace(/\n/g,', '))}</div>`).join('\n    ')
+      :`<div class="no-paras">No authorization paragraphs configured yet. Edit this template to add them.</div>`}
+    <!-- SIGNATURE -->
+    <div class="sig-block">
+      <div class="sig-line">
+        <div class="line"></div>
+        <div class="lbl">Sign here &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Date</div>
+      </div>
+    </div>
+    <!-- FOOTER -->
+    <div class="doc-footer">
+      <span>Estimate #${estNum}</span>
+      <span>Lifetime Home Services LLC &bull; 3485 N 124th St, Brookfield WI 53005</span>
+      <span>Page 1 of 1</span>
+    </div>
+  </div>
+  </body></html>`;
+
+  const w=window.open('','_blank','width=920,height=800');
+  if(!w){tst('Allow pop-ups to preview','error');return;}
+  w.document.write(html);w.document.close();
 }
 
 // ── SALES SETTINGS STORAGE ────────────────────────────────────────────────────
