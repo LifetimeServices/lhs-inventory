@@ -24648,11 +24648,7 @@ function pbFormSetTab(tab){
 function pbRenderMatList(){
   const el=document.getElementById('pbf-mat-list');
   if(!el) return;
-  if(!_pbSvcMaterials.length){
-    el.innerHTML=`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No materials added yet. Search above to add inventory items.</div>`;
-    return;
-  }
-  el.innerHTML=`<div class="card" style="padding:0;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:13px">
+  const listHtml=_pbSvcMaterials.length?`<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px"><table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:#f8f7f4">
       <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">SKU</th>
       <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Name</th>
@@ -24662,20 +24658,34 @@ function pbRenderMatList(){
     </tr></thead>
     <tbody>
     ${_pbSvcMaterials.map((m,i)=>`<tr style="border-top:1px solid var(--bdr)">
-      <td style="padding:8px 12px;font-family:monospace;font-size:12px;color:var(--muted)">${esc(m.sku||'')}</td>
-      <td style="padding:8px 12px;font-weight:600">${esc(m.name||'')}</td>
-      <td style="padding:8px 12px;text-align:center">
+      <td style="padding:6px 12px;font-family:monospace;font-size:12px;color:var(--muted)">
+        ${m.custom
+          ?`<input value="${esc(m.sku||'')}" placeholder="SKU" onchange="_pbSvcMaterials[${i}].sku=this.value" style="width:80px;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:11px;font-family:monospace">`
+          :esc(m.sku||'')}
+      </td>
+      <td style="padding:6px 12px;font-weight:600">
+        ${m.custom
+          ?`<input class="pbm-custom-name" value="${esc(m.name||'')}" placeholder="Material name" onchange="_pbSvcMaterials[${i}].name=this.value" style="width:100%;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:13px">`
+          :esc(m.name||'')}
+      </td>
+      <td style="padding:6px 12px;text-align:center">
         <input type="number" value="${m.qty||1}" min="0" step="1"
           onchange="_pbSvcMaterials[${i}].qty=parseFloat(this.value)||0"
           style="width:60px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;text-align:center;font-size:13px">
       </td>
-      <td style="padding:8px 12px;text-align:right;color:var(--muted)">${m.unit_cost!=null?'$'+Number(m.unit_cost).toFixed(2):'—'}</td>
-      <td style="padding:8px 4px;text-align:center">
+      <td style="padding:6px 12px;text-align:right">
+        ${m.custom
+          ?`<input type="number" value="${m.unit_cost!=null?m.unit_cost:''}" placeholder="Cost" step="0.01" min="0" onchange="_pbSvcMaterials[${i}].unit_cost=parseFloat(this.value)||null" style="width:70px;padding:3px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:12px;text-align:right">`
+          :`<span style="color:var(--muted)">${m.unit_cost!=null?'$'+Number(m.unit_cost).toFixed(2):'—'}</span>`}
+      </td>
+      <td style="padding:6px 4px;text-align:center">
         <button onclick="_pbSvcMaterials.splice(${i},1);pbRenderMatList();pbUpdateMatCount()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:2px 6px" title="Remove">×</button>
       </td>
     </tr>`).join('')}
     </tbody>
-  </table></div>`;
+  </table></div>`
+  :`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px;margin-bottom:10px">No materials added yet. Search above to add inventory items.</div>`;
+  el.innerHTML=listHtml+`<button class="btn btn-o sm" onclick="pbAddCustomRow()" title="Add a material not in inventory">+ Add Custom Row</button>`;
 }
 
 function pbUpdateMatCount(){
@@ -24722,8 +24732,24 @@ function pbAddMatItem(sku,name,unitCost){
   _pbSvcMaterials.push({sku,name,qty:1,unit_cost:unitCost||null});
   pbRenderMatList();
   pbUpdateMatCount();
-  pbRenderMatSearch(); // refresh search results to show ✓
+  // Clear search and refocus so next item can be searched immediately
+  const inp=document.getElementById('pbf-mat-search');
+  if(inp){inp.value='';inp.focus();}
+  const res=document.getElementById('pbf-mat-searchresults');
+  if(res){res.style.display='none';res.innerHTML='';}
   tst(`${name} added`,'success');
+}
+
+function pbAddCustomRow(){
+  // Add a blank custom material row (not from inventory)
+  _pbSvcMaterials.push({sku:'',name:'',qty:1,unit_cost:null,custom:true});
+  pbRenderMatList();
+  pbUpdateMatCount();
+  // Focus the new name field
+  setTimeout(()=>{
+    const rows=document.querySelectorAll('.pbm-custom-name');
+    if(rows.length) rows[rows.length-1].focus();
+  },50);
 }
 
 async function pbSaveService(){
@@ -25202,6 +25228,212 @@ function renderCRMActivities(){
 }
 
 // ── ADD LEAD ──────────────────────────────────────────────────────────────────
+// ── ESTIMATE DOCUMENT SETTINGS ────────────────────────────────────────────────
+function getEstDocSettings(){
+  try{return JSON.parse(localStorage.getItem('lms_est_doc_settings')||'[]');}
+  catch{return [];}
+}
+function saveEstDocSettings(arr){localStorage.setItem('lms_est_doc_settings',JSON.stringify(arr));}
+
+// Priority: division+region+state > division+region > division only > global default
+function getEstDocTemplate(division,region,state){
+  const ts=getEstDocSettings();
+  const m=(a,b)=>(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+  return(
+    ts.find(t=>m(t.division,division)&&m(t.region,region)&&m(t.state,state))||
+    ts.find(t=>m(t.division,division)&&m(t.region,region)&&!t.state)||
+    ts.find(t=>m(t.division,division)&&!t.region&&!t.state)||
+    ts.find(t=>!t.division&&!t.region&&!t.state)||
+    null
+  );
+}
+
+// Global state for estimate template modal
+let _estDocEditId=null;
+let _estDocParas=[];
+
+function oEstDocTemplate(id){
+  const ts=getEstDocSettings();
+  const t=id?ts.find(x=>x.id===id):null;
+  _estDocEditId=id||null;
+  _estDocParas=t&&t.auth_paragraphs?[...t.auth_paragraphs]:[
+    'The above is an estimate for services at {site_address}. The installation is guaranteed to meet all EPA/NRPP guidelines and to bring the long term average of the radon levels below the standard of 4.0 pCi/L for up to 10 years from date of installation, as long as it is not moved or altered in any way. In cases where properties have one of the following, levels are not guaranteed to be below 4.0 pCi/L within the first phase of installation and may require additional phases at an additional cost: exposed gravel/dirt crawlspace, no drain tile, multiple foundations, open block and/or weeping wall.',
+    'Please Note: Penetrating non-standard shingles, any electrical work, and all drywall repair (needed or requested) must be completed by a professional tradesman or a licensed master electrician. Drain tile issues (damaged, blocked, etc), foundation issues (unsealed), remodeling, and/or elevated water tables may also need to be addressed if radon levels do not drop appropriately. Lifetime Home Services LLC works with licensed master electricians, professional roofers, drywallers, and foundation specialists that can provide installation assistance.',
+    'The above system has a transferable lifetime warranty on workmanship and 5 year manufacturer warranty on the fan. Lifetime Home Services LLC provides a short-term radon test after installation. All warranties become null and void if a homeowner moves/alters any system component. All Estimates are valid for 30 Days.',
+    'For your convenience, we accept credit cards with a 3% processing fee added to the total. To save on this fee, please consider paying by check, bank transfer, or cash — no fee applies!',
+  ];
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const regionNames=Object.keys(REGIONS);
+  oMod(`${id?'Edit':'New'} Estimate Document Template`,`
+    <div style="min-width:620px;max-width:780px;max-height:80vh;overflow-y:auto;padding-right:4px">
+    <div class="fr" style="margin-bottom:14px">
+      <div class="fl" style="flex:2"><label>Template Label <span style="color:var(--muted);font-weight:400">(internal name)</span></label>
+        <input id="edt-label" value="${esc(t?.label||'')}" placeholder="e.g. Wisconsin Radon Standard">
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Scope: Division / Region / State</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Leave blank to use as a global default. More specific matches take priority over broader ones.</div>
+    <div class="fr" style="margin-bottom:16px">
+      <div class="fl"><label>Division</label>
+        <select id="edt-div">
+          <option value="">All Divisions (default)</option>
+          ${divs.map(d=>`<option value="${esc(d)}"${(t?.division||'')===d?' selected':''}>${esc(d)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>Region</label>
+        <select id="edt-reg">
+          <option value="">All Regions</option>
+          ${regionNames.map(r=>`<option value="${esc(r)}"${(t?.region||'')===r?' selected':''}>${esc(r)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>State</label>
+        <select id="edt-state">
+          <option value="">All States</option>
+          ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${(t?.state||'')===code?' selected':''}>${s}</option>`;}).join('')}
+        </select>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Document Text</div>
+    <div class="fl" style="margin-bottom:12px"><label>Thank You Message</label>
+      <input id="edt-thankyou" value="${esc(t?.thank_you||'Thank you for choosing Lifetime Home Services LLC.')}" style="font-size:13px">
+    </div>
+    <div class="fl" style="margin-bottom:14px"><label>Authorization Section Header</label>
+      <input id="edt-auth-hdr" value="${esc(t?.auth_header||'CUSTOMER AUTHORIZATION')}" placeholder="CUSTOMER AUTHORIZATION" style="font-size:13px">
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:8px">Authorization Paragraphs</div>
+    <div id="edt-para-list" style="margin-bottom:10px"></div>
+    <button class="btn btn-o sm" onclick="estDocParaAdd()" style="margin-bottom:16px">+ Add Paragraph</button>
+    </div>
+    <div class="br2" style="margin-top:12px">
+      <button class="btn btn-n" onclick="svEstDocTemplate()">Save Template</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+      ${id?`<button class="btn btn-r" style="margin-left:auto" onclick="delEstDocTemplate('${id}')">Delete</button>`:''}
+    </div>
+  `);
+  estDocRenderParas();
+}
+
+function estDocRenderParas(){
+  const el=document.getElementById('edt-para-list');
+  if(!el) return;
+  el.innerHTML=_estDocParas.map((p,i)=>`
+    <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--muted);font-weight:600">Paragraph ${i+1}</span>
+          ${_estDocParas.length>1?`<button onclick="_estDocParas.splice(${i},1);estDocRenderParas()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:2px 6px">✕ Remove</button>`:''}
+        </div>
+        <textarea id="edt-para-${i}" rows="4" style="width:100%;padding:9px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:12px;line-height:1.6;resize:vertical;font-family:inherit"
+          oninput="_estDocParas[${i}]=this.value">${esc(p)}</textarea>
+      </div>
+    </div>`).join('');
+}
+
+function estDocParaAdd(){
+  _estDocParas.push('');
+  estDocRenderParas();
+  // focus the new textarea
+  setTimeout(()=>{const el=document.getElementById(`edt-para-${_estDocParas.length-1}`);if(el)el.focus();},50);
+}
+
+function svEstDocTemplate(){
+  const label=(document.getElementById('edt-label')?.value||'').trim();
+  const division=document.getElementById('edt-div')?.value||'';
+  const region=document.getElementById('edt-reg')?.value||'';
+  const stateRaw=document.getElementById('edt-state')?.value||'';
+  const state=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
+  const thank_you=document.getElementById('edt-thankyou')?.value||'';
+  const auth_header=document.getElementById('edt-auth-hdr')?.value||'CUSTOMER AUTHORIZATION';
+  // Grab latest textarea values before saving
+  _estDocParas=_estDocParas.map((_,i)=>document.getElementById(`edt-para-${i}`)?.value||'');
+  const auth_paragraphs=_estDocParas.filter(p=>p.trim());
+  if(!label){tst('Template label is required','error');return;}
+  const ts=getEstDocSettings();
+  if(_estDocEditId){
+    const idx=ts.findIndex(x=>x.id===_estDocEditId);
+    if(idx>=0) ts[idx]={...ts[idx],label,division,region,state,thank_you,auth_header,auth_paragraphs};
+  } else {
+    ts.push({id:'edt_'+Date.now(),label,division,region,state,thank_you,auth_header,auth_paragraphs});
+  }
+  saveEstDocSettings(ts);
+  cMod();tst('Template saved','success');
+  const pg=document.getElementById('p-sales-settings');
+  if(pg&&pg.classList.contains('active')) showPage('sales-settings');
+}
+
+function delEstDocTemplate(id){
+  if(!confirm('Delete this template?')) return;
+  const ts=getEstDocSettings().filter(x=>x.id!==id);
+  saveEstDocSettings(ts);
+  cMod();tst('Template deleted','info');
+  const pg=document.getElementById('p-sales-settings');
+  if(pg&&pg.classList.contains('active')) showPage('sales-settings');
+}
+
+function renderEstDocSettingsCard(){
+  const ts=getEstDocSettings();
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const regionNames=Object.keys(REGIONS);
+  const filterDiv=document.getElementById('est-doc-fdiv')?.value||'';
+  const filterReg=document.getElementById('est-doc-freg')?.value||'';
+  const filterSt=document.getElementById('est-doc-fst')?.value||'';
+  const filtered=ts.filter(t=>{
+    if(filterDiv&&t.division!==filterDiv) return false;
+    if(filterReg&&t.region!==filterReg) return false;
+    if(filterSt&&t.state!==filterSt) return false;
+    return true;
+  });
+  return`<div class="card" style="padding:16px;margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
+        <div class="ct" style="margin:0">Estimate Document Settings</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Configure authorization text, thank-you messages, and terms per division, region, or state. More specific templates take priority.</div>
+      </div>
+      <button class="btn btn-n sm" onclick="oEstDocTemplate(null)">+ New Template</button>
+    </div>
+    <!-- Filter bar -->
+    <div style="display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap">
+      <select id="est-doc-fdiv" onchange="estDocFilterRefresh()" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+        <option value="">All Divisions</option>
+        ${divs.map(d=>`<option value="${esc(d)}"${filterDiv===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <select id="est-doc-freg" onchange="estDocFilterRefresh()" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+        <option value="">All Regions</option>
+        ${regionNames.map(r=>`<option value="${esc(r)}"${filterReg===r?' selected':''}>${esc(r)}</option>`).join('')}
+      </select>
+      <select id="est-doc-fst" onchange="estDocFilterRefresh()" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+        <option value="">All States</option>
+        ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${filterSt===code?' selected':''}>${s}</option>`;}).join('')}
+      </select>
+      ${(filterDiv||filterReg||filterSt)?`<button class="btn btn-o sm" onclick="document.getElementById('est-doc-fdiv').value='';document.getElementById('est-doc-freg').value='';document.getElementById('est-doc-fst').value='';estDocFilterRefresh()">Clear Filters</button>`:''}
+    </div>
+    ${filtered.length?`<div class="tw"><table>
+      <thead><tr>
+        <th>Label</th><th>Division</th><th>Region</th><th>State</th><th>Paragraphs</th><th></th>
+      </tr></thead>
+      <tbody>${filtered.map(t=>`<tr>
+        <td style="font-weight:600">${esc(t.label||'—')}</td>
+        <td>${t.division?`<span style="background:#e3f2fd;color:#1565C0;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600">${esc(t.division)}</span>`:'<span style="color:var(--muted)">All</span>'}</td>
+        <td>${t.region?esc(t.region):'<span style="color:var(--muted)">All</span>'}</td>
+        <td>${t.state?esc(t.state):'<span style="color:var(--muted)">All</span>'}</td>
+        <td style="color:var(--muted);font-size:12px">${(t.auth_paragraphs||[]).length} paragraph${(t.auth_paragraphs||[]).length!==1?'s':''}</td>
+        <td>
+          <button class="btn sm btn-o" onclick="oEstDocTemplate('${t.id}')">Edit</button>
+          <button class="btn sm btn-r" onclick="delEstDocTemplate('${t.id}')">Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:`<div style="text-align:center;padding:28px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">
+      No estimate templates yet. Click <strong>+ New Template</strong> to create your first one.<br>
+      <span style="font-size:11px">Without a template, estimates use the default authorization text.</span>
+    </div>`}
+  </div>`;
+}
+
+function estDocFilterRefresh(){
+  const card=document.getElementById('est-doc-settings-card');
+  if(card) card.innerHTML=renderEstDocSettingsCard();
+}
+
 // ── SALES SETTINGS STORAGE ────────────────────────────────────────────────────
 function getSalesSettings(){
   try{return JSON.parse(localStorage.getItem('lms_sales_settings')||'null')||_defaultSalesSettings();}
@@ -25466,6 +25698,7 @@ function bSalesSettings(){
 function renderSalesSettings(){
   const ss=getSalesSettings();
   return`
+  <div id="est-doc-settings-card">${renderEstDocSettingsCard()}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
   <!-- Lead Source Categories + Details -->
@@ -26943,99 +27176,253 @@ function printEstimate(id){
   if(!e){tst('Estimate not found','error');return;}
   const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
   const cust=(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id);
-  const total=lines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
-  const matLines=lines.filter(l=>l.type!=='Labor');
-  const laborLines=lines.filter(l=>l.type==='Labor');
+
+  // Logo from the live page navbar
+  const logoSrc=document.querySelector('.tbl img')?.src||'';
+
+  // Division sub-brand (e.g. "Radon Mitigation" → "LIFETIME RADON")
+  const divName=(e.division||'').toUpperCase();
+  const divShort=divName.includes('RADON')?'RADON':divName.includes('HAND')?'HANDYMAN':divName.includes('ELEC')?'ELECTRICAL':divName.includes('PLUMB')?'PLUMBING':divName.includes('HVAC')?'HVAC':divName.split(' ')[0]||'HOME SERVICES';
+
+  // Customer / address info
+  const custAddr=[cust?.address,cust?.city&&cust?.state?`${cust.city}, ${cust.state} ${cust.zip||''}`:cust?.city||''].filter(Boolean).join('\n');
+  const siteAddr=e.site_address||custAddr;
+  const estDate=e.estimate_date||e.created_at?.slice(0,10)||'';
+  const fmtDate=d=>d?new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}):'—';
+
+  // Estimate doc template lookup (division → region → state priority)
+  const estState=e.state||cust?.state||'';
+  const estRegion=Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(estState))||'';
+  const estTmpl=getEstDocTemplate(e.division||'',estRegion,estState);
+  const thankYouTxt=estTmpl?.thank_you||'Thank you for choosing Lifetime Home Services LLC.';
+  const authHeader=estTmpl?.auth_header||'CUSTOMER AUTHORIZATION';
+  const authParas=estTmpl?.auth_paragraphs?.length
+    ?estTmpl.auth_paragraphs
+    :[
+      `The above is an estimate for services at ${siteAddr.replace(/\n/g,', ')}. The installation is guaranteed to meet all EPA/NRPP guidelines and to bring the long term average of the radon levels below the standard of 4.0 pCi/L for up to 10 years from date of installation, as long as it is not moved or altered in any way. In cases where properties have one of the following, levels are not guaranteed to be below 4.0 pCi/L within the first phase of installation and may require additional phases at an additional cost: exposed gravel/dirt crawlspace, no drain tile, multiple foundations, open block and/or weeping wall.`,
+      `Please Note: Penetrating non-standard shingles, any electrical work, and all drywall repair (needed or requested) must be completed by a professional tradesman or a licensed master electrician. Drain tile issues (damaged, blocked, etc), foundation issues (unsealed), remodeling, and/or elevated water tables may also need to be addressed if radon levels do not drop appropriately. Lifetime Home Services LLC works with licensed master electricians, professional roofers, drywallers, and foundation specialists that can provide installation assistance.`,
+      `The above system has a transferable lifetime warranty on workmanship and 5 year manufacturer warranty on the fan. Lifetime Home Services LLC provides a short-term radon test after installation. All warranties become null and void if a homeowner moves/alters any system component. All Estimates are valid for 30 Days.`,
+      `For your convenience, we accept credit cards with a 3% processing fee added to the total. To save on this fee, please consider paying by check, bank transfer, or cash — no fee applies!`,
+    ];
+
+  // Separate service lines from discount lines
+  const svcLines=lines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
+  const discLines=lines.filter(l=>l.type==='Discount'||l.type==='discount');
+  const subtotal=svcLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const discTotal=discLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const grandTotal=subtotal+discTotal;
+  const f$=n=>'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Render description + bullets for each line item
+  function renderDesc(l){
+    const name=l.label||l.name||l.description||'';
+    const bullets=l.bullets||(l.description&&l.description!==name?l.description:null)||(l.desc&&l.desc!==name?l.desc:null)||null;
+    let out=`<strong>${name}</strong>`;
+    if(bullets){
+      const bLines=(typeof bullets==='string'?bullets:bullets.join('\n')).split('\n').map(b=>b.trim()).filter(b=>b&&b!==name);
+      if(bLines.length) out+=`<ul style="margin:4px 0 0 16px;padding:0">${bLines.map(b=>`<li style="margin:2px 0">${b.replace(/^[•\-]\s*/,'')}</li>`).join('')}</ul>`;
+    }
+    return out;
+  }
+
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>${e.estimate_number} — Estimate</title>
+  <title>Estimate ${e.estimate_number}</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#1a1a1a;padding:40px;}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #1B2A4A}
-    .logo-block .co{font-size:22px;font-weight:800;color:#1B2A4A;letter-spacing:-.5px}
-    .logo-block .sub{font-size:11px;color:#3abfbf;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
-    .logo-block .addr{font-size:11px;color:#666;margin-top:4px}
-    .est-meta{text-align:right}
-    .est-meta .num{font-size:20px;font-weight:700;color:#1B2A4A}
-    .est-meta .row{font-size:12px;color:#666;margin-top:2px}
-    .est-meta .status{display:inline-block;background:#3abfbf;color:white;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;margin-top:6px}
-    .section{margin-bottom:24px}
-    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#3abfbf;margin-bottom:8px}
-    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-    .info-block{background:#f8f9fa;border-radius:8px;padding:14px}
-    .info-block .name{font-weight:600;font-size:14px;margin-bottom:4px}
-    .info-block .detail{color:#666;font-size:12px;line-height:1.6}
-    table{width:100%;border-collapse:collapse;margin-bottom:8px}
-    thead tr{background:#1B2A4A;color:white}
-    thead th{padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
-    thead th:last-child,thead th:nth-last-child(-n+2){text-align:right}
-    tbody tr:nth-child(even){background:#f8f9fa}
-    tbody td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}
-    tbody td:last-child,tbody td:nth-last-child(-n+2){text-align:right;font-family:monospace}
-    .totals{margin-top:16px;display:flex;justify-content:flex-end}
-    .totals-inner{min-width:280px}
-    .total-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
-    .total-row.grand{border-top:2px solid #1B2A4A;font-size:16px;font-weight:700;color:#1B2A4A;padding-top:10px;margin-top:4px}
-    .total-row .amt{font-family:monospace}
-    .notes-box{background:#f0fafa;border:1px solid #3abfbf;border-radius:8px;padding:14px;margin-top:20px}
-    .footer{margin-top:40px;padding-top:16px;border-top:1px solid #ddd;font-size:11px;color:#999;text-align:center}
-    @media print{body{padding:24px}}
-  </style></head><body>
-  <div class="header">
-    <div class="logo-block">
-      <div class="co">LIFETIME HOME SERVICES</div>
-      <div class="sub">Professional Home Services</div>
-      <div class="addr">${CO.addr} &bull; ${CO.phone}</div>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#1a1a1a;background:white}
+    .page{width:750px;margin:0 auto;padding:48px 44px}
+    /* Header */
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+    .hdr-logo img{max-height:80px;max-width:200px;object-fit:contain;display:block}
+    .hdr-logo .logo-text{font-size:26px;font-weight:900;color:#1B2A4A;letter-spacing:-1px;line-height:1}
+    .hdr-logo .logo-sub{font-size:13px;font-weight:800;color:#3abfbf;text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+    .hdr-co{text-align:right;font-size:11px;color:#444;line-height:1.7}
+    .hdr-co strong{font-size:12px;color:#1B2A4A}
+    /* Bill To + Estimate boxes */
+    .meta-row{display:flex;gap:0;margin-bottom:20px;align-items:stretch}
+    .bill-to{flex:1;padding-right:20px}
+    .bill-to .lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:5px}
+    .bill-to .name{font-size:13px;font-weight:700;color:#1a1a1a}
+    .bill-to .addr{font-size:11px;color:#444;line-height:1.7;margin-top:2px}
+    .est-boxes{display:flex;border:1px solid #ccc}
+    .est-box{text-align:center;min-width:120px}
+    .est-box .bh{background:#1B2A4A;color:white;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:5px 14px}
+    .est-box .bv{padding:7px 14px;font-size:14px;font-weight:700;color:#1B2A4A}
+    .est-box+.est-box{border-left:1px solid #ccc}
+    /* Divider */
+    hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+    /* Job address */
+    .addr-row{display:flex;gap:32px;margin-bottom:20px;font-size:11px}
+    .addr-block .lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:4px}
+    .addr-block .val{color:#333;line-height:1.7}
+    .addr-block .val strong{font-size:12px;color:#1a1a1a}
+    /* Estimate details heading */
+    .est-details-hdr{text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:#1B2A4A;padding:6px 0;border-top:1px solid #1B2A4A;border-bottom:1px solid #1B2A4A;margin-bottom:10px}
+    .scope{font-size:12px;color:#333;line-height:1.65;margin-bottom:18px}
+    /* Service table */
+    table{width:100%;border-collapse:collapse;margin-bottom:0}
+    .svc-thead tr{background:none;border-top:1px solid #1B2A4A;border-bottom:1px solid #1B2A4A}
+    .svc-thead th{padding:6px 10px;text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#1B2A4A}
+    .svc-thead th.r{text-align:right}
+    tbody tr{border-bottom:1px solid #eee;vertical-align:top}
+    td{padding:9px 10px;font-size:12px;color:#1a1a1a;vertical-align:top}
+    td.code{font-size:10px;color:#555;width:90px;line-height:1.4;word-break:break-word}
+    td.desc{font-size:12px}
+    td.desc ul{font-size:11px;color:#333;line-height:1.55}
+    td.r{text-align:right;white-space:nowrap;font-size:12px}
+    /* Discount table */
+    .disc-thead tr{background:none;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
+    .disc-thead th{padding:5px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888}
+    .disc-thead th.r{text-align:right}
+    /* Totals */
+    .totals{display:flex;justify-content:flex-end;margin-top:16px;margin-bottom:24px}
+    .totals-inner{min-width:260px}
+    .trow{display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#444}
+    .trow.grand{border-top:2px solid #1B2A4A;margin-top:6px;padding-top:8px;font-size:15px;font-weight:800;color:#1B2A4A}
+    /* Thank you + auth */
+    .thankyou{font-size:12px;color:#333;margin-bottom:16px}
+    .auth-hdr{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#c0392b;margin-bottom:6px}
+    .auth-body{font-size:10.5px;color:#333;line-height:1.65;margin-bottom:10px}
+    /* Signature */
+    .sig-block{display:flex;gap:48px;margin-top:28px;padding-top:16px;border-top:1px solid #ddd}
+    .sig-line{flex:1}
+    .sig-line .line{border-bottom:1px solid #555;height:30px;margin-bottom:4px}
+    .sig-line .lbl{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.06em}
+    /* Footer */
+    .doc-footer{display:flex;justify-content:space-between;margin-top:32px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#999}
+    @media print{
+      @page{margin:12mm 10mm;size:letter portrait}
+      body{background:white}
+      .page{width:100%;padding:0}
+    }
+  </style></head><body><div class="page">
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="hdr-logo">
+      ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div><div class="logo-sub">${divShort}</div>`}
     </div>
-    <div class="est-meta">
-      <div class="num">${e.estimate_number}</div>
-      <div class="row">Date: ${e.estimate_date||e.created_at?.slice(0,10)||'—'}</div>
-      <div class="row">Rep: ${e.assigned_to||'—'}</div>
-      <div class="status">${e.status||'Draft'}</div>
+    <div class="hdr-co">
+      <strong>Lifetime Home Services LLC</strong><br>
+      ${CO.addr.replace(', ',',<br>')}<br>
+      ${CO.phone}
     </div>
   </div>
 
-  <div class="two-col section">
-    <div class="info-block">
-      <div class="section-title">Prepared For</div>
-      <div class="name">${e.customer_name||'—'}</div>
-      <div class="detail">${cust?.phone||''}</div>
-      <div class="detail">${e.site_address||cust?.address||''}</div>
+  <!-- BILL TO + ESTIMATE BOXES -->
+  <div class="meta-row">
+    <div class="bill-to">
+      <div class="lbl">Bill To</div>
+      <div class="name">${e.customer_name||cust?.first_name+' '+(cust?.last_name||'')||'—'}</div>
+      <div class="addr">${siteAddr.replace(/\n/g,'<br>')}</div>
     </div>
-    <div class="info-block">
-      <div class="section-title">Project Info</div>
-      <div class="detail"><strong>Division:</strong> ${e.division||'—'}</div>
-      <div class="detail"><strong>Job Type:</strong> ${e.job_type||'—'}</div>
-      <div class="detail"><strong>Package:</strong> ${e.selected_package||'Custom'}</div>
+    <div class="est-boxes">
+      <div class="est-box">
+        <div class="bh">Estimate</div>
+        <div class="bv">${e.estimate_number||'—'}</div>
+      </div>
+      <div class="est-box">
+        <div class="bh">Estimate Date</div>
+        <div class="bv">${fmtDate(estDate)}</div>
+      </div>
     </div>
   </div>
 
-  ${e.notes?`<div class="notes-box section"><div class="section-title">Scope of Work</div><div style="font-size:13px;line-height:1.7;margin-top:4px">${e.notes}</div></div>`:''}
+  <hr>
 
-  ${matLines.length?`<div class="section">
-    <div class="section-title">Materials & Services</div>
-    <table><thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Extended</th></tr></thead>
-    <tbody>${matLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>${f$(l.price||0)}</td><td>${f$((l.qty||1)*(l.price||0))}</td></tr>`).join('')}</tbody>
-    </table></div>`:''}
+  <!-- JOB ADDRESS + PROJECT -->
+  <div class="addr-row">
+    <div class="addr-block">
+      <div class="lbl">Job Address</div>
+      <div class="val">
+        <strong>${e.customer_name||cust?.first_name+' '+(cust?.last_name||'')||''}</strong><br>
+        ${siteAddr.replace(/\n/g,'<br>')}
+      </div>
+    </div>
+    ${e.estimate_number?`<div class="addr-block" style="margin-left:auto;text-align:right">
+      <div class="lbl">Project</div>
+      <div class="val">${e.estimate_number}</div>
+    </div>`:''}
+  </div>
 
-  ${laborLines.length?`<div class="section">
-    <div class="section-title">Labor</div>
-    <table><thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Total</th></tr></thead>
-    <tbody>${laborLines.map(l=>`<tr><td>${l.label||'—'}</td><td>${l.qty||1}</td><td>${f$(l.price||0)}</td><td>${f$((l.qty||1)*(l.price||0))}</td></tr>`).join('')}</tbody>
-    </table></div>`:''}
+  <!-- ESTIMATE DETAILS HEADING -->
+  <div class="est-details-hdr">Estimate Details</div>
 
+  <!-- SCOPE OF WORK -->
+  ${e.notes?`<div class="scope">${e.notes}</div>`:''}
+
+  <!-- SERVICE LINES -->
+  ${svcLines.length?`<table>
+    <thead class="svc-thead"><tr>
+      <th style="width:90px">Service</th>
+      <th>Description</th>
+      <th class="r" style="width:50px">Qty</th>
+      <th class="r" style="width:80px">Price</th>
+      <th class="r" style="width:80px">Total</th>
+    </tr></thead>
+    <tbody>
+    ${svcLines.map(l=>`<tr>
+      <td class="code">${l.code||l.sku||''}</td>
+      <td class="desc">${renderDesc(l)}</td>
+      <td class="r">${(l.qty||1).toFixed(2)}</td>
+      <td class="r">${f$(l.price||0)}</td>
+      <td class="r">${f$((l.qty||1)*(l.price||0))}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>`:''}
+
+  <!-- DISCOUNTS -->
+  ${discLines.length?`<table style="margin-top:8px">
+    <thead class="disc-thead"><tr>
+      <th>#</th><th>Description</th><th class="r">Total</th>
+    </tr></thead>
+    <tbody>
+    ${discLines.map(l=>`<tr>
+      <td class="code" style="color:#c0392b">${l.code||l.sku||''}</td>
+      <td class="desc" style="color:#c0392b">${l.label||l.name||''}</td>
+      <td class="r" style="color:#c0392b">−${f$(Math.abs((l.qty||1)*(l.price||0)))}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>`:''}
+
+  <!-- TOTALS -->
   <div class="totals">
     <div class="totals-inner">
-      <div class="total-row grand"><span>TOTAL ESTIMATE</span><span class="amt">$${total.toLocaleString('en-US',{minimumFractionDigits:2})}</span></div>
+      ${discLines.length?`<div class="trow"><span>Sub-Total</span><span>${f$(subtotal)}</span></div>`:''}
+      ${discLines.map(l=>`<div class="trow" style="color:#c0392b"><span>${l.label||'Discount'}</span><span>−${f$(Math.abs((l.qty||1)*(l.price||0)))}</span></div>`).join('')}
+      <div class="trow grand"><span>Total</span><span>${f$(grandTotal)}</span></div>
     </div>
   </div>
 
-  <div class="footer">This estimate is valid for 30 days from the date issued. &bull; Lifetime Home Services &bull; ${CO.addr}</div>
+  <!-- THANK YOU -->
+  <div class="thankyou">${thankYouTxt}</div>
+
+  <!-- CUSTOMER AUTHORIZATION -->
+  <div class="auth-hdr">${authHeader}</div>
+  ${authParas.map(p=>`<div class="auth-body">${p.replace(/{site_address}/g,siteAddr.replace(/\n/g,', '))}</div>`).join('\n  ')}
+
+  <!-- SIGNATURE -->
+  <div class="sig-block">
+    <div class="sig-line">
+      <div class="line"></div>
+      <div class="lbl">Sign here &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Date</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="doc-footer">
+    <span>Estimate #${e.estimate_number||'—'}</span>
+    <span>Lifetime Home Services LLC &bull; ${CO.addr}</span>
+    <span>Page 1 of 1</span>
+  </div>
+
+  </div><!-- end .page -->
+  <script>setTimeout(()=>{window.print();},500);<\/script>
   </body></html>`;
 
-  const w=window.open('','_blank','width=900,height=700');
+  const w=window.open('','_blank','width=900,height=750');
+  if(!w){tst('Allow pop-ups to print','error');return;}
   w.document.write(html);w.document.close();
-  setTimeout(()=>w.print(),600);
 }
 
 // ── BUILD ESTIMATE BUTTON on Opportunity modal ────────────────────────────────
