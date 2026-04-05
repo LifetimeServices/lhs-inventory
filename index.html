@@ -1475,6 +1475,8 @@ const TBL={
   'lhs:acct_bank_accounts':'lhs_acct_bank_accounts',
   'lhs:acct_bank_txns':'lhs_acct_bank_txns',
   'lhs:job_time_entries':'lhs_job_time_entries',
+  'lhs:pb_services':'lhs_pb_services',
+  'lhs:pb_categories':'lhs_pb_categories',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -1906,6 +1908,7 @@ async function startApp(){
     <div class="page" id="p-commercial"></div>
     <div class="page" id="p-sales-accounts"></div>
     <div class="page" id="p-sales-discounts"></div>
+    <div class="page" id="p-sales-pricebook"></div>
     <div class="page" id="p-sales-followups"></div>
     <div class="page" id="p-hr"></div>
     <div class="page" id="p-hr-payroll"></div>
@@ -1921,7 +1924,7 @@ async function startApp(){
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
   const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
     'accounts','customers','properties','business','commercial',
-    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings',
+    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
@@ -1939,7 +1942,7 @@ async function startApp(){
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
+  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2091,6 +2094,7 @@ const SALES_NAV=[
   {id:'sales-accounts',    l:'Accounts'},
   {id:'sales-opps',        l:'Opportunities'},
   {id:'sales-estimates',   l:'Estimates'},
+  {id:'sales-pricebook',   l:'Pricebook'},
   {id:'sales-followups',   l:'Follow Ups'},
   {id:'sales-activities',  l:'Activities'},
   {id:'sales-marketing',   l:'Marketing'},
@@ -2302,7 +2306,7 @@ window.addEventListener('popstate',e=>{
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
+  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2333,6 +2337,7 @@ function buildPage(id){
     sales:bSales,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
     'sales-accounts':bCustomers,
     'sales-estimates':bSalesEstimates,
+    'sales-pricebook':bPricebook,
     'sales-tasks':bSalesTasks,'sales-followups':bSalesTasks,
     'sales-activities':bSalesActivities,
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
@@ -24398,6 +24403,390 @@ function bSalesOpps(){
   return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline</div>
   ${_salesHeader()}
   ${renderCRMPipeline()}`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PRICEBOOK MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+let _pbTab='services';
+let _pbSvcSearch='';
+let _pbSvcPage=0;
+const _PB_PAGE=25;
+let _pbSvcTotal=0;
+let _pbSvcDivFilter='';
+let _pbSvcCatFilter='';
+
+function bPricebook(){
+  setTimeout(pbLoadContent,0);
+  const tabs=[
+    {id:'services',l:'Services'},
+    {id:'materials',l:'Materials'},
+    {id:'categories',l:'Categories'},
+    {id:'discounts',l:'Discounts &amp; Fees'},
+  ];
+  return`
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:0;background:white;padding:0 20px">
+    ${tabs.map(t=>`<button onclick="pbSetTab('${t.id}')" id="pb-tab-${t.id}"
+      style="padding:12px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid ${_pbTab===t.id?'var(--navy)':'transparent'};color:${_pbTab===t.id?'var(--navy)':'var(--muted)'};margin-bottom:-2px">${t.l}</button>`).join('')}
+  </div>
+  <div id="pb-content" style="padding:20px"></div>`;
+}
+
+function pbSetTab(tab){_pbTab=tab;_pbSvcSearch='';_pbSvcPage=0;_pbSvcDivFilter='';_pbSvcCatFilter='';pbLoadContent();}
+
+function pbLoadContent(){
+  const el=document.getElementById('pb-content');
+  if(!el) return;
+  if(_pbTab==='services') pbLoadServices(el);
+  else if(_pbTab==='materials') pbLoadMaterials(el);
+  else if(_pbTab==='categories') pbLoadCategories(el);
+  else if(_pbTab==='discounts') pbLoadDiscounts(el);
+  // Update tab highlight
+  ['services','materials','categories','discounts'].forEach(t=>{
+    const b=document.getElementById('pb-tab-'+t);
+    if(b){b.style.borderBottomColor=t===_pbTab?'var(--navy)':'transparent';b.style.color=t===_pbTab?'var(--navy)':'var(--muted)';}
+  });
+}
+
+// ── SERVICES ──────────────────────────────────────────────────────────────────
+async function pbLoadServices(el){
+  el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">Loading services…</div>`;
+  try{
+    const cats=(await DB.from('lhs_pb_categories').select('*').order('name')).data||[];
+    _C['lhs:pb_categories']=cats;
+    const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+    const q=(_pbSvcSearch||'').trim();
+    const from=_pbSvcPage*_PB_PAGE;
+    const to=from+_PB_PAGE-1;
+    let query=DB.from('lhs_pb_services').select('*',{count:'exact'}).order('name');
+    if(q) query=query.or(`name.ilike.%${q}%,code.ilike.%${q}%,category.ilike.%${q}%,description.ilike.%${q}%`);
+    if(_pbSvcDivFilter) query=query.eq('division',_pbSvcDivFilter);
+    if(_pbSvcCatFilter) query=query.eq('category',_pbSvcCatFilter);
+    query=query.range(from,to);
+    const{data,error,count}=await query;
+    if(error) throw error;
+    _pbSvcTotal=count||0;
+    const svcs=data||[];
+    const totalPages=Math.ceil(_pbSvcTotal/_PB_PAGE);
+    el.innerHTML=`
+    <!-- Toolbar -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input id="pb-svc-search" placeholder="&#128269; Search by name, code, category, description…"
+        value="${esc(_pbSvcSearch)}"
+        oninput="clearTimeout(window._pbST);window._pbST=setTimeout(()=>{_pbSvcSearch=this.value;_pbSvcPage=0;pbLoadContent()},350)"
+        style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:20px;font-size:13px;width:320px;outline:none;font-family:inherit">
+      <select onchange="_pbSvcDivFilter=this.value;_pbSvcPage=0;pbLoadContent()"
+        style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+        <option value="">All Divisions</option>
+        ${divs.map(d=>`<option value="${esc(d)}"${_pbSvcDivFilter===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <select onchange="_pbSvcCatFilter=this.value;_pbSvcPage=0;pbLoadContent()"
+        style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+        <option value="">All Categories</option>
+        ${cats.map(c=>`<option value="${esc(c.name)}"${_pbSvcCatFilter===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:var(--muted);margin-left:auto">${_pbSvcTotal.toLocaleString()} service${_pbSvcTotal!==1?'s':''}</span>
+      <button class="btn btn-n" onclick="pbAddService()">+ Add Service</button>
+    </div>
+    <!-- Table -->
+    <div class="card" style="padding:0;overflow:hidden">
+    <div class="tw" style="margin:0"><table>
+      <thead><tr>
+        <th style="width:44px"></th>
+        <th>Name</th>
+        <th>Code</th>
+        <th>Category</th>
+        <th>Description</th>
+        <th style="text-align:right">Hours</th>
+        <th style="text-align:right">Price</th>
+        <th style="text-align:center">Status</th>
+        <th style="text-align:center">Edit</th>
+      </tr></thead>
+      <tbody>
+      ${svcs.length===0?`<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">No services found${q?' for "'+q+'"':''}</td></tr>`:''}
+      ${svcs.map(s=>`<tr style="cursor:pointer" onclick="pbViewService('${s.id}')">
+        <td style="text-align:center">
+          ${s.image_url?`<img src="${s.image_url}" style="width:36px;height:36px;object-fit:cover;border-radius:4px">`
+            :`<div style="width:36px;height:36px;border-radius:4px;background:#f0f4f9;display:flex;align-items:center;justify-content:center;font-size:16px">🏷️</div>`}
+        </td>
+        <td style="font-weight:600;color:var(--navy)">${esc(s.name)}</td>
+        <td style="font-family:monospace;font-size:12px;color:var(--muted)">${esc(s.code||'')}</td>
+        <td><span style="background:#f0f4f9;border:1px solid var(--bdr);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600">${esc(s.category||'—')}</span></td>
+        <td style="font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((s.description||'').split('\n')[0].replace(/^#+\s*/,''))}</td>
+        <td style="text-align:right;font-size:13px">${s.hours>0?s.hours+'h':'—'}</td>
+        <td style="text-align:right;font-weight:700;color:var(--navy)">${s.price!=null&&s.price>0?'$'+Number(s.price).toFixed(2):'—'}</td>
+        <td style="text-align:center">
+          <span style="background:${s.is_active!==false?'#e8f5e9':'#fafafa'};color:${s.is_active!==false?'#2E7D32':'#999'};border:1px solid ${s.is_active!==false?'#a5d6a7':'#ddd'};border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">
+            ${s.is_active!==false?'Active':'Inactive'}
+          </span>
+        </td>
+        <td style="text-align:center" onclick="event.stopPropagation()">
+          <button class="btn sm btn-o" onclick="pbEditService('${s.id}')">✎</button>
+        </td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+    <!-- Pagination -->
+    ${totalPages>1?`<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:14px">
+      <button class="btn sm btn-o" onclick="_pbSvcPage=0;pbLoadContent()" ${_pbSvcPage===0?'disabled':''}>«</button>
+      <button class="btn sm btn-o" onclick="_pbSvcPage--;pbLoadContent()" ${_pbSvcPage===0?'disabled':''}>‹</button>
+      <span style="font-size:13px;color:var(--muted)">Page ${_pbSvcPage+1} of ${totalPages}</span>
+      <button class="btn sm btn-o" onclick="_pbSvcPage++;pbLoadContent()" ${_pbSvcPage>=totalPages-1?'disabled':''}>›</button>
+      <button class="btn sm btn-o" onclick="_pbSvcPage=${totalPages-1};pbLoadContent()" ${_pbSvcPage>=totalPages-1?'disabled':''}>»</button>
+    </div>`:''}`;
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--red);padding:20px">Error loading services: ${e.message}</div>`;
+  }
+}
+
+function pbAddService(){_pbEditSvcId=null;oMod('Add Service',pbServiceForm({}));}
+
+async function pbEditService(id){
+  const{data}=await DB.from('lhs_pb_services').select('*').eq('id',id).maybeSingle();
+  if(!data){tst('Service not found','error');return;}
+  _pbEditSvcId=id;
+  oMod(`Edit Service — ${data.code||data.name}`,pbServiceForm(data));
+}
+
+async function pbViewService(id){pbEditService(id);}
+
+let _pbEditSvcId=null;
+let _pbSvcTab='details';
+
+function pbServiceForm(s){
+  const cats=_C['lhs:pb_categories']||[];
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const desc=s.description||'';
+  const warr=s.warranty_description||'';
+  // Parse description into bullet-friendly display
+  return`<div style="min-width:580px;max-width:700px">
+  <!-- Status toggle -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+      <input type="checkbox" id="pbs-active" ${s.is_active!==false?'checked':''} style="width:16px;height:16px"> Active
+    </label>
+    ${s.code?`<span style="font-size:11px;background:#f0f4f9;border:1px solid var(--bdr);border-radius:6px;padding:2px 10px;font-family:monospace">Code: ${esc(s.code)}</span>`:''}
+  </div>
+  <!-- Code + Name row -->
+  <div class="fr">
+    <div class="fl"><label>Code</label><input id="pbs-code" value="${esc(s.code||'')}" placeholder="e.g. 3G" style="font-family:monospace"></div>
+    <div class="fl" style="flex:2"><label>Service Name</label><input id="pbs-name" value="${esc(s.name||'')}" placeholder="e.g. 3&quot; Residential Garage"></div>
+  </div>
+  <!-- Division + Category row -->
+  <div class="fr">
+    <div class="fl"><label>Division</label>
+      <select id="pbs-div">
+        <option value="">— Division —</option>
+        ${divs.map(d=>`<option value="${esc(d)}"${s.division===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Category
+      <button onclick="pbAddCategory()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--teal);padding:0 0 0 6px">+ New</button>
+    </label>
+      <select id="pbs-cat">
+        <option value="">— Category —</option>
+        ${cats.map(c=>`<option value="${esc(c.name)}"${s.category===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <!-- Price + Hours row -->
+  <div class="fr">
+    <div class="fl"><label>Price $</label><input type="number" id="pbs-price" value="${s.price!=null?s.price:''}" step="0.01" min="0" placeholder="0.00"></div>
+    <div class="fl"><label>Est. Hours</label><input type="number" id="pbs-hours" value="${s.hours||''}" step="0.5" min="0" placeholder="0"></div>
+  </div>
+  <!-- Item Description -->
+  <div class="fl"><label>Item Description
+    <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px">Start lines with • or - for bullet points</span>
+  </label>
+    <textarea id="pbs-desc" rows="6" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="• 3&quot; schedule 40 PVC sub-slab depressurization system&#10;• 1 Custom-fitted Sump Crock cover&#10;• 1 U-Tube monitoring device">${esc(desc)}</textarea>
+  </div>
+  <!-- Warranty Description -->
+  <div class="fl"><label>Warranty Description</label>
+    <textarea id="pbs-warr" rows="4" style="padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;width:100%;resize:vertical;font-family:inherit" placeholder="Lifetime Home Services LLC guarantees…">${esc(warr)}</textarea>
+  </div>
+  <!-- Flags -->
+  <div style="display:flex;flex-wrap:wrap;gap:16px;margin:10px 0;padding:12px;background:#f8f7f4;border-radius:8px;border:1px solid var(--bdr)">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-taxable" ${s.taxable?'checked':''}> Taxable</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-discounts" ${s.allow_discounts!==false?'checked':''}> Allow Discount Codes</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-memb" ${s.allow_membership_discounts?'checked':''}> Allow Membership Discounts</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pbs-labor" ${s.is_labor?'checked':''}> Labor Service</label>
+  </div>
+  <!-- Actions -->
+  <div class="br2" style="margin-top:14px">
+    <button class="btn btn-n" onclick="pbSaveService()">Save Service</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    ${_pbEditSvcId?`<button class="btn btn-r" style="margin-left:auto" onclick="pbDeleteService('${_pbEditSvcId}')">Delete</button>`:''}
+  </div>
+  </div>`;
+}
+
+async function pbSaveService(){
+  const name=(document.getElementById('pbs-name')?.value||'').trim();
+  if(!name){tst('Service name is required','error');return;}
+  const payload={
+    name,
+    code:(document.getElementById('pbs-code')?.value||'').trim()||null,
+    division:document.getElementById('pbs-div')?.value||null,
+    category:document.getElementById('pbs-cat')?.value||null,
+    price:parseFloat(document.getElementById('pbs-price')?.value)||0,
+    hours:parseFloat(document.getElementById('pbs-hours')?.value)||0,
+    description:document.getElementById('pbs-desc')?.value||null,
+    warranty_description:document.getElementById('pbs-warr')?.value||null,
+    is_active:document.getElementById('pbs-active')?.checked!==false,
+    taxable:document.getElementById('pbs-taxable')?.checked||false,
+    allow_discounts:document.getElementById('pbs-discounts')?.checked!==false,
+    allow_membership_discounts:document.getElementById('pbs-memb')?.checked||false,
+    is_labor:document.getElementById('pbs-labor')?.checked||false,
+    last_updated:new Date().toISOString(),
+  };
+  if(_pbEditSvcId){
+    const{error}=await DB.from('lhs_pb_services').update(payload).eq('id',_pbEditSvcId);
+    if(error){tst('Failed to save: '+error.message,'error');return;}
+    tst('Service updated','success');
+  } else {
+    payload.created_at=new Date().toISOString();
+    const{error}=await DB.from('lhs_pb_services').insert(payload);
+    if(error){tst('Failed to save: '+error.message,'error');return;}
+    tst('Service added','success');
+  }
+  cMod();
+  const el=document.getElementById('pb-content');
+  if(el) pbLoadServices(el);
+}
+
+async function pbDeleteService(id){
+  if(!confirm('Delete this service from the pricebook?')) return;
+  const{error}=await DB.from('lhs_pb_services').delete().eq('id',id);
+  if(error){tst('Delete failed: '+error.message,'error');return;}
+  tst('Service deleted','success');
+  cMod();
+  const el=document.getElementById('pb-content');
+  if(el) pbLoadServices(el);
+}
+
+// ── MATERIALS ─────────────────────────────────────────────────────────────────
+async function pbLoadMaterials(el){
+  el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div>`;
+  const items=S.get('lhs:items')||[];
+  const q=(_pbSvcSearch||'').trim().toLowerCase();
+  const filtered=items.filter(i=>!q||
+    (i.name||'').toLowerCase().includes(q)||
+    (i.sku||'').toLowerCase().includes(q)||
+    (i.category||'').toLowerCase().includes(q));
+  el.innerHTML=`
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <input placeholder="&#128269; Search materials…" value="${esc(_pbSvcSearch)}"
+      oninput="_pbSvcSearch=this.value;pbLoadContent()"
+      style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:20px;font-size:13px;width:280px;outline:none;font-family:inherit">
+    <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} material${filtered.length!==1?'s':''}</span>
+    <button class="btn btn-n" onclick="oAddItem()">+ Add Material</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+  <div class="tw" style="margin:0"><table>
+    <thead><tr>
+      <th>SKU</th><th>Name</th><th>Category</th>
+      <th style="text-align:right">Unit Cost</th>
+      <th style="text-align:right">List Price</th>
+      <th style="text-align:right">On Hand</th>
+    </tr></thead>
+    <tbody>
+    ${filtered.length===0?`<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">No materials found</td></tr>`:''}
+    ${filtered.slice(0,100).map(i=>`<tr>
+      <td style="font-family:monospace;font-size:12px;color:var(--muted)">${esc(i.sku||'')}</td>
+      <td style="font-weight:600">${esc(i.name||'')}</td>
+      <td style="font-size:12px">${esc(i.category||'')}</td>
+      <td style="text-align:right">${i.unit_cost!=null?'$'+Number(i.unit_cost).toFixed(2):'—'}</td>
+      <td style="text-align:right">${i.list_price!=null?'$'+Number(i.list_price).toFixed(2):i.price!=null?'$'+Number(i.price).toFixed(2):'—'}</td>
+      <td style="text-align:right">${i.qty_on_hand!=null?i.qty_on_hand:(i.qty!=null?i.qty:'—')}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div></div>`;
+}
+
+// ── CATEGORIES ────────────────────────────────────────────────────────────────
+async function pbLoadCategories(el){
+  el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div>`;
+  const{data,error}=await DB.from('lhs_pb_categories').select('*').order('name');
+  if(error){el.innerHTML=`<div style="color:var(--red);padding:20px">Error: ${error.message}</div>`;return;}
+  const cats=data||[];
+  _C['lhs:pb_categories']=cats;
+  el.innerHTML=`
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <div class="pt" style="margin:0;font-size:16px">Service Categories</div>
+    <button class="btn btn-n" style="margin-left:auto" onclick="pbAddCategory()">+ Add Category</button>
+  </div>
+  ${cats.length===0?`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No categories yet. Click <strong>+ Add Category</strong> to get started.</div>`:''}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+    ${cats.map(c=>`<div class="card" style="padding:14px;display:flex;align-items:center;gap:12px">
+      <div style="width:12px;height:40px;border-radius:4px;background:${c.color||'#1565C0'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;color:var(--navy)">${esc(c.name)}</div>
+        ${c.division?`<div style="font-size:11px;color:var(--muted)">${esc(c.division)}</div>`:''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sm btn-o" onclick="pbEditCategory('${c.id}')">✎</button>
+        <button class="btn sm btn-r" onclick="pbDeleteCategory('${c.id}')">✕</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function pbAddCategory(){
+  oMod('Add Category',pbCategoryForm({}));
+}
+async function pbEditCategory(id){
+  const cats=_C['lhs:pb_categories']||[];
+  const c=cats.find(x=>x.id===id)||{};
+  oMod('Edit Category',pbCategoryForm(c));
+}
+function pbCategoryForm(c){
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  return`<div style="min-width:320px">
+  <div class="fl"><label>Category Name</label><input id="pbc-name" value="${esc(c.name||'')}" placeholder="e.g. Radon Systems - Residential"></div>
+  <div class="fl"><label>Division</label>
+    <select id="pbc-div">
+      <option value="">— All Divisions —</option>
+      ${divs.map(d=>`<option value="${esc(d)}"${c.division===d?' selected':''}>${esc(d)}</option>`).join('')}
+    </select>
+  </div>
+  <div class="fl"><label>Color</label>
+    <input type="color" id="pbc-color" value="${c.color||'#1565C0'}" style="height:38px;padding:2px;border:1px solid var(--bdr);border-radius:8px;width:80px;cursor:pointer">
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="pbSaveCategory('${c.id||''}')">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  </div>`;
+}
+async function pbSaveCategory(id){
+  const name=(document.getElementById('pbc-name')?.value||'').trim();
+  if(!name){tst('Category name required','error');return;}
+  const payload={name,division:document.getElementById('pbc-div')?.value||null,color:document.getElementById('pbc-color')?.value||'#1565C0'};
+  if(id){
+    await DB.from('lhs_pb_categories').update(payload).eq('id',id);
+    tst('Category updated','success');
+  } else {
+    payload.created_at=new Date().toISOString();
+    await DB.from('lhs_pb_categories').insert(payload);
+    tst('Category added','success');
+  }
+  cMod();
+  const el=document.getElementById('pb-content');
+  if(el) pbLoadCategories(el);
+}
+async function pbDeleteCategory(id){
+  if(!confirm('Delete this category?')) return;
+  await DB.from('lhs_pb_categories').delete().eq('id',id);
+  tst('Deleted','success');
+  const el=document.getElementById('pb-content');
+  if(el) pbLoadCategories(el);
+}
+
+// ── DISCOUNTS & FEES ──────────────────────────────────────────────────────────
+function pbLoadDiscounts(el){
+  el.innerHTML=`<div class="card" style="text-align:center;padding:60px 32px">
+    <div style="font-size:48px;margin-bottom:12px">🏷️</div>
+    <div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:8px">Discounts &amp; Fees</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:20px">Create discount codes, membership pricing rules, and service fees.</div>
+    <div style="font-size:13px;color:var(--muted)">Coming soon — configure in your accounting codes for now.</div>
+  </div>`;
 }
 
 // ── ESTIMATES PAGE ─────────────────────────────────────────────────────────────
