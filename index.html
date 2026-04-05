@@ -14076,29 +14076,52 @@ function oAddPropertyFromWO(){
   oAddProperty({address:addr,city,state,zip});
 }
 
+let _wocCustResults={};
 function wocSearchCust(q){
-  if(q.length<2){document.getElementById('woc-cresults').style.display='none';return}
-  const custs=S.get('lhs:customers')||[];
-  const matches=custs.filter(c=>{
-    const name=`${c.first_name||''} ${c.last_name||''}`.toLowerCase();
-    const ph=(c.phone||'').replace(/\D/g,'');
-    return name.includes(q.toLowerCase())||ph.includes(q.replace(/\D/g,''));
-  }).slice(0,8);
   const res=document.getElementById('woc-cresults');
-  if(!matches.length){res.style.display='none';return}
+  if(!q||q.length<2){if(res)res.style.display='none';return}
   res.style.display='block';
-  res.innerHTML=matches.map(c=>`
-    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
-      onmousedown="wocSelectCust('${c.id}')"
-      onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
-      <strong>${c.first_name} ${c.last_name}</strong>${c.company?' — '+c.company:''}
-      <span style="color:var(--muted);margin-left:8px">${c.phone||''}</span>
-      <div style="font-size:11px;color:var(--muted)">${c.address||''} ${c.city||''} ${c.state||''}</div>
-    </div>`).join('');
+  res.innerHTML='<div style="padding:12px 14px;font-size:13px;color:var(--muted)">Searching...</div>';
+  clearTimeout(window._wocSearchTimer);
+  window._wocSearchTimer=setTimeout(()=>_wocSearchAsync(q),200);
+}
+async function _wocSearchAsync(q){
+  const res=document.getElementById('woc-cresults');
+  if(!res) return;
+  try{
+    const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
+    const clauses=words.flatMap(w=>[
+      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+      `company.ilike.%${w}%`,`phone.ilike.%${w}%`,`email.ilike.%${w}%`
+    ]);
+    const{data,error}=await DB.from('lhs_customers')
+      .select('id,first_name,last_name,company,phone,email,address,city,state,zip')
+      .or(clauses.join(','))
+      .order('last_name',{ascending:true})
+      .range(0,39);
+    if(error) throw error;
+    _wocCustResults={};
+    (data||[]).forEach(c=>{_wocCustResults[c.id]=c;});
+    if(!document.getElementById('woc-cresults')) return;
+    if(!(data||[]).length){
+      res.innerHTML='<div style="padding:14px;font-size:13px;color:var(--muted)">No customers found</div>';
+      return;
+    }
+    res.innerHTML=(data||[]).map(c=>`
+      <div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
+        onmousedown="wocSelectCust('${esc(c.id)}')"
+        onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
+        <div style="font-weight:600;color:var(--navy)">${esc((c.first_name||'')+' '+(c.last_name||''))}${c.company?' <span style="font-weight:400;color:var(--muted)">— '+esc(c.company)+'</span>':''}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.city?' &middot; '+esc(c.city):''} ${esc(c.state||'')}</div>
+      </div>`).join('');
+  }catch(e){
+    if(document.getElementById('woc-cresults'))
+      res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--red)">Search error: ${e?.message||'try again'}</div>`;
+  }
 }
 
 function wocSelectCust(id){
-  const c=(S.get('lhs:customers')||[]).find(x=>x.id===id);
+  const c=_wocCustResults[id]||(S.get('lhs:customers')||[]).find(x=>x.id===id);
   if(!c) return;
   window._wocSelectedCust=c;
   document.getElementById('woc-cresults').style.display='none';
