@@ -24583,7 +24583,7 @@ function pbServiceForm(s){
     <div class="fr">
       <div class="fl"><label>Division</label>
         <select id="pbs-div">
-          <option value="">— Division —</option>
+          <option value="">— All Divisions —</option>
           ${divs.map(d=>`<option value="${esc(d)}"${s.division===d?' selected':''}>${esc(d)}</option>`).join('')}
         </select>
       </div>
@@ -24591,6 +24591,21 @@ function pbServiceForm(s){
         <select id="pbs-cat">
           <option value="">— Category —</option>
           ${cats.map(c=>`<option value="${esc(c.name)}"${s.category===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:10px 0 6px;padding-bottom:5px;border-bottom:1px solid var(--bdr)">Service Scope <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— limits which estimates this service appears in. Leave blank to show for all.</span></div>
+    <div class="fr">
+      <div class="fl"><label>Region</label>
+        <select id="pbs-region">
+          <option value="">All Regions</option>
+          ${Object.keys(REGIONS).map(r=>`<option value="${esc(r)}"${(s.region||'')===r?' selected':''}>${esc(r)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>State</label>
+        <select id="pbs-state" onchange="pbsSyncRegion()">
+          <option value="">All States</option>
+          ${ALL_STATES.map(st=>{const code=st.includes(' - ')?st.split(' - ')[0]:st;return`<option value="${code}"${(s.state||'')===code?' selected':''}>${st}</option>`;}).join('')}
         </select>
       </div>
     </div>
@@ -24754,6 +24769,15 @@ function pbMatPick(i,sku,name,cost){
   if(costEl) costEl.textContent=cost!=null?'$'+Number(cost).toFixed(2):'—';
 }
 
+// Auto-set region when state is selected
+function pbsSyncRegion(){
+  const stateRaw=document.getElementById('pbs-state')?.value||'';
+  const code=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
+  const region=Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(code))||'';
+  const regEl=document.getElementById('pbs-region');
+  if(regEl&&region) regEl.value=region;
+}
+
 // keep old name as alias for any references
 function pbAddMatItem(sku,name,unitCost){
   if(_pbSvcMaterials.some(m=>m.sku===sku)){tst('Already added','info');return;}
@@ -24764,11 +24788,15 @@ function pbAddMatItem(sku,name,unitCost){
 async function pbSaveService(){
   const name=(document.getElementById('pbs-name')?.value||'').trim();
   if(!name){tst('Service name is required','error');return;}
+  const stateRaw=document.getElementById('pbs-state')?.value||'';
+  const stateCode=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
   const payload={
     name,
     code:(document.getElementById('pbs-code')?.value||'').trim()||null,
     division:document.getElementById('pbs-div')?.value||null,
     category:document.getElementById('pbs-cat')?.value||null,
+    region:document.getElementById('pbs-region')?.value||null,
+    state:stateCode||null,
     price:parseFloat(document.getElementById('pbs-price')?.value)||0,
     hours:parseFloat(document.getElementById('pbs-hours')?.value)||0,
     description:document.getElementById('pbs-desc')?.value||null,
@@ -27011,6 +27039,95 @@ function renderCRMEstimates(){
 }
 
 // ── NEW / OPEN ESTIMATE ────────────────────────────────────────────────────────
+// ── PRICEBOOK → ESTIMATE MATCHING ─────────────────────────────────────────────
+function pbServicesForEstimate(division,state,region){
+  const all=(_C['lhs:pb_services']||S.get('lhs:pb_services')||[]).filter(s=>s.is_active!==false);
+  const m=(a,b)=>!a||(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+  return all.filter(s=>m(s.division,division)&&m(s.region,region)&&m(s.state,state))
+    .sort((a,b)=>{
+      // More specific services surface first
+      const scoreA=(a.division?1:0)+(a.region?1:0)+(a.state?1:0);
+      const scoreB=(b.division?1:0)+(b.region?1:0)+(b.state?1:0);
+      return scoreB-scoreA;
+    });
+}
+
+function estGetScopeState(){
+  const raw=document.getElementById('est-state-scope')?.value||'';
+  return raw.includes(' - ')?raw.split(' - ')[0]:raw;
+}
+function estGetScopeRegion(state){
+  return Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(state))||'';
+}
+
+function estRefreshPbPanel(){
+  const panel=document.getElementById('est-pb-panel');
+  if(!panel) return;
+  const division=document.getElementById('est-div')?.value||'';
+  const state=estGetScopeState();
+  const region=document.getElementById('est-region-scope')?.value||estGetScopeRegion(state);
+  // Update count badge
+  const allForScope=pbServicesForEstimate(division,state,region);
+  const countEl=document.getElementById('est-pb-count');
+  if(countEl) countEl.textContent=allForScope.length?`${allForScope.length} service${allForScope.length!==1?'s':''}`:'';
+  const body=document.getElementById('est-pb-body');
+  if(body&&body.style.display==='none') return; // don't render if collapsed
+  const q=(document.getElementById('est-pb-search')?.value||'').toLowerCase();
+  let svcs=pbServicesForEstimate(division,state,region);
+  if(q) svcs=svcs.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.code||'').toLowerCase().includes(q)||(s.description||'').toLowerCase().includes(q));
+  if(!division&&!state){
+    panel.innerHTML=`<div style="color:var(--muted);font-size:13px;text-align:center;padding:14px">Select a division or state above to see matching pricebook services.</div>`;
+    return;
+  }
+  if(!svcs.length){
+    panel.innerHTML=`<div style="color:var(--muted);font-size:13px;text-align:center;padding:14px">No pricebook services match this division/region/state combination.<br><span style="font-size:11px">Add services in Pricebook → Services</span></div>`;
+    return;
+  }
+  panel.innerHTML=svcs.map(s=>{
+    const mats=Array.isArray(s.materials)?s.materials:(s.materials?JSON.parse(s.materials):[]);
+    const descLines=(s.description||'').split('\n').map(l=>l.trim()).filter(l=>l&&/^[•\-]/.test(l));
+    const scopeTags=[s.division,s.region,s.state].filter(Boolean);
+    return`<div style="border:1px solid var(--bdr);border-radius:8px;padding:11px 14px;margin-bottom:8px;background:white;display:flex;gap:12px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+          ${s.code?`<span style="font-size:10px;font-family:monospace;background:#e8f0fe;color:#1a56db;padding:1px 7px;border-radius:5px;font-weight:700">${esc(s.code)}</span>`:''}
+          <span style="font-weight:700;font-size:13px">${esc(s.name)}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--navy);margin-left:auto">$${Number(s.price||0).toLocaleString('en-US',{minimumFractionDigits:2})}</span>
+        </div>
+        ${scopeTags.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${scopeTags.map(t=>`<span style="font-size:10px;background:#f0f4f9;color:var(--muted);border-radius:10px;padding:1px 7px">${esc(t)}</span>`).join('')}</div>`:''}
+        ${descLines.length?`<div style="font-size:11px;color:#555;line-height:1.5">${descLines.slice(0,3).map(l=>`<span style="display:block">${esc(l)}</span>`).join('')}${descLines.length>3?`<span style="color:var(--muted)">+${descLines.length-3} more…</span>`:''}</div>`:''}
+        ${mats.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${mats.length} material${mats.length!==1?'s':''} linked</div>`:''}
+      </div>
+      <button class="btn btn-n sm" style="flex-shrink:0;white-space:nowrap" onclick="estAddFromPricebook('${esc(s.id)}')">+ Add</button>
+    </div>`;
+  }).join('');
+}
+
+function estAddFromPricebook(svcId){
+  const svcs=_C['lhs:pb_services']||S.get('lhs:pb_services')||[];
+  const s=svcs.find(x=>x.id===svcId);
+  if(!s) return;
+  const pkg=window._estPkg||'custom';
+  if(!window._estLines) window._estLines={good:[],better:[],best:[],custom:[]};
+  if(!window._estLines[pkg]) window._estLines[pkg]=[];
+  // Build bullets from description
+  const descLines=(s.description||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  window._estLines[pkg].push({
+    label:s.name||(s.code||''),
+    code:s.code||'',
+    description:s.description||'',
+    bullets:descLines.filter(l=>/^[•\-]/.test(l)).map(l=>l.replace(/^[•\-]\s*/,'')),
+    type:s.is_labor?'Labor':'Material',
+    qty:1,
+    cost:0,
+    price:s.price||0,
+    pricebook_id:s.id,
+    tier:pkg==='custom'?undefined:pkg,
+  });
+  estRenderLines();
+  tst(`${s.name} added to estimate`,'success');
+}
+
 function oNewEstimate(prefill={}){
   const custs=S.get('lhs:customers')||[];
   const opps=(S.get('lhs:opportunities')||[]).filter(o=>!['Won','Lost'].includes(o.stage));
@@ -27055,11 +27172,25 @@ function oNewEstimate(prefill={}){
         ${DIVS.map(d=>`<option${d===(prefill.division||'')?'  selected':''}>${d}</option>`).join('')}
       </select>
     </div>
+    <div class="fl"><label>State <span style="font-size:10px;font-weight:400;color:var(--muted)">(narrows pricebook)</span></label>
+      <select id="est-state-scope" onchange="estStateScopeChange(this.value)">
+        <option value="">— State —</option>
+        ${ALL_STATES.map(st=>{const code=st.includes(' - ')?st.split(' - ')[0]:st;return`<option value="${code}"${(prefill.state||'')===code?' selected':''}>${st}</option>`;}).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Region <span id="est-region-lbl" style="font-size:10px;color:var(--teal);font-weight:600"></span></label>
+      <select id="est-region-scope" onchange="estRefreshPbPanel()">
+        <option value="">— Region —</option>
+        ${Object.keys(REGIONS).map(r=>`<option value="${esc(r)}"${(prefill.region||'')===r?' selected':''}>${esc(r)}</option>`).join('')}
+      </select>
+    </div>
     <div class="fl"><label>Job Type</label>
       <select id="est-jtype" onchange="estLoadTemplate()">
         ${JOB_TYPES_FIXED.map(t=>`<option${t===(prefill.job_type||'Installation')?'  selected':''}>${t}</option>`).join('')}
       </select>
     </div>
+  </div>
+  <div class="fr" style="margin-bottom:4px">
     <div class="fl"><label>Assigned Rep</label>
       <select id="est-rep"><option value="">—</option>${reps.map(u=>`<option${u.name===(prefill.assigned_to||'')?'  selected':''}>${u.name}</option>`).join('')}</select>
     </div>
@@ -27069,6 +27200,23 @@ function oNewEstimate(prefill={}){
   </div>
   <div class="fl" style="margin-bottom:10px"><label>Site Notes / Scope Summary</label>
     <textarea id="est-notes" rows="2" placeholder="What was observed on site? Any special conditions?">${prefill.notes||''}</textarea>
+  </div>
+
+  <!-- Pricebook panel -->
+  <div style="border:1px solid var(--bdr);border-radius:10px;margin-bottom:14px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8f9fc;border-bottom:1px solid var(--bdr);cursor:pointer" onclick="estTogglePbPanel()">
+      <span style="font-size:13px;font-weight:700;color:var(--navy)">📋 Pricebook Services</span>
+      <span id="est-pb-count" style="font-size:11px;background:#e3f2fd;color:#1565C0;border-radius:10px;padding:1px 8px;font-weight:600"></span>
+      <span style="font-size:11px;color:var(--muted);margin-left:2px">Click to pick services for this estimate</span>
+      <span id="est-pb-chevron" style="margin-left:auto;color:var(--muted);font-size:14px">▼</span>
+    </div>
+    <div id="est-pb-body" style="display:none;padding:10px 14px">
+      <input id="est-pb-search" placeholder="&#128269; Search services…" oninput="estRefreshPbPanel()"
+        style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;margin-bottom:10px;box-sizing:border-box;font-family:inherit">
+      <div id="est-pb-panel" style="max-height:280px;overflow-y:auto">
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:14px">Select a division or state above to see matching pricebook services.</div>
+      </div>
+    </div>
   </div>
 
   <!-- Package selector -->
@@ -27119,10 +27267,37 @@ function estFillCustomer(custId){
   if(addr) addr.textContent=`${c.first_name} ${c.last_name}${c.phone?' · '+c.phone:''} · ${full||'No address on file'}`;
   const site=document.getElementById('est-site');
   if(site&&!site.value&&full) site.value=full;
+  // Auto-fill state scope from customer state
+  if(c.state){
+    const stEl=document.getElementById('est-state-scope');
+    if(stEl&&!stEl.value) estStateScopeChange(c.state,true);
+  }
+}
+
+function estStateScopeChange(stateCode,fromCustomer=false){
+  const stEl=document.getElementById('est-state-scope');
+  if(stEl) stEl.value=stateCode;
+  // Auto-derive region
+  const region=Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(stateCode))||'';
+  const regEl=document.getElementById('est-region-scope');
+  const regLbl=document.getElementById('est-region-lbl');
+  if(regEl&&region) regEl.value=region;
+  if(regLbl) regLbl.textContent=region?`→ ${region}`:'';
+  estRefreshPbPanel();
+}
+
+function estTogglePbPanel(){
+  const body=document.getElementById('est-pb-body');
+  const chev=document.getElementById('est-pb-chevron');
+  if(!body) return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  if(chev) chev.textContent=open?'▼':'▲';
+  if(!open) estRefreshPbPanel(); // refresh on open
 }
 
 function estDivChange(div){
-  window._estDiv=div; estLoadTemplate();
+  window._estDiv=div; estLoadTemplate(); estRefreshPbPanel();
 }
 
 function estLoadTemplate(silent=false){
