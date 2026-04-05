@@ -1420,7 +1420,23 @@ const S={
   },
   set(k,v){
     _C[k]=v;
-    try{localStorage.setItem(k,JSON.stringify(v))}catch{}
+    try{localStorage.setItem(k,JSON.stringify(v));}
+    catch(e){
+      if(e.name==='QuotaExceededError'||e.code===22||e.code===1014){
+        // Free space: remove largest cached table arrays (they reload from Supabase)
+        const pruneable=Object.keys(localStorage)
+          .filter(lk=>lk.startsWith('lhs:'))
+          .map(lk=>({k:lk,sz:(localStorage.getItem(lk)||'').length}))
+          .sort((a,b)=>b.sz-a.sz);
+        let freed=0;
+        for(const{k:lk}of pruneable){
+          freed+=((localStorage.getItem(lk)||'').length);
+          localStorage.removeItem(lk);
+          if(freed>200000) break; // free ~200KB then retry
+        }
+        try{localStorage.setItem(k,JSON.stringify(v));}catch{}
+      }
+    }
   }
 };
 
@@ -25267,10 +25283,9 @@ function renderCRMActivities(){
 // ── ADD LEAD ──────────────────────────────────────────────────────────────────
 // ── ESTIMATE DOCUMENT SETTINGS ────────────────────────────────────────────────
 function getEstDocSettings(){
-  try{return JSON.parse(localStorage.getItem('lms_est_doc_settings')||'[]');}
-  catch{return [];}
+  return S.get('lms:est_doc_settings')||[];
 }
-function saveEstDocSettings(arr){localStorage.setItem('lms_est_doc_settings',JSON.stringify(arr));}
+function saveEstDocSettings(arr){S.set('lms:est_doc_settings',arr);}
 
 // Priority: division+region+state > division+region > division only > global default
 function getEstDocTemplate(division,region,state){
@@ -25690,10 +25705,9 @@ function previewEstDocTemplate(id){
 
 // ── SALES SETTINGS STORAGE ────────────────────────────────────────────────────
 function getSalesSettings(){
-  try{return JSON.parse(localStorage.getItem('lms_sales_settings')||'null')||_defaultSalesSettings();}
-  catch{return _defaultSalesSettings();}
+  return S.get('lms:sales_settings')||_defaultSalesSettings();
 }
-function saveSalesSettings(s){localStorage.setItem('lms_sales_settings',JSON.stringify(s));}
+function saveSalesSettings(s){S.set('lms:sales_settings',s);}
 function _defaultSalesSettings(){
   return{
     salutations:['Mr.','Mrs.','Ms.','Dr.','Prof.','Rev.'],
@@ -27057,8 +27071,8 @@ async function deleteMaterial(matId,aptId,woId){
 // ── ESTIMATING ENGINE ─────────────────────────────────────────────────────────
 
 // Estimate template storage: { "Radon Mitigation|Installation": [{label,type,unit,qty,cost,price,included}] }
-function getEstTemplates(){try{return JSON.parse(localStorage.getItem('lms_est_templates')||'{}');}catch{return{};}}
-function saveEstTemplates(map){localStorage.setItem('lms_est_templates',JSON.stringify(map));}
+function getEstTemplates(){return S.get('lms:est_templates')||{};}
+function saveEstTemplates(map){S.set('lms:est_templates',map);}
 function getEstTemplate(div,jtype){
   const map=getEstTemplates();
   return(map[div+'|'+jtype]||[]).map(r=>({...r})); // deep copy
