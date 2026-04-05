@@ -1470,6 +1470,7 @@ const TBL={
   'lhs:custom_reports':'lhs_custom_reports',
   'lhs:wo_tags':'lhs_wo_tags',
   'lhs:estimates':'lhs_estimates',
+  'lhs:permits':'lhs_permits',
   'lhs:props':'lhs_properties',
   'lhs:receipts':'lhs_receipts',
   'lhs:accounting_codes':'lhs_accounting_codes',
@@ -1548,7 +1549,15 @@ async function warmCache(){
         else query=query.order('created_at',{ascending:true});
         const{data,error}=await query;
         if(!error&&data&&data.length>0){
-          S.set(k,data);
+          // For estimates: merge Supabase rows with any locally-created ones whose insert failed
+          if(tbl==='lhs_estimates'){
+            const local=S.get(k)||[];
+            const localOnly=local.filter(l=>!data.find(d=>d.id===l.id));
+            S.set(k,[...data,...localOnly]);
+            if(localOnly.length) console.log('Preserved',localOnly.length,'local-only estimate(s) not yet in Supabase');
+          } else {
+            S.set(k,data);
+          }
           console.log('Loaded',tbl,data.length,'rows from Supabase');
         } else if(!error&&data&&data.length===0){
           console.log(tbl,'is empty in Supabase, keeping local cache');
@@ -1924,6 +1933,7 @@ async function startApp(){
     <div class="page" id="p-commercial"></div>
     <div class="page" id="p-sales-accounts"></div>
     <div class="page" id="p-sales-discounts"></div>
+    <div class="page" id="p-sales-permits"></div>
     <div class="page" id="p-sales-pricebook"></div>
     <div class="page" id="p-sales-followups"></div>
     <div class="page" id="p-hr"></div>
@@ -1940,7 +1950,7 @@ async function startApp(){
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
   const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
     'accounts','customers','properties','business','commercial',
-    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings',
+    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
@@ -1958,7 +1968,7 @@ async function startApp(){
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
+  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2115,6 +2125,7 @@ const SALES_NAV=[
   {id:'sales-activities',  l:'Activities'},
   {id:'sales-marketing',   l:'Marketing'},
   {id:'sales-discounts',   l:'Discounts &amp; Promotions'},
+  {id:'sales-permits',     l:'Permits &amp; Licensing'},
   {id:'sales-settings',    l:'Sales Settings'},
 ];
 
@@ -2322,7 +2333,7 @@ window.addEventListener('popstate',e=>{
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-settings'];
+  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2358,6 +2369,7 @@ function buildPage(id){
     'sales-activities':bSalesActivities,
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
     'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
+    'sales-permits':bSalesPermits,
     tasks:bTasks, mytasks:bMyTasks,
     accounting:bAccounting,'acct-dashboard':bAcctDashboard,
     'acct-division':bAcctDivision,'acct-invoices':bAcctInvoices,
@@ -14337,25 +14349,25 @@ function woCreateForm(){
 
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Job Details</div>
   <div class="fr">
-    <div class="fl"><label>Division</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Division</label>
       <select id="woc-div" onchange="wocDivChange(this.value)">
         ${DIVS.map(d=>`<option${d===div?' selected':''}>${d}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Job Type (Fixed)</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Job Type (Fixed)</label>
       <select id="woc-type" onchange="wocTypeChange(this.value)">
         ${JOB_TYPES_FIXED.map(t=>`<option${t===type?' selected':''}>${t}</option>`).join('')}
       </select>
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Job Subtype</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Job Subtype</label>
       <select id="woc-sub" onchange="wocSubChange(this.value)">
         <option value="">— Select —</option>
         ${subtypes.map(s=>`<option${s===sub?' selected':''}>${s}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Job Classification</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Job Classification</label>
       <select id="woc-cls">
         <option value="">— Select subtype first —</option>
         ${classes.map(c=>`<option>${c}</option>`).join('')}
@@ -14376,7 +14388,7 @@ function woCreateForm(){
     </div>
   </div>
   <div class="fl" style="margin-bottom:16px">
-    <label>Job Description / Notes</label>
+    <label><span style="color:var(--red)">*</span> Job Description / Notes</label>
     <textarea id="woc-desc" rows="2" placeholder="Describe the work to be done..."></textarea>
   </div>
   <div class="fl" style="margin-bottom:16px">
@@ -14406,16 +14418,16 @@ function woCreateForm(){
   <div id="woc-cform">
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px">— or add new customer —</div>
     <div class="fr">
-      <div class="fl"><label>First Name</label><input id="woc-cfn" placeholder="First"></div>
-      <div class="fl"><label>Last Name</label><input id="woc-cln" placeholder="Last"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> First Name</label><input id="woc-cfn" placeholder="First"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> Last Name</label><input id="woc-cln" placeholder="Last"></div>
       <div class="fl"><label>Company (optional)</label><input id="woc-cco" placeholder="Company name"></div>
     </div>
     <div class="fr">
-      <div class="fl"><label>Phone</label><input id="woc-cph" placeholder="(000) 000-0000"></div>
-      <div class="fl"><label>Email</label><input id="woc-cem" placeholder="customer[at]email.com"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> Phone</label><input id="woc-cph" placeholder="(000) 000-0000"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> Email</label><input id="woc-cem" placeholder="customer[at]email.com"></div>
     </div>
     <div class="fr">
-      <div class="fl" style="grid-column:span 2"><label>Street Address</label>
+      <div class="fl" style="grid-column:span 2"><label><span style="color:var(--red)">*</span> Street Address</label>
         <div style="display:flex;gap:6px;position:relative">
           <div style="flex:1;position:relative">
             <input id="woc-cad" placeholder="Start typing address..." style="width:100%" autocomplete="off"
@@ -14429,15 +14441,15 @@ function woCreateForm(){
       </div>
     </div>
     <div class="fr">
-      <div class="fl"><label>City</label><input id="woc-cct" placeholder="City"></div>
-      <div class="fl"><label>State</label>
+      <div class="fl"><label><span style="color:var(--red)">*</span> City</label><input id="woc-cct" placeholder="City"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> State</label>
         <select id="woc-cst" onchange="wocRefreshTechList()">
           <option value="">— Select —</option>
           ${ALL_STATES.map(s=>`<option>${s} - ${STATE_NAMES[s]||s}</option>`).join('')}
         </select>
       </div>
-      <div class="fl"><label>Zip</label><input id="woc-czip" placeholder="00000"></div>
-      <div class="fl"><label>County</label><input id="woc-county" placeholder="e.g. Brown County" oninput="wocAutoTerritory()">
+      <div class="fl"><label><span style="color:var(--red)">*</span> Zip</label><input id="woc-czip" placeholder="00000"></div>
+      <div class="fl"><label><span style="color:var(--red)">*</span> County</label><input id="woc-county" placeholder="e.g. Brown County" oninput="wocAutoTerritory()">
         <div id="woc-territory-preview" style="font-size:11px;color:var(--teal);font-weight:600;margin-top:4px;min-height:16px"></div>
       </div>
     </div>
@@ -14721,12 +14733,31 @@ function wocRemoveTech(i){
 async function svCreateWO(){
   const div=v('woc-div'); const type=v('woc-type'); const sub=v('woc-sub'); const cls=v('woc-cls');
   if(!div||!type){tst('Division and Job Type required','error');return}
+  // Validate subtype if the dropdown has options beyond the placeholder
+  const subEl=document.getElementById('woc-sub');
+  if(subEl&&subEl.options.length>1&&!sub){tst('Job Subtype is required','error');return}
+  // Validate classification if the dropdown has options beyond the placeholder
+  const clsEl=document.getElementById('woc-cls');
+  if(clsEl&&clsEl.options.length>1&&!cls){tst('Job Classification is required','error');return}
+  const desc=(v('woc-desc')||'').trim();
+  if(!desc){tst('Job Description / Notes is required','error');return}
 
   // Get or create customer
   let cust=window._wocSelectedCust;
   if(!cust){
-    const fn=v('woc-cfn'),ln=v('woc-cln'),ph=v('woc-cph');
+    const fn=v('woc-cfn'),ln=v('woc-cln'),ph=v('woc-cph'),em=v('woc-cem');
     if(!fn||!ln){tst('Customer first and last name required','error');return}
+    if(!ph&&!em){tst('Phone or email is required','error');return}
+    const addr=(v('woc-cad')||'').trim();
+    if(!addr){tst('Street address is required','error');return}
+    const city=(v('woc-cct')||'').trim();
+    if(!city){tst('City is required','error');return}
+    const stRaw=v('woc-cst')||'';
+    if(!stRaw){tst('State is required','error');return}
+    const zipVal=(v('woc-czip')||'').trim();
+    if(!zipVal){tst('Zip code is required','error');return}
+    const countyVal=(v('woc-county')||'').trim();
+    if(!countyVal){tst('County is required','error');return}
     const stateVal=v('woc-cst')||'';
     const stateCode=stateVal.includes(' - ')?stateVal.split(' - ')[0]:stateVal;
     const newCust={
@@ -25200,7 +25231,7 @@ function renderCRMLeadsTable(leads){
   <thead><tr><th>Name</th><th>Phone</th><th>Division / Service</th><th>Source</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Value</th><th>Follow-up</th><th></th></tr></thead>
   <tbody>${leads.map(l=>`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
     <td>
-      <div style="font-weight:600">${l.salutation?l.salutation+' ':''} ${l.first_name} ${l.last_name}</div>
+      <div style="font-weight:600">${l.salutation?l.salutation+' ':''} ${l.first_name} ${l.last_name}${l.customer_id?` <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:1px 6px;font-weight:600;vertical-align:middle">👤 CRM</span>`:''}</div>
       ${l.company?`<div style="font-size:11px;color:var(--muted)">${l.company}</div>`:''}
       ${l.address?`<div style="font-size:11px;color:var(--muted)">${l.city||''} ${l.state||''}</div>`:''}
     </td>
@@ -25742,130 +25773,158 @@ function leadForm(l,saveFn){
   const srcCat=l.source_category||'';
   const srcDetails=getSourceDetails(srcCat);
   const pfx=saveFn==='svAddLead'?'al':'el';
+  const statuses=ss.lead_statuses||LEAD_STATUSES;
+  const ownerDefault=l.assigned_to||CU?.name||'';
+  const isNew=saveFn==='svAddLead';
+  // inline label style for sub-fields in name row
+  const lbl='font-size:11px;color:var(--muted);margin-bottom:3px;display:block;font-weight:500';
   return`
-  <div style="max-height:75vh;overflow-y:auto;padding-right:4px">
+  <div style="max-height:80vh;overflow-y:auto;padding-right:4px">
 
-  <!-- Contact Info -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Contact Information</div>
-  <div class="fr">
-    <div class="fl" style="max-width:120px"><label>Salutation</label>
-      <select id="${pfx}-sal">
-        <option value="">—</option>
-        ${ss.salutations.map(s=>`<option${(l.salutation||'')=== s?' selected':''}>${s}</option>`).join('')}
-      </select>
+  <!-- ── LEAD INFORMATION ─────────────────────────────────────── -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Lead Information</div>
+
+  <!-- Row 1: Company | Account Notes -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:10px">
+    <div class="fl"><label>Company</label><input id="${pfx}-co" value="${esc(l.company||'')}" placeholder="Company name"></div>
+    <div class="fl"><label>Account Notes</label><input id="${pfx}-anotes" value="${esc(l.account_notes||'')}" placeholder="Notes about this account..."></div>
+  </div>
+
+  <!-- Name row — full width, 5-column -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:12px;font-weight:600;color:var(--txt);margin-bottom:6px">* Name</div>
+    <div style="display:grid;grid-template-columns:110px 1fr 130px 1fr 90px;gap:8px">
+      <div><span style="${lbl}">Salutation</span>
+        <select id="${pfx}-sal" style="width:100%">
+          <option value="">--None--</option>
+          ${ss.salutations.map(s=>`<option${(l.salutation||'')=== s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div><span style="${lbl}">First Name</span><input id="${pfx}-fn" value="${esc(l.first_name||'')}" placeholder="First Name" style="width:100%;box-sizing:border-box"></div>
+      <div><span style="${lbl}">Middle Name</span><input id="${pfx}-mn" value="${esc(l.middle_name||'')}" placeholder="Middle Name" style="width:100%;box-sizing:border-box"></div>
+      <div><span style="${lbl}">* Last Name</span><input id="${pfx}-ln" value="${esc(l.last_name||'')}" placeholder="Last Name" style="width:100%;box-sizing:border-box"></div>
+      <div><span style="${lbl}">Suffix</span><input id="${pfx}-sfx" value="${esc(l.suffix||'')}" placeholder="Suffix" style="width:100%;box-sizing:border-box"></div>
     </div>
-    <div class="fl"><label>First Name *</label><input id="${pfx}-fn" value="${l.first_name||''}" placeholder="First"></div>
-    <div class="fl" style="max-width:130px"><label>Middle Name</label><input id="${pfx}-mn" value="${l.middle_name||''}" placeholder="Middle"></div>
-    <div class="fl"><label>Last Name *</label><input id="${pfx}-ln" value="${l.last_name||''}" placeholder="Last"></div>
-    <div class="fl" style="max-width:100px"><label>Suffix</label><input id="${pfx}-sfx" value="${l.suffix||''}" placeholder="Jr., III…"></div>
-  </div>
-  <div class="fr">
-    <div class="fl"><label>Company</label><input id="${pfx}-co" value="${l.company||''}" placeholder="Company name"></div>
-    <div class="fl"><label>Phone *</label><input id="${pfx}-ph" value="${l.phone||''}" placeholder="(000) 000-0000"></div>
-    <div class="fl"><label>Email *</label><input id="${pfx}-em" value="${l.email||''}" placeholder="email@domain.com"></div>
   </div>
 
-  <!-- Secondary Contact -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Secondary Contact</div>
-  <div class="fr">
-    <div class="fl" style="grid-column:span 2"><label>Secondary Contact Name</label><input id="${pfx}-sc-name" value="${l.secondary_contact_name||''}" placeholder="Name"></div>
-    <div class="fl"><label>Phone</label><input id="${pfx}-sc-ph" value="${l.secondary_contact_phone||''}" placeholder="(000) 000-0000"></div>
-    <div class="fl"><label>Email</label><input id="${pfx}-sc-em" value="${l.secondary_contact_email||''}" placeholder="email"></div>
-  </div>
-
-  <!-- Agents (Real Estate) -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Real Estate Agents (if applicable)</div>
-  <div class="fr">
-    <div class="fl" style="grid-column:span 2"><label>Buyers Agent Name</label><input id="${pfx}-ba-name" value="${l.buyers_agent_name||''}" placeholder="Agent name"></div>
-    <div class="fl"><label>Buyers Agent Phone</label><input id="${pfx}-ba-ph" value="${l.buyers_agent_phone||''}" placeholder="(000) 000-0000"></div>
-    <div class="fl"><label>Buyers Agent Email</label><input id="${pfx}-ba-em" value="${l.buyers_agent_email||''}" placeholder="email"></div>
-  </div>
-  <div class="fr">
-    <div class="fl" style="grid-column:span 2"><label>Sellers Agent Name</label><input id="${pfx}-sa-name" value="${l.sellers_agent_name||''}" placeholder="Agent name"></div>
-    <div class="fl"><label>Sellers Agent Phone</label><input id="${pfx}-sa-ph" value="${l.sellers_agent_phone||''}" placeholder="(000) 000-0000"></div>
-    <div class="fl"><label>Sellers Agent Email</label><input id="${pfx}-sa-em" value="${l.sellers_agent_email||''}" placeholder="email"></div>
-  </div>
-
-  <!-- Lead Source -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Lead Source</div>
-  <div class="fr">
-    <div class="fl"><label>Source Category *</label>
+  <!-- Two-column grid: left fields | right fields -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:12px">
+    <div class="fl"><label>* Email</label><input id="${pfx}-em" value="${esc(l.email||'')}" placeholder="email@domain.com" type="email"></div>
+    <div class="fl"><label>* Lead Source Category</label>
       <select id="${pfx}-src-cat" onchange="leadSrcCatChange('${pfx}')">
-        <option value="">— Select —</option>
+        <option value="">--None--</option>
         ${ss.source_categories.map(c=>`<option${srcCat===c?' selected':''}>${c}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Source Detail</label>
+
+    <div class="fl"><label>* Phone</label><input id="${pfx}-ph" value="${esc(l.phone||'')}" placeholder="(000) 000-0000"></div>
+    <div class="fl"><label>Lead Source Detail</label>
       <select id="${pfx}-src-det">
-        <option value="">— Select category first —</option>
+        <option value="">--None--</option>
         ${srcDetails.map(d=>`<option${(l.source_detail||'')=== d?' selected':''}>${d}</option>`).join('')}
       </select>
     </div>
+
+    <div class="fl"><label>Business Unit</label>
+      <select id="${pfx}-div"><option value="">--None--</option>${DIVS.map(d=>`<option${d===(l.division||'')?'  selected':''}>${d}</option>`).join('')}</select>
+    </div>
     <div class="fl"><label>Customer Referral</label>
       <select id="${pfx}-cust-ref">
-        <option value="">— None —</option>
-        ${custs.map(c=>`<option value="${c.id}"${(l.customer_referral_id||'')=== c.id?' selected':''}>${c.first_name} ${c.last_name}</option>`).join('')}
+        <option value="">Search Accounts...</option>
+        ${custs.slice(0,300).map(c=>`<option value="${c.id}"${(l.customer_referral_id||'')=== c.id?' selected':''}>${esc(c.first_name+' '+c.last_name+(c.company?' ('+c.company+')':''))}</option>`).join('')}
       </select>
     </div>
-  </div>
 
-  <!-- Assignment & Qualification -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Assignment & Qualification</div>
-  <div class="fr">
-    <div class="fl"><label>Business Unit / Division</label>
-      <select id="${pfx}-div"><option value="">—</option>${DIVS.map(d=>`<option${d===(l.division||'')?'  selected':''}>${d}</option>`).join('')}</select>
+    <div class="fl"><label>Lead Referral Rep</label>
+      <select id="${pfx}-ref-rep"><option value="">--None--</option>${reps.map(u=>`<option${u.name===(l.lead_referral_rep||'')?'  selected':''}>${u.name}</option>`).join('')}</select>
     </div>
-    <div class="fl"><label>Services of Interest</label>
-      <select id="${pfx}-svc">
-        <option value="">—</option>
-        ${ss.services_of_interest.map(s=>`<option${(l.services_of_interest||'')=== s?' selected':''}>${s}</option>`).join('')}
+    <div class="fl"><label>* Lead Status</label>
+      <select id="${pfx}-status">
+        ${statuses.map(s=>`<option${s===(l.status||'New')?' selected':''}>${s}</option>`).join('')}
       </select>
     </div>
+
     <div class="fl"><label>Priority</label>
       <select id="${pfx}-pri">${ss.priorities.map(p=>`<option${p===(l.priority||'Normal')?' selected':''}>${p}</option>`).join('')}</select>
     </div>
-  </div>
-  <div class="fr">
-    <div class="fl"><label>Lead Owner / Assigned To</label>
-      <select id="${pfx}-rep"><option value="">Unassigned</option>${reps.map(u=>`<option${u.name===(l.assigned_to||'')?'  selected':''}>${u.name}</option>`).join('')}</select>
+    <div class="fl"><label>Lead Owner</label>
+      <select id="${pfx}-rep"><option value="">Unassigned</option>${reps.map(u=>`<option${u.name===ownerDefault?'  selected':''}>${u.name}</option>`).join('')}</select>
     </div>
-    <div class="fl"><label>Lead Referral Rep</label>
-      <select id="${pfx}-ref-rep"><option value="">—</option>${reps.map(u=>`<option${u.name===(l.lead_referral_rep||'')?'  selected':''}>${u.name}</option>`).join('')}</select>
-    </div>
+
     <div class="fl"><label>Est. Value $</label><input type="number" id="${pfx}-val" value="${l.estimated_value||''}" placeholder="0"></div>
-  </div>
-  <div class="fr">
+    <div class="fl"><label>Service(s) of Interest</label>
+      <select id="${pfx}-svc">
+        <option value="">--None--</option>
+        ${ss.services_of_interest.map(s=>`<option${(l.services_of_interest||'')=== s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+
     <div class="fl"><label>Next Follow-up Date</label><input type="date" id="${pfx}-fup" value="${l.next_followup_at?(l.next_followup_at+'').slice(0,10):''}"></div>
   </div>
 
-  <!-- Address -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Address</div>
-  <div class="fr">
-    <div class="fl" style="grid-column:span 2"><label>Street Address</label><input id="${pfx}-addr" value="${l.address||''}" placeholder="Street"></div>
+  <!-- ── ADDRESS INFORMATION ───────────────────────────────────── -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Address Information</div>
+  <div class="fl" style="margin-bottom:8px">
+    <label>Street</label>
+    <input id="${pfx}-addr" value="${esc(l.address||'')}" placeholder="Street address">
   </div>
-  <div class="fr">
-    <div class="fl"><label>City</label><input id="${pfx}-city" value="${l.city||''}" placeholder="City"></div>
-    <div class="fl"><label>State</label>
-      <select id="${pfx}-state">
+  <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+    <div><span style="${lbl}">City</span><input id="${pfx}-city" value="${esc(l.city||'')}" placeholder="City" style="width:100%;box-sizing:border-box"></div>
+    <div><span style="${lbl}">State / Province</span>
+      <select id="${pfx}-state" style="width:100%">
         <option value="">—</option>
         ${ALL_STATES.map(s=>`<option${(l.state||'')=== s?' selected':''}>${s}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Zip</label><input id="${pfx}-zip" value="${l.zip||''}" placeholder="00000"></div>
+    <div><span style="${lbl}">Zip / Postal Code</span><input id="${pfx}-zip" value="${esc(l.zip||'')}" placeholder="00000" style="width:100%;box-sizing:border-box"></div>
+    <div><span style="${lbl}">Country</span><input id="${pfx}-country" value="${esc(l.country||'USA')}" placeholder="USA" style="width:100%;box-sizing:border-box"></div>
   </div>
 
-  <!-- Notes -->
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin:12px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">Notes</div>
-  <div class="fl" style="margin-bottom:8px"><label>Account Notes</label>
-    <textarea id="${pfx}-anotes" rows="2" placeholder="Notes about the account or company...">${l.account_notes||''}</textarea>
+  <!-- ── ADDITIONAL CONTACTS ───────────────────────────────────── -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Additional Contacts</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:14px">
+    <!-- Left: Secondary Contact -->
+    <div><span style="${lbl}">Secondary Contact</span>
+      <input id="${pfx}-sc-name" value="${esc(l.secondary_contact_name||'')}" placeholder="Full name" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    </div>
+    <!-- Right: Buyers Agent -->
+    <div><span style="${lbl}">Buyers Agent</span>
+      <input id="${pfx}-ba-name" value="${esc(l.buyers_agent_name||'')}" placeholder="Agent name" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    </div>
+
+    <div class="fl"><label>Secondary Contact Email</label><input id="${pfx}-sc-em" value="${esc(l.secondary_contact_email||'')}" placeholder="email@domain.com"></div>
+    <div class="fl"><label>Buyers Agent Number</label><input id="${pfx}-ba-ph" value="${esc(l.buyers_agent_phone||'')}" placeholder="(000) 000-0000"></div>
+
+    <div class="fl"><label>Secondary Contact Number</label><input id="${pfx}-sc-ph" value="${esc(l.secondary_contact_phone||'')}" placeholder="(000) 000-0000"></div>
+    <div class="fl"><label>Buyers Agent Email</label><input id="${pfx}-ba-em" value="${esc(l.buyers_agent_email||'')}" placeholder="email@domain.com"></div>
+
+    <!-- Left: empty -->
+    <div></div>
+    <!-- Right: Sellers Agent -->
+    <div><span style="${lbl}">Sellers Agent</span>
+      <input id="${pfx}-sa-name" value="${esc(l.sellers_agent_name||'')}" placeholder="Agent name" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    </div>
+
+    <div></div>
+    <div class="fl"><label>Sellers Agent Email</label><input id="${pfx}-sa-em" value="${esc(l.sellers_agent_email||'')}" placeholder="email@domain.com"></div>
+
+    <div></div>
+    <div class="fl"><label>Sellers Agent Number</label><input id="${pfx}-sa-ph" value="${esc(l.sellers_agent_phone||'')}" placeholder="(000) 000-0000"></div>
   </div>
-  <div class="fl" style="margin-bottom:16px"><label>Lead Notes</label>
-    <textarea id="${pfx}-notes" rows="3" placeholder="How they heard about us, what they need, observations...">${l.notes||''}</textarea>
+
+  <!-- ── NOTES ─────────────────────────────────────────────────── -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Notes</div>
+  <div class="fl" style="margin-bottom:18px"><label>Lead Notes</label>
+    <textarea id="${pfx}-notes" rows="3" placeholder="How they heard about us, what they need, observations on site…">${esc(l.notes||'')}</textarea>
   </div>
+
+  ${isNew?`<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:12px;color:#2e7d32;margin-bottom:14px">
+    <strong>✓ Auto-create on Save:</strong> A new Customer record and (if address entered) a Property record will be automatically created and linked to this lead.
+  </div>`:''}
 
   </div>
   <div class="br2">
-    <button class="btn btn-n" onclick="${saveFn}()">Save Lead</button>
+    <button class="btn btn-n" onclick="${saveFn}()">${isNew?'Save Lead &amp; Create Customer':'Save Changes'}</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`;
 }
@@ -25908,6 +25967,7 @@ function leadFieldsFromForm(pfx){
     division:v(pfx+'-div')||null,
     services_of_interest:v(pfx+'-svc')||null,
     priority:v(pfx+'-pri')||'Normal',
+    status:v(pfx+'-status')||'New',
     assigned_to:v(pfx+'-rep')||null,
     lead_referral_rep:v(pfx+'-ref-rep')||null,
     estimated_value:parseFloat(document.getElementById(pfx+'-val')?.value)||0,
@@ -25916,9 +25976,10 @@ function leadFieldsFromForm(pfx){
     city:v(pfx+'-city')||null,
     state:state||null,
     zip:v(pfx+'-zip')||null,
+    country:v(pfx+'-country')||null,
     account_notes:v(pfx+'-anotes')||null,
     notes:v(pfx+'-notes')||null,
-    region:Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||null,
+    region:Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(state))||null,
   };
 }
 
@@ -25928,14 +25989,82 @@ function oAddLead(){
 
 async function svAddLead(){
   const f=leadFieldsFromForm('al');
-  if(!f.first_name||!f.last_name){tst('First and last name required','error');return}
-  const lead={...f,status:'New',created_by:CU.name,
-    created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
-  const saved=await dbInsert('lhs:leads',lead);
+  if(!f.first_name||!f.last_name){tst('First and last name required','error');return;}
+  if(!f.email&&!f.phone){tst('Email or phone required','error');return;}
+
+  const now=new Date().toISOString();
+  const lead={...f,created_by:CU?.name||'',created_at:now,updated_at:now,last_updated:now};
+
+  // ── Step 1: Save Lead ───────────────────────────────────────────
+  const savedLead=await dbInsert('lhs:leads',lead);
+  const finalLead=savedLead||{...lead,id:'lead_'+Date.now()};
   const leads=S.get('lhs:leads')||[];
-  leads.unshift(saved||{...lead,id:'lead_'+Date.now()});
+  leads.unshift(finalLead);
   S.set('lhs:leads',leads);
-  cMod();tst(`Lead: ${f.first_name} ${f.last_name} added`,'success');showPage('sales-leads');
+
+  // ── Step 2: Auto-create Customer ───────────────────────────────
+  let custNum='';
+  try{
+    const{data:maxRow}=await DB.from('lhs_customers').select('customer_number').order('created_at',{ascending:false}).limit(200);
+    const nums=(maxRow||[]).map(c=>{const m=(c.customer_number||'').match(/(\d+)$/);return m?parseInt(m[1]):0;});
+    custNum='C-'+String((Math.max(0,...nums))+1).padStart(5,'0');
+  }catch(e){custNum='C-'+Date.now().toString().slice(-5);}
+
+  const newCust={
+    first_name:f.first_name,last_name:f.last_name,
+    company:f.company||null,phone:f.phone||null,email:f.email||null,
+    address:f.address||null,city:f.city||null,state:f.state||null,
+    zip:f.zip||null,region:f.region||null,division:f.division||null,
+    notes:[f.account_notes,f.notes].filter(Boolean).join('\n')||null,
+    source:f.source_category||'Lead',
+    customer_number:custNum,
+    lead_id:finalLead.id,
+    created_at:now,
+  };
+  let savedCust=null;
+  try{
+    const{data,error}=await DB.from('lhs_customers').insert(newCust).select().single();
+    if(!error&&data) savedCust=data;
+    else console.warn('Customer auto-create:',error?.message);
+  }catch(e){console.warn('Customer auto-create exception:',e.message);}
+  const finalCust=savedCust||{...newCust,id:'cust_'+Date.now()};
+  const custs=S.get('lhs:customers')||[];
+  custs.unshift(finalCust);
+  _C['lhs:customers']=custs;
+
+  // Back-link lead → customer
+  finalLead.customer_id=finalCust.id;
+  const leadsRef=S.get('lhs:leads')||[];
+  const lRef=leadsRef.find(x=>x.id===finalLead.id);
+  if(lRef) lRef.customer_id=finalCust.id;
+  S.set('lhs:leads',leadsRef);
+  try{await dbUpdate('lhs:leads',finalLead.id,{customer_id:finalCust.id});}catch{}
+
+  // ── Step 3: Auto-create Property (if address provided) ─────────
+  let finalProp=null;
+  if(f.address&&f.city){
+    const newProp={
+      address:f.address,city:f.city,state:f.state||null,
+      zip:f.zip||null,region:f.region||null,
+      current_customer_id:finalCust.id,
+      created_by:CU?.name||'',created_at:now,last_updated:now,
+    };
+    let savedProp=null;
+    try{savedProp=await dbInsert('lhs:props',newProp);}catch{}
+    finalProp=savedProp||{...newProp,id:'prop_'+Date.now()};
+    const props=S.get('lhs:props')||[];
+    props.unshift(finalProp);
+    S.set('lhs:props',props);
+    // Link customer → property
+    finalCust.property_ids=[...(finalCust.property_ids||[]),finalProp.id];
+    _C['lhs:customers']=custs;
+  }
+
+  cMod();
+  const custMsg=savedCust?`Customer ${custNum} created`:'Customer saved locally';
+  const propMsg=finalProp?(finalProp.id.startsWith('prop_')?'property saved locally':'property created'):'';
+  tst(`Lead saved · ${custMsg}${propMsg?' · '+propMsg:''}`, 'success');
+  showPage('sales-leads');
 }
 
 function oEditLead(id){
@@ -26005,6 +26134,34 @@ function renderSalesSettings(){
       ${canEdit?`<div style="margin-top:12px;text-align:right">
         <button class="btn btn-n" onclick="saveDivDisplayNamesFromSales()">✓ Save Display Names</button>
       </div>`:''}`;
+    })()}
+  </div>
+
+  <!-- Line Item Templates -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div class="ct" style="margin:0">Estimate Line-Item Templates</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Saved per-division templates that pre-fill line items when creating estimates. Saved via the estimate form's "💾 Save as Template" button.</div>
+      </div>
+    </div>
+    ${(()=>{
+      const map=getEstTemplates();
+      const keys=Object.keys(map);
+      if(!keys.length) return`<div style="font-size:13px;color:var(--muted);padding:12px;text-align:center;border:1px dashed var(--bdr);border-radius:8px">No line-item templates saved yet. Open an estimate, add line items, then click <strong>💾 Save as Template</strong>.</div>`;
+      return`<div class="tw"><table><thead><tr><th>Division</th><th>Job Type</th><th>Lines</th><th></th></tr></thead>
+      <tbody>${keys.map(k=>{
+        const pipe=k.indexOf('|');
+        const div=pipe>=0?k.slice(0,pipe):k;
+        const jtype=pipe>=0?k.slice(pipe+1):'—';
+        const lines=map[k]||[];
+        return`<tr>
+          <td style="font-weight:600">${esc(div)}</td>
+          <td style="font-size:12px">${esc(jtype)}</td>
+          <td style="font-size:12px;color:var(--muted)">${lines.length} line${lines.length!==1?'s':''}</td>
+          <td><button class="btn sm btn-r" onclick="delEstTemplate('${esc(k)}')">Delete</button></td>
+        </tr>`;}).join('')}
+      </tbody></table></div>`;
     })()}
   </div>
 
@@ -26206,8 +26363,9 @@ function openLead(id){
   <!-- Status + actions bar -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
     ${statuses.map(s=>`<button class="btn sm ${l.status===s?'btn-n':'btn-o'}" onclick="updateLeadStatus('${id}','${s}')">${s}</button>`).join('')}
-    <div style="margin-left:auto;display:flex;gap:6px">
+    <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn sm btn-o" onclick="oEditLead('${id}')">✎ Edit</button>
+      ${l.customer_id?`<button class="btn sm btn-o" onclick="cMod();oEditCustomer('${l.customer_id}')">👤 View Customer</button>`:`<button class="btn sm btn-o" onclick="leadCreateCustomer('${id}')">+ Create Customer</button>`}
       <button class="btn sm btn-g" onclick="oAddActivity('${id}',null)">+ Activity</button>
       <button class="btn sm btn-n" onclick="leadToOpportunity('${id}')">→ Opportunity</button>
     </div>
@@ -26279,6 +26437,27 @@ function openLead(id){
     ${l.notes?`<div class="card" style="padding:12px"><div class="ct">Lead Notes</div><div style="font-size:13px;line-height:1.6">${l.notes}</div></div>`:''}
   </div>`:''}
 
+  <!-- Linked Customer Record -->
+  ${(()=>{
+    if(!l.customer_id) return'';
+    const c=(S.get('lhs:customers')||[]).find(x=>x.id===l.customer_id);
+    if(!c) return`<div class="card" style="padding:12px;margin-bottom:14px;border-left:3px solid var(--teal)"><div class="ct">Linked Customer</div><div style="font-size:12px;color:var(--muted)">Customer ID on file — not in local cache. <button class="btn sm btn-o" onclick="oEditCustomer('${l.customer_id}')">Open Customer</button></div></div>`;
+    const props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===c.id);
+    return`<div class="card" style="padding:12px;margin-bottom:14px;border-left:3px solid var(--teal)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="ct" style="margin:0">👤 Linked Customer</div>
+        <button class="btn sm btn-o" onclick="cMod();oEditCustomer('${c.id}')">Open Customer Record</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+        <div><span style="color:var(--muted)">Name</span><br><strong>${c.first_name} ${c.last_name}</strong>${c.company?`<br><span style="color:var(--muted)">${c.company}</span>`:''}</div>
+        <div><span style="color:var(--muted)">Contact</span><br>${c.phone||'—'}<br>${c.email||'—'}</div>
+        <div><span style="color:var(--muted)">Customer #</span><br><strong>${c.customer_number||'—'}</strong><br>
+          ${props.length?`<span style="color:var(--teal);font-size:11px">${props.length} propert${props.length===1?'y':'ies'}</span>`:'<span style="color:var(--muted);font-size:11px">No properties</span>'}
+        </div>
+      </div>
+    </div>`;
+  })()}
+
   <!-- Linked opportunities -->
   ${opps.length?`
   <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:8px">Opportunities (${opps.length})</div>
@@ -26316,6 +26495,44 @@ async function updateLeadStatus(id,status){
   if(l){l.status=status;l.updated_at=new Date().toISOString();S.set('lhs:leads',leads);}
   await dbUpdate('lhs:leads',id,{status,updated_at:new Date().toISOString()});
   tst(`Lead: ${status}`,'success');openLead(id);
+}
+
+// Manually create a customer from an existing lead (back-fills pre-existing leads)
+async function leadCreateCustomer(leadId){
+  const leads=S.get('lhs:leads')||[];
+  const l=leads.find(x=>x.id===leadId);
+  if(!l){tst('Lead not found','error');return;}
+  if(l.customer_id){tst('Customer already linked to this lead','info');openLead(leadId);return;}
+  const now=new Date().toISOString();
+  let custNum='';
+  try{
+    const{data:maxRow}=await DB.from('lhs_customers').select('customer_number').order('created_at',{ascending:false}).limit(200);
+    const nums=(maxRow||[]).map(c=>{const m=(c.customer_number||'').match(/(\d+)$/);return m?parseInt(m[1]):0;});
+    custNum='C-'+String((Math.max(0,...nums))+1).padStart(5,'0');
+  }catch(e){custNum='C-'+Date.now().toString().slice(-5);}
+  const newCust={
+    first_name:l.first_name,last_name:l.last_name,company:l.company||null,
+    phone:l.phone||null,email:l.email||null,address:l.address||null,
+    city:l.city||null,state:l.state||null,zip:l.zip||null,
+    region:l.region||null,division:l.division||null,
+    notes:[l.account_notes,l.notes].filter(Boolean).join('\n')||null,
+    source:l.source_category||'Lead',customer_number:custNum,
+    lead_id:leadId,created_at:now,
+  };
+  let savedCust=null;
+  try{
+    const{data,error}=await DB.from('lhs_customers').insert(newCust).select().single();
+    if(!error&&data) savedCust=data;
+  }catch{}
+  const finalCust=savedCust||{...newCust,id:'cust_'+Date.now()};
+  const custs=S.get('lhs:customers')||[];
+  custs.unshift(finalCust);
+  _C['lhs:customers']=custs;
+  l.customer_id=finalCust.id;l.updated_at=now;
+  S.set('lhs:leads',leads);
+  try{await dbUpdate('lhs:leads',leadId,{customer_id:finalCust.id});}catch{}
+  tst(`Customer ${custNum} created and linked`,'success');
+  openLead(leadId);
 }
 
 function oAddActivity(leadId,oppId){
@@ -27074,9 +27291,26 @@ async function deleteMaterial(matId,aptId,woId){
 // Estimate template storage: { "Radon Mitigation|Installation": [{label,type,unit,qty,cost,price,included}] }
 function getEstTemplates(){return S.get('lms:est_templates')||{};}
 function saveEstTemplates(map){S.set('lms:est_templates',map);}
+function delEstTemplate(key){
+  const map=getEstTemplates();
+  delete map[key];
+  saveEstTemplates(map);
+  tst('Template deleted','success');
+  showPage('sales-settings');
+}
 function getEstTemplate(div,jtype){
   const map=getEstTemplates();
-  return(map[div+'|'+jtype]||[]).map(r=>({...r})); // deep copy
+  // Exact match first
+  if(map[div+'|'+jtype]?.length) return map[div+'|'+jtype].map(r=>({...r}));
+  // Case-insensitive fallback
+  const dLc=(div||'').trim().toLowerCase();
+  const jLc=(jtype||'').trim().toLowerCase();
+  const key=Object.keys(map).find(k=>{
+    const pipe=k.indexOf('|');
+    if(pipe<0) return false;
+    return k.slice(0,pipe).trim().toLowerCase()===dLc&&k.slice(pipe+1).trim().toLowerCase()===jLc;
+  });
+  return key?(map[key]||[]).map(r=>({...r})):[];
 }
 
 // ── ESTIMATES LIST ─────────────────────────────────────────────────────────────
@@ -27204,7 +27438,10 @@ function oNewEstimate(prefill={}){
   const custs=S.get('lhs:customers')||[];
   const opps=(S.get('lhs:opportunities')||[]).filter(o=>!['Won','Lost'].includes(o.stage));
   const reps=(S.get('lhs:users')||[]).filter(u=>['Sales Rep','Regional Manager','God View','Admin','Director'].includes(u.role));
-  const nextNum='EST-'+String(((S.get('lhs:estimates')||[]).length+1)).padStart(4,'0');
+  // Use max existing number + 1 (not length+1) to avoid collisions after deletes or Supabase merges
+  const _ests=S.get('lhs:estimates')||[];
+  const _maxN=_ests.reduce((mx,e)=>{const m=parseInt((e.estimate_number||'').replace(/\D/g,''))||0;return m>mx?m:mx;},0);
+  const nextNum='EST-'+String(_maxN+1).padStart(4,'0');
   window._estLines={good:[],better:[],best:[],custom:[]};
   // Load template lines if div+type known
   if(prefill.division&&prefill.job_type){
@@ -27291,6 +27528,21 @@ function oNewEstimate(prefill={}){
     </div>
   </div>
 
+  <!-- Permits & Licensing panel -->
+  <div style="border:1px solid var(--bdr);border-radius:10px;margin-bottom:14px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff8f0;border-bottom:1px solid var(--bdr);cursor:pointer" onclick="estTogglePermitPanel()">
+      <span style="font-size:13px;font-weight:700;color:var(--navy)">📄 Permits &amp; Licensing</span>
+      <span id="est-pm-count" style="font-size:11px;background:#fff3e0;color:#e65100;border-radius:10px;padding:1px 8px;font-weight:600"></span>
+      <span style="font-size:11px;color:var(--muted);margin-left:2px">State-required permits for this job</span>
+      <span id="est-pm-chevron" style="margin-left:auto;color:var(--muted);font-size:14px">▼</span>
+    </div>
+    <div id="est-pm-body" style="display:none;padding:10px 14px">
+      <div id="est-pm-panel">
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:12px">Select a division or state above to see applicable permits.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Package selector -->
   <div style="display:flex;gap:8px;margin-bottom:14px">
     <div style="font-size:13px;font-weight:600;color:var(--navy);align-self:center;margin-right:4px">Package:</div>
@@ -27355,7 +27607,7 @@ function estStateScopeChange(stateCode,fromCustomer=false){
   const regLbl=document.getElementById('est-region-lbl');
   if(regEl&&region) regEl.value=region;
   if(regLbl) regLbl.textContent=region?`→ ${region}`:'';
-  estRefreshPbPanel();
+  estRefreshPbPanel(); estRefreshPermitPanel();
 }
 
 function estTogglePbPanel(){
@@ -27369,7 +27621,7 @@ function estTogglePbPanel(){
 }
 
 function estDivChange(div){
-  window._estDiv=div; estLoadTemplate(); estRefreshPbPanel();
+  window._estDiv=div; estLoadTemplate(); estRefreshPbPanel(); estRefreshPermitPanel();
 }
 
 function estLoadTemplate(silent=false){
@@ -27468,6 +27720,300 @@ function estCalcTotals(){
 
 function estGetTotals(){return estCalcTotals();}
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PERMITS & LICENSING MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+
+function bSalesPermits(){
+  return`<div class="pt">Permits &amp; Licensing</div>
+  <div class="ps">State and local permit costs that can be added as line items on estimates</div>
+  ${_salesHeader()}
+  ${renderPermitsPage()}`;
+}
+
+function renderPermitsPage(){
+  const permits=(S.get('lhs:permits')||[]).filter(p=>p.is_active!==false);
+  const allPermits=S.get('lhs:permits')||[];
+  const typeColor=t=>t==='Permit'?'ba':t==='License'?'bg':t==='Registration'?'bn':t==='Bond'?'bgr':'bn';
+  const divFilter=document.getElementById('pm-fdiv')?.value||'';
+  const stFilter=document.getElementById('pm-fst')?.value||'';
+  const q=(document.getElementById('pm-fsearch')?.value||'').toLowerCase();
+  let filtered=allPermits;
+  if(divFilter) filtered=filtered.filter(p=>p.division===divFilter);
+  if(stFilter) filtered=filtered.filter(p=>p.state===stFilter);
+  if(q) filtered=filtered.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.state||'').toLowerCase().includes(q)||(p.description||'').toLowerCase().includes(q));
+
+  const states=[...new Set(allPermits.map(p=>p.state).filter(Boolean))].sort();
+  return`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="pm-fsearch" placeholder="&#128269; Search permits…" oninput="pmRefreshList()"
+        style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;min-width:200px;font-family:inherit">
+      <select id="pm-fdiv" onchange="pmRefreshList()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+        <option value="">All Divisions</option>
+        ${DIVS.map(d=>`<option value="${esc(d)}"${divFilter===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <select id="pm-fst" onchange="pmRefreshList()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+        <option value="">All States</option>
+        ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${stFilter===code?' selected':''}>${s}</option>`;}).join('')}
+      </select>
+    </div>
+    <button class="btn btn-n" onclick="oAddPermit()">+ Add Permit / License</button>
+  </div>
+
+  <!-- Summary stats -->
+  <div class="sg" style="margin-bottom:16px">
+    <div class="sc n"><div class="sl">Total</div><div class="sv">${allPermits.length}</div><div class="ss">All permits &amp; licenses</div></div>
+    <div class="sc a"><div class="sl">Active</div><div class="sv">${permits.length}</div><div class="ss">Available to add on estimates</div></div>
+    <div class="sc g"><div class="sl">States</div><div class="sv">${states.length}</div><div class="ss">States covered</div></div>
+    <div class="sc r"><div class="sl">Avg Cost</div><div class="sv">${permits.length?'$'+Math.round(permits.reduce((s,p)=>s+(p.cost||0),0)/permits.length).toLocaleString():'—'}</div><div class="ss">Per permit</div></div>
+  </div>
+
+  <div id="pm-list">
+  ${renderPermitsList(filtered)}
+  </div>`;
+}
+
+function renderPermitsList(permits){
+  if(!permits.length) return`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No permits match this filter. Click <strong>+ Add Permit / License</strong> to get started.</div>`;
+  const typeColor=t=>t==='Permit'?'ba':t==='License'?'bg':t==='Registration'?'bn':t==='Bond'?'bgr':'bn';
+  return`<div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Name</th><th>Type</th><th>Division</th><th>State</th><th>County / City</th><th>Cost</th><th>Billing</th><th>Status</th><th></th></tr></thead>
+  <tbody>${permits.map(p=>`<tr>
+    <td>
+      <div style="font-weight:600;font-size:13px">${esc(p.name||'—')}</div>
+      ${p.description?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(p.description)}</div>`:''}
+    </td>
+    <td>${bx(p.permit_type||'Permit',typeColor(p.permit_type))}</td>
+    <td style="font-size:12px">${p.division?bx(p.division,'bn'):bx('All','bn')}</td>
+    <td style="font-weight:600;font-size:13px">${p.state||'<span style="color:var(--muted)">All</span>'}</td>
+    <td style="font-size:12px;color:var(--muted)">${[p.county,p.city].filter(Boolean).join(' / ')||'—'}</td>
+    <td style="font-family:'DM Sans',sans-serif;font-weight:700;color:var(--navy)">${f$(p.cost)}</td>
+    <td style="font-size:12px">${p.billing_type||'Per Job'}</td>
+    <td>${p.is_active!==false?bx('Active','bg'):bx('Inactive','bn')}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm btn-o" onclick="oEditPermit('${p.id}')">Edit</button>
+      <button class="btn sm btn-r" onclick="delPermit('${p.id}')">Delete</button>
+    </td>
+  </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+function pmRefreshList(){
+  const el=document.getElementById('pm-list');
+  if(!el) return;
+  const allPermits=S.get('lhs:permits')||[];
+  const divFilter=document.getElementById('pm-fdiv')?.value||'';
+  const stFilter=document.getElementById('pm-fst')?.value||'';
+  const q=(document.getElementById('pm-fsearch')?.value||'').toLowerCase();
+  let filtered=allPermits;
+  if(divFilter) filtered=filtered.filter(p=>p.division===divFilter);
+  if(stFilter) filtered=filtered.filter(p=>p.state===stFilter);
+  if(q) filtered=filtered.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.state||'').toLowerCase().includes(q)||(p.description||'').toLowerCase().includes(q));
+  el.innerHTML=renderPermitsList(filtered);
+}
+
+function permitForm(p={}){
+  return`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:10px">
+    <div class="fl" style="grid-column:span 2"><label>Permit / License Name *</label>
+      <input id="pm-name" value="${esc(p.name||'')}" placeholder="e.g. Wisconsin Radon Mitigation Permit">
+    </div>
+    <div class="fl"><label>Type</label>
+      <select id="pm-type">
+        ${['Permit','License','Registration','Bond','Fee'].map(t=>`<option${(p.permit_type||'Permit')===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Division</label>
+      <select id="pm-div">
+        <option value="">All Divisions</option>
+        ${DIVS.map(d=>`<option${d===(p.division||'')?'  selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>State</label>
+      <select id="pm-state">
+        <option value="">All States</option>
+        ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${(p.state||'')===code?' selected':''}>${s}</option>`;}).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>County <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input id="pm-county" value="${esc(p.county||'')}" placeholder="e.g. Dane County">
+    </div>
+    <div class="fl"><label>City <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input id="pm-city" value="${esc(p.city||'')}" placeholder="e.g. Madison">
+    </div>
+    <div class="fl"><label>Cost *</label>
+      <input type="number" id="pm-cost" value="${p.cost||''}" placeholder="0.00" min="0" step="0.01">
+    </div>
+    <div class="fl"><label>Billing Type</label>
+      <select id="pm-billing">
+        ${['Per Job','Annual','Per Location','Per Unit'].map(t=>`<option${(p.billing_type||'Per Job')===t?' selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="grid-column:span 2"><label>Description <span style="color:var(--muted);font-weight:400">(shows on estimate line item)</span></label>
+      <input id="pm-desc" value="${esc(p.description||'')}" placeholder="Brief description for the estimate">
+    </div>
+    <div class="fl" style="grid-column:span 2"><label>Internal Notes</label>
+      <textarea id="pm-notes" rows="2" placeholder="Instructions for reps — not shown on estimate">${esc(p.notes||'')}</textarea>
+    </div>
+    <div class="fl" style="grid-column:span 2">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="pm-active" ${p.is_active!==false?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)">
+        <span>Active — available to add on estimates</span>
+      </label>
+    </div>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svPermit()">Save Permit</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+
+function oAddPermit(){
+  window._editPermitId=null;
+  oMod('Add Permit / License',permitForm({}));
+}
+
+function oEditPermit(id){
+  const p=(S.get('lhs:permits')||[]).find(x=>x.id===id);
+  if(!p){tst('Permit not found','error');return;}
+  window._editPermitId=id;
+  oMod('Edit Permit / License',permitForm(p));
+}
+
+async function svPermit(){
+  const name=(document.getElementById('pm-name')?.value||'').trim();
+  if(!name){tst('Permit name is required','error');return;}
+  const now=new Date().toISOString();
+  const stateRaw=document.getElementById('pm-state')?.value||'';
+  const stateCode=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
+  const data={
+    name,
+    permit_type:document.getElementById('pm-type')?.value||'Permit',
+    division:document.getElementById('pm-div')?.value||null,
+    state:stateCode||null,
+    county:document.getElementById('pm-county')?.value||null,
+    city:document.getElementById('pm-city')?.value||null,
+    cost:parseFloat(document.getElementById('pm-cost')?.value)||0,
+    billing_type:document.getElementById('pm-billing')?.value||'Per Job',
+    description:document.getElementById('pm-desc')?.value||null,
+    notes:document.getElementById('pm-notes')?.value||null,
+    is_active:document.getElementById('pm-active')?.checked!==false,
+    updated_at:now,
+    last_updated:now,
+  };
+  const permits=S.get('lhs:permits')||[];
+  const id=window._editPermitId;
+  if(id){
+    // Edit
+    const p=permits.find(x=>x.id===id);
+    if(p) Object.assign(p,data);
+    S.set('lhs:permits',permits);
+    try{await dbUpdate('lhs:permits',id,data);}catch{}
+    tst(`${name} updated`,'success');
+  } else {
+    // Add
+    data.created_at=now;data.created_by=CU?.name||'';
+    let saved=null;
+    try{saved=await dbInsert('lhs:permits',data);}catch{}
+    const final=saved||{...data,id:'pm_'+Date.now()};
+    permits.unshift(final);
+    S.set('lhs:permits',permits);
+    tst(`${name} added`,'success');
+  }
+  cMod();
+  showPage('sales-permits');
+}
+
+async function delPermit(id){
+  if(!confirm('Delete this permit? It will no longer appear on estimates.')) return;
+  const permits=(S.get('lhs:permits')||[]).filter(x=>x.id!==id);
+  S.set('lhs:permits',permits);
+  try{await dbDelete('lhs:permits',id);}catch{}
+  tst('Permit deleted','success');
+  showPage('sales-permits');
+}
+
+// Returns permits applicable for a given division + state combination
+function getPermitsForEstimate(division,state){
+  const all=(S.get('lhs:permits')||[]).filter(p=>p.is_active!==false);
+  const m=(a,b)=>!a||(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+  return all.filter(p=>m(p.division,division)&&m(p.state,state))
+    .sort((a,b)=>{
+      const sA=(a.division?1:0)+(a.state?1:0);
+      const sB=(b.division?1:0)+(b.state?1:0);
+      return sB-sA;
+    });
+}
+
+function estAddPermit(pmId){
+  const permits=S.get('lhs:permits')||[];
+  const p=permits.find(x=>x.id===pmId);
+  if(!p) return;
+  const pkg=window._estPkg||'custom';
+  if(!window._estLines) window._estLines={good:[],better:[],best:[],custom:[]};
+  if(!window._estLines[pkg]) window._estLines[pkg]=[];
+  window._estLines[pkg].push({
+    label:p.name,
+    code:'',
+    description:p.description||'',
+    type:'Fee',
+    qty:1,
+    cost:p.cost||0,
+    price:p.cost||0,
+    permit_id:p.id,
+    tier:pkg==='custom'?undefined:pkg,
+  });
+  estRenderLines();
+  tst(`${p.name} added as line item`,'success');
+}
+
+function estRefreshPermitPanel(){
+  const panel=document.getElementById('est-pm-panel');
+  if(!panel) return;
+  const body=document.getElementById('est-pm-body');
+  if(body&&body.style.display==='none') return;
+  const division=document.getElementById('est-div')?.value||'';
+  const stateRaw=document.getElementById('est-state-scope')?.value||'';
+  const state=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
+  const pmts=getPermitsForEstimate(division,state);
+  const countEl=document.getElementById('est-pm-count');
+  if(countEl) countEl.textContent=pmts.length?`${pmts.length} permit${pmts.length!==1?'s':''}`:division||state?'0 permits':'';
+  if(!division&&!state){
+    panel.innerHTML=`<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px">Select a division or state above to see applicable permits.</div>`;
+    return;
+  }
+  if(!pmts.length){
+    panel.innerHTML=`<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px">No permits required for this division/state combination.<br><span style="font-size:11px">Add permits in <strong>Permits &amp; Licensing</strong></span></div>`;
+    return;
+  }
+  panel.innerHTML=pmts.map(p=>`
+  <div style="border:1px solid var(--bdr);border-radius:7px;padding:10px 12px;margin-bottom:7px;background:white;display:flex;align-items:center;gap:10px">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        ${bx(p.permit_type||'Permit',p.permit_type==='License'?'bg':'ba')}
+        <span style="font-weight:600;font-size:13px">${esc(p.name)}</span>
+        ${p.state?`<span style="font-size:11px;background:#fff3e0;color:#e65100;border-radius:10px;padding:1px 7px;font-weight:700">${p.state}</span>`:''}
+      </div>
+      ${p.description?`<div style="font-size:12px;color:var(--muted);margin-top:3px">${esc(p.description)}</div>`:''}
+      <div style="font-size:11px;color:var(--muted);margin-top:3px">${p.billing_type||'Per Job'}${p.county?' · '+p.county:''}${p.city?' · '+p.city:''}</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-weight:700;color:var(--navy);font-family:'DM Sans',sans-serif;margin-bottom:4px">${f$(p.cost)}</div>
+      <button class="btn sm btn-n" onclick="estAddPermit('${p.id}')">+ Add</button>
+    </div>
+  </div>`).join('');
+}
+
+function estTogglePermitPanel(){
+  const body=document.getElementById('est-pm-body');
+  const chev=document.getElementById('est-pm-chevron');
+  if(!body) return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  if(chev) chev.textContent=open?'▼':'▲';
+  if(!open) estRefreshPermitPanel();
+}
+
 // ── SAVE ESTIMATE ──────────────────────────────────────────────────────────────
 async function svEstimate(existingId){
   const pkg=window._estPkg||'custom';
@@ -27475,14 +28021,21 @@ async function svEstimate(existingId){
   const custId=document.getElementById('est-cust')?.value||'';
   const cust=(S.get('lhs:customers')||[]).find(c=>c.id===custId);
   const {grand,totalCost}=estCalcTotals();
+  const now=new Date().toISOString();
+  // Capture state/region scope selectors if present
+  const stateRaw=document.getElementById('est-state-scope')?.value||'';
+  const stateCode=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
+  const regionVal=document.getElementById('est-region-scope')?.value||'';
   const est={
     estimate_number:document.getElementById('est-num')?.value||'',
     status:document.getElementById('est-status')?.value||'Draft',
     estimate_date:document.getElementById('est-date')?.value||'',
     customer_id:custId||null,
-    customer_name:cust?cust.first_name+' '+cust.last_name:'',
+    customer_name:cust?(cust.first_name||'')+' '+(cust.last_name||''):'',
     opportunity_id:document.getElementById('est-opp')?.value||null,
     division:document.getElementById('est-div')?.value||'',
+    state:stateCode||null,
+    region:regionVal||null,
     job_type:document.getElementById('est-jtype')?.value||'',
     assigned_to:document.getElementById('est-rep')?.value||'',
     site_address:document.getElementById('est-site')?.value||'',
@@ -27492,22 +28045,29 @@ async function svEstimate(existingId){
     line_items:JSON.stringify(lines),
     total_price:grand,
     total_cost:totalCost,
-    created_by:CU.name,
-    created_at:new Date().toISOString(),
-    updated_at:new Date().toISOString(),
+    created_by:CU?.name||'',
+    created_at:now,
+    updated_at:now,
+    last_updated:now,
   };
   // Try Supabase — falls back to localStorage only if table not created yet
   let saved=null;
-  try{saved=await dbInsert('lhs:estimates',{...est,line_items:est.line_items});}catch{}
+  let dbErr=null;
+  try{saved=await dbInsert('lhs:estimates',{...est,line_items:est.line_items});}
+  catch(e){dbErr=e?.message||'unknown';}
+  if(!saved&&dbErr) console.warn('svEstimate: Supabase insert failed —',dbErr);
   const final=saved||{...est,id:'est_'+Date.now()};
   const ests=S.get('lhs:estimates')||[];
-  ests.unshift(final);S.set('lhs:estimates',ests);
+  // Guard against duplicates if user double-clicked Save
+  if(!ests.find(x=>x.id===final.id)){
+    ests.unshift(final);S.set('lhs:estimates',ests);
+  }
   // Update linked opportunity stage to Estimate Sent
   const oppId=document.getElementById('est-opp')?.value;
   if(oppId){
     const opps=S.get('lhs:opportunities')||[];
     const o=opps.find(x=>x.id===oppId);
-    if(o&&o.stage==='Prospect'||o?.stage==='Site Visit'){
+    if(o&&(o.stage==='Prospect'||o.stage==='Site Visit')){
       o.stage='Estimate Sent';o.estimated_value=grand;o.updated_at=new Date().toISOString();
       S.set('lhs:opportunities',opps);
       try{await dbUpdate('lhs:opportunities',oppId,{stage:'Estimate Sent',estimated_value:grand});}catch{}
@@ -27562,6 +28122,8 @@ function openEstimate(id){
       <div class="ct">Estimate Info</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px">
         <span style="color:var(--muted)">Division</span><span>${e.division||'—'}</span>
+        ${e.state?`<span style="color:var(--muted)">State</span><span>${e.state}</span>`:''}
+        ${e.region?`<span style="color:var(--muted)">Region</span><span>${e.region}</span>`:''}
         <span style="color:var(--muted)">Job Type</span><span>${e.job_type||'—'}</span>
         <span style="color:var(--muted)">Package</span><span>${e.selected_package||'Custom'}</span>
         <span style="color:var(--muted)">Rep</span><span>${e.assigned_to||'—'}</span>
@@ -27608,9 +28170,10 @@ async function updateEstStatus(id,status){
   const ests=S.get('lhs:estimates')||[];
   const e=ests.find(x=>x.id===id);
   if(!e) return;
-  e.status=status;e.updated_at=new Date().toISOString();
+  const now=new Date().toISOString();
+  e.status=status;e.updated_at=now;e.last_updated=now;
   S.set('lhs:estimates',ests);
-  try{await dbUpdate('lhs:estimates',id,{status,updated_at:e.updated_at});}catch{}
+  try{await dbUpdate('lhs:estimates',id,{status,updated_at:now,last_updated:now});}catch{}
   tst(`Estimate marked ${status}`,'success');
   openEstimate(id);
 }
@@ -27961,13 +28524,6 @@ function oEditEstTemplate(key){
   oNewEstimate({division:div,job_type:jtype});
 }
 
-function delEstTemplate(key){
-  if(!confirm('Delete this template?')) return;
-  const map=getEstTemplates();
-  delete map[key];
-  saveEstTemplates(map);
-  tst('Template deleted','info');
-}
 
 // ── WO TAG TOGGLE ─────────────────────────────────────────────────────────────
 // Tags are stored separately from work orders so warmCache can't wipe them
