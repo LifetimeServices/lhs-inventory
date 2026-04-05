@@ -1514,8 +1514,10 @@ async function warmCache(){
       try{
         let query=DB.from(tbl).select('*');
         // Only order by created_at for tables that have it
-        const noOrderTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_estimates','lhs_properties','lhs_accounting_codes'];
-        if(!noOrderTbls.includes(tbl)) query=query.order('created_at',{ascending:true});
+        // Tables that use last_updated instead of created_at, or have neither
+        const noOrderTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_estimates','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines','lhs_wo_materials'];
+        if(noOrderTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
+        else query=query.order('created_at',{ascending:true});
         const{data,error}=await query;
         if(!error&&data&&data.length>0){
           S.set(k,data);
