@@ -3061,8 +3061,11 @@ async function postXfr(){
   const changedLs=new Set();
   const newXfrs=[];
 
+  console.log('[transfer] lines:',lines.map(l=>({sku:l.sku,qty:l.qty})));
+  console.log('[transfer] vi cache ('+vi.length+' rows):',vi.map(r=>({sku:r.sku,vehicle:r.vehicle||r.vehicle_id,qty:r.qty,qty_on_hand:r.qty_on_hand})));
   lines.forEach(l=>{
     const {sku,item,qty}=l;
+    console.log('[transfer] processing line:',sku,'qty:',qty,'typeof qty:',typeof qty);
     // Deduct from source
     if(WH.includes(from)){
       const r=ls.find(x=>x.sku===sku&&x.location===from);
@@ -3080,8 +3083,9 @@ async function postXfr(){
       else{const nr={sku,item,location:to,qty,min:0,max:0,bin:''};ls.push(nr);changedLs.add(nr);}
     }else{
       const r=vi.find(x=>x.sku===sku&&x.vehicle===to);
-      if(r){r.qty+=qty; r.qty_on_hand=r.qty; changedVi.add(r);}
-      else{const nr={sku,item,vehicle:to,division:'',qty,qty_on_hand:qty,min:0,max:0,tech:''};vi.push(nr);changedVi.add(nr);}
+      console.log('[transfer] dest van row found:',!!r,'r.qty before:',r?.qty,'adding qty:',qty);
+      if(r){r.qty+=qty; r.qty_on_hand=r.qty; changedVi.add(r); console.log('[transfer] r.qty after +=:',r.qty);}
+      else{const nr={sku,item,vehicle:to,division:'',qty,qty_on_hand:qty,min:0,max:0,tech:''}; console.log('[transfer] new row nr.qty:',nr.qty); vi.push(nr);changedVi.add(nr);}
     }
     const xfrRow={date:td(),from,to,sku,item,qty,reason,notes:notes||'',by:CU.name};
     xfrs.push(xfrRow); newXfrs.push(xfrRow);
@@ -3109,7 +3113,7 @@ async function postXfr(){
         division:r.division||'',
         last_updated:new Date().toISOString()
       };
-      console.log('[transfer] upserting van-inv:',payload);
+      console.log('[transfer] upserting van-inv SKU:',r.sku,'vehicle:',vId,'r.qty:',r.qty,'newQty:',newQty,'full payload:',JSON.stringify(payload));
       const{data,error}=await DB.from('lhs_van_inventory')
         .upsert(payload,{onConflict:'sku,vehicle_id'})
         .select('id').maybeSingle();
