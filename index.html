@@ -22468,7 +22468,7 @@ function bReportRun(){
       <thead><tr style="background:var(--navy)">${cols.map(c=>`<th style="padding:8px 12px;text-align:left;color:rgba(255,255,255,.85);font-size:11px;font-weight:600;text-transform:uppercase;white-space:nowrap">${esc(c.label)}</th>`).join('')}</tr></thead>
       <tbody>${!rows.length?`<tr><td colspan="${cols.length}" style="text-align:center;padding:32px;color:var(--muted)">No data for selected filters</td></tr>`
       :rows.map((row,i)=>`<tr style="border-bottom:1px solid var(--bdr);background:${i%2===0?'white':'var(--surf)'}">
-        ${cols.map(c=>`<td style="padding:8px 12px;${c.mono?'font-family:'DM Sans',sans-serif;':''}">${row[c.key]!==undefined?row[c.key]:''}</td>`).join('')}
+        ${cols.map(c=>`<td style="padding:8px 12px;${c.mono?'font-family:inherit;':''}">${row[c.key]!==undefined?row[c.key]:''}</td>`).join('')}
       </tr>`).join('')}
       </tbody>
     </table></div>
@@ -24005,7 +24005,7 @@ function openLead(id){
   const ss=getSalesSettings();
   const statuses=ss.lead_statuses||LEAD_STATUSES;
   const statusColor=s=>s==='New'?'ba':s==='Contacted'?'bn':s==='Qualified'?'bg':s==='Converted'?'bb':'bgr';
-  const row=(label,val,opts={})=>val?`<span style="color:var(--muted)">${label}</span><span${opts.mono?' style="font-family:'DM Sans',sans-serif"':''}${opts.red?` style="color:var(--red)"`:''}>${val}</span>`:'';
+  const row=(label,val,opts={})=>val?`<span style="color:var(--muted)">${label}</span><span${opts.mono?' style="font-family:inherit"':''}${opts.red?` style="color:var(--red)"`:''}>${val}</span>`:'';
   const custRef=l.customer_referral_id?(S.get('lhs:customers')||[]).find(c=>c.id===l.customer_referral_id):null;
 
   oMod(`${l.salutation?l.salutation+' ':''}${l.first_name}${l.middle_name?' '+l.middle_name:''} ${l.last_name}${l.suffix?' '+l.suffix:''}`,`
