@@ -15200,15 +15200,18 @@ function matRowHTML(m, aptId, woId){
 
 // Save a preset row — reads item dropdown + qty input by matId, updates Supabase
 async function saveMatRow(matId, aptId, woId){
+  console.log('[saveMatRow] called matId:',matId,'aptId:',aptId,'woId:',woId);
   const qtyEl=document.getElementById('mat-qty-'+matId);
-  if(!qtyEl){tst('Row not found','error');return;}
+  if(!qtyEl){console.error('[saveMatRow] qty element not found for id:','mat-qty-'+matId);tst('Row not found','error');return;}
   const qty=Math.max(0,parseInt(qtyEl.value)||0);
   const val=pickerGetValue('mat-item-'+matId);
   const custCostEl=document.getElementById('mat-ccost-'+matId);
   const compCostEl=document.getElementById('mat-ucost-'+matId);
   const mats=S.get('lhs:wo_materials')||[];
+  console.log('[saveMatRow] cache has',mats.length,'materials, looking for id:',matId);
   const m=mats.find(x=>x.id===matId);
-  if(!m){tst('Material not found','error');return;}
+  if(!m){console.error('[saveMatRow] material not found in cache. IDs in cache:',mats.map(x=>x.id));tst('Material not found','error');return;}
+  console.log('[saveMatRow] found material:',m.question_label||m.item_name,'oldQty:',m.qty_used,'newQty:',qty);
   // Capture old qty BEFORE updating — needed for delta deduction
   const oldQty=m.qty_used||0;
   // Update item if selection changed
