@@ -7850,6 +7850,175 @@ window._acctEmp     = window._acctEmp     || '';
 window._plGroupBy   = window._plGroupBy   || 'division';
 window._plFilterDiv = window._plFilterDiv || '';
 
+// ── PRINT TIMESHEET ───────────────────────────────────────────────────────────
+function printTimesheet(emp, period){
+  const allTS=S.get('lhs:timesheets')||[];
+  const empTS=allTS.filter(t=>t.employee===emp&&t.week_start===period);
+  const weekDates=prWeekDates(period);
+  const wos=S.get('lhs:work_orders')||[];
+  const allPunches=S.get('lhs:time_punches')||[];
+  const jtes=(S.get('lhs:job_time_entries')||[]).filter(e=>e.tech_name===emp&&e.week_start===period);
+
+  const totalReg=empTS.reduce((a,r)=>a+(+r.regular_hours||0),0);
+  const totalOT=empTS.reduce((a,r)=>a+(+r.overtime_hours||0),0);
+  const totalMeal=empTS.reduce((a,r)=>a+(+r.meal_break||0),0);
+  const totalPTO=empTS.reduce((a,r)=>a+(+r.pto_hours||0),0);
+  const totalHrs=empTS.reduce((a,r)=>a+(+r.total_hours||0),0);
+  const overallStatus=prWeekStatus(empTS);
+
+  const tsMap={};
+  empTS.forEach(t=>{tsMap[t.date]=t;});
+
+  const fmtMins=m=>`${Math.floor(m/60)}h ${m%60}m`;
+  const fmtTime=ts=>ts?new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'—';
+  const pH=v=>v!=null?(+v).toFixed(1):'—';
+
+  // Division labor
+  const divMins={};
+  jtes.filter(e=>e.entry_type==='working'&&e.duration_minutes).forEach(e=>{
+    const wo=wos.find(w=>w.id===e.wo_id);
+    const div=wo?.division||'General';
+    divMins[div]=(divMins[div]||0)+(e.duration_minutes||0);
+  });
+  const divRows=Object.entries(divMins).filter(([,m])=>m>0).sort((a,b)=>b[1]-a[1]);
+
+  // Per-day job activity
+  const byDate={};
+  jtes.sort((a,b)=>(a.start_at||'').localeCompare(b.start_at||'')).forEach(e=>{
+    if(!byDate[e.date]) byDate[e.date]=[];
+    byDate[e.date].push(e);
+  });
+
+  const dayRows=weekDates.map(date=>{
+    const row=tsMap[date];
+    const reg=row?(+row.regular_hours||0):0;
+    const ot=row?(+row.overtime_hours||0):0;
+    const meal=row?(+row.meal_break||0):0;
+    const pto=row?(+row.pto_hours||0):0;
+    const total=row?(+row.total_hours||0):0;
+    const workHrs=reg+ot;
+    const dayLabel=new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const statusCell=row?.employee_status==='Disputed'?'<span style="color:#B71C1C;font-weight:700">⚠ Disputed</span>'
+      :row?.employee_status==='Approved'?'<span style="color:#1B5E20">✓ Approved</span>'
+      :row?.notes?`<span style="color:#666">${row.notes}</span>`:'';
+    const punches=(allPunches||[]).filter(p=>p.employee===emp&&p.date===date).sort((a,b)=>(a.punched_at||'').localeCompare(b.punched_at||''));
+    const ci=punches.find(p=>p.punch_type==='clock_in');
+    const co=[...punches].reverse().find(p=>p.punch_type==='clock_out');
+    const punchStr=ci?`${fmtTime(ci.punched_at)} – ${co?fmtTime(co.punched_at):'active'}`:'';
+    return`<tr style="${!row?'color:#aaa':''}">
+      <td>${dayLabel}</td>
+      <td style="text-align:center;color:#555;font-size:10px">${punchStr}</td>
+      <td class="num">${row?pH(workHrs):'—'}</td>
+      <td class="num">${row?pH(meal):'—'}</td>
+      <td class="num">${pto>0?pH(pto):'—'}</td>
+      <td class="num" style="font-weight:700">${row?pH(total):'—'}</td>
+      <td style="font-size:10px">${statusCell}</td>
+    </tr>`;
+  }).join('');
+
+  const jobActHTML=Object.entries(byDate).map(([date,entries])=>{
+    const dayLabel=new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const byWO={};
+    entries.forEach(e=>{const k=e.wo_id||'unlinked';if(!byWO[k])byWO[k]=[];byWO[k].push(e);});
+    const woBlocks=Object.entries(byWO).map(([woId,wEntries])=>{
+      const wo=wos.find(w=>w.id===woId);
+      const drv=wEntries.filter(e=>e.entry_type==='driving').reduce((s,e)=>s+(e.duration_minutes||0),0);
+      const wrk=wEntries.filter(e=>e.entry_type==='working').reduce((s,e)=>s+(e.duration_minutes||0),0);
+      return`<tr>
+        <td style="padding-left:16px;font-size:10px;color:#333">${wo?`<strong>${wo.wo_number}</strong> — ${wo.division||''}${wo.job_type?' | '+wo.job_type:''}`:''}</td>
+        <td style="font-size:10px;color:#1565C0">${drv?'Drive: '+fmtMins(drv):'—'}</td>
+        <td style="font-size:10px;color:#2E7D32">${wrk?'Work: '+fmtMins(wrk):'—'}</td>
+      </tr>`;
+    }).join('');
+    return`<tr style="background:#f4f6fb"><td colspan="3" style="font-weight:700;font-size:11px;padding:5px 10px">${dayLabel}</td></tr>${woBlocks}`;
+  }).join('');
+
+  const divRowsHTML=divRows.map(([div,mins])=>`<div class="div-pill"><span class="div-name">${div} Labor</span><span class="div-val">${fmtMins(mins)}</span></div>`).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Timesheet — ${emp} — ${prPeriodLabel(period)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;padding:24px 28px}
+    h1{font-size:19px;color:#0D1B3E;margin-bottom:2px}
+    .sub{font-size:11px;color:#666;margin-bottom:4px}
+    .status-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;margin-left:8px;vertical-align:middle}
+    .kpis{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap}
+    .kpi{background:#f4f6fb;border:1px solid #dde3f0;border-radius:6px;padding:8px 14px;min-width:100px;text-align:center}
+    .kl{font-size:8px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}
+    .kv{font-size:16px;font-weight:700;color:#0D1B3E}
+    .section{margin-bottom:16px}
+    .sh{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#0D1B3E;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #0D1B3E}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    thead tr{background:#0D1B3E}
+    thead th{color:white;padding:6px 10px;text-align:left;font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+    tbody td{padding:6px 10px;border-bottom:1px solid #eee}
+    tfoot td{padding:7px 10px;font-weight:700;background:#f0f4ff;border-top:2px solid #0D1B3E}
+    .num{text-align:right;font-family:'Courier New',monospace}
+    .div-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+    .div-pill{background:#f4f6fb;border:1px solid #dde3f0;border-radius:6px;padding:6px 12px;display:flex;gap:10px;align-items:center}
+    .div-name{font-size:10px;font-weight:700;color:#0D1B3E}
+    .div-val{font-size:13px;font-weight:700;color:#1B5E20}
+    .sig-block{margin-top:24px;border-top:1px solid #ddd;padding-top:16px;display:flex;gap:40px}
+    .sig-line{flex:1;border-bottom:1px solid #999;margin-bottom:4px;height:28px}
+    .sig-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.05em}
+    .job-table td{padding:4px 10px;border-bottom:1px solid #f0f0f0}
+    @media print{@page{margin:14mm 12mm;size:letter portrait}body{padding:0}button{display:none}}
+  </style></head><body>
+  <h1>Lifetime Home Services — Employee Timesheet</h1>
+  <div class="sub"><strong>${emp}</strong> &nbsp;·&nbsp; Week of ${prPeriodLabel(period)} &nbsp;·&nbsp; Printed: ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+  <div class="sub">Status: <strong>${overallStatus}</strong></div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kl">Regular</div><div class="kv">${pH(totalReg)}</div></div>
+    <div class="kpi"><div class="kl">Overtime</div><div class="kv" style="${totalOT>0?'color:#E65100':''}">${pH(totalOT)}</div></div>
+    <div class="kpi"><div class="kl">PTO</div><div class="kv" style="color:#1565C0">${pH(totalPTO)}</div></div>
+    <div class="kpi"><div class="kl">Meal Break</div><div class="kv">${pH(totalMeal)}</div></div>
+    <div class="kpi"><div class="kl">Total Hours</div><div class="kv">${pH(totalHrs)}</div></div>
+  </div>
+
+  ${divRows.length?`<div class="section"><div class="sh">Division Labor</div><div class="div-pills">${divRowsHTML}</div></div>`:''}
+
+  <div class="section">
+    <div class="sh">Daily Hours</div>
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Clock In/Out</th>
+        <th class="num">Working Hrs</th><th class="num">Meal Break</th>
+        <th class="num">PTO</th><th class="num">Total</th><th>Status</th>
+      </tr></thead>
+      <tbody>${dayRows}</tbody>
+      <tfoot><tr>
+        <td colspan="2">Totals</td>
+        <td class="num">${pH(totalReg+totalOT)}</td>
+        <td class="num">${pH(totalMeal)}</td>
+        <td class="num">${pH(totalPTO)}</td>
+        <td class="num">${pH(totalHrs)}</td>
+        <td></td>
+      </tr></tfoot>
+    </table>
+  </div>
+
+  ${jtes.length?`<div class="section"><div class="sh">Job Activity</div>
+    <table class="job-table">
+      <thead><tr><th>Work Order</th><th>Drive Time</th><th>Work Time</th></tr></thead>
+      <tbody>${jobActHTML}</tbody>
+    </table>
+  </div>`:''}
+
+  <div class="sig-block">
+    <div><div class="sig-line"></div><div class="sig-label">Employee Signature &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Date</div></div>
+    <div><div class="sig-line"></div><div class="sig-label">Manager Signature &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Date</div></div>
+  </div>
+
+  <script>setTimeout(()=>{window.print();},400);<\/script>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  if(!w){tst('Allow pop-ups to print','error');return;}
+  w.document.write(html);
+  w.document.close();
+}
+
 function printPL(){
   const area=document.getElementById('pl-print-area');
   if(!area){tst('Nothing to print','error');return;}
@@ -20629,6 +20798,7 @@ function bPayrollDetail(){
         ${periodOpts.map(o=>`<option value="${o.key}"${o.key===period?' selected':''}>${o.label}</option>`).join('')}
       </select>
       <button class="btn sm btn-n" onclick="prNavPeriod('${nextPeriod}')">&#8594;</button>
+      <button class="btn sm btn-o" onclick="printTimesheet('${esc(emp)}','${period}')" title="Print / Save as PDF" style="padding:0 10px">&#128438; Print</button>
     </div>
   </div>
 
