@@ -3093,21 +3093,29 @@ async function postXfr(){
   tst('Saving transfer…','info');
   const dbErrs=[];
 
-  // Van inventory — server-side atomic upsert via SQL function
+  // Van inventory — direct Supabase upsert (FK constraint has been dropped)
   for(const r of changedVi){
     try{
       const vId=(r.vehicle||r.vehicle_id||'').trim();
       const newQty=Math.max(0,parseInt(r.qty)||0);
-      const{data,error}=await DB.rpc('upsert_van_inventory',{
-        p_sku:r.sku,
-        p_vehicle_id:vId,
-        p_item_name:r.item||r.item_name||r.sku,
-        p_qty:newQty,
-        p_van_min:r.min||r.van_min||0,
-        p_van_max:r.max||r.van_max||0
-      });
-      if(error) dbErrs.push(`${r.sku}: ${error.message}`);
-      else if(data) r.id=data;
+      const payload={
+        sku:r.sku,
+        vehicle_id:vId,
+        item_name:r.item||r.item_name||r.sku,
+        qty_on_hand:newQty,
+        van_min:parseInt(r.min||r.van_min||0),
+        van_max:parseInt(r.max||r.van_max||0),
+        tech_assigned:r.tech||r.tech_assigned||'',
+        division:r.division||'',
+        last_updated:new Date().toISOString()
+      };
+      console.log('[transfer] upserting van-inv:',payload);
+      const{data,error}=await DB.from('lhs_van_inventory')
+        .upsert(payload,{onConflict:'sku,vehicle_id'})
+        .select('id').maybeSingle();
+      console.log('[transfer] upsert result — data:',data,'error:',error);
+      if(error) dbErrs.push(`${r.sku} @ ${vId}: ${error.message}`);
+      else if(data?.id) r.id=data.id;
     }catch(e){ dbErrs.push(`${r.sku}: ${e?.message}`); }
   }
 
