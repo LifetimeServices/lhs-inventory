@@ -3143,32 +3143,28 @@ async function postXfr(){
     }catch(e){ dbErrs.push(`${r.sku}: ${e?.message}`); }
   }
 
-  // Location stock — rows from old localStorage have no id; look up in Supabase first
+  // Location stock — direct upsert on (sku, location) unique constraint
   for(const r of changedLs){
     try{
-      let rowId=r.id;
-      if(!rowId){
-        // Find existing Supabase row by sku + location
-        const{data:found}=await DB.from('lhs_location_stock')
-          .select('id').eq('sku',r.sku).eq('location',r.location).maybeSingle();
-        if(found?.id){ rowId=found.id; r.id=rowId; }
-      }
-      if(rowId){
-        // Supabase location_stock uses qty_on_hand column
-        const{error}=await DB.from('lhs_location_stock')
-          .update({qty_on_hand:Math.max(0,parseInt(r.qty)||0), last_updated:new Date().toISOString()})
-          .eq('id',rowId);
-        if(error) dbErrs.push(`loc-stock update failed for ${r.sku} at ${r.location}: ${error.message}`);
-      }else{
-        // Genuinely new row — insert
-        const{data:ins,error}=await DB.from('lhs_location_stock')
-          .insert({sku:r.sku, item_name:r.item||r.item_name||r.sku,
-            location:r.location, qty_on_hand:Math.max(0,parseInt(r.qty)||0),
-            min_qty:r.min||0, max_qty:r.max||0, bin_shelf:r.bin||''})
-          .select('id').single();
-        if(ins?.id) r.id=ins.id;
-        else if(error) dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}: ${error.message}`);
-      }
+      const newQty=Math.max(0,parseInt(r.qty)||0);
+      const lsPayload={
+        sku:r.sku,
+        item_name:r.item||r.item_name||r.sku,
+        location:r.location,
+        qty_on_hand:newQty,
+        min_qty:parseInt(r.min||r.min_qty||0),
+        max_qty:parseInt(r.max||r.max_qty||0),
+        bin_shelf:r.bin||r.bin_shelf||'',
+        last_updated:new Date().toISOString(),
+        updated_by:CU?.name||''
+      };
+      console.log('[transfer] loc-stock upsert:',r.sku,'@',r.location,'qty:',newQty);
+      const{data:lsd,error:lse}=await DB.from('lhs_location_stock')
+        .upsert(lsPayload,{onConflict:'sku,location'})
+        .select('id').maybeSingle();
+      console.log('[transfer] loc-stock result:',lsd,'error:',lse);
+      if(lse) dbErrs.push(`loc-stock failed for ${r.sku} at ${r.location}: ${lse.message}`);
+      else if(lsd?.id) r.id=lsd.id;
     }catch(e){ dbErrs.push(`loc-stock error for ${r.sku}: ${e?.message}`); }
   }
   // Check inventory errors BEFORE saving transfer log — don't log a transfer that didn't actually move stock
