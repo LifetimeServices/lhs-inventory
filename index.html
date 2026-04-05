@@ -3079,7 +3079,7 @@ async function postXfr(){
   tst('Saving transfer…','info');
   const dbErrs=[];
 
-  // Van inventory — server-side atomic upsert via SQL function (handles insert+update in one call)
+  // Van inventory — server-side atomic upsert via SQL function
   for(const r of changedVi){
     try{
       const vId=(r.vehicle||r.vehicle_id||'').trim();
@@ -3092,9 +3092,14 @@ async function postXfr(){
         p_van_min:r.min||r.van_min||0,
         p_van_max:r.max||r.van_max||0
       });
-      if(error) dbErrs.push(`van-inv failed (${r.sku} on ${vId}): ${error.message}`);
-      else if(data) r.id=data;
-    }catch(e){ dbErrs.push(`van-inv error (${r.sku}): ${e?.message}`); }
+      if(error){
+        alert(`TRANSFER ERROR — please screenshot this:\nSKU: ${r.sku}\nVehicle: ${vId}\nQty: ${newQty}\nError: ${error.message}\nCode: ${error.code||''}`);
+        dbErrs.push(`${r.sku}: ${error.message}`);
+      } else if(data) r.id=data;
+    }catch(e){
+      alert(`TRANSFER EXCEPTION:\n${e?.message}`);
+      dbErrs.push(`${r.sku}: ${e?.message}`);
+    }
   }
 
   // Location stock — rows from old localStorage have no id; look up in Supabase first
@@ -3151,8 +3156,17 @@ async function postXfr(){
     }catch(e){ console.warn('transfer log insert error:',e?.message); }
   }
 
-  // All saves confirmed — normalize vi rows then commit to localStorage and re-render
-  S.set('lhs:ls',ls); S.set('lhs:vi',vi.map(_normVi)); S.set('lhs:xfrs',xfrs);
+  // Re-fetch van inventory from Supabase to confirm save and sync localStorage
+  try{
+    const{data:freshVi,error:viErr}=await DB.from('lhs_van_inventory').select('*');
+    if(!viErr&&freshVi&&freshVi.length>0){
+      S.set('lhs:vi',freshVi.map(_normVi));
+      vi.length=0; freshVi.forEach(r=>vi.push(_normVi(r)));
+    }
+  }catch(e){console.warn('van-inv re-fetch failed:',e?.message);}
+  // All saves confirmed — commit to localStorage and re-render
+  S.set('lhs:ls',ls); S.set('lhs:xfrs',xfrs);
+  if(!(S.get('lhs:vi')||[]).length) S.set('lhs:vi',vi.map(_normVi));
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
   showPage('transfer');
