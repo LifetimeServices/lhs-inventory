@@ -2217,14 +2217,18 @@ async function refreshVanInvPage(){
 
 // Location Stock — fetch directly from Supabase and re-render page
 async function refreshLocStockPage(){
+  console.log('[locstock] refreshLocStockPage called');
   try{
     const{data,error}=await DB.from('lhs_location_stock').select('*');
+    console.log('[locstock] fetch result — rows:',data?.length,'error:',error?.message||null);
+    if(data) console.log('[locstock] raw qty_on_hand values:',data.map(r=>({sku:r.sku,qty_on_hand:r.qty_on_hand,location:r.location})));
     if(!error&&data){
       S.set('lhs:ls',data.map(_normLs));
       const pg=document.getElementById('p-locstock');
+      console.log('[locstock] page element found:',!!pg,'active:',pg?.classList.contains('active'));
       if(pg&&pg.classList.contains('active')) pg.innerHTML=buildPage('locstock');
     }
-  }catch(e){console.warn('refreshLocStockPage:',e?.message);}
+  }catch(e){console.warn('refreshLocStockPage error:',e?.message);}
 }
 
 // Live dispatch board refresh — call after any WO/appointment save
