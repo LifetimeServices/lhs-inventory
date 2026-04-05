@@ -14992,7 +14992,7 @@ async function oAptDetail(aptId, woId){
   const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
   if(!apt||!wo) return;
 
-  oMod(`Appointment ${apt.appointment_number||''} — ${wo.wo_number}`,`
+  oMod(`<span style="display:flex;align-items:center;gap:8px"><button onclick="openWO('${woId}')" style="background:none;border:none;cursor:pointer;padding:2px 6px 2px 0;font-size:18px;color:var(--navy);line-height:1" title="Back to Work Order">&#8592;</button>Appointment ${apt.appointment_number||''} — ${wo.wo_number}</span>`,`
   <div style="padding-right:4px">
 
   ${canEdit?`<div style="background:var(--surf);border-radius:8px;padding:12px;margin-bottom:14px">
