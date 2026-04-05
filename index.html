@@ -1468,6 +1468,18 @@ const TBL={
   'lhs:job_time_entries':'lhs_job_time_entries',
 };
 
+// Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
+function _normLs(r){
+  return{
+    ...r,
+    item:r.item||r.item_name||r.sku||'',
+    qty:r.qty!==undefined?r.qty:(r.qty_on_hand||0),
+    min:r.min!==undefined?r.min:(r.min_qty||0),
+    max:r.max!==undefined?r.max:(r.max_qty||0),
+    bin:r.bin||r.bin_shelf||'',
+  };
+}
+
 // Normalize a van-inventory row: Supabase schema uses different column names than app code.
 // Maps vehicle_id→vehicle, item_name→item, qty_on_hand→qty, van_min→min, van_max→max.
 // Safe to call on already-normalized rows (keeps existing fields).
@@ -1550,9 +1562,11 @@ async function warmCache(){
       if(!_AUDIT[a.wo_id].find(x=>x.id===a.id)) _AUDIT[a.wo_id].push(a);
     });
     // Normalize van inventory rows: Supabase uses vehicle_id/item_name/qty_on_hand/van_min/van_max
-    // but app code uses vehicle/item/qty/min/max — map both directions so all code works
     const rawVi=S.get('lhs:vi')||[];
     if(rawVi.length) S.set('lhs:vi',rawVi.map(_normVi));
+    // Normalize location stock rows: Supabase may use qty_on_hand/min_qty/max_qty/bin_shelf
+    const rawLs=S.get('lhs:ls')||[];
+    if(rawLs.length) S.set('lhs:ls',rawLs.map(_normLs));
     // Merge location vehicle extras (stored locally, not yet in Supabase schema)
     const rawLocs=S.get('lhs:locs')||[];
     if(rawLocs.length) S.set('lhs:locs',mergeLocExtras(rawLocs));
@@ -2942,39 +2956,51 @@ async function postXfr(){
 
   if(errs.length){tst(errs[0],'error');return}
 
-  // Save to Supabase first — check every return value explicitly (dbInsert/dbUpdate
-  // never throw; they return null/false on failure, so Promise.all can't catch them)
+  // Save to Supabase first — check every return value explicitly
   tst('Saving transfer…','info');
   const dbErrs=[];
 
+  // Van inventory — upsert on (sku, vehicle_id) so INSERT and UPDATE both work
+  // even when rows lack IDs (old localStorage-only data has no Supabase id yet)
   for(const r of changedVi){
-    if(r.id){
-      // Schema has qty_on_hand only (no bare qty column)
-      const ok=await dbUpdate('lhs:vi',r.id,{qty_on_hand:r.qty,last_updated:new Date().toISOString()});
-      if(!ok) dbErrs.push(`van-inv update failed for ${r.sku} (id=${r.id})`);
-    }else{
-      const now=new Date().toISOString();
-      // Use actual lhs_van_inventory column names (item_name, qty_on_hand, van_min, van_max)
-      const saved=await dbInsert('lhs:vi',{
-        sku:r.sku, item_name:r.item, vehicle_id:r.vehicle,
-        qty_on_hand:r.qty, van_min:r.min||0, van_max:r.max||0,
-        last_updated:now
-      });
-      if(saved?.id) r.id=saved.id;
-      else dbErrs.push(`van-inv insert failed for ${r.sku} on ${r.vehicle}`);
-    }
+    try{
+      const vId=r.vehicle||r.vehicle_id||'';
+      const{data,error}=await DB.from('lhs_van_inventory')
+        .upsert({
+          sku:r.sku, item_name:r.item||r.item_name||r.sku,
+          vehicle_id:vId, qty_on_hand:r.qty,
+          van_min:r.min||0, van_max:r.max||0,
+          last_updated:new Date().toISOString()
+        },{onConflict:'sku,vehicle_id'})
+        .select('id').single();
+      if(error) dbErrs.push(`van-inv save failed for ${r.sku} on ${vId}: ${error.message}`);
+      else if(data?.id) r.id=data.id;
+    }catch(e){ dbErrs.push(`van-inv error for ${r.sku}: ${e?.message}`); }
   }
+
+  // Location stock — rows from old localStorage have no id; look up in Supabase first
   for(const r of changedLs){
-    if(r.id){
-      const ok=await dbUpdate('lhs:ls',r.id,{qty:r.qty});
-      if(!ok) dbErrs.push(`loc-stock update failed for ${r.sku} (id=${r.id})`);
-    }else{
-      const now=new Date().toISOString();
-      const saved=await dbInsert('lhs:ls',{sku:r.sku,item:r.item,location:r.location,
-        qty:r.qty,min:r.min||0,max:r.max||0,bin:r.bin||'',created_at:now});
-      if(saved?.id) r.id=saved.id;
-      else dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}`);
-    }
+    try{
+      let rowId=r.id;
+      if(!rowId){
+        // Find existing Supabase row by sku + location
+        const{data:found}=await DB.from('lhs_location_stock')
+          .select('id').eq('sku',r.sku).eq('location',r.location).maybeSingle();
+        if(found?.id){ rowId=found.id; r.id=rowId; }
+      }
+      if(rowId){
+        const ok=await dbUpdate('lhs:ls',rowId,{qty:r.qty});
+        if(!ok) dbErrs.push(`loc-stock update failed for ${r.sku} at ${r.location}`);
+      }else{
+        // Genuinely new row — insert
+        const saved=await dbInsert('lhs:ls',{
+          sku:r.sku, item:r.item, location:r.location,
+          qty:r.qty, min:r.min||0, max:r.max||0, bin:r.bin||''
+        });
+        if(saved?.id) r.id=saved.id;
+        else dbErrs.push(`loc-stock insert failed for ${r.sku} at ${r.location}`);
+      }
+    }catch(e){ dbErrs.push(`loc-stock error for ${r.sku}: ${e?.message}`); }
   }
   for(const xfrRow of newXfrs){
     // Use actual lhs_transfers column names (schema uses transfer_date, from_location, etc.)
@@ -3051,11 +3077,11 @@ function bVans(){
   if(fDiv)    vehicles=vehicles.filter(v=>v.division===fDiv||v.divisions?.includes(fDiv));
   if(fVeh)    vehicles=vehicles.filter(v=>v.name===fVeh);
 
-  // Compute costs per vehicle (handle both vehicle and vehicle_id field names)
+  // Compute costs per vehicle (after _normVi, all rows have r.vehicle)
   function matCost(vname){
-    return (vi.filter(r=>(r.vehicle||r.vehicle_id)===vname)).reduce((s,r)=>{
+    return (vi.filter(r=>r.vehicle===vname)).reduce((s,r)=>{
       const itm=items.find(i=>i.sku===r.sku);
-      return s+(r.qty||0)*(itm?.cost||itm?.unit_cost||r.unit_cost||0);
+      return s+(r.qty||0)*(itm?.unit_cost||itm?.cost||r.unit_cost||0);
     },0);
   }
   function toolCost(driver){
