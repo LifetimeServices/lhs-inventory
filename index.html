@@ -14962,6 +14962,7 @@ async function oAptDetail(aptId, woId){
     <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);list-style:none;display:flex;align-items:center;gap:6px">
       <span style="font-size:14px">&#9654;</span> Materials Used
       <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">(${(S.get('lhs:wo_materials')||[]).filter(m=>m.appointment_id===aptId).length} items)</span>
+      <button class="btn btn-o sm" style="margin-left:auto;font-size:11px" onclick="event.preventDefault();applyPresetsToApt('${aptId}','${woId}')">&#9654; Apply Checklist</button>
     </summary>
     <div style="padding:12px 14px">
       <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap">
@@ -14969,6 +14970,12 @@ async function oAptDetail(aptId, woId){
           ${mkItemPicker('aptd-msku','')}
         </div>
         <div style="flex-shrink:0"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px">Qty</label><input type="number" id="aptd-mqty" value="1" min="1" style="width:72px;padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"></div>
+        ${(()=>{
+          const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId&&(t.vehicle_id||t.vehicle));
+          if(!techs.length) return '';
+          const opts=techs.map(t=>{const v=t.vehicle_id||t.vehicle||'';return`<option value="${v}">${v}${t.tech_name?' — '+t.tech_name:''}</option>`;}).join('');
+          return`<div style="flex-shrink:0"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px">From Van</label><select id="aptd-mvan" style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">${opts}</select></div>`;
+        })()}
         <div style="flex-shrink:0">
           <button class="btn btn-n sm" onclick="aptAddMaterial('${aptId}','${woId}')">Add Material</button>
         </div>
@@ -15129,10 +15136,9 @@ async function aptAddMaterial(aptId, woId){
   const qty=parseInt(document.getElementById('aptd-mqty')?.value)||1;
   const unitCost=parseFloat(cost)||0;
   const customerCost=parseFloat(cCost)||0;
-  // Determine which vehicle to deduct from — use the tech's assigned vehicle for this appointment
-  const aptTechs=S.get('lhs:apt_techs')||[];
-  const aptTech=aptTechs.find(t=>t.appointment_id===aptId);
-  const vehicleId=aptTech?.vehicle_id||aptTech?.vehicle||CU.loc||'';
+  // Determine which vehicle to deduct from — use van dropdown if shown, else first tech's vehicle
+  const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
+  const vehicleId=document.getElementById('aptd-mvan')?.value||aptTechs[0]?.vehicle_id||aptTechs[0]?.vehicle||CU.loc||'';
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
     qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:vehicleId,
     entered_by:CU.name,created_at:new Date().toISOString()};
