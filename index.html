@@ -27331,7 +27331,7 @@ function estRenderLines(){
   const el=document.getElementById('est-lines'); if(!el) return;
   el.innerHTML=lines.map((l,i)=>`
   <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 80px 32px;gap:4px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bdr)" id="est-line-${i}">
-    <input value="${l.label||''}" placeholder="Description" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:13px"
+    <input value="${esc(l.label||'')}" placeholder="Description" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:13px"
       onchange="estLineUpdate(${i},'label',this.value)">
     <select style="padding:5px 6px;border:1px solid var(--bdr);border-radius:5px;font-size:12px" onchange="estLineUpdate(${i},'type',this.value)">
       ${['Material','Labor','Fee','Discount'].map(t=>`<option${(l.type||'Material')===t?' selected':''}>${t}</option>`).join('')}
