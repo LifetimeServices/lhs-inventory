@@ -25579,7 +25579,8 @@ function previewEstDocTemplate(id){
     <!-- HEADER -->
     <div class="hdr">
       <div class="hdr-logo">
-        ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div><div class="logo-sub">${divShort}</div>`}
+        ${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'">`:`<div class="logo-text">LIFETIME</div>`}
+        ${divShort?`<div class="logo-sub">${divShort}</div>`:''}
       </div>
       <div class="hdr-co">
         <strong>Lifetime Home Services LLC</strong><br>
@@ -27191,6 +27192,11 @@ function estAddFromPricebook(svcId){
     tier:pkg==='custom'?undefined:pkg,
   });
   estRenderLines();
+  // Auto-fill division on estimate if not already set and service has one
+  if(s.division){
+    const divEl=document.getElementById('est-div');
+    if(divEl&&!divEl.value) divEl.value=s.division;
+  }
   tst(`${s.name} added to estimate`,'success');
 }
 
@@ -27636,7 +27642,9 @@ function printEstimate(id){
   const logoSrc=document.querySelector('.tbl img')?.src||'';
 
   // Division display name — use the same getDivDisplayName() map as invoices
-  const divDisplayName=getDivDisplayName(e.division||'');
+  // Fall back to raw division name so something always shows
+  const rawDiv=e.division||'';
+  const divDisplayName=getDivDisplayName(rawDiv)||rawDiv||'';
 
   // Customer / address info
   const custAddr=[cust?.address,cust?.city&&cust?.state?`${cust.city}, ${cust.state} ${cust.zip||''}`:cust?.city||''].filter(Boolean).join('\n');
