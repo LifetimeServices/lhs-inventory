@@ -362,6 +362,17 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
   </div>
 </div>
 
+<!-- Cancel WO dedicated overlay (sits above #mo) -->
+<div id="cancel-mo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center" onclick="if(event.target===this)cCancelMo()">
+  <div style="background:var(--white);border-radius:var(--rl);padding:28px;width:480px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:var(--shlg)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Cancel Work Order</h3>
+      <button onclick="cCancelMo()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1">&#215;</button>
+    </div>
+    <div id="cancel-mb"></div>
+  </div>
+</div>
+
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const CO={name:'Lifetime Management System',addr:'3485 N 124th St, Brookfield WI 53005',phone:'608-215-2241'};
@@ -4570,6 +4581,20 @@ function aWOSettings(){
       <div style="display:flex;align-items:center;gap:8px"><div style="width:40px;height:6px;background:var(--green);border-radius:3px"></div><span style="font-size:13px">Customer is flexible</span></div>
       <div style="display:flex;align-items:center;gap:8px"><div style="width:40px;height:6px;background:var(--red);border-radius:3px"></div><span style="font-size:13px">Customer is NOT flexible</span></div>
     </div>
+  </div>
+
+  <!-- Cancellation Reasons -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="ct" style="margin:0">Cancellation Reasons</div>
+      <button class="btn btn-n sm" onclick="oAddCancelReason()">+ Add Reason</button>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">These options appear in the dropdown when a work order is cancelled.</div>
+    ${getCancelReasons().map((r,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;margin-bottom:6px">
+      <span style="font-size:13px;font-weight:500">${r}</span>
+      <button onclick="delCancelReason(${i})" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px">&#215;</button>
+    </div>`).join('')}
   </div>
 
   ${renderMatPresetsAdmin()}
@@ -14579,7 +14604,7 @@ async function openWO(woId){
   <!-- WO Status update -->
   ${canEdit?`<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--bdr);align-items:center">
     <span style="font-size:13px;color:var(--muted);line-height:32px">Status:</span>
-    ${WO_STATUSES.map(s=>`<button class="btn sm ${liveStatus===s?'btn-n':'btn-o'}" onclick="updateWOStatus('${woId}','${s}')">${s}</button>`).join('')}
+    ${WO_STATUSES.map(s=>s==='Cancelled'?`<button class="btn sm ${liveStatus===s?'btn-n':'btn-o'}" onclick="oCancelWO('${woId}')">${s}</button>`:`<button class="btn sm ${liveStatus===s?'btn-n':'btn-o'}" onclick="updateWOStatus('${woId}','${s}')">${s}</button>`).join('')}
     <div style="margin-left:auto;display:flex;gap:6px">
       <button class="btn sm btn-r" onclick="oWOAudit('${woId}')">&#9998; Creation Audit</button>
     </div>
@@ -15526,6 +15551,7 @@ async function svAddAppointment(woId,num){
 }
 
 async function updateWOStatus(woId,status){
+  if(status==='Cancelled'){ oCancelWO(woId); return; }
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
   const prev=wo?.status;
@@ -15533,6 +15559,101 @@ async function updateWOStatus(woId,status){
   await dbUpdate('lhs:work_orders',woId,{status,updated_at:new Date().toISOString()});
   await logWOAudit(woId,'Status Changed',`${prev} → ${status}`);
   tst(`Status updated to: ${status}`,'success');openWO(woId);
+}
+
+// ── CANCEL WO MODAL ───────────────────────────────────────────────────────────
+function getCancelReasons(){
+  const s=S.get('lhs:wo_settings')||{};
+  return s.cancelReasons||['Customer Request','Scheduling Conflict','Job Completed Differently','Duplicate','Weather','Other'];
+}
+function saveCancelReasons(arr){
+  const s=S.get('lhs:wo_settings')||{};
+  s.cancelReasons=arr;
+  S.set('lhs:wo_settings',s);
+}
+function oAddCancelReason(){
+  oMod('Add Cancellation Reason',`
+  <div class="fl" style="margin-bottom:16px"><label>Reason</label>
+    <input id="new-cancel-reason" type="text" placeholder="e.g. Customer Request" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px">
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svAddCancelReason()">Add Reason</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+function svAddCancelReason(){
+  const v=(document.getElementById('new-cancel-reason')?.value||'').trim();
+  if(!v) return tst('Enter a reason','warn');
+  const arr=getCancelReasons();
+  arr.push(v);
+  saveCancelReasons(arr);
+  cMod();
+  g('atab').innerHTML=aWOSettings();
+  tst('Reason added','success');
+}
+function delCancelReason(i){
+  const arr=getCancelReasons();
+  arr.splice(i,1);
+  saveCancelReasons(arr);
+  g('atab').innerHTML=aWOSettings();
+  tst('Reason removed','success');
+}
+function cCancelMo(){
+  const el=document.getElementById('cancel-mo');
+  if(el) el.style.display='none';
+}
+function oCancelWO(woId){
+  const reasons=getCancelReasons();
+  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  let el=document.getElementById('cancel-mo');
+  if(!el){
+    el=document.createElement('div');
+    el.id='cancel-mo';
+    el.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center';
+    el.onclick=function(e){if(e.target===el)cCancelMo();};
+    el.innerHTML='<div style="background:#fff;border-radius:12px;padding:28px;width:480px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px"><h3 style="margin:0;font-size:16px;font-weight:700">Cancel Work Order</h3><button onclick="cCancelMo()" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1">&#215;</button></div><div id="cancel-mb"></div></div>';
+    document.body.appendChild(el);
+  }
+  const mb=document.getElementById('cancel-mb');
+  if(!mb) return;
+  mb.innerHTML=`
+  <div style="background:var(--red);color:white;padding:10px 14px;border-radius:8px;margin-bottom:18px;font-size:13px;font-weight:500">
+    &#9888; Cancelling: <strong>${wo?.wo_number||'this work order'}</strong>${wo?.customer_name?' &mdash; '+wo.customer_name:''}
+  </div>
+  <div class="fl" style="margin-bottom:14px"><label>Reason for Cancellation *</label>
+    <select id="cancel-reason-sel" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px">
+      <option value="">&#8212; Select a reason &#8212;</option>
+      ${reasons.map(r=>`<option value="${r.replace(/"/g,'&quot;')}">${r}</option>`).join('')}
+    </select>
+  </div>
+  <div class="fl" style="margin-bottom:18px"><label>Notes (optional)</label>
+    <textarea id="cancel-notes-ta" rows="3" placeholder="Add any additional details..." style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;resize:vertical"></textarea>
+  </div>
+  <div class="br2">
+    <button class="btn btn-r" onclick="svCancelWO('${woId}')">Confirm Cancellation</button>
+    <button class="btn btn-o" onclick="cCancelMo()">Go Back</button>
+  </div>`;
+  el.style.display='flex';
+}
+async function svCancelWO(woId){
+  const reason=(document.getElementById('cancel-reason-sel')?.value||'').trim();
+  const notes=(document.getElementById('cancel-notes-ta')?.value||'').trim();
+  if(!reason) return tst('Please select a reason for cancellation','warn');
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  const prev=wo?.status;
+  if(wo){
+    wo.status='Cancelled';
+    wo.cancel_reason=reason;
+    wo.cancel_notes=notes;
+    wo.updated_at=new Date().toISOString();
+    S.set('lhs:work_orders',wos);
+  }
+  await dbUpdate('lhs:work_orders',woId,{status:'Cancelled',cancel_reason:reason,cancel_notes:notes,updated_at:new Date().toISOString()});
+  await logWOAudit(woId,'Status Changed',`${prev} → Cancelled | Reason: ${reason}${notes?' | Notes: '+notes:''}`);
+  cCancelMo();
+  tst('Work order cancelled','success');
+  openWO(woId);
 }
 
 function oAddTechToApt(aptId,woId){
