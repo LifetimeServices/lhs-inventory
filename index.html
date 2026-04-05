@@ -2249,7 +2249,7 @@ function showPage(id){
   // Fix dispatch board height so toolbar never scrolls
   if(id==='dispatch'||id==='dispatch-board') setTimeout(fixDispBoardHeight,0);
   // Render transfer history table after page builds
-  if(id==='transfer') setTimeout(xfrHistRender,0);
+  if(id==='transfer') setTimeout(xfrHistRefresh,0);
   // Van Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='vans') setTimeout(refreshVanInvPage,0);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
@@ -2934,6 +2934,14 @@ function bXfr(){
     <div id="xfr-hist-table"><div style="text-align:center;color:var(--muted);padding:20px">Loading…</div></div>
   </div>`;
 }
+async function xfrHistRefresh(){
+  // Fetch latest transfers from Supabase so deletes/edits take effect immediately
+  try{
+    const{data,error}=await DB.from('lhs_transfers').select('*').order('created_at',{ascending:false}).limit(1000);
+    if(!error&&data) S.set('lhs:xfrs',data);
+  }catch(e){console.warn('xfrHistRefresh:',e?.message);}
+  xfrHistRender();
+}
 function xfrHistRender(){
   const df=document.getElementById('xhdf')?.value||'';
   const dt=document.getElementById('xhdt')?.value||'';
@@ -2946,20 +2954,32 @@ function xfrHistRender(){
   if(fl) xfrs=xfrs.filter(t=>(t.from_location||t.from||'').toLowerCase()===fl);
   if(tl) xfrs=xfrs.filter(t=>(t.to_location||t.to||'').toLowerCase()===tl);
   if(iq) xfrs=xfrs.filter(t=>(t.item_name||t.item||'').toLowerCase().includes(iq)||(t.sku||'').toLowerCase().includes(iq));
-  const sorted=[...xfrs].sort((a,b)=>(b.transfer_date||b.date||'').localeCompare(a.transfer_date||a.date||''));
+  // Sort by created_at descending so newest is first and time order is accurate
+  const sorted=[...xfrs].sort((a,b)=>new Date(b.created_at||b.transfer_date||0)-new Date(a.created_at||a.transfer_date||0));
+  // Build driver lookup from van inventory
+  const vi=S.get('lhs:vi')||[];
   const el=document.getElementById('xfr-hist-table');
   if(!el) return;
-  el.innerHTML=`<div class="tw"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>SKU</th><th>Qty</th><th>Reason</th><th>By</th></tr></thead>
-  <tbody>${sorted.length?sorted.map(t=>`<tr>
-    <td style="font-size:12px;color:var(--muted)">${t.transfer_date||t.date||'&#8212;'}</td>
+  el.innerHTML=`<div class="tw"><table><thead><tr>
+    <th>Date</th><th>Time</th><th>From</th><th>To</th><th>Driver</th><th>Item</th><th>SKU</th><th>Qty</th><th>Logged By</th>
+  </tr></thead>
+  <tbody>${sorted.length?sorted.map(t=>{
+    const toVeh=t.to_location||t.to||'';
+    const driverRow=vi.find(x=>(x.vehicle||x.vehicle_id||'')===toVeh);
+    const driver=driverRow?.tech||driverRow?.tech_assigned||'';
+    const ts=t.created_at?new Date(t.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}):'&#8212;';
+    const dateStr=t.transfer_date||t.date||'&#8212;';
+    return`<tr>
+    <td style="font-size:12px;color:var(--muted);white-space:nowrap">${dateStr}</td>
+    <td style="font-size:12px;color:var(--muted);white-space:nowrap">${ts}</td>
     <td>${t.from_location||t.from||'&#8212;'}</td>
-    <td>${t.to_location||t.to||'&#8212;'}</td>
+    <td>${toVeh||'&#8212;'}</td>
+    <td style="font-size:12px;font-weight:500">${driver||'&#8212;'}</td>
     <td style="font-weight:500">${t.item_name||t.item||'&#8212;'}</td>
     <td style="font-size:11px;color:var(--muted);font-family:monospace">${t.sku||'&#8212;'}</td>
     <td style="font-family:'DM Sans',sans-serif;font-weight:700">${t.qty}</td>
-    <td style="color:var(--muted);font-size:12px">${t.reason||'&#8212;'}</td>
     <td style="color:var(--muted);font-size:12px">${t.transferred_by||t.by||'&#8212;'}</td>
-  </tr>`).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No transfers match filters</td></tr>'}
+  </tr>`;}).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No transfers match filters</td></tr>'}
   </tbody></table></div><div style="font-size:12px;color:var(--muted);margin-top:8px;text-align:right">${sorted.length} record${sorted.length!==1?'s':''}</div>`;
 }
 function xfrHistClear(){
