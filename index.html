@@ -4573,13 +4573,17 @@ function aPerms(){
 // Keys: "Radon Mitigation" (division only) or "Radon Mitigation|Installation" (div+type)
 // Each value: [{sku, name, unit_cost, default_qty, include_custom_field, custom_field_label}]
 function getMatPresets(){
-  try{return JSON.parse(localStorage.getItem('lms_mat_presets')||'{}');}catch{return{};}
+  // Always read from in-memory cache first — never depend on localStorage (quota issues)
+  if(_C['lms_mat_presets']!==undefined) return _C['lms_mat_presets'];
+  try{const v=JSON.parse(localStorage.getItem('lms_mat_presets')||'{}'); _C['lms_mat_presets']=v; return v;}catch{return{};}
 }
 async function saveMatPresets(map){
-  // Write to localStorage first for immediate sync reads
+  // Always update in-memory cache immediately so re-renders see the new data
+  _C['lms_mat_presets']=map;
+  // Try localStorage as backup (may fail if quota exceeded)
   try{localStorage.setItem('lms_mat_presets',JSON.stringify(map));}
-  catch(e){console.warn('localStorage quota hit — presets only saved to Supabase');}
-  // Persist to Supabase so presets survive cache clears and sync across devices
+  catch(e){console.warn('localStorage quota hit — presets in memory + Supabase only');}
+  // Persist to Supabase — source of truth across devices
   try{
     for(const [key,items] of Object.entries(map)){
       const parts=key.split('|');
@@ -5013,19 +5017,19 @@ function renderPhotoLabelsAdmin(){
   </div>`;
 }
 
-function addPresetRow(key){
+async function addPresetRow(key){
   const map=getMatPresets();
   if(!map[key]) map[key]=[];
   map[key].push({question_label:'',sku:'',name:'',unit_cost:0,default_qty:0,custom_fields:[]});
-  saveMatPresets(map);
+  await saveMatPresets(map);
   g('atab').innerHTML=aWOSettings();
 }
 
-function removePresetRow(key, idx){
+async function removePresetRow(key, idx){
   const map=getMatPresets();
   if(!map[key]) return;
   map[key].splice(idx,1);
-  saveMatPresets(map);
+  await saveMatPresets(map);
   g('atab').innerHTML=aWOSettings();
 }
 
