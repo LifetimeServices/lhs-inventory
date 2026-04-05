@@ -2971,13 +2971,20 @@ function xlSearch(idx){
   if(!matches.length){
     drop.innerHTML=`<div style="padding:10px 12px;color:var(--muted);font-size:13px">No items found</div>`;
   }else{
+    // Use data attributes to avoid quote-escaping issues with item names like 3" PVC
     drop.innerHTML=matches.map(i=>`
-      <div onclick="xlPick(${idx},'${i.sku.replace(/'/g,"\\'")}','${(i.name||'').replace(/'/g,"\\'")}',this)"
+      <div data-sku="${(i.sku||'').replace(/"/g,'&quot;')}" data-name="${(i.name||i.sku||'').replace(/"/g,'&quot;')}"
         style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center"
         onmouseenter="this.style.background='var(--ice)'" onmouseleave="this.style.background=''">
         <span style="font-weight:500">${i.name||i.sku}</span>
         <span style="font-size:11px;color:var(--muted);font-family:monospace;margin-left:8px">${i.sku}</span>
       </div>`).join('');
+    // Event delegation — no inline onclick so special chars in names are safe
+    drop.onclick=e=>{
+      const el=e.target.closest('[data-sku]');
+      if(!el) return;
+      xlPick(idx, el.dataset.sku, el.dataset.name);
+    };
   }
   drop.style.display='block';
 }
