@@ -2009,10 +2009,12 @@ function calcUtilization(techName, date){
 
   const allApts=S.get('lhs:appointments')||[];
   const allTechs=S.get('lhs:apt_techs')||[];
+  const _cancelledWOIds=new Set((S.get('lhs:work_orders')||[]).filter(w=>w.status==='Cancelled').map(w=>w.id));
 
   // Build time intervals [start, end] in absolute minutes for each apt this tech is on
+  // Exclude appointments whose WO is cancelled so they don't inflate utilization
   const intervals=allApts
-    .filter(a=>a.scheduled_date===date && allTechs.some(t=>t.appointment_id===a.id&&t.tech_name===techName))
+    .filter(a=>a.scheduled_date===date && !_cancelledWOIds.has(a.wo_id) && allTechs.some(t=>t.appointment_id===a.id&&t.tech_name===techName))
     .map(a=>{
       const [hh,mm]=(a.scheduled_time||'08:00').split(':').map(Number);
       const aptStart=hh*60+mm;
