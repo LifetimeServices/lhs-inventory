@@ -13413,6 +13413,18 @@ document.addEventListener('mousedown',function(e){
     if(!w.contains(e.target)) dispTpClose(w.id.replace('tpw-',''));
   });
 });
+// Convert "8:00 AM" / "12:30 PM" → "08:00" / "12:30" (24-hour)
+function parseTime12to24(str){
+  if(!str) return '';
+  str=str.trim();
+  if(/^\d{1,2}:\d{2}$/.test(str)) return str.padStart(5,'0'); // already 24h
+  const m=str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if(!m) return '';
+  let h=parseInt(m[1]),mn=parseInt(m[2]);
+  const ap=m[3].toUpperCase();
+  if(ap==='AM'){if(h===12)h=0;}else{if(h!==12)h+=12;}
+  return String(h).padStart(2,'0')+':'+String(mn).padStart(2,'0');
+}
 // Parse display value ("8:47 AM", "08:47", "8:47") → "HH:MM" for saving
 function parseDispTime(val){
   if(!val) return '08:00';
@@ -14647,11 +14659,11 @@ async function oAptDetail(aptId, woId){
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Reschedule</div>
     <div class="fr" style="margin:0">
       <div class="fl"><label>Date</label><input type="date" id="aptd-date" value="${apt.scheduled_date||''}"></div>
-      <div class="fl"><label>Time</label><input type="time" id="aptd-time" value="${apt.scheduled_time||'08:00'}"></div>
+      <div class="fl"><label>Start Time</label>${mkDispTimeInput('aptd-time',apt.scheduled_time||'08:00')}</div>
       <div class="fl"><label>Arrival Window</label>
         <select id="aptd-win">${getArrivalWindows().map(w=>`<option${apt.arrival_window===w?' selected':''}>${w}</option>`).join('')}</select>
       </div>
-      <div class="fl"><label>End Time</label><input type="time" id="aptd-end" value="${(()=>{const s=apt.scheduled_time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(apt.estimated_duration||120);return String(Math.floor(tot/60)%24).padStart(2,'0')+':'+String(tot%60).padStart(2,'0');})()}"></div>
+      <div class="fl"><label>End Time</label>${mkDispTimeInput('aptd-end',(()=>{const s=apt.scheduled_time||'08:00';const[h2,m2]=s.split(':').map(Number);const tot=h2*60+m2+(apt.estimated_duration||120);return String(Math.floor(tot/60)%24).padStart(2,'0')+':'+String(tot%60).padStart(2,'0');})())}</div>
     </div>
   </div>`:''}
 
@@ -14922,12 +14934,12 @@ async function svAptDetail(aptId, woId){
   const status=v('aptd-status');
   const notes=v('aptd-notes');
   const newDate=v('aptd-date');
-  const newTime=v('aptd-time');
+  const newTime=parseTime12to24(v('aptd-time'));
   const newWin=v('aptd-win');
   const apts=S.get('lhs:appointments')||[];
   const apt=apts.find(a=>a.id===aptId);
   const _aptStart=newTime||apt?.scheduled_time||'08:00';
-  const _aptEnd=v('aptd-end');
+  const _aptEnd=parseTime12to24(v('aptd-end'));
   const newDur=_aptEnd?(()=>{const[sh2,sm2]=_aptStart.split(':').map(Number);const[eh2,em2]=_aptEnd.split(':').map(Number);return Math.max(15,(eh2*60+em2)-(sh2*60+sm2));})():(apt?.estimated_duration||120);
   // If date or time is changing, check for conflicts before saving
   const reschedDate=newDate||apt?.scheduled_date;
