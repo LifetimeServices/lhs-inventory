@@ -1479,13 +1479,13 @@ const TBL={
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
 function _normLs(r){
-  // Use != null so that null values fall through to the fallback (null !== undefined is true, which was the bug)
-  const qty=(r.qty!=null)?r.qty:(r.qty_on_hand||0);
+  // Always prefer qty_on_hand (the real Supabase column) — the table may have a phantom qty column with stale values
+  const qty=(r.qty_on_hand!=null)?r.qty_on_hand:(r.qty||0);
   return{
     ...r,
     item:r.item||r.item_name||r.sku||'',
     qty:qty,
-    qty_on_hand:(r.qty_on_hand!=null)?r.qty_on_hand:qty,
+    qty_on_hand:qty,
     min:(r.min!=null)?r.min:(r.min_qty||0),
     max:(r.max!=null)?r.max:(r.max_qty||0),
     bin:r.bin||r.bin_shelf||'',
