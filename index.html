@@ -6902,7 +6902,7 @@ function tbRenderStateMap(stAbbr,container){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('overflow','visible');
   // Fixed width — container scrolls rather than SVG shrinking text
-  svg.style.cssText=`width:${W}px;height:${H}px;display:block;border:1.5px solid var(--bdr);border-radius:8px;background:#F8FAFC;flex-shrink:0`;
+  svg.style.cssText=`width:${W}px;height:${H}px;display:block;border:1.5px solid #b0bcd4;border-radius:8px;background:#f0f4f9;flex-shrink:0`;
 
   stateCounties.features.forEach(f=>{
     const countyName=(f.properties&&(f.properties.name||f.properties.NAME))||'';
@@ -6914,18 +6914,18 @@ function tbRenderStateMap(stAbbr,container){
     p.setAttribute('d',path(f));
     p.setAttribute('data-county',countyName);
     p.setAttribute('data-state',stAbbr);
-    let fill='#EEF2F7';
+    let fill='#dce6f0';
     if(isSelected) fill=_TB.color||'#3ABFBF';
     else if(claimInfo) fill=claimInfo.color;
     p.setAttribute('fill',fill);
-    p.setAttribute('stroke','white');
-    p.setAttribute('stroke-width','0.5');
+    p.setAttribute('stroke','#b0bcd4');
+    p.setAttribute('stroke-width','1');
     p.style.cursor=claimInfo?'not-allowed':'pointer';
     const tipLabel=countyName+' County'+(claimInfo?' — '+claimInfo.name:'');
     if(!claimInfo){
       p.addEventListener('click',()=>tbClickCounty(p,stAbbr,countyName));
       p.addEventListener('mouseenter',e=>{
-        if(!sel.has(countyName)) p.setAttribute('fill','#B0C4DE');
+        if(!sel.has(countyName)) p.setAttribute('fill','#a8c4e0');
         const tip=g('tb-tooltip');
         if(tip){tip.textContent=tipLabel;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
       });
@@ -6934,7 +6934,7 @@ function tbRenderStateMap(stAbbr,container){
         if(tip){tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';}
       });
       p.addEventListener('mouseleave',()=>{
-        if(!sel.has(countyName)) p.setAttribute('fill','#EEF2F7');
+        if(!sel.has(countyName)) p.setAttribute('fill','#dce6f0');
         const tip=g('tb-tooltip');if(tip) tip.style.display='none';
       });
     } else {
@@ -6949,20 +6949,23 @@ function tbRenderStateMap(stAbbr,container){
       p.addEventListener('mouseleave',()=>{const tip=g('tb-tooltip');if(tip) tip.style.display='none';});
     }
     svg.appendChild(p);
-    // County label for larger counties
+    // County label
     const centroid=path.centroid(f);
     if(centroid&&!isNaN(centroid[0])){
       const txt=document.createElementNS(ns,'text');
       txt.setAttribute('x',centroid[0]);
       txt.setAttribute('y',centroid[1]+4);
       txt.setAttribute('text-anchor','middle');
-      txt.setAttribute('font-size','11');
-      txt.setAttribute('font-weight','600');
-      const textFill=isSelected?_tbContrast(_TB.color||'#3ABFBF'):(claimInfo?_tbContrast(claimInfo.color):'#1a1a2e');
+      txt.setAttribute('font-size','12');
+      txt.setAttribute('font-weight','700');
+      // High-contrast text: white on colored fills, dark navy on light fills
+      const textFill=isSelected?_tbContrast(_TB.color||'#3ABFBF'):(claimInfo?_tbContrast(claimInfo.color):'#2c3e6b');
       txt.setAttribute('fill',textFill);
       txt.setAttribute('paint-order','stroke');
-      txt.setAttribute('stroke','rgba(248,250,252,0.9)');
-      txt.setAttribute('stroke-width','3');
+      // Halo: white on dark fills, dark on light fills for maximum legibility
+      const haloColor=textFill==='white'?'rgba(0,0,0,0.45)':'rgba(255,255,255,0.92)';
+      txt.setAttribute('stroke',haloColor);
+      txt.setAttribute('stroke-width','4');
       txt.setAttribute('stroke-linejoin','round');
       txt.setAttribute('pointer-events','none');
       txt.textContent=countyName;
@@ -7039,17 +7042,30 @@ function tbClickCounty(pathEl,stAbbr,countyName){
   _TB.color=color;
   if(sel.has(countyName)){
     sel.delete(countyName);
-    pathEl.setAttribute('fill','#EEF2F7');
-    pathEl.addEventListener('mouseenter',()=>pathEl.setAttribute('fill','#B0C4DE'));
-    pathEl.addEventListener('mouseleave',()=>pathEl.setAttribute('fill','#EEF2F7'));
-    // update labels
+    pathEl.setAttribute('fill','#dce6f0');
+    pathEl.addEventListener('mouseenter',()=>pathEl.setAttribute('fill','#a8c4e0'));
+    pathEl.addEventListener('mouseleave',()=>pathEl.setAttribute('fill','#dce6f0'));
+    // restore label to dark navy + white halo
     const svg=pathEl.parentElement;
-    if(svg) svg.querySelectorAll('text').forEach(t=>{if(t.textContent===countyName) t.setAttribute('fill','#555');});
+    if(svg) svg.querySelectorAll('text').forEach(t=>{
+      if(t.textContent===countyName){
+        t.setAttribute('fill','#2c3e6b');
+        t.setAttribute('stroke','rgba(255,255,255,0.92)');
+      }
+    });
   } else {
     sel.add(countyName);
     pathEl.setAttribute('fill',color);
+    // update label to contrast against selected fill + dark halo
+    const textFill=_tbContrast(color);
+    const halo=textFill==='white'?'rgba(0,0,0,0.45)':'rgba(255,255,255,0.92)';
     const svg=pathEl.parentElement;
-    if(svg) svg.querySelectorAll('text').forEach(t=>{if(t.textContent===countyName) t.setAttribute('fill',_tbContrast(color));});
+    if(svg) svg.querySelectorAll('text').forEach(t=>{
+      if(t.textContent===countyName){
+        t.setAttribute('fill',textFill);
+        t.setAttribute('stroke',halo);
+      }
+    });
   }
   const badge=g('tb-badge-'+stAbbr);
   if(badge) badge.textContent=sel.size+' counties selected';
