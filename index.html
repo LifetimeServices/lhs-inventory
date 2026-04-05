@@ -4654,10 +4654,20 @@ async function applyMatPresets(aptId, woId, div, jobType){
     return;
   }
   const mats=S.get('lhs:wo_materials')||[];
+  // Get labels already saved for this appointment to prevent duplicates on re-apply
+  const existingLabels=new Set(
+    mats.filter(m=>m.appointment_id===aptId).map(m=>(m.question_label||m.item_name||'').trim().toLowerCase())
+  );
 
   for(const p of presets){
     const customFields=p.custom_fields||[];
     const ql=(p.question_label||'').trim();
+    // Skip if this exact question/item already exists for this appointment
+    const matchKey=(ql||p.name||p.sku||'').toLowerCase();
+    if(matchKey&&existingLabels.has(matchKey)){
+      console.log('applyMatPresets: skipping duplicate row:',matchKey);
+      continue;
+    }
     console.log('Inserting preset row:',{ql,sku:p.sku,name:p.name,default_qty:p.default_qty});
 
     // Base row — columns confirmed to exist in lhs_wo_materials
