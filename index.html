@@ -1479,12 +1479,15 @@ const TBL={
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
 function _normLs(r){
+  // Use != null so that null values fall through to the fallback (null !== undefined is true, which was the bug)
+  const qty=(r.qty!=null)?r.qty:(r.qty_on_hand||0);
   return{
     ...r,
     item:r.item||r.item_name||r.sku||'',
-    qty:r.qty!==undefined?r.qty:(r.qty_on_hand||0),
-    min:r.min!==undefined?r.min:(r.min_qty||0),
-    max:r.max!==undefined?r.max:(r.max_qty||0),
+    qty:qty,
+    qty_on_hand:(r.qty_on_hand!=null)?r.qty_on_hand:qty,
+    min:(r.min!=null)?r.min:(r.min_qty||0),
+    max:(r.max!=null)?r.max:(r.max_qty||0),
     bin:r.bin||r.bin_shelf||'',
   };
 }
@@ -2212,6 +2215,18 @@ async function refreshVanInvPage(){
   }catch(e){console.warn('refreshVanInvPage:',e?.message);}
 }
 
+// Location Stock — fetch directly from Supabase and re-render page
+async function refreshLocStockPage(){
+  try{
+    const{data,error}=await DB.from('lhs_location_stock').select('*');
+    if(!error&&data){
+      S.set('lhs:ls',data.map(_normLs));
+      const pg=document.getElementById('p-location-stock');
+      if(pg&&pg.classList.contains('active')) pg.innerHTML=buildPage('location-stock');
+    }
+  }catch(e){console.warn('refreshLocStockPage:',e?.message);}
+}
+
 // Live dispatch board refresh — call after any WO/appointment save
 function refreshDispBoard(){
   const pg=document.getElementById('p-dispatch-board');
@@ -2237,6 +2252,8 @@ function showPage(id){
   if(id==='transfer') setTimeout(xfrHistRender,0);
   // Van Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='vans') setTimeout(refreshVanInvPage,0);
+  // Location Stock — always pull fresh from Supabase so quantities are never stale
+  if(id==='location-stock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
   try{localStorage.setItem('lms_current_page',id);}catch{}
   // Push into browser history so back button stays in the app
@@ -3194,6 +3211,7 @@ async function postXfr(){
   _xl=[];
   tst(`${lines.length} item${lines.length!==1?'s':''} transferred`,'success');
   refreshVanInvPage();
+  refreshLocStockPage();
   showPage('transfer');
 }
 function restMax(){
