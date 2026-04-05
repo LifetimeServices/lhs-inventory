@@ -15059,9 +15059,24 @@ async function oAptDetail(aptId, woId){
         </div>
         <div style="flex-shrink:0"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px">Qty</label><input type="number" id="aptd-mqty" value="1" min="1" style="width:72px;padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"></div>
         ${(()=>{
-          const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId&&(t.vehicle_id||t.vehicle));
+          const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
           if(!techs.length) return '';
-          const opts=techs.map(t=>{const v=t.vehicle_id||t.vehicle||'';return`<option value="${v}">${v}${t.tech_name?' — '+t.tech_name:''}</option>`;}).join('');
+          const vi=S.get('lhs:vi')||[];
+          // Resolve actual vehicle ID for each tech (apt_techs.vehicle_id may be a location name, not a van ID)
+          const opts=techs.map(t=>{
+            const techName=t.tech_name||'';
+            let v=t.vehicle_id||t.vehicle||'';
+            // Check if v is a real vehicle in van inventory
+            const directMatch=vi.find(r=>(r.vehicle||r.vehicle_id||'')===v);
+            if(!directMatch){
+              // Fall back to matching by tech_assigned name
+              const nameMatch=vi.find(r=>r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
+              if(nameMatch) v=nameMatch.vehicle||nameMatch.vehicle_id||v;
+            }
+            if(!v) return '';
+            return`<option value="${v}">${v}${techName?' — '+techName:''}</option>`;
+          }).filter(Boolean).join('');
+          if(!opts) return '';
           return`<div style="flex-shrink:0"><label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px">From Van</label><select id="aptd-mvan" style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">${opts}</select></div>`;
         })()}
         <div style="flex-shrink:0">
@@ -15226,15 +15241,25 @@ async function aptAddMaterial(aptId, woId){
   const customerCost=parseFloat(cCost)||0;
   // Determine which vehicle to deduct from — use van dropdown if shown, else first tech's vehicle
   const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
-  const vehicleId=document.getElementById('aptd-mvan')?.value||aptTechs[0]?.vehicle_id||aptTechs[0]?.vehicle||CU.loc||'';
+  const rawVehicleId=document.getElementById('aptd-mvan')?.value||aptTechs[0]?.vehicle_id||aptTechs[0]?.vehicle||'';
+  const vi=S.get('lhs:vi')||[];
+  // Resolve actual vehicle — apt_techs.vehicle_id can be a home location name, not a van ID
+  // Try direct match first, then fall back to tech_assigned name lookup
+  let vanRow=vi.find(r=>r.sku===sku&&(r.vehicle===rawVehicleId||r.vehicle_id===rawVehicleId));
+  if(!vanRow&&rawVehicleId){
+    // rawVehicleId might be a location name — look up by tech name instead
+    const techForVan=aptTechs.find(t=>(t.vehicle_id||t.vehicle||'')===rawVehicleId);
+    const techName=techForVan?.tech_name||aptTechs[0]?.tech_name||'';
+    if(techName) vanRow=vi.find(r=>r.sku===sku&&r.tech_assigned&&r.tech_assigned.toLowerCase()===techName.toLowerCase());
+  }
+  // Use the resolved vehicle_id from van inventory (the real ID like "WI-R2")
+  const vehicleId=vanRow?(vanRow.vehicle||vanRow.vehicle_id||rawVehicleId):rawVehicleId;
   const mat={wo_id:woId,appointment_id:aptId,sku,item_name:name,
     qty_used:qty,unit_cost:unitCost,customer_cost:customerCost,pulled_from:vehicleId,
     entered_by:CU.name,created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:wo_materials',mat);
   if(!saved){tst('Failed to save material','error');return;}
-  // Deduct from the tech's van inventory using direct Supabase upsert
-  const vi=S.get('lhs:vi')||[];
-  const vanRow=vi.find(r=>r.sku===sku&&(r.vehicle===vehicleId||r.vehicle_id===vehicleId));
+  // Deduct from the tech's van inventory
   if(vanRow&&vehicleId){
     const newQty=Math.max(0,(vanRow.qty_on_hand!=null?vanRow.qty_on_hand:(vanRow.qty||0))-qty);
     vanRow.qty_on_hand=newQty; vanRow.qty=newQty; S.set('lhs:vi',vi);
@@ -15245,7 +15270,8 @@ async function aptAddMaterial(aptId, woId){
     }catch(e){console.warn('van-inv deduct failed:',e?.message);}
     tst(`${name} x${qty} logged & deducted from ${vehicleId}`,'success');
   } else {
-    tst(`${name} x${qty} logged`,'info');
+    tst(`${name} x${qty} logged (van not found for deduction)`,'info');
+    console.warn('aptAddMaterial: no van row found for sku',sku,'vehicleId',rawVehicleId,'techs',aptTechs.map(t=>t.tech_name));
   }
   const mats=S.get('lhs:wo_materials')||[];mats.push(saved);S.set('lhs:wo_materials',mats);
   const wos=S.get('lhs:work_orders')||[];
