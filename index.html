@@ -156,9 +156,9 @@ tr:hover td{background:#faf9f6}
 .mh h3{font-size:18px;font-weight:700;color:var(--navy)}
 .mx{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
 /* QTY */
-.ql{color:var(--red);font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:500}
-.qo{color:var(--green);font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:500}
-.qw{color:var(--amber);font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:500}
+.ql{color:var(--red);font-family:ui-monospace,monospace;font-size:13px;font-weight:500}
+.qo{color:var(--green);font-family:ui-monospace,monospace;font-size:13px;font-weight:500}
+.qw{color:var(--amber);font-family:ui-monospace,monospace;font-size:13px;font-weight:500}
 /* LINE TBL */
 .lt{width:100%;border-collapse:collapse;margin-top:8px}
 .lt th{background:var(--navy);color:rgba(255,255,255,.85);padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase}
@@ -2485,7 +2485,7 @@ function addPL(){
   <td><input id="pls${idx}" readonly style="width:85px;background:#f5f5f5"></td>
   <td><input type="number" id="plq${idx}" value="1" min="1" style="width:55px" oninput="plE(${idx})"></td>
   <td><input type="number" id="plc${idx}" value="0" step="0.01" style="width:65px" oninput="plE(${idx})"></td>
-  <td id="ple${idx}" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">$0.00</td>
+  <td id="ple${idx}" style="font-family:ui-monospace,monospace">$0.00</td>
   <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
   tb.appendChild(tr);
 }
@@ -2705,7 +2705,7 @@ function lRecv(){
     <td><input type="number" id="rl${i}" value="${l.qtyOrdered-(l.qtyReceived||0)}" min="0"
       style="width:70px;padding:6px 8px;border:1.5px solid var(--bdr);border-radius:6px;font-size:14px;text-align:center"
       oninput="uBal(${i},${l.qtyOrdered},${l.qtyReceived||0})"></td>
-    <td id="bal${i}" style="color:var(--amber);font-family:Menlo,Monaco,Consolas,Courier New,monospace">${l.qtyOrdered-(l.qtyReceived||0)} left</td>
+    <td id="bal${i}" style="color:var(--amber);font-family:ui-monospace,monospace">${l.qtyOrdered-(l.qtyReceived||0)} left</td>
   </tr>`).join('')}</tbody></table></div>
 
   <!-- Packing Slip Upload -->
@@ -2865,7 +2865,7 @@ function bXfr(){
     <td style="font-size:12px;color:var(--muted)">${t.transfer_date||t.date||'&#8212;'}</td>
     <td>${t.from_location||t.from||'&#8212;'}</td><td>${t.to_location||t.to||'&#8212;'}</td>
     <td style="font-weight:500">${t.item_name||t.item||'&#8212;'}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${t.qty}</td>
+    <td style="font-family:ui-monospace,monospace;font-weight:700">${t.qty}</td>
     <td style="color:var(--muted);font-size:12px">${t.reason||'&#8212;'}</td>
     <td style="color:var(--muted);font-size:12px">${t.transferred_by||t.by||'&#8212;'}</td>
   </tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No transfers yet</td></tr>'}
@@ -2881,7 +2881,7 @@ function addXL(){
     ${_xi.map(i=>`<option value="${i.sku}">${i.name}</option>`).join('')}
   </select></td>
   <td><input id="xls${idx}" readonly style="width:85px;background:#f5f5f5"></td>
-  <td id="xla${idx}" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">&#8212;</td>
+  <td id="xla${idx}" style="font-family:ui-monospace,monospace;color:var(--muted)">&#8212;</td>
   <td><input type="number" id="xlq${idx}" value="1" min="1" style="width:55px"></td>
   <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
   tb.appendChild(tr);
@@ -3044,7 +3044,7 @@ function restMax(){
     const tr=document.createElement('tr'); tr.id='xl'+i;
     tr.innerHTML=`<td style="font-weight:500">${vi2.item||vi2.sku}</td>
     <td><input id="xls${i}" value="${vi2.sku}" readonly style="width:85px;background:#f5f5f5"></td>
-    <td id="xla${i}" style="color:var(--green);font-family:Menlo,Monaco,Consolas,Courier New,monospace">&#8212;</td>
+    <td id="xla${i}" style="color:var(--green);font-family:ui-monospace,monospace">&#8212;</td>
     <td><input type="number" id="xlq${i}" value="${vi2.max-vi2.qty}" style="width:55px"></td>
     <td><button class="dx" onclick="this.closest('tr').remove()">&#215;</button></td>`;
     if(tb) tb.appendChild(tr);
@@ -3168,11 +3168,11 @@ function bVans(){
       return`<tr id="vrow-${esc(v.name)}" style="cursor:pointer" onclick="toggleVanDetail('${esc(v.name)}',this)">
         <td style="font-weight:700;color:var(--navy)">${esc(v.name)}${driverLabel}</td>
         <td>${reg}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${v.state||'—'}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:12px">${v.state||'—'}</td>
         <td style="font-size:12px">${v.division?bx(v.division,'bn'):'—'}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px">${canShowVanCost?'$'+mc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px">$${tc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:700;color:var(--navy)">${canShowVanCost?'$'+tot.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-size:13px">${canShowVanCost?'$'+mc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-size:13px">$${tc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:700;color:var(--navy)">${canShowVanCost?'$'+tot.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
         <td style="text-align:center;font-size:12px;color:var(--teal)">▼ Details</td>
       </tr>
       <tr id="vdet-${esc(v.name)}" style="display:none">
@@ -3185,9 +3185,9 @@ function bVans(){
     <!-- Totals row -->
     ${vehicles.length?`<tfoot><tr style="background:var(--navy);color:white">
       <td colspan="4" style="padding:10px 12px;font-weight:700;font-size:13px">TOTALS — ${vehicles.length} Vehicle${vehicles.length!==1?'s':''}</td>
-      <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;padding:10px 12px">$${totalMat.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;padding:10px 12px">$${totalTool.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;padding:10px 12px">$${(totalMat+totalTool).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;padding:10px 12px">$${totalMat.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;padding:10px 12px">$${totalTool.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;padding:10px 12px">$${(totalMat+totalTool).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td></td>
     </tr></tfoot>`:''}
     </table></div>
@@ -3226,13 +3226,13 @@ function vanDetailHTML(v, vi, tools, items, canEdit){
         const statusColor=status==='OUT'?'var(--red)':status==='LOW'?'var(--amber)':'var(--green)';
         return`<tr style="border-top:1px solid var(--bdr)">
           <td style="padding:7px 10px;font-weight:500">${esc(r.item||r.item_name||r.sku)}</td>
-          <td style="padding:7px 10px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${esc(r.sku)}</td>
+          <td style="padding:7px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${esc(r.sku)}</td>
           <td style="padding:7px 10px">${r.division?bx(r.division,'bn'):''}</td>
           <td style="padding:7px 10px;text-align:center;font-weight:700;color:${statusColor}">${qty}</td>
           <td style="padding:7px 10px;text-align:center;color:var(--muted)">${vMin||'&#8212;'}</td>
           <td style="padding:7px 10px;text-align:center;color:var(--muted)">${vMax||'&#8212;'}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">${uc?f$(uc):'&#8212;'}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600">${tot?f$(tot):'&#8212;'}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:ui-monospace,monospace;color:var(--muted)">${uc?f$(uc):'&#8212;'}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:ui-monospace,monospace;font-weight:600">${tot?f$(tot):'&#8212;'}</td>
           ${canEdit?`<td style="padding:7px 10px">
             <input type="number" value="${r.qty||0}" min="0"
               style="width:60px;padding:3px 6px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;text-align:center"
@@ -3254,9 +3254,9 @@ function vanDetailHTML(v, vi, tools, items, canEdit){
       </tr></thead>
       <tbody>${vTools.map(t=>`<tr style="border-top:1px solid var(--bdr)">
         <td style="padding:7px 10px;font-weight:500">${esc(t.name)}</td>
-        <td style="padding:7px 10px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
+        <td style="padding:7px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
         <td style="padding:7px 10px">${bx(t.status||'Active',t.status==='In Repair'?'ba':'bg')}</td>
-        <td style="padding:7px 10px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(t.cost)}</td>
+        <td style="padding:7px 10px;text-align:right;font-family:ui-monospace,monospace">${f$(t.cost)}</td>
       </tr>`).join('')}
       </tbody>
     </table></div>`
@@ -3365,7 +3365,7 @@ function bLocs(){
     <td style="font-weight:700;color:var(--navy)">${l.name}</td>
     <td>${bx(l.type,'bn')}</td>
     <td>${l.region?`<span style="background:${REGIONS[l.region]?.light||'#f3f4f6'};color:${REGIONS[l.region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:12px;font-weight:600">${l.region}</span>`:'&#8212;'}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${l.state||'&#8212;'}</td>
+    <td style="font-family:ui-monospace,monospace;font-size:12px">${l.state||'&#8212;'}</td>
     <td>${l.city||'&#8212;'}</td>
     <td style="font-size:12px;color:var(--muted)">${isVeh?(l.driver||'&#8212;'):(l.addr||l.address||'&#8212;')}</td>
     <td>${l.active?bx('Active','bg'):bx('Inactive','bgr')}</td>
@@ -3970,7 +3970,7 @@ function bLS(){
           const status=r.qty===0?'<span class="bx br">OUT</span>':r.qty<r.min?'<span class="bx ba">LOW</span>':'<span class="bx bg">OK</span>';
           return`<tr>
             <td style="font-weight:500">${r.item||r.sku}</td>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${r.sku}</td>
+            <td style="font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${r.sku}</td>
             <td style="color:var(--muted)">${r.bin||'&#8212;'}</td>
             <td class="${r.qty<r.min?'ql':r.qty===0?'qw':'qo'}" style="font-weight:700;font-size:15px">${r.qty}</td>
             <td>${r.min}</td><td>${r.max}</td>
@@ -4061,7 +4061,7 @@ function bTest(){
     ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
     <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">${l}</div>
-      <div style="font-size:24px;font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--navy)">
+      <div style="font-size:24px;font-weight:700;font-family:ui-monospace,monospace;color:var(--navy)">
         ${l==='At Warehouse'?ts.filter(x=>x.status==='At Warehouse').length:dep.filter(x=>x.type===l).length}
       </div><div style="font-size:11px;color:var(--muted)">${l==='At Warehouse'?'Available':'Cust/Transit'}</div>
     </div>`).join('')}
@@ -4069,9 +4069,9 @@ function bTest(){
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
   <tbody>${ts.map((t,i)=>`<tr>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${t.id}</td>
+    <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${t.id}</td>
     <td>${bx(t.type,t.type==='Electronic'?'bb':'bn')}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${t.serial}</td>
+    <td style="font-family:ui-monospace,monospace;font-size:12px">${t.serial}</td>
     <td>${bx(t.status,tc(t.status))}</td><td>${t.vehicle||'&#8212;'}</td>
     <td style="font-weight:500">${t.customer||'&#8212;'}</td>
     <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
@@ -5122,7 +5122,7 @@ function bInt(){
       <div class="id2">Powers the 🤖 Assistant chat panel. Free AI via Groq's Llama 3.3 (70B) model — no credit card required. Get your free key at <a href="https://console.groq.com" target="_blank" style="color:var(--teal)">console.groq.com →</a></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
         <input id="groq-key-input" type="password" value="${esc(S.get('lhs:groq_api_key')||'')}" placeholder="gsk_..."
-          style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;max-width:420px">
+          style="flex:1;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:ui-monospace,monospace;max-width:420px">
         <button class="btn btn-n sm" onclick="saveGroqKey()">Save Key</button>
         ${(S.get('lhs:groq_api_key')||'').trim()?`<button class="btn btn-g sm" onclick="toggleVA()">Open Assistant &#8594;</button>`:''}
       </div>
@@ -5622,7 +5622,7 @@ function bOpsSDS(docs){
     ${sds.map(d=>`<tr>
       <td style="font-weight:600">${esc(d.title)}</td>
       <td style="color:var(--muted)">${esc(d.manufacturer||'—')}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
       <td style="font-size:12px">${d.sds_date||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${(d.created_at||'').slice(0,10)}</td>
       <td style="white-space:nowrap">
@@ -5649,7 +5649,7 @@ function opsFilterSDS(q){
   tbody.innerHTML=filtered.map(d=>`<tr>
     <td style="font-weight:600">${esc(d.title)}</td>
     <td style="color:var(--muted)">${esc(d.manufacturer||'—')}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
+    <td style="font-family:ui-monospace,monospace;font-size:12px">${esc(d.cas_number||'—')}</td>
     <td style="font-size:12px">${d.sds_date||'—'}</td>
     <td style="font-size:12px;color:var(--muted)">${(d.created_at||'').slice(0,10)}</td>
     <td style="white-space:nowrap">
@@ -6838,7 +6838,7 @@ function aDivs(){
     const displayName=map[name]||'';
     return`<tr>
     <td style="font-weight:600">${name}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${typeof d==='string'?'':d.code||''}</td>
+    <td style="font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${typeof d==='string'?'':d.code||''}</td>
     <td style="color:var(--muted)">${typeof d==='string'?'':d.type||''}</td>
     <td style="font-size:12px;color:${displayName?'var(--navy)':'var(--muted)'};font-style:${displayName?'normal':'italic'}">${displayName||'— same as internal —'}</td>
     <td><button class="btn sm btn-r" onclick="delDiv(${i})">&#215;</button></td>
@@ -7738,7 +7738,7 @@ function bAcctDashboard(){
         :`<div style="padding:12px 16px"><div class="tw"><table><thead><tr><th>State</th><th>Amount</th><th>% of Total</th></tr></thead>
           <tbody>${Object.entries(stateSpend).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([state,amt])=>{
             const pct=totalReceipts>0?(amt/totalReceipts*100).toFixed(1):0;
-            return`<tr><td style="font-weight:600">${state}</td><td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${fmt(amt)}</td><td style="color:var(--muted)">${pct}%</td></tr>`;
+            return`<tr><td style="font-weight:600">${state}</td><td style="font-family:ui-monospace,monospace">${fmt(amt)}</td><td style="color:var(--muted)">${pct}%</td></tr>`;
           }).join('')}</tbody></table></div></div>`}
     </div>
 
@@ -7754,8 +7754,8 @@ function bAcctDashboard(){
           const cnt=receipts.filter(r=>r.submitted_by===emp).length;
           const avg=cnt>0?amt/cnt:0;
           return`<tr><td style="font-weight:600">${esc(emp)}</td><td>${cnt}</td>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(amt)}</td>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">${fmt(avg)}</td></tr>`;
+            <td style="font-family:ui-monospace,monospace;font-weight:700">${fmt(amt)}</td>
+            <td style="font-family:ui-monospace,monospace;color:var(--muted)">${fmt(avg)}</td></tr>`;
         }).join('')}</tbody></table></div>`}
   </div>
 
@@ -7769,11 +7769,11 @@ function bAcctDashboard(){
       const rem=budget-spent;
       const over=budget>0&&spent>budget;
       return`<tr>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${esc(c.code)}</td>
+        <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${esc(c.code)}</td>
         <td>${esc(c.description)}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${budget>0?fmt(budget):'—'}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${over?'var(--red)':'inherit'}">${fmt(spent)}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${over?'var(--red)':'var(--green)'}">${budget>0?(over?'('+fmt(Math.abs(rem))+') OVER':fmt(rem)):'—'}</td>
+        <td style="font-family:ui-monospace,monospace">${budget>0?fmt(budget):'—'}</td>
+        <td style="font-family:ui-monospace,monospace;color:${over?'var(--red)':'inherit'}">${fmt(spent)}</td>
+        <td style="font-family:ui-monospace,monospace;color:${over?'var(--red)':'var(--green)'}">${budget>0?(over?'('+fmt(Math.abs(rem))+') OVER':fmt(rem)):'—'}</td>
       </tr>`;}).join('')}
     </tbody></table></div>
   </div>`:''}
@@ -7840,7 +7840,7 @@ function bAcctReceipts(){
           <td style="font-weight:600;font-size:13px">${esc(r.submitted_by||'—')}</td>
           <td style="font-size:13px">${esc(r.vendor_name||'—')}</td>
           <td><span style="font-size:11px;color:var(--navy);font-weight:600">${codeLabel?codeLabel+' — ':''}${esc(r.category||'Uncategorized')}</span></td>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(r.total_amount||0)}</td>
+          <td style="font-family:ui-monospace,monospace;font-weight:700">${fmt(r.total_amount||0)}</td>
           <td>${bx(r.status||'Pending',statusColor)}</td>
           <td style="font-size:12px;color:var(--muted)">${r.region||'—'}${r.state?' / '+r.state:''}</td>
           <td style="white-space:nowrap;text-align:right">
@@ -8011,12 +8011,12 @@ Return this exact JSON structure:
               return`<tr style="border-bottom:1px solid var(--surf)">
                 <td style="padding:4px 6px">${esc(li.description||'')}</td>
                 <td style="padding:4px 6px;color:var(--navy);font-weight:600">${c?c.code:'—'}</td>
-                <td style="padding:4px 6px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(li.amount)}</td>
+                <td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace">${f$(li.amount)}</td>
               </tr>`;}).join('')}
             </tbody>
             <tfoot><tr style="border-top:2px solid var(--bdr)">
               <td colspan="2" style="padding:4px 6px;font-weight:700">Total</td>
-              <td style="padding:4px 6px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${f$(parsed.total_amount)}</td>
+              <td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace;font-weight:700">${f$(parsed.total_amount)}</td>
             </tr></tfoot>
           </table>`
         :`<div style="color:var(--muted);font-size:12px">Total: ${f$(parsed.total_amount)}</div>`}`;
@@ -8117,7 +8117,7 @@ function viewReceipt(id){
       <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">&#129302; AI-Detected Line Items</div>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead><tr style="border-bottom:1px solid var(--bdr)"><th style="text-align:left;padding:4px">Item</th><th style="text-align:right;padding:4px">Amount</th></tr></thead>
-        <tbody>${(r.line_items||[]).map(li=>`<tr style="border-bottom:1px solid var(--surf)"><td style="padding:4px">${esc(li.description||'')}</td><td style="padding:4px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(li.amount)}</td></tr>`).join('')}</tbody>
+        <tbody>${(r.line_items||[]).map(li=>`<tr style="border-bottom:1px solid var(--surf)"><td style="padding:4px">${esc(li.description||'')}</td><td style="padding:4px;text-align:right;font-family:ui-monospace,monospace">${f$(li.amount)}</td></tr>`).join('')}</tbody>
       </table></div>`:''}
     ${(r.file_url||r.file_data)&&(r.file_type?.startsWith('image/')||r.file_type==='image/jpeg')?`<div style="margin-bottom:12px"><img src="${r.file_url||r.file_data}" style="max-width:100%;max-height:250px;border-radius:8px;border:1px solid var(--bdr)"></div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -8159,7 +8159,7 @@ function bAcctDivision(){
   const pct=v=>v.toFixed(1)+'%';
   const gpColor=v=>v>=0?'var(--green)':'var(--red)';
   const mgnBadge=m=>`<span style="background:${m>=40?'#e8f5e9':m>=20?'#fff8e1':'#ffebee'};color:${m>=40?'var(--green)':m>=20?'var(--amber)':'var(--red)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${pct(m)}</span>`;
-  const colBar=p2=>`<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="width:60px;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(p2,100).toFixed(1)}%;background:${p2>=90?'var(--green)':p2>=60?'var(--amber)':'var(--red)'};border-radius:3px"></div></div><span style="font-size:12px;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${pct(p2)}</span></div>`;
+  const colBar=p2=>`<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="width:60px;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(p2,100).toFixed(1)}%;background:${p2>=90?'var(--green)':p2>=60?'var(--amber)':'var(--red)'};border-radius:3px"></div></div><span style="font-size:12px;font-family:ui-monospace,monospace">${pct(p2)}</span></div>`;
 
   // Step 1: base date filter
   let baseWOs=wos.filter(w=>{
@@ -8232,20 +8232,20 @@ function bAcctDivision(){
         ${rows.map(r=>{const cp=r.revenue>0?(r.collected/r.revenue)*100:0;return`<tr style="${r.jobs===0?'opacity:0.4':''}">
           <td style="font-weight:600;color:var(--navy)">${esc(r.label)}</td>
           <td><span style="background:var(--surf);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${r.jobs}</span></td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600">${fmt(r.revenue)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${fmt(r.collected)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--red)">${fmt(r.expenses)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:${gpColor(r.gp)}">${fmt(r.gp)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:600">${fmt(r.revenue)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace">${fmt(r.collected)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;color:var(--red)">${fmt(r.expenses)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:${gpColor(r.gp)}">${fmt(r.gp)}</td>
           <td style="text-align:right">${mgnBadge(r.margin)}</td>
           <td style="text-align:right">${colBar(cp)}</td>
         </tr>`;}).join('')}
         <tr style="background:var(--surf);border-top:2px solid var(--bdr)">
           <td style="font-weight:700;color:var(--navy)">TOTAL</td>
           <td><span style="background:var(--navy);color:var(--teal);border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${totJobs}</span></td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${fmt(totRev)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(totCol)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--red)">${fmt(totExp)}</td>
-          <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:${gpColor(totGP)}">${fmt(totGP)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${fmt(totRev)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(totCol)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:var(--red)">${fmt(totExp)}</td>
+          <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:${gpColor(totGP)}">${fmt(totGP)}</td>
           <td style="text-align:right">${mgnBadge(totMgn)}</td>
           <td></td>
         </tr>
@@ -8378,10 +8378,10 @@ function bAcctInvoices(){
           const wo=wos.find(w=>w.id===i.work_order_id);
           const st=i.status||'Open';
           return`<tr>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
+            <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
             <td style="font-weight:500">${esc(i.customer_name||cust?.name||'—')}</td>
             <td>${esc(i.division||'—')}</td>
-            <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(i.amount||0)}</td>
+            <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(i.amount||0)}</td>
             <td>${fmtDate(i.invoice_date)}</td>
             <td style="${st==='Overdue'?'color:var(--red);font-weight:600':''}">${fmtDate(i.due_date)}</td>
             <td><span style="background:${statusBg[st]||'var(--surf)'};color:${statusColor[st]||'var(--muted)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${st}</span></td>
@@ -8653,10 +8653,10 @@ function bAcctAR(){
     <div class="tw" style="overflow-x:auto;margin-top:8px"><table>
       <thead><tr><th>#</th><th>Customer</th><th>Division</th><th style="text-align:right">Amount</th><th>Due Date</th><th>Days Overdue</th><th>Action</th></tr></thead>
       <tbody>${b.items.map(i=>`<tr>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
+        <td style="font-family:ui-monospace,monospace;font-weight:700">#${esc(i.invoice_number||i.id?.slice(-6)||'—')}</td>
         <td style="font-weight:500">${esc(i.customer_name||'—')}</td>
         <td>${esc(i.division||'—')}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(i.amount||0)}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(i.amount||0)}</td>
         <td style="color:${b.color};font-weight:600">${fmtDate(i.due_date)}</td>
         <td><span style="background:${b.bg};color:${b.color};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700">${i.daysOverdue}d</span></td>
         <td style="white-space:nowrap">
@@ -8747,14 +8747,14 @@ function bAcctAP(){
           const due=b.due_date?new Date(b.due_date):null;
           const isOver=st!=='Paid'&&st!=='Void'&&due&&due<today;
           return`<tr>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${esc(b.bill_number||b.id?.slice(-6)||'—')}</td>
+            <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${esc(b.bill_number||b.id?.slice(-6)||'—')}</td>
             <td style="font-weight:500">${esc(b.vendor_name||'—')}</td>
             <td>${esc(b.division||'—')}</td>
-            <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(b.amount||0)}</td>
+            <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(b.amount||0)}</td>
             <td>${fmtDate(b.bill_date)}</td>
             <td style="${isOver?'color:var(--red);font-weight:600':''}">${fmtDate(b.due_date)}</td>
             <td><span style="background:${statusBg[isOver?'Overdue':st]};color:${statusColor[isOver?'Overdue':st]};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${isOver?'Overdue':st}</span></td>
-            <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${esc(b.gl_code||'—')}</td>
+            <td style="font-family:ui-monospace,monospace;font-size:12px">${esc(b.gl_code||'—')}</td>
             ${canEdit?`<td style="white-space:nowrap;text-align:right">
               ${st!=='Paid'?`<button class="btn sm btn-g" onclick="markBillPaid('${esc(b.id)}')">Pay</button>`:''}
               <button class="btn sm btn-o" onclick="oEditBill('${esc(b.id)}')">Edit</button>
@@ -8904,7 +8904,7 @@ function bAcctCOA(){
       <div class="tw" style="overflow-x:auto;margin-top:6px"><table>
         <thead><tr><th>Code</th><th>Account Name</th><th>Sub-type</th><th>Description</th>${canEdit?'<th></th>':''}</tr></thead>
         <tbody>${accounts.sort((a,b)=>a.code.localeCompare(b.code)).map(a=>`<tr>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;font-size:14px;color:var(--navy)">${esc(a.code)}</td>
+          <td style="font-family:ui-monospace,monospace;font-weight:700;font-size:14px;color:var(--navy)">${esc(a.code)}</td>
           <td style="font-weight:600;color:var(--text)">${esc(a.name)}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.subtype||'')}</td>
           <td style="font-size:12px;color:var(--muted)">${esc(a.description||'')}</td>
@@ -9109,15 +9109,15 @@ function bAcctJournal(){
           <thead><tr><th>Account</th><th>Description</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead>
           <tbody>
             ${lines.map(l=>`<tr>
-              <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px">${esc(l.account_code||'')} ${esc(l.account_name||'')}</td>
+              <td style="font-family:ui-monospace,monospace;font-size:13px">${esc(l.account_code||'')} ${esc(l.account_name||'')}</td>
               <td style="font-size:13px;color:var(--muted)">${esc(l.description||'')}</td>
-              <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:${l.debit?'600':'400'};color:${l.debit?'var(--navy)':'var(--muted)'}">${l.debit?fmt(l.debit):'—'}</td>
-              <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:${l.credit?'600':'400'};color:${l.credit?'var(--navy)':'var(--muted)'}">${l.credit?fmt(l.credit):'—'}</td>
+              <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:${l.debit?'600':'400'};color:${l.debit?'var(--navy)':'var(--muted)'}">${l.debit?fmt(l.debit):'—'}</td>
+              <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:${l.credit?'600':'400'};color:${l.credit?'var(--navy)':'var(--muted)'}">${l.credit?fmt(l.credit):'—'}</td>
             </tr>`).join('')}
             <tr style="background:var(--surf);border-top:2px solid var(--bdr)">
               <td colspan="2" style="font-weight:700;font-size:13px">TOTAL</td>
-              <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(entry.total_debits||0)}</td>
-              <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${fmt(entry.total_credits||0)}</td>
+              <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(entry.total_debits||0)}</td>
+              <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">${fmt(entry.total_credits||0)}</td>
             </tr>
           </tbody>
         </table></div>
@@ -9346,11 +9346,11 @@ function bAcctBank(){
                   <td style="white-space:nowrap">${fmtDate(t.txn_date)}</td>
                   <td style="font-weight:500">${esc(t.description||'—')}</td>
                   <td style="font-size:12px">${esc(t.division||'—')}</td>
-                  <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${esc(t.gl_code||'—')}</td>
-                  <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:${isCredit?'var(--green)':'var(--red)'}">
+                  <td style="font-family:ui-monospace,monospace;font-size:12px">${esc(t.gl_code||'—')}</td>
+                  <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:${isCredit?'var(--green)':'var(--red)'}">
                     ${isCredit?'+':'-'}${fmt(t.amount)}
                   </td>
-                  <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">${fmt(rowBal)}</td>
+                  <td style="text-align:right;font-family:ui-monospace,monospace;color:var(--muted)">${fmt(rowBal)}</td>
                   <td style="text-align:center">
                     ${t.reconciled
                       ?`<span style="color:var(--green);font-size:16px">&#10003;</span>`
@@ -9726,9 +9726,9 @@ function bAcctSettings(){
       :`<div class="tw"><table>
         <thead><tr><th>Code</th><th>Description</th><th>Budget (Period)</th><th>Type</th>${canEdit?'<th></th>':''}</tr></thead>
         <tbody>${codes.map(c=>`<tr>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy);font-size:14px">${esc(c.code)}</td>
+          <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy);font-size:14px">${esc(c.code)}</td>
           <td style="font-weight:500">${esc(c.description)}</td>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${c.budget?'$'+Number(c.budget).toLocaleString('en-US',{minimumFractionDigits:2}):'—'}</td>
+          <td style="font-family:ui-monospace,monospace">${c.budget?'$'+Number(c.budget).toLocaleString('en-US',{minimumFractionDigits:2}):'—'}</td>
           <td>${bx(c.type||'Expense')}</td>
           ${canEdit?`<td style="white-space:nowrap;text-align:right">
             <button class="btn sm btn-o" onclick="oEditAcctCode('${esc(c.id)}')">Edit</button>
@@ -9875,7 +9875,7 @@ function oInvoiceTemplate(tab, tmplId){
             <input type="color" id="it-color" value="${t.accent_color||'#c0392b'}"
               style="width:44px;height:38px;padding:2px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer">
             <input id="it-color-hex" value="${t.accent_color||'#c0392b'}"
-              style="flex:1;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:Menlo,Monaco,Consolas,Courier New,monospace"
+              style="flex:1;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:ui-monospace,monospace"
               oninput="document.getElementById('it-color').value=this.value">
           </div>
         </div>
@@ -9884,7 +9884,7 @@ function oInvoiceTemplate(tab, tmplId){
             <input type="color" id="it-hdrcolor" value="${t.header_color||'#1a2744'}"
               style="width:44px;height:38px;padding:2px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer">
             <input id="it-hdrcolor-hex" value="${t.header_color||'#1a2744'}"
-              style="flex:1;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:Menlo,Monaco,Consolas,Courier New,monospace"
+              style="flex:1;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:ui-monospace,monospace"
               oninput="document.getElementById('it-hdrcolor').value=this.value">
           </div>
         </div>
@@ -10976,7 +10976,7 @@ function mktCampaigns(campaigns,settings){
       </div>
       <div class="fl" style="margin-bottom:12px"><label>Email Body (HTML or plain text)</label>
         <textarea id="nc-body" rows="10" placeholder="Write your email content here...\n\nTip: You can use {customer_name} as a merge tag."
-          style="width:100%;padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;resize:vertical"></textarea></div>
+          style="width:100%;padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:ui-monospace,monospace;resize:vertical"></textarea></div>
       <div class="fr" style="margin-bottom:12px">
         <div class="fl"><label>Recipient List</label>
           <select id="nc-list" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
@@ -11041,8 +11041,8 @@ function mktCampaigns(campaigns,settings){
           <td style="font-weight:600">${esc(c.name)}</td>
           <td>${bx(c.status||'Draft',c.status==='Sent'?'bg':c.status==='Scheduled'?'bb':'ba')}</td>
           <td style="font-size:12px">${esc(listLabels[c.list]||c.list||'—')}</td>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${(c.sent_count||0).toLocaleString()}</td>
-          <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${oRate>=20?'var(--green)':oRate>=10?'var(--amber)':'var(--muted)'}">${c.sent_count?oRate+'%':'—'}</td>
+          <td style="font-family:ui-monospace,monospace">${(c.sent_count||0).toLocaleString()}</td>
+          <td style="font-family:ui-monospace,monospace;color:${oRate>=20?'var(--green)':oRate>=10?'var(--amber)':'var(--muted)'}">${c.sent_count?oRate+'%':'—'}</td>
           <td style="font-size:12px;color:var(--muted)">${c.send_date?new Date(c.send_date).toLocaleDateString():'Draft'}</td>
           <td><button class="btn sm btn-o" onclick="event.stopPropagation();deleteCampaign('${c.id}')">Delete</button></td>
         </tr>`;}).join('')}
@@ -13790,7 +13790,7 @@ function woCreateForm(){
 
   return`<div style="max-height:70vh;overflow-y:auto;padding-right:8px">
   <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:space-between">
-    <span>WO Number will be: <strong id="wo-preview" style="color:var(--navy);font-family:Menlo,Monaco,Consolas,Courier New,monospace">${woPreview}</strong></span>
+    <span>WO Number will be: <strong id="wo-preview" style="color:var(--navy);font-family:ui-monospace,monospace">${woPreview}</strong></span>
     <span style="font-size:11px;color:var(--muted)">assigned on save</span>
   </div>
 
@@ -14438,7 +14438,7 @@ async function openWO(woId){
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             ${bx(apt.status||'Scheduled',apt.status==='Completed'?'bg':apt.status==='On Site'?'bb':apt.status==='En Route'?'ba':'bgr')}
-            <span style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:600">${f$(apt.price)}</span>
+            <span style="font-family:ui-monospace,monospace;font-size:13px;font-weight:600">${f$(apt.price)}</span>
           </div>
         </div>
 
@@ -14532,7 +14532,7 @@ async function openWO(woId){
     ${payments.length?`<div class="tw"><table><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Ref #</th><th>Posted By</th><th>Notes</th></tr></thead>
     <tbody>${payments.map(p=>`<tr>
       <td style="font-size:12px;color:var(--muted)">${new Date(p.posted_at).toLocaleDateString()}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600;color:var(--green)">${f$(p.amount)}</td>
+      <td style="font-family:ui-monospace,monospace;font-weight:600;color:var(--green)">${f$(p.amount)}</td>
       <td>${p.payment_method||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.reference_number||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.posted_by||'—'}</td>
@@ -15795,7 +15795,7 @@ function renderPhotoViewer(photos,idx,aptId,woId){
           return sc.totalPts>0||p.flags?.length?
             `<div style="display:flex;align-items:center;gap:10px">
               <div style="text-align:center">
-                <div style="font-size:28px;font-weight:800;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${sc.color};line-height:1">${sc.score}%</div>
+                <div style="font-size:28px;font-weight:800;font-family:ui-monospace,monospace;color:${sc.color};line-height:1">${sc.score}%</div>
                 <div style="font-size:11px;color:${sc.color};font-weight:600">${sc.label}</div>
               </div>
               <div style="background:${sc.color};color:white;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800">${sc.letter}</div>
@@ -15869,7 +15869,7 @@ function renderPhotoViewer(photos,idx,aptId,woId){
           return hasSafety||p.safety==='safe'?
             `<div style="display:flex;align-items:center;gap:10px">
               <div style="text-align:center">
-                <div style="font-size:28px;font-weight:800;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${sc.color};line-height:1">${sc.score}%</div>
+                <div style="font-size:28px;font-weight:800;font-family:ui-monospace,monospace;color:${sc.color};line-height:1">${sc.score}%</div>
                 <div style="font-size:11px;color:${sc.color};font-weight:600">${sc.label}</div>
               </div>
               <div style="background:${sc.color};color:white;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800">${sc.letter}</div>
@@ -16341,7 +16341,7 @@ function bProperties(){
       <td style="font-size:12px">${bx(p.property_type||'—','bn')}</td>
       <td style="font-size:13px">${cust?`${cust.first_name} ${cust.last_name}`:'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.foundation_type||'—'}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${p.sq_ft?p.sq_ft.toLocaleString():' —'}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:12px">${p.sq_ft?p.sq_ft.toLocaleString():' —'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.year_built||'—'}</td>
       <td>${p.region?`<span style="background:${REGIONS[p.region]?.light||'#f3f4f6'};color:${REGIONS[p.region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">${p.region}</span>`:'—'}</td>
       <td style="text-align:center;font-weight:600">${wos.length}</td>
@@ -16418,7 +16418,7 @@ function bBusiness(){
         <td style="font-size:12px">${bx(b.business_type||'—','bn')}</td>
         <td style="font-size:11px;color:var(--muted)">${b.account_category||'—'}</td>
         <td style="font-size:13px">${esc(b.contact_name||'—')}<div style="font-size:11px;color:var(--muted)">${esc(b.contact_title||'')}</div></td>
-        <td style="font-size:12px;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${esc(b.phone||'—')}</td>
+        <td style="font-size:12px;font-family:ui-monospace,monospace">${esc(b.phone||'—')}</td>
         <td style="font-size:12px">${esc(b.city||'')}${b.state?' '+b.state:''}</td>
         <td>${_acctStatusBadge(b.account_status)}</td>
         <td style="text-align:center;font-weight:600">${wos.length}</td>
@@ -16633,9 +16633,9 @@ function bCommercial(){
         <td style="font-size:12px">${bx(c.account_type||'—','bn')}</td>
         <td style="font-size:11px"><span style="background:${c.account_category==='Commercial Business'?'#dbeafe':'#fef3c7'};color:${c.account_category==='Commercial Business'?'#1e40af':'#92400e'};padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">${c.account_category||'—'}</span></td>
         <td style="font-size:13px">${esc(c.contact_name||'—')}<div style="font-size:11px;color:var(--muted)">${esc(c.contact_title||'')}</div></td>
-        <td style="font-size:12px;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${esc(c.phone||'—')}</td>
+        <td style="font-size:12px;font-family:ui-monospace,monospace">${esc(c.phone||'—')}</td>
         <td style="font-size:12px">${esc(c.city||'')}${c.state?' '+c.state:''}</td>
-        <td style="font-size:11px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">${esc(c.license_number||'—')}</td>
+        <td style="font-size:11px;font-family:ui-monospace,monospace;color:var(--muted)">${esc(c.license_number||'—')}</td>
         <td>${_acctStatusBadge(c.account_status)}</td>
         <td style="text-align:center;font-weight:600">${wos.length}</td>
         <td><button class="btn sm btn-o" onclick="event.stopPropagation();openCommercial('${c.id}')">View</button></td>
@@ -16781,7 +16781,7 @@ function openCommercial(id){
       ${c.region?`<div style="font-size:12px;color:var(--muted)">${c.region} Region</div>`:''}
     </div>
     ${c.license_number?`<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">License / Cert #</div>
-      <div style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px;font-weight:600">${esc(c.license_number)}</div></div>`:''}
+      <div style="font-family:ui-monospace,monospace;font-size:13px;font-weight:600">${esc(c.license_number)}</div></div>`:''}
   </div>
   ${c.notes?`<div style="background:var(--surf);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">${esc(c.notes)}</div>`:''}
   <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Work Orders (${wos.length})</div>
@@ -16957,7 +16957,7 @@ function _acctImpStep1(){
   <input type="file" id="acct-imp-file" accept=".xlsx,.xls,.csv,.numbers" style="display:none" onchange="_acctImpHandleFile(this.files[0])">
   <div style="text-align:center;margin:14px 0;font-size:12px;color:var(--muted)">— or paste CSV text directly —</div>
   <textarea id="acct-imp-paste" rows="4" placeholder="Paste CSV here…"
-    style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;resize:vertical;box-sizing:border-box"
+    style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical;box-sizing:border-box"
     oninput="_acctImpPaste(this.value)"></textarea>
   <div id="acct-imp-status" style="margin-top:10px;font-size:13px;color:var(--navy);font-weight:500;min-height:18px"></div>
   <div style="border-top:1px solid var(--bdr);padding-top:16px;margin-top:16px;display:flex;gap:8px">
@@ -17494,11 +17494,11 @@ function openProperty(id){
     </div>
     <div style="background:var(--surf);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px">Year Built</div>
-      <div style="font-size:18px;font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${p.year_built||'—'}</div>
+      <div style="font-size:18px;font-weight:700;font-family:ui-monospace,monospace">${p.year_built||'—'}</div>
     </div>
     <div style="background:var(--surf);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px">Sq Ft</div>
-      <div style="font-size:18px;font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${p.sq_ft?p.sq_ft.toLocaleString():'—'}</div>
+      <div style="font-size:18px;font-weight:700;font-family:ui-monospace,monospace">${p.sq_ft?p.sq_ft.toLocaleString():'—'}</div>
     </div>
     <div style="background:var(--surf);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px">Foundation</div>
@@ -17506,11 +17506,11 @@ function openProperty(id){
     </div>
     <div style="background:var(--surf);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px">Total Revenue</div>
-      <div style="font-size:18px;font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--green)">$${Math.round(totalRev).toLocaleString()}</div>
+      <div style="font-size:18px;font-weight:700;font-family:ui-monospace,monospace;color:var(--green)">$${Math.round(totalRev).toLocaleString()}</div>
     </div>
     <div style="background:var(--surf);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-bottom:4px">Work Orders</div>
-      <div style="font-size:18px;font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--navy)">${wos.length}</div>
+      <div style="font-size:18px;font-weight:700;font-family:ui-monospace,monospace;color:var(--navy)">${wos.length}</div>
     </div>
   </div>
 
@@ -17529,8 +17529,8 @@ function openProperty(id){
       <div class="ct">Radon System</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px">
         <span style="color:var(--muted)">Status</span><span>${radonStatus}</span>
-        ${p.radon_initial_level?`<span style="color:var(--muted)">Initial</span><span style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${p.radon_initial_level} pCi/L ${p.radon_initial_date?'('+p.radon_initial_date+')':''}</span>`:''}
-        ${p.radon_last_level?`<span style="color:var(--muted)">Last Test</span><span style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${p.radon_last_level<4?'var(--green)':'var(--red)'}">${p.radon_last_level} pCi/L ${p.radon_last_date?'('+p.radon_last_date+')':''}</span>`:''}
+        ${p.radon_initial_level?`<span style="color:var(--muted)">Initial</span><span style="font-family:ui-monospace,monospace">${p.radon_initial_level} pCi/L ${p.radon_initial_date?'('+p.radon_initial_date+')':''}</span>`:''}
+        ${p.radon_last_level?`<span style="color:var(--muted)">Last Test</span><span style="font-family:ui-monospace,monospace;color:${p.radon_last_level<4?'var(--green)':'var(--red)'}">${p.radon_last_level} pCi/L ${p.radon_last_date?'('+p.radon_last_date+')':''}</span>`:''}
         ${p.radon_fan_model?`<span style="color:var(--muted)">Fan</span><span>${p.radon_fan_model}</span>`:''}
         ${p.radon_install_date?`<span style="color:var(--muted)">Installed</span><span>${p.radon_install_date}</span>`:''}
       </div>
@@ -17569,9 +17569,9 @@ function openProperty(id){
   <div class="card" style="padding:0;margin-bottom:14px"><div class="tw"><table>
     <thead><tr><th>Est #</th><th>Division</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
     <tbody>${ests.map(e=>`<tr>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${e.estimate_number}</td>
+      <td style="font-family:ui-monospace,monospace;font-weight:700">${e.estimate_number}</td>
       <td>${bx(e.division||'—','bn')}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(e.total_price)}</td>
+      <td style="font-family:ui-monospace,monospace">${f$(e.total_price)}</td>
       <td>${bx(e.status||'Draft',e.status==='Accepted'?'bg':e.status==='Sent'?'ba':'bn')}</td>
       <td style="font-size:12px;color:var(--muted)">${(e.estimate_date||e.created_at||'').slice(0,10)}</td>
       <td><button class="btn sm btn-o" onclick="openEstimate('${e.id}')">Open</button></td>
@@ -17729,7 +17729,7 @@ function renderCustTable(custs){
       <td style="font-size:13px">${c.phone||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${c.email||'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${c.address||''} ${c.city||''}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${c.state||'—'}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:12px">${c.state||'—'}</td>
       <td>${region!=='—'?`<span style="background:${REGIONS[region]?.light||'#f3f4f6'};color:${REGIONS[region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">${region}</span>`:'—'}</td>
       <td>${bx(c.source||'Manual',c.source==='Salesforce'?'bb':'bgr')}</td>
       <td style="font-weight:600;text-align:center">${woCount||0}</td>
@@ -18281,7 +18281,7 @@ function bInvDash(){
     </div>
     <div class="card"><div class="sh"><h3 style="color:var(--amber)">📦 Open POs (${opl.length})</h3><button class="btn btn-n sm" onclick="showPage('po')">View →</button></div>
       ${opl.length?`<div class="tw"><table><thead><tr><th>PO #</th><th>Vendor</th><th>Status</th></tr></thead><tbody>
-      ${opl.map(p=>`<tr><td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700">${p.id}</td><td>${p.vendor}</td><td>${bx(p.status,ps(p.status))}</td></tr>`).join('')}</tbody></table></div>`
+      ${opl.map(p=>`<tr><td style="font-family:ui-monospace,monospace;font-weight:700">${p.id}</td><td>${p.vendor}</td><td>${bx(p.status,ps(p.status))}</td></tr>`).join('')}</tbody></table></div>`
       :'<div style="text-align:center;color:var(--muted);padding:20px">✓ No open POs</div>'}
     </div>
   </div>`;
@@ -18585,7 +18585,7 @@ function impStep1(){
   <!-- OR paste CSV -->
   <div style="text-align:center;margin:16px 0;font-size:12px;color:var(--muted)">— or paste CSV directly —</div>
   <textarea id="imp-paste" rows="5" placeholder="Paste CSV text here..."
-    style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;resize:vertical"
+    style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;resize:vertical"
     oninput="impPasteChange(this.value)"></textarea>
   <div id="imp-paste-hint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
 
@@ -18726,7 +18726,7 @@ function impStep2(){
   <div class="card" style="padding:10px 14px;margin-bottom:14px;background:var(--surf)">
     <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Columns detected in your file</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${_imp.headers.map((h,i)=>`<span style="background:var(--bdr);border-radius:4px;padding:3px 8px;font-size:11px;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${h}</span>`).join('')}
+      ${_imp.headers.map((h,i)=>`<span style="background:var(--bdr);border-radius:4px;padding:3px 8px;font-size:11px;font-family:ui-monospace,monospace">${h}</span>`).join('')}
     </div>
   </div>
 
@@ -18868,12 +18868,12 @@ function impStep3(){
   <div class="card" style="padding:0;margin-bottom:14px"><div class="tw" style="max-height:200px;overflow-y:auto"><table>
     <thead><tr><th>SKU</th><th>Name</th><th>Division</th><th>Unit</th><th>Vendor</th><th>Cost</th><th>Min</th><th>Max</th></tr></thead>
     <tbody>${toAdd.slice(0,50).map(it=>`<tr>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:11px;font-weight:700;color:var(--navy)">${it.sku}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--navy)">${it.sku}</td>
       <td style="font-size:12px;font-weight:500">${it.name}</td>
       <td style="font-size:11px">${it.division||'—'}</td>
       <td style="font-size:11px">${it.unit||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${it.vendor||'—'}</td>
-      <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:11px">${f$(it.cost)}</td>
+      <td style="font-family:ui-monospace,monospace;font-size:11px">${f$(it.cost)}</td>
       <td style="font-size:11px">${it.min}</td>
       <td style="font-size:11px">${it.max}</td>
     </tr>`).join('')}${toAdd.length>50?`<tr><td colspan="8" style="text-align:center;padding:8px;color:var(--muted);font-size:12px">…and ${toAdd.length-50} more rows</td></tr>`:''}</tbody>
@@ -18968,7 +18968,7 @@ function bInvReports(){
     const divVal=ls.filter(r=>divItems.find(i=>i.sku===r.sku)).reduce((s,r)=>{const i=it.find(x=>x.sku===r.sku);return s+r.qty*(i?.cost||0)},0);
     const divLow=ls.filter(r=>divItems.find(i=>i.sku===r.sku)&&r.qty<r.min).length;
     return`<tr><td>${bx(div)}</td><td>${divItems.length}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">$${Math.round(divVal).toLocaleString()}</td>
+    <td style="font-family:ui-monospace,monospace">$${Math.round(divVal).toLocaleString()}</td>
     <td style="color:${divLow>0?'var(--red)':'var(--green)'}">${divLow}</td></tr>`;
   }).join('')}</tbody></table></div></div>
   <div class="card" style="margin-top:16px"><div class="ct">Export</div>
@@ -19210,10 +19210,10 @@ function bTools(){
       return`<tr id="tlrow-${esc(v.name)}" style="cursor:pointer" onclick="toggleToolDetail('${esc(v.name)}',this)">
         <td style="font-weight:700;color:var(--navy)">${esc(v.name)}${driverLabel}</td>
         <td>${reg}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${v.state||'—'}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:12px">${v.state||'—'}</td>
         <td style="font-size:12px">${v.division?bx(v.division,'bn'):'—'}</td>
         <td style="text-align:center;font-weight:700;color:${vt.length?'var(--navy)':'var(--muted)'}">${vt.length}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:13px">$${tc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-size:13px">$${tc.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td style="text-align:center;font-size:12px;color:var(--teal)">▼ Details</td>
       </tr>
       <tr id="tldet-${esc(v.name)}" style="display:none">
@@ -19226,7 +19226,7 @@ function bTools(){
     ${vehicles.length?`<tfoot><tr style="background:var(--navy);color:white">
       <td colspan="4" style="padding:10px 12px;font-weight:700;font-size:13px">TOTALS — ${vehicles.length} Vehicle${vehicles.length!==1?'s':''}</td>
       <td style="text-align:center;font-weight:700;padding:10px 12px">${totalCount}</td>
-      <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;padding:10px 12px">$${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700;padding:10px 12px">$${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td></td>
     </tr></tfoot>`:''}
     </table></div>
@@ -19243,10 +19243,10 @@ function bTools(){
       const realIdx=tools.indexOf(t);
       return`<tr>
         <td style="font-weight:500">${esc(t.name)}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
         <td>${t.division?bx(t.division,'bn'):'—'}</td>
         <td>${bx(t.status||'Active',t.status==='Out of Service'?'br':t.status==='In Repair'?'ba':'bg')}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(t.cost)}</td>
+        <td style="font-family:ui-monospace,monospace">${f$(t.cost)}</td>
         ${canEdit?`<td><button class="btn sm btn-o" onclick="oEditTool(${realIdx})">Edit</button></td>`:''}
       </tr>`;}).join('')}
     </tbody></table>
@@ -19278,17 +19278,17 @@ function toolDetailHTML(v, vt, canEdit){
         const realIdx=tools.indexOf(t);
         return`<tr style="border-top:1px solid var(--bdr)">
           <td style="padding:7px 10px;font-weight:600">${esc(t.name)}</td>
-          <td style="padding:7px 10px;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
+          <td style="padding:7px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)">${t.serial||'—'}</td>
           <td style="padding:7px 10px">${t.division?bx(t.division,'bn'):'—'}</td>
           <td style="padding:7px 10px">${bx(t.status||'Active',t.status==='Out of Service'?'br':t.status==='In Repair'?'ba':'bg')}</td>
           <td style="padding:7px 10px;font-size:12px;color:var(--muted)">${t.in_service_date||'—'}</td>
           <td style="padding:7px 10px;font-size:12px;color:${t.next_maintenance&&new Date(t.next_maintenance)<new Date()?'var(--red)':'var(--muted)'}">${t.next_maintenance||'—'}</td>
-          <td style="padding:7px 10px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600">${f$(t.cost)}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:ui-monospace,monospace;font-weight:600">${f$(t.cost)}</td>
           ${canEdit?`<td style="padding:7px 10px"><button class="btn sm btn-o" onclick="oEditTool(${realIdx})">Edit</button></td>`:''}
         </tr>`;}).join('')}
         <tr style="border-top:2px solid var(--bdr);background:var(--surf)">
           <td colspan="${canEdit?6:5}" style="padding:7px 10px;font-weight:700;font-size:12px;color:var(--navy)">Total Tool Value</td>
-          <td style="padding:7px 10px;text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${f$(vt.reduce((s,t)=>s+(t.cost||0),0))}</td>
+          <td style="padding:7px 10px;text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${f$(vt.reduce((s,t)=>s+(t.cost||0),0))}</td>
           ${canEdit?'<td></td>':''}
         </tr>
       </tbody>
@@ -20662,7 +20662,7 @@ function bHREmployeeList(){
         <td>
           <div style="font-weight:600;color:var(--navy)">${esc(u.name||'—')}${isBday?' 🎂':''}${isAnniv?' 🎉':''}</div>
           <div style="font-size:11px;color:var(--muted)">${esc(u.email||'')}</div>
-          ${u.phone?`<div style="font-size:11px;color:var(--muted);font-family:Menlo,Monaco,Consolas,Courier New,monospace">${esc(u.phone)}</div>`:''}
+          ${u.phone?`<div style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace">${esc(u.phone)}</div>`:''}
         </td>
         <td><span class="bx bn" style="font-size:11px">${esc(u.role||'—')}</span></td>
         <td style="font-size:12px">${esc(u.division||'—')}</td>
@@ -21770,7 +21770,7 @@ function bHRState(){
       <td style="font-weight:700;font-size:14px">${esc(s.state||'—')}</td>
       <td style="font-size:13px">${s.min_wage?'$'+Number(s.min_wage).toFixed(2)+'/hr':'—'}</td>
       <td style="font-size:12px">${esc(s.ot_threshold||'40 hrs/wk')}</td>
-      <td style="font-size:12px;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${esc(s.workers_comp_code||'—')}</td>
+      <td style="font-size:12px;font-family:ui-monospace,monospace">${esc(s.workers_comp_code||'—')}</td>
       <td style="font-size:12px">${s.ui_rate!=null?Number(s.ui_rate).toFixed(2)+'%':'—'}</td>
       <td style="font-size:12px;color:var(--muted);max-width:200px">${esc(s.notes||'')}</td>
       ${canEdit?`<td style="white-space:nowrap">
@@ -22470,7 +22470,7 @@ function bReportRun(){
       <thead><tr style="background:var(--navy)">${cols.map(c=>`<th style="padding:8px 12px;text-align:left;color:rgba(255,255,255,.85);font-size:11px;font-weight:600;text-transform:uppercase;white-space:nowrap">${esc(c.label)}</th>`).join('')}</tr></thead>
       <tbody>${!rows.length?`<tr><td colspan="${cols.length}" style="text-align:center;padding:32px;color:var(--muted)">No data for selected filters</td></tr>`
       :rows.map((row,i)=>`<tr style="border-bottom:1px solid var(--bdr);background:${i%2===0?'white':'var(--surf)'}">
-        ${cols.map(c=>`<td style="padding:8px 12px;${c.mono?'font-family:Menlo,Monaco,Consolas,Courier New,monospace;':''}">${row[c.key]!==undefined?row[c.key]:''}</td>`).join('')}
+        ${cols.map(c=>`<td style="padding:8px 12px;${c.mono?'font-family:ui-monospace,monospace;':''}">${row[c.key]!==undefined?row[c.key]:''}</td>`).join('')}
       </tr>`).join('')}
       </tbody>
     </table></div>
@@ -22571,7 +22571,7 @@ function bReportSchedule(){
       <tbody>${scheduled.map((s,i)=>`<tr>
         <td style="font-weight:600;font-size:13px">${esc(s.report_name)}</td>
         <td>${s.frequency}</td>
-        <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">${s.send_time||''} ${s.send_day?'· '+s.send_day:''}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:12px">${s.send_time||''} ${s.send_day?'· '+s.send_day:''}</td>
         <td style="font-size:12px;color:var(--muted)">${s.config?.range||'month'}</td>
         <td style="font-size:12px;color:var(--muted)">${(s.recipients||[]).length} recipient${(s.recipients||[]).length!==1?'s':''}</td>
         <td style="font-size:12px;color:var(--muted)">${s.last_sent_at?new Date(s.last_sent_at).toLocaleDateString():'Never'}</td>
@@ -23490,7 +23490,7 @@ function renderCRMLeadsTable(leads){
     <td style="font-size:12px">${l.assigned_to||'—'}</td>
     <td>${bx(l.status||'New',statusColor(l.status))}</td>
     <td style="font-weight:600;color:${priColor(l.priority)}">${priIcon(l.priority)}${l.priority||'Normal'}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:12px">$${Number(l.estimated_value||0).toLocaleString()}</td>
+    <td style="font-family:ui-monospace,monospace;font-size:12px">$${Number(l.estimated_value||0).toLocaleString()}</td>
     <td style="font-size:12px;color:${l.next_followup_at&&new Date(l.next_followup_at)<new Date()?'var(--red)':'var(--muted)'}">
       ${l.next_followup_at?new Date(l.next_followup_at).toLocaleDateString():'—'}
     </td>
@@ -23511,7 +23511,7 @@ function renderCRMPipeline(){
         return`<div style="background:var(--surf);border-radius:8px;padding:8px 14px;font-size:12px;text-align:center;min-width:90px">
           <div style="font-weight:700;font-size:15px">${cnt}</div>
           <div style="color:var(--muted)">${s}</div>
-          <div style="font-size:11px;color:var(--navy);font-family:Menlo,Monaco,Consolas,Courier New,monospace">$${Math.round(val).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--navy);font-family:ui-monospace,monospace">$${Math.round(val).toLocaleString()}</div>
         </div>`;}).join('')}
     </div>
     <button class="btn btn-n" onclick="oAddOpportunity()">+ New Opportunity</button>
@@ -23524,8 +23524,8 @@ function renderCRMPipeline(){
     <td style="font-size:12px;color:var(--muted)">${(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)?.first_name||''} ${(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)?.last_name||''}</td>
     <td>${bx(o.division||'—')}</td>
     <td>${bx(o.stage||'Prospect',stageColor(o.stage))}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${o.probability||0}%</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600">$${Number(o.estimated_value||0).toLocaleString()}</td>
+    <td style="font-family:ui-monospace,monospace">${o.probability||0}%</td>
+    <td style="font-family:ui-monospace,monospace;font-weight:600">$${Number(o.estimated_value||0).toLocaleString()}</td>
     <td style="font-size:12px;color:var(--muted)">${o.close_date?new Date(o.close_date).toLocaleDateString():'—'}</td>
     <td style="font-size:12px">${o.assigned_to||'—'}</td>
     <td><button class="btn sm btn-n" onclick="event.stopPropagation();openOpportunity('${o.id}')">Open</button></td>
@@ -24007,7 +24007,7 @@ function openLead(id){
   const ss=getSalesSettings();
   const statuses=ss.lead_statuses||LEAD_STATUSES;
   const statusColor=s=>s==='New'?'ba':s==='Contacted'?'bn':s==='Qualified'?'bg':s==='Converted'?'bb':'bgr';
-  const row=(label,val,opts={})=>val?`<span style="color:var(--muted)">${label}</span><span${opts.mono?' style="font-family:Menlo,Monaco,Consolas,Courier New,monospace"':''}${opts.red?` style="color:var(--red)"`:''}>${val}</span>`:'';
+  const row=(label,val,opts={})=>val?`<span style="color:var(--muted)">${label}</span><span${opts.mono?' style="font-family:ui-monospace,monospace"':''}${opts.red?` style="color:var(--red)"`:''}>${val}</span>`:'';
   const custRef=l.customer_referral_id?(S.get('lhs:customers')||[]).find(c=>c.id===l.customer_referral_id):null;
 
   oMod(`${l.salutation?l.salutation+' ':''}${l.first_name}${l.middle_name?' '+l.middle_name:''} ${l.last_name}${l.suffix?' '+l.suffix:''}`,`
@@ -24048,7 +24048,7 @@ function openLead(id){
         ${row('Assigned',l.assigned_to)}
         ${row('Referral Rep',l.lead_referral_rep)}
         ${row('Division',l.division)}
-        <span style="color:var(--muted)">Est. Value</span><span style="font-weight:600;font-family:Menlo,Monaco,Consolas,Courier New,monospace">$${Number(l.estimated_value||0).toLocaleString()}</span>
+        <span style="color:var(--muted)">Est. Value</span><span style="font-weight:600;font-family:ui-monospace,monospace">$${Number(l.estimated_value||0).toLocaleString()}</span>
         ${l.next_followup_at?`<span style="color:var(--muted)">Follow-up</span><span style="color:${new Date(l.next_followup_at)<new Date()?'var(--red)':'inherit'}">${new Date(l.next_followup_at).toLocaleDateString()}</span>`:''}
         <span style="color:var(--muted)">Priority</span><span style="font-weight:600;color:${l.priority==='Hot'?'var(--red)':l.priority==='Urgent'?'var(--gold,#c9a84c)':l.priority==='Cold'?'var(--muted)':'inherit'}">${l.priority||'Normal'}</span>
       </div>
@@ -24285,7 +24285,7 @@ function openOpportunity(id){
         <span style="color:var(--muted)">Job Type</span><span>${o.job_type||'—'}</span>
         <span style="color:var(--muted)">Assigned</span><span>${o.assigned_to||'—'}</span>
         <span style="color:var(--muted)">Probability</span><span style="font-weight:600">${o.probability||0}%</span>
-        <span style="color:var(--muted)">Est. Value</span><span style="font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace">$${Number(o.estimated_value||0).toLocaleString()}</span>
+        <span style="color:var(--muted)">Est. Value</span><span style="font-weight:700;font-family:ui-monospace,monospace">$${Number(o.estimated_value||0).toLocaleString()}</span>
         <span style="color:var(--muted)">Close Date</span><span>${o.close_date?new Date(o.close_date).toLocaleDateString():'—'}</span>
       </div>
       ${o.description?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">${o.description}</div>`:''}
@@ -24293,7 +24293,7 @@ function openOpportunity(id){
     <div class="card" style="padding:14px">
       <div class="ct">Weighted Value</div>
       <div style="text-align:center;padding:16px">
-        <div style="font-size:32px;font-weight:800;color:var(--navy);font-family:Menlo,Monaco,Consolas,Courier New,monospace">
+        <div style="font-size:32px;font-weight:800;color:var(--navy);font-family:ui-monospace,monospace">
           $${Math.round((o.estimated_value||0)*(o.probability||0)/100).toLocaleString()}
         </div>
         <div style="font-size:13px;color:var(--muted)">$${Number(o.estimated_value||0).toLocaleString()} × ${o.probability||0}%</div>
@@ -24900,11 +24900,11 @@ function renderCRMEstimates(){
   ${ests.length?`<div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>Estimate #</th><th>Customer</th><th>Division</th><th>Package</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
   <tbody>${ests.map(e=>`<tr>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:700;color:var(--navy)">${e.estimate_number||'EST-?'}</td>
+    <td style="font-family:ui-monospace,monospace;font-weight:700;color:var(--navy)">${e.estimate_number||'EST-?'}</td>
     <td style="font-weight:500">${e.customer_name||'—'}</td>
     <td>${bx(e.division||'—','bn')}</td>
     <td style="font-size:12px">${e.selected_package||'Custom'}</td>
-    <td style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(e.total_price)}</td>
+    <td style="font-family:ui-monospace,monospace">${f$(e.total_price)}</td>
     <td>${bx(e.status||'Draft',statusColor(e.status))}</td>
     <td style="font-size:12px;color:var(--muted)">${(e.created_at||'').slice(0,10)}</td>
     <td style="white-space:nowrap">
@@ -24988,12 +24988,12 @@ function oNewEstimate(prefill={}){
     <div id="est-lines"></div>
     <button class="btn btn-o sm" style="margin-top:6px" onclick="estAddLine()">+ Add Line</button>
     <div style="margin-top:12px;padding:12px;background:var(--surf);border-radius:8px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:13px">
-      <span>Subtotal (Materials)</span><span id="est-mat-total" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;text-align:right">$0.00</span>
-      <span>Labor</span><span id="est-labor-total" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;text-align:right">$0.00</span>
+      <span>Subtotal (Materials)</span><span id="est-mat-total" style="font-family:ui-monospace,monospace;text-align:right">$0.00</span>
+      <span>Labor</span><span id="est-labor-total" style="font-family:ui-monospace,monospace;text-align:right">$0.00</span>
       <span style="font-weight:600;padding-top:6px;border-top:1px solid var(--bdr)">Total Price</span>
-      <span id="est-grand-total" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;text-align:right;font-weight:700;font-size:15px;padding-top:6px;border-top:1px solid var(--bdr);color:var(--navy)">$0.00</span>
-      <span style="color:var(--muted)">Est. Cost</span><span id="est-cost-total" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;text-align:right;color:var(--muted)">$0.00</span>
-      <span style="color:${''};font-weight:600">Margin</span><span id="est-margin" style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;text-align:right;font-weight:600">—</span>
+      <span id="est-grand-total" style="font-family:ui-monospace,monospace;text-align:right;font-weight:700;font-size:15px;padding-top:6px;border-top:1px solid var(--bdr);color:var(--navy)">$0.00</span>
+      <span style="color:var(--muted)">Est. Cost</span><span id="est-cost-total" style="font-family:ui-monospace,monospace;text-align:right;color:var(--muted)">$0.00</span>
+      <span style="color:${''};font-weight:600">Margin</span><span id="est-margin" style="font-family:ui-monospace,monospace;text-align:right;font-weight:600">—</span>
     </div>
   </div>
 
@@ -25235,10 +25235,10 @@ function openEstimate(id){
       <tbody>${lines.map(l=>`<tr>
         <td style="font-weight:500">${l.label||'—'}</td>
         <td style="font-size:12px">${bx(l.type||'Material','bn')}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${l.qty||1}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:var(--muted)">${f$(l.cost)}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(l.price)}</td>
-        <td style="text-align:right;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-weight:600">${f$((l.qty||1)*(l.price||0))}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace">${l.qty||1}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;color:var(--muted)">${f$(l.cost)}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace">${f$(l.price)}</td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:600">${f$((l.qty||1)*(l.price||0))}</td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>
@@ -25247,13 +25247,13 @@ function openEstimate(id){
   <div style="display:flex;justify-content:flex-end">
     <div style="min-width:260px;font-size:13px">
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bdr)">
-        <span>Total Price</span><span style="font-weight:700;font-family:Menlo,Monaco,Consolas,Courier New,monospace;font-size:16px;color:var(--navy)">${f$(total)}</span>
+        <span>Total Price</span><span style="font-weight:700;font-family:ui-monospace,monospace;font-size:16px;color:var(--navy)">${f$(total)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);font-size:12px">
-        <span>Est. Cost</span><span style="font-family:Menlo,Monaco,Consolas,Courier New,monospace">${f$(cost)}</span>
+        <span>Est. Cost</span><span style="font-family:ui-monospace,monospace">${f$(cost)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">
-        <span>Margin</span><span style="font-family:Menlo,Monaco,Consolas,Courier New,monospace;color:${margin>=30?'var(--green)':margin>=15?'#c9a84c':'var(--red)'};font-weight:600">${margin}%</span>
+        <span>Margin</span><span style="font-family:ui-monospace,monospace;color:${margin>=30?'var(--green)':margin>=15?'#c9a84c':'var(--red)'};font-weight:600">${margin}%</span>
       </div>
     </div>
   </div>
