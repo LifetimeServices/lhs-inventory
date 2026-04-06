@@ -1495,6 +1495,7 @@ const TBL={
   'lhs:pb_services':'lhs_pb_services',
   'lhs:pb_categories':'lhs_pb_categories',
   'lhs:cal_devices':'lhs_calibration_devices',
+  'lhs:tester_deployments':'lhs_tester_deployments',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -4584,7 +4585,37 @@ function svTest(){
 }
 function oUpdTest(i){
   const ts=S.get('lhs:ts')||[];const t=ts[i];
-  oMod('Update: '+t.id,`<div class="fr">
+  const history=(S.get('lhs:tester_deployments')||[]).filter(d=>d.tester_id===t.id).sort((a,b)=>b.created_at?.localeCompare(a.created_at||''));
+  const actColor=a=>a==='Drop Off'?'#2e7d32':'#1565c0';
+  const histHTML=history.length?`
+    <div style="margin-top:16px;border-top:1px solid var(--bdr);padding-top:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">📋 Deployment History (${history.length})</div>
+      <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        ${history.map(d=>`
+        <div style="border:1px solid var(--bdr);border-radius:7px;padding:8px 12px;background:var(--surf);font-size:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="background:${actColor(d.action)};color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">${d.action||'?'}</span>
+            <span style="font-weight:600;color:var(--navy)">${d.event_date||d.created_at?.slice(0,10)||'?'}</span>
+            <span style="color:var(--muted);margin-left:auto">${d.created_by||''}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;color:var(--muted)">
+            ${d.customer_name?`<span>Customer</span><span style="color:var(--navy);font-weight:500">${esc(d.customer_name)}</span>`:''}
+            ${d.customer_address?`<span>Address</span><span>${esc(d.customer_address)}</span>`:''}
+            ${d.location?`<span>Placement</span><span>${esc(d.location)}</span>`:''}
+            ${d.delay&&d.delay!=='No Delay'?`<span>Delay</span><span>${esc(d.delay)}</span>`:''}
+            ${d.tech_name?`<span>Tech(s)</span><span>${esc(d.tech_name)}</span>`:''}
+            ${d.wo_id?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px">${d.wo_id.slice(-8)}</span>`:''}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`:`<div style="margin-top:14px;font-size:12px;color:var(--muted);border-top:1px solid var(--bdr);padding-top:12px">No deployment history yet.</div>`;
+  oMod('Tester: '+t.id,`
+  <div style="margin-bottom:4px">
+    <div style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:6px;background:${t.type==='Electronic'?'#e3f2fd':'#e8f5e9'};font-size:12px;font-weight:600;color:var(--navy);margin-bottom:10px">
+      ${t.type||'Unknown'} &nbsp;·&nbsp; ${t.serial||'No serial'} &nbsp;·&nbsp; <span style="color:${t.status==='At Customer'?'#c62828':t.status==='At Warehouse'?'#2e7d32':'#e65100'}">${t.status||'?'}</span>
+    </div>
+  </div>
+  <div class="fr">
     <div class="fl"><label>Status</label><select id="ut0">
       <option${t.status==='At Customer'?' selected':''}>At Customer</option>
       <option${t.status==='In Transit'?' selected':''}>In Transit</option>
@@ -4594,11 +4625,13 @@ function oUpdTest(i){
     <div class="fl"><label>Vehicle</label><select id="ut1">
       <option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option${t.vehicle===x?' selected':''}>${x}</option>`).join('')}
     </select></div>
-  </div><div class="fr">
-    <div class="fl"><label>Customer</label><input id="ut2" value="${t.customer||''}"></div>
-    <div class="fl"><label>Address</label><input id="ut3" value="${t.address||''}"></div>
   </div>
-  <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+  <div class="fr">
+    <div class="fl"><label>Customer</label><input id="ut2" value="${esc(t.customer||'')}"></div>
+    <div class="fl"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  ${histHTML}`);
 }
 function svUpdTest(i){
   const ts=S.get('lhs:ts')||[];
@@ -15649,6 +15682,18 @@ async function oAptDetail(aptId, woId){
     </div>
   </details>
 
+  <!-- ── RADON TESTERS ── -->
+  <details id="aptd-testersec" style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:8px">
+    <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px">
+      <span style="font-size:14px">&#9654;</span> Radon Testers
+      <span id="aptd-tcount" style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px"></span>
+    </summary>
+    <div style="padding:12px 14px">
+      <div id="aptd-testerlist"></div>
+      <button class="btn btn-o sm" style="margin-top:4px" onclick="aptAddTesterRow('${aptId}')">+ Add Tester</button>
+    </div>
+  </details>
+
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Photos</div>
   <div style="margin-bottom:12px">
     <input type="file" id="aptd-photo" accept="image/*" multiple style="display:none" onchange="aptUploadPhotos('${aptId}','${woId}',this)">
@@ -15672,6 +15717,89 @@ async function oAptDetail(aptId, woId){
     <button class="btn btn-n" onclick="svAptDetail('${aptId}','${woId}')">Save Updates</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
+  setTimeout(()=>initAptTesters(aptId,woId),60);
+}
+
+// ── RADON TESTER DEPLOYMENT (APPOINTMENT) ────────────────────────────────────
+function initAptTesters(aptId,woId){
+  const existing=(S.get('lhs:tester_deployments')||[]).filter(d=>d.appointment_id===aptId);
+  window._aptTesterRows=existing.map(d=>({tester_id:d.tester_id,action:d.action||'Drop Off',delay:d.delay||'No Delay',location:d.location||'Basement',_deployId:d.id,_existing:true}));
+  window._aptTesterWoId=woId;
+  renderAptTesters(aptId);
+  // Open the details panel if there are existing entries
+  if(existing.length){const sec=document.getElementById('aptd-testersec');if(sec)sec.open=true;}
+}
+function renderAptTesters(aptId){
+  const el=document.getElementById('aptd-testerlist');
+  if(!el) return;
+  const ts=(S.get('lhs:ts')||[]).sort((a,b)=>(a.id||'').localeCompare(b.id||''));
+  const rows=window._aptTesterRows||[];
+  const cnt=document.getElementById('aptd-tcount');
+  const assigned=rows.filter(r=>r.tester_id).length;
+  if(cnt) cnt.textContent=`(${assigned} assigned)`;
+  el.innerHTML=rows.map((r,i)=>`
+    <div style="border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:white">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1.5;min-width:170px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:3px">Tester ID / Serial</label>
+          <input id="aptd-tsrch-${i}" placeholder="🔍 Filter…" oninput="aptFilterTesters(${i},'${aptId}')"
+            style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px 6px 0 0;border-bottom:none;font-size:12px;font-family:inherit;box-sizing:border-box">
+          <select id="aptd-tid-${i}" onchange="window._aptTesterRows[${i}].tester_id=this.value;renderAptTesters('${aptId}')"
+            style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:0 0 6px 6px;font-size:12px;font-family:inherit;box-sizing:border-box">
+            <option value="">— Select Tester —</option>
+            ${ts.map(t=>`<option value="${esc(t.id)}"${r.tester_id===t.id?' selected':''}>${esc(t.id)}${t.serial?' · '+esc(t.serial):''}${t.type?' ('+t.type+')':''} — ${t.status||'?'}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex-shrink:0;min-width:110px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:3px">Action</label>
+          <select onchange="window._aptTesterRows[${i}].action=this.value"
+            style="width:100%;padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+            <option${r.action==='Drop Off'?' selected':''}>Drop Off</option>
+            <option${r.action==='Pick Up'?' selected':''}>Pick Up</option>
+          </select>
+        </div>
+        <div style="flex-shrink:0;min-width:130px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:3px">Delay</label>
+          <select onchange="window._aptTesterRows[${i}].delay=this.value"
+            style="width:100%;padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+            <option${r.delay==='No Delay'?' selected':''}>No Delay</option>
+            <option${r.delay==='12 Hour Delay'?' selected':''}>12 Hour Delay</option>
+            <option${r.delay==='24 Hour Delay'?' selected':''}>24 Hour Delay</option>
+          </select>
+        </div>
+        <div style="flex-shrink:0;min-width:140px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:3px">Placement</label>
+          <select onchange="window._aptTesterRows[${i}].location=this.value"
+            style="width:100%;padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+            <option${r.location==='Basement'?' selected':''}>Basement</option>
+            <option${r.location==='Crawlspace'?' selected':''}>Crawlspace</option>
+            <option${r.location==='Slab on Grade'?' selected':''}>Slab on Grade</option>
+          </select>
+        </div>
+        <button onclick="aptRemoveTesterRow(${i},'${aptId}')"
+          style="background:var(--red);color:white;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:15px;flex-shrink:0;align-self:flex-end">✕</button>
+      </div>
+      ${r._existing?`<div style="font-size:11px;color:var(--muted);margin-top:6px">Previously recorded — saving again will add a new entry</div>`:''}
+    </div>`).join('')||`<div style="font-size:13px;color:var(--muted);padding:4px 0 8px">No testers assigned yet.</div>`;
+}
+function aptFilterTesters(i,aptId){
+  const q=(document.getElementById(`aptd-tsrch-${i}`)?.value||'').toLowerCase();
+  const sel=document.getElementById(`aptd-tid-${i}`);
+  if(!sel) return;
+  const ts=(S.get('lhs:ts')||[]).sort((a,b)=>(a.id||'').localeCompare(b.id||''));
+  const cur=(window._aptTesterRows||[])[i]?.tester_id||'';
+  const filtered=ts.filter(t=>!q||(t.id||'').toLowerCase().includes(q)||(t.serial||'').toLowerCase().includes(q));
+  sel.innerHTML=`<option value="">— Select Tester —</option>`+filtered.map(t=>`<option value="${esc(t.id)}"${cur===t.id?' selected':''}>${esc(t.id)}${t.serial?' · '+esc(t.serial):''}${t.type?' ('+t.type+')':''} — ${t.status||'?'}</option>`).join('');
+}
+function aptAddTesterRow(aptId){
+  if(!window._aptTesterRows) window._aptTesterRows=[];
+  window._aptTesterRows.push({tester_id:'',action:'Drop Off',delay:'No Delay',location:'Basement'});
+  renderAptTesters(aptId);
+  const sec=document.getElementById('aptd-testersec');if(sec)sec.open=true;
+}
+function aptRemoveTesterRow(i,aptId){
+  (window._aptTesterRows||[]).splice(i,1);
+  renderAptTesters(aptId);
 }
 
 // ── SHARED MATERIAL ROW RENDERER ─────────────────────────────────────────────
@@ -15966,6 +16094,41 @@ async function svAptDetail(aptId, woId){
   }
   if(status==='Completed') await _endAllJobEntries('working',aptId);
   logWOAudit(woId,'Appointment Updated',`Status:${status} | ${finalPct}%`);
+
+  // ── Save Radon Tester Deployments ─────────────────────────────────────────
+  const _tRows=window._aptTesterRows||[];
+  const _woRec=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  const _aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId).map(t=>t.tech_name).join(', ');
+  const _aptDateFinal=reschedDate||(S.get('lhs:appointments')||[]).find(a=>a.id===aptId)?.scheduled_date||new Date().toISOString().slice(0,10);
+  for(const row of _tRows){
+    if(!row.tester_id) continue;
+    const depl={
+      tester_id:row.tester_id, wo_id:woId, appointment_id:aptId,
+      action:row.action||'Drop Off', delay:row.delay||'No Delay', location:row.location||'',
+      customer_name:_woRec?.customer_name||'',
+      customer_address:_woRec?.address||_woRec?.street||'',
+      tech_name:_aptTechs, event_date:_aptDateFinal,
+      created_by:CU?.name||'', created_at:new Date().toISOString(), updated_at:new Date().toISOString()
+    };
+    let savedDepl=null;
+    try{savedDepl=await dbInsert('lhs:tester_deployments',depl);}catch(e){console.warn('Tester deployment:',e?.message);}
+    const finalDepl=savedDepl||{...depl,id:'tdp_'+Date.now()};
+    const _depls=S.get('lhs:tester_deployments')||[];
+    _depls.push(finalDepl); S.set('lhs:tester_deployments',_depls);
+    // Update tester status in real time
+    const _tsList=S.get('lhs:ts')||[];
+    const _tester=_tsList.find(t=>t.id===row.tester_id);
+    if(_tester){
+      _tester.status=row.action==='Drop Off'?'At Customer':'At Warehouse';
+      if(row.action==='Drop Off'){_tester.customer=_woRec?.customer_name||'';_tester.address=_woRec?.address||'';_tester.dropDate=_aptDateFinal;}
+      else{_tester.customer='';_tester.address='';}
+      S.set('lhs:ts',_tsList);
+      try{await dbUpdate('lhs:ts',_tester.id,{status:_tester.status,customer:_tester.customer||'',address:_tester.address||'',dropDate:_tester.dropDate||''});}
+      catch(e){console.warn('Tester status update:',e?.message);}
+    }
+  }
+  window._aptTesterRows=[];
+
   cMod();tst('Appointment updated','success');openWO(woId);refreshDispBoard();
 }
 
