@@ -22903,7 +22903,15 @@ function _nextTORStage(req, currentStage){
 }
 
 async function _applyTORUpdate(reqId, upd, reqs, idx){
-  try{await DB.from('lhs_time_off_requests').update(upd).eq('id',reqId);}catch(e){console.warn('TOR update:',e.message);}
+  // Strip columns that don't exist in lhs_time_off_requests (e.g. approver_N_at timestamps)
+  const TOR_COLS=new Set(['status','approved_by','approval_stage',
+    'approver_1_email','approver_1_name','approver_1_status',
+    'approver_2_email','approver_2_name','approver_2_status',
+    'approver_3_email','approver_3_name','approver_3_status',
+    'last_reminded_at','notes','hours','leave_type','start_date','end_date',
+    'employee_name','employee_id','created_by','created_at']);
+  const dbUpd=Object.fromEntries(Object.entries(upd).filter(([k])=>TOR_COLS.has(k)));
+  try{await DB.from('lhs_time_off_requests').update(dbUpd).eq('id',reqId);}catch(e){console.warn('TOR update:',e.message);}
   reqs[idx]={...reqs[idx],...upd};
   S.set('lhs:time_off_requests',reqs);
 }
