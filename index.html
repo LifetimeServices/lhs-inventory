@@ -4604,7 +4604,7 @@ function oUpdTest(i){
             ${d.location?`<span>Placement</span><span>${esc(d.location)}</span>`:''}
             ${d.delay&&d.delay!=='No Delay'?`<span>Delay</span><span>${esc(d.delay)}</span>`:''}
             ${d.tech_name?`<span>Tech(s)</span><span>${esc(d.tech_name)}</span>`:''}
-            ${d.wo_id?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px">${d.wo_id.slice(-8)}</span>`:''}
+            ${(d.wo_number||d.wo_id)?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--teal)">${esc(d.wo_number||d.wo_id)}</span>`:''}
           </div>
         </div>`).join('')}
       </div>
@@ -16103,10 +16103,10 @@ async function svAptDetail(aptId, woId){
   for(const row of _tRows){
     if(!row.tester_id) continue;
     const depl={
-      tester_id:row.tester_id, wo_id:woId, appointment_id:aptId,
+      tester_id:row.tester_id, wo_id:woId, wo_number:_woRec?.wo_number||woId, appointment_id:aptId,
       action:row.action||'Drop Off', delay:row.delay||'No Delay', location:row.location||'',
       customer_name:_woRec?.customer_name||'',
-      customer_address:_woRec?.address||_woRec?.street||'',
+      customer_address:_woRec?.customer_address||'',
       tech_name:_aptTechs, event_date:_aptDateFinal,
       created_by:CU?.name||'', created_at:new Date().toISOString(), updated_at:new Date().toISOString()
     };
@@ -16115,16 +16115,15 @@ async function svAptDetail(aptId, woId){
     const finalDepl=savedDepl||{...depl,id:'tdp_'+Date.now()};
     const _depls=S.get('lhs:tester_deployments')||[];
     _depls.push(finalDepl); S.set('lhs:tester_deployments',_depls);
-    // Update tester status in real time
+    // Update tester status locally — testers use custom IDs (not UUIDs) so skip Supabase update here
     const _tsList=S.get('lhs:ts')||[];
     const _tester=_tsList.find(t=>t.id===row.tester_id);
     if(_tester){
       _tester.status=row.action==='Drop Off'?'At Customer':'At Warehouse';
-      if(row.action==='Drop Off'){_tester.customer=_woRec?.customer_name||'';_tester.address=_woRec?.address||'';_tester.dropDate=_aptDateFinal;}
+      if(row.action==='Drop Off'){_tester.customer=_woRec?.customer_name||'';_tester.address=_woRec?.customer_address||'';_tester.dropDate=_aptDateFinal;}
       else{_tester.customer='';_tester.address='';}
       S.set('lhs:ts',_tsList);
-      try{await dbUpdate('lhs:ts',_tester.id,{status:_tester.status,customer:_tester.customer||'',address:_tester.address||'',dropDate:_tester.dropDate||''});}
-      catch(e){console.warn('Tester status update:',e?.message);}
+      // Note: lhs_testers uses non-UUID IDs — status updates tracked via lhs_tester_deployments instead
     }
   }
   window._aptTesterRows=[];
