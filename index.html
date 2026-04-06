@@ -18105,41 +18105,41 @@ function propForm(p,saveFn){
   </div>
   <div class="fr">
     <div class="fl"><label>City *</label><input id="pf-city" value="${p.city||''}" placeholder="City"></div>
-    <div class="fl"><label>State</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> State</label>
       <select id="pf-state" onchange="propStateChange(this.value)">
         <option value="">— Select —</option>
         ${ALL_STATES.map(s=>`<option${(p.state||'')=== s?' selected':''}>${s}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Zip</label><input id="pf-zip" value="${p.zip||''}" placeholder="00000"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Zip</label><input id="pf-zip" value="${p.zip||''}" placeholder="00000"></div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Region</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Region</label>
       <select id="pf-region">
         <option value="">— Auto from state —</option>
         ${Object.keys(REGIONS).map(r=>`<option${(p.region||'')=== r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>County</label><input id="pf-county" value="${p.county||''}" placeholder="County name"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> County</label><input id="pf-county" value="${p.county||''}" placeholder="County name"></div>
   </div>
 
   <!-- Property Details -->
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:14px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Property Details</div>
   <div class="fr">
-    <div class="fl"><label>Property Type</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Property Type</label>
       <select id="pf-type">${PROP_TYPES.map(t=>`<option${(p.property_type||'')=== t?' selected':''}>${t}</option>`).join('')}</select>
     </div>
-    <div class="fl"><label>Year Built</label><input id="pf-year" value="${p.year_built||''}" placeholder="e.g. 1998" maxlength="4"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Year Built</label><input id="pf-year" value="${p.year_built||''}" placeholder="e.g. 1998" maxlength="4"></div>
     <div class="fl"><label>Total Sq Ft</label><input type="number" id="pf-sqft" value="${p.sq_ft||''}" placeholder="e.g. 1800"></div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Foundation Type</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Foundation Type</label>
       <select id="pf-found">
         <option value="">— Unknown —</option>
         ${FOUNDATION_TYPES.map(f=>`<option${(p.foundation_type||'')=== f?' selected':''}>${f}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Stories</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Stories</label>
       <select id="pf-stories">
         <option value="">—</option>
         ${['1','1.5','2','3+'].map(s=>`<option${(p.stories||'')=== s?' selected':''}>${s}</option>`).join('')}
@@ -18266,6 +18266,12 @@ async function svAddProperty(){
   const addr=v('pf-addr').trim();const city=v('pf-city').trim();
   if(!addr||!city){tst('Address and city required','error');return}
   const state=v('pf-state');
+  if(!state){tst('State is required','error');return}
+  if(!(v('pf-zip')||'').trim()){tst('Zip code is required','error');return}
+  if(!(v('pf-county')||'').trim()){tst('County is required','error');return}
+  if(!(v('pf-year')||'').trim()){tst('Year Built is required','error');return}
+  if(!v('pf-found')){tst('Foundation Type is required','error');return}
+  if(!v('pf-stories')){tst('Stories is required','error');return}
   const region=v('pf-region')||Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||'';
   const prop={
     address:addr,city,state,zip:v('pf-zip')||null,county:v('pf-county')||null,
@@ -18325,7 +18331,15 @@ async function svEditProperty(){
   const id=window._editPropId; if(!id) return;
   const props=S.get('lhs:props')||[];
   const p=props.find(x=>x.id===id); if(!p) return;
+  if(!(v('pf-addr')||'').trim()){tst('Street address is required','error');return}
+  if(!(v('pf-city')||'').trim()){tst('City is required','error');return}
   const state=v('pf-state');
+  if(!state){tst('State is required','error');return}
+  if(!(v('pf-zip')||'').trim()){tst('Zip code is required','error');return}
+  if(!(v('pf-county')||'').trim()){tst('County is required','error');return}
+  if(!(v('pf-year')||'').trim()){tst('Year Built is required','error');return}
+  if(!v('pf-found')){tst('Foundation Type is required','error');return}
+  if(!v('pf-stories')){tst('Stories is required','error');return}
   const region=v('pf-region')||Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||p.region||'';
   const updates={
     address:v('pf-addr').trim(),city:v('pf-city').trim(),state,zip:v('pf-zip')||null,
