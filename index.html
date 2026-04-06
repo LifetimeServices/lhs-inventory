@@ -6508,7 +6508,7 @@ async function svAddUser(){
   const name=v('au0'),email=v('au1'),pw=v('au2'),role=v('au3');
   const division=v('au4'),region=v('au5'),loc=v('au6'),manager=v('au7');
   if(!name||!email||!pw){tst('Name, email, and password required','error');return}
-  if(!email.includes(_e('QA=='))){tst('Enter a valid email address','error');return}
+  if(!email.includes('@')||!email.includes('.')){tst('Enter a valid email address','error');return}
 
   // Check duplicate in Supabase directly
   try{
