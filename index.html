@@ -4443,7 +4443,7 @@ function bCalLog(){
               ${years.map(y=>{
                 const val=dates[y]||'';
                 const isCur=y===curY;
-                return`<td style="padding:0;background:${isCur?(active?'#f0faf0':'#fff0f0'):(active?'white':'#fff9f9')};border-right:1px solid var(--bdr)">
+                return`<td style="padding:0;background:${isCur?(isSent?'#fffde7':isInactive?'#fff0f0':'#f0faf0'):(isSent?'#fffde7':isInactive?'#fff9f9':'white')};border-right:1px solid var(--bdr)">
                   <input type="text" value="${esc(val)}" placeholder="—"
                     title="Click to enter calibration date for ${y}"
                     onfocus="this.style.outline='2px solid var(--teal)';this.style.background='#fffde7'"
