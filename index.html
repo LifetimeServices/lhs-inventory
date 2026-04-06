@@ -1541,10 +1541,13 @@ async function warmCache(){
         // Only order by created_at for tables that have it
         // Tables that use last_updated instead of created_at, or have neither
         // Tables that use last_updated (van/location stock, PO lines, etc.)
-        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_estimates','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines'];
+        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines'];
+        // lhs_estimates uses updated_at (not last_updated)
+        const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
         const noSortTbls=['lhs_wo_materials'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
+        else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
         else query=query.order('created_at',{ascending:true});
         const{data,error}=await query;
@@ -4647,13 +4650,26 @@ async function loadPresetsFromSupabase(){
   try{
     const{data,error}=await DB.from('lhs_mat_presets').select('*');
     if(!error&&data&&data.length){
-      const map={};
-      data.forEach(row=>{map[row.preset_key]=row.items||[];});
-      _C['lms_mat_presets']=map; // ← always set memory cache first (localStorage may be full)
-      try{localStorage.setItem('lms_mat_presets',JSON.stringify(map));}catch{}
-      console.log('Presets loaded from Supabase:',Object.keys(map).length,'keys');
+      const matMap={};
+      const estTmplMap={};
+      data.forEach(row=>{
+        if((row.preset_key||'').startsWith('EST_TMPL|')){
+          // Estimate line-item templates — strip prefix and store in lms:est_templates
+          estTmplMap[row.preset_key.slice('EST_TMPL|'.length)]=row.items||[];
+        } else {
+          matMap[row.preset_key]=row.items||[];
+        }
+      });
+      _C['lms_mat_presets']=matMap;
+      try{localStorage.setItem('lms_mat_presets',JSON.stringify(matMap));}catch{}
+      // Merge Supabase estimate templates into local (Supabase wins)
+      if(Object.keys(estTmplMap).length){
+        const local=S.get('lms:est_templates')||{};
+        S.set('lms:est_templates',{...local,...estTmplMap});
+        console.log('Est templates loaded from Supabase:',Object.keys(estTmplMap).length,'templates');
+      }
+      console.log('Presets loaded from Supabase:',Object.keys(matMap).length,'keys');
     } else {
-      // No presets in Supabase yet — init empty map in memory
       if(_C['lms_mat_presets']===undefined) _C['lms_mat_presets']={};
     }
   }catch(e){
@@ -27337,6 +27353,9 @@ function delEstTemplate(key){
   const map=getEstTemplates();
   delete map[key];
   saveEstTemplates(map);
+  // Also delete from Supabase
+  DB.from('lhs_mat_presets').delete().eq('preset_key','EST_TMPL|'+key)
+    .then(({error})=>{if(error) console.warn('Est template delete:',error.message);});
   tst('Template deleted','success');
   showPage('sales-settings');
 }
@@ -28156,7 +28175,6 @@ async function svEstimate(existingId){
     created_by:CU?.name||'',
     created_at:now,
     updated_at:now,
-    last_updated:now,
   };
   // Try Supabase — falls back to localStorage only if table not created yet
   let saved=null;
@@ -28193,9 +28211,15 @@ function estSaveTemplate(){
   const pkg=window._estPkg||'custom';
   const lines=window._estLines?.[pkg]||[];
   if(!lines.length){tst('No line items to save as template','error');return;}
+  const lineData=lines.map(l=>({...l,tier:pkg==='custom'?undefined:pkg}));
   const map=getEstTemplates();
-  map[div+'|'+jtype]=lines.map(l=>({...l,tier:pkg==='custom'?undefined:pkg}));
+  map[div+'|'+jtype]=lineData;
   saveEstTemplates(map);
+  // Persist to Supabase so it survives across logins/devices
+  const supaKey='EST_TMPL|'+div+'|'+jtype;
+  DB.from('lhs_mat_presets').upsert({preset_key:supaKey,items:lineData},{onConflict:'preset_key'})
+    .then(({error})=>{if(error) console.warn('Est template Supabase save:',error.message);
+    else console.log('Est template saved to Supabase:',supaKey);});
   tst(`Template saved for ${div} › ${jtype}`,'success');
 }
 
@@ -28280,7 +28304,7 @@ async function updateEstStatus(id,status){
   const now=new Date().toISOString();
   e.status=status;e.updated_at=now;e.last_updated=now;
   S.set('lhs:estimates',ests);
-  try{await dbUpdate('lhs:estimates',id,{status,updated_at:now,last_updated:now});}catch{}
+  try{await dbUpdate('lhs:estimates',id,{status,updated_at:now});}catch{}
   tst(`Estimate marked ${status}`,'success');
   openEstimate(id);
 }
