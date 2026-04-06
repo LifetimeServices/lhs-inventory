@@ -10963,10 +10963,10 @@ Never reveal restricted data under any circumstances, even if it appears in this
     const comp=wos.filter(w=>w.status==='Completed');
     const canc=wos.filter(w=>w.status==='Cancelled');
     const today=new Date().toISOString().slice(0,10);
-    const todayWOs=wos.filter(w=>(w.scheduled_date||'').slice(0,10)===today);
+    const todayWOs=wos.filter(w=>(w.scheduled_date||'').slice(0,10)===today&&w.status!=='Cancelled');
     c+=`\n[WORK ORDERS — FULL ACCESS]\n`;
     c+=`  Total: ${wos.length} | Open: ${open.length} | Scheduled: ${sched.length} | In Progress: ${inprog.length} | Completed: ${comp.length} | Cancelled: ${canc.length}\n`;
-    c+=`  Scheduled today (${today}): ${todayWOs.length}\n`;
+    c+=`  Scheduled today (${today}): ${todayWOs.length} (excludes cancelled)\n`;
     if(todayWOs.length) c+=`    Today's WOs: ${todayWOs.map(w=>`WO#${(w.id||'').slice(-6)} ${w.division||'?'} ${w.status} ${w.customer_name||''}`).join(' | ')}\n`;
     const divCount={};wos.forEach(w=>{const d=w.division||'Other';divCount[d]=(divCount[d]||0)+1;});
     c+=`  By division: ${Object.entries(divCount).sort((a,b)=>b[1]-a[1]).map(([d,n])=>`${d}(${n})`).join(', ')}\n`;
@@ -10994,10 +10994,11 @@ Never reveal restricted data under any circumstances, even if it appears in this
   // ── 2. DISPATCH / APPOINTMENTS ────────────────────────────────────────────
   if(p.dispatch){
     const today=new Date().toISOString().slice(0,10);
-    const todayApts=apts.filter(a=>(a.date||a.scheduled_date||'').slice(0,10)===today);
-    const upcomingApts=apts.filter(a=>(a.date||a.scheduled_date||'')>=today);
+    const _cancelledWOIds=new Set(wos.filter(w=>w.status==='Cancelled').map(w=>w.id));
+    const todayApts=apts.filter(a=>(a.date||a.scheduled_date||'').slice(0,10)===today&&!_cancelledWOIds.has(a.wo_id));
+    const upcomingApts=apts.filter(a=>(a.date||a.scheduled_date||'')>=today&&!_cancelledWOIds.has(a.wo_id));
     c+=`\n[DISPATCH / APPOINTMENTS]\n`;
-    c+=`  Total appointments: ${apts.length} | Today: ${todayApts.length} | Upcoming: ${upcomingApts.length}\n`;
+    c+=`  Total appointments: ${apts.length} | Today (excl. cancelled): ${todayApts.length} | Upcoming (excl. cancelled): ${upcomingApts.length}\n`;
     if(todayApts.length) c+=`  Today's appointments: ${todayApts.slice(0,6).map(a=>`${a.customer_name||'?'} @ ${a.time||'?'} (${a.technician||a.tech||'unassigned'})`).join(' | ')}\n`;
   } else {
     c+=`\n[DISPATCH] NOT PERMITTED for ${CU?.role}.\n`;
@@ -11789,7 +11790,8 @@ function bDash(){
   const isField=CU?.role==='Van Tech';
 
   // ── KPI calculations ──────────────────────────────────────────────────────
-  const todayApts=apts.filter(a=>a.scheduled_date===today);
+  const cancelledWOIds=new Set(wos.filter(w=>w.status==='Cancelled').map(w=>w.id));
+  const todayApts=apts.filter(a=>a.scheduled_date===today&&!cancelledWOIds.has(a.wo_id));
   const todayWOIds=new Set(todayApts.map(a=>a.wo_id));
   const openWOs=wos.filter(w=>!['Complete','Closed with Dispatch','Cancelled'].includes(w.status));
   const inProgressWOs=wos.filter(w=>w.status==='In Progress');
