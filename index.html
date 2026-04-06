@@ -28194,19 +28194,40 @@ async function svEstimate(){
   };
 
   if(editId){
-    // UPDATE existing estimate
-    const upd={...est};
-    delete upd.created_at; delete upd.created_by; // preserve originals
-    upd.updated_at=now;
-    try{await dbUpdate('lhs:estimates',editId,upd);}catch(e){console.warn('svEstimate update:',e?.message);}
+    const isLocalId=editId.startsWith('est_');
     const idx=existingEsts.findIndex(x=>x.id===editId);
-    if(idx>=0) existingEsts[idx]={...existingEsts[idx],...upd,id:editId};
-    S.set('lhs:estimates',existingEsts);
-    window._estEditId=null;
-    cMod();
-    tst(`${est.estimate_number} updated — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
-    showPage('sales-estimates');
-    return;
+    if(isLocalId){
+      // Local-only estimate — INSERT to Supabase to get a real UUID
+      let saved=null;
+      try{saved=await dbInsert('lhs:estimates',{...est,line_items:est.line_items});}
+      catch(e){console.warn('svEstimate re-sync exception:',e?.message);}
+      if(saved){
+        // Replace local record with the real Supabase record (new UUID)
+        if(idx>=0) existingEsts[idx]=saved; else existingEsts.unshift(saved);
+        S.set('lhs:estimates',existingEsts);
+        window._estEditId=null; cMod();
+        tst(`${est.estimate_number} synced to cloud ☁️ — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
+        showPage('sales-estimates'); return;
+      } else {
+        // Supabase insert failed — update local record in place
+        if(idx>=0) existingEsts[idx]={...existingEsts[idx],...est,id:editId};
+        S.set('lhs:estimates',existingEsts);
+        window._estEditId=null; cMod();
+        tst(`${est.estimate_number} updated locally (Supabase sync failed)`,'info');
+        showPage('sales-estimates'); return;
+      }
+    } else {
+      // Real Supabase UUID — UPDATE the existing row
+      const upd={...est};
+      delete upd.created_at; delete upd.created_by; // preserve originals
+      upd.updated_at=now;
+      try{await dbUpdate('lhs:estimates',editId,upd);}catch(e){console.warn('svEstimate update:',e?.message);}
+      if(idx>=0) existingEsts[idx]={...existingEsts[idx],...upd,id:editId};
+      S.set('lhs:estimates',existingEsts);
+      window._estEditId=null; cMod();
+      tst(`${est.estimate_number} updated — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
+      showPage('sales-estimates'); return;
+    }
   }
 
   // INSERT new estimate
