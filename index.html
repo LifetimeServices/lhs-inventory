@@ -27626,36 +27626,52 @@ function oNewEstimate(prefill={}){
   if(prefill.division) estLoadTemplate(true);
 }
 
-async function estCustSearch(q){
+function estCustSearch(q){
   const results=document.getElementById('est-cust-results');
   if(!results) return;
   if(!(q||'').trim()){results.style.display='none';document.getElementById('est-cust').value='';return;}
-  const lq=q.toLowerCase();
-  // Search local cache first
-  let matches=(S.get('lhs:customers')||[]).filter(c=>{
-    const name=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
-    return name.includes(lq)||(c.company||'').toLowerCase().includes(lq)||(c.phone||'').includes(lq)||(c.email||'').toLowerCase().includes(lq);
-  }).slice(0,15);
-  // Also query Supabase for customers not in local cache
-  try{
-    const{data}=await DB.from('lhs_customers').select('id,first_name,last_name,company,phone,email,address,city,state,zip').or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`).limit(15);
-    if(data&&data.length){
-      data.forEach(r=>{if(!matches.find(m=>m.id===r.id))matches.push(r);});
-    }
-  }catch{}
-  matches=matches.slice(0,20);
-  if(!matches.length){results.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--muted)">No customers found</div>';results.style.display='block';return;}
-  results.innerHTML=matches.map(c=>{
-    const name=(c.first_name||'')+' '+(c.last_name||'');
-    const sub=[c.company,c.phone||c.email].filter(Boolean).join(' · ');
-    const safeId=c.id.replace(/'/g,'');
-    const safeName=name.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-    return`<div onclick="estSelectCust('${safeId}','${safeName}')" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bdr)" onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
-      <div style="font-size:13px;font-weight:600">${esc(name)}</div>
-      ${sub?`<div style="font-size:11px;color:var(--muted)">${esc(sub)}</div>`:''}
-    </div>`;
-  }).join('');
   results.style.display='block';
+  results.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--muted)">Searching…</div>';
+  clearTimeout(window._estCustTimer);
+  window._estCustTimer=setTimeout(()=>_estCustSearchAsync(q),200);
+}
+
+async function _estCustSearchAsync(q){
+  const results=document.getElementById('est-cust-results');
+  if(!results) return;
+  try{
+    // Split into words so "Anne 414" matches first_name=Anne AND phone contains 414
+    const words=[...new Set((q||'').split(/\s+/).filter(w=>w.length>0))];
+    const clauses=words.flatMap(w=>[
+      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+      `company.ilike.%${w}%`,`phone.ilike.%${w}%`,`email.ilike.%${w}%`
+    ]);
+    const{data,error}=await DB.from('lhs_customers')
+      .select('id,first_name,last_name,company,phone,email,address,city,state,zip')
+      .or(clauses.join(','))
+      .order('last_name',{ascending:true})
+      .range(0,29);
+    if(error) throw error;
+    window._estCustResults={};
+    (data||[]).forEach(c=>{window._estCustResults[c.id]=c;});
+    if(!results) return;
+    if(!(data||[]).length){
+      results.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--muted)">No customers found</div>';
+      return;
+    }
+    results.innerHTML=(data||[]).map(c=>{
+      const name=(c.first_name||'')+' '+(c.last_name||'');
+      const sub=[c.company,c.phone||c.email,c.city?c.city+' '+c.state:''].filter(Boolean).join(' · ');
+      const safeId=c.id.replace(/'/g,'');
+      const safeName=name.replace(/'/g,'&#39;');
+      return`<div onmousedown="estSelectCust('${safeId}','${safeName}')" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bdr)" onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
+        <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(name)}${c.company?` <span style="font-weight:400;color:var(--muted)">— ${esc(c.company)}</span>`:''}      </div>
+        ${sub?`<div style="font-size:11px;color:var(--muted)">${esc(sub)}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){
+    if(results) results.innerHTML=`<div style="padding:10px 12px;font-size:13px;color:var(--red)">Search error: ${e?.message||'try again'}</div>`;
+  }
 }
 
 function estSelectCust(id,name){
@@ -27663,8 +27679,14 @@ function estSelectCust(id,name){
   const searchEl=document.getElementById('est-cust-search');
   const results=document.getElementById('est-cust-results');
   if(hiddenEl) hiddenEl.value=id;
-  if(searchEl) searchEl.value=name.replace(/&#39;/g,"'").replace(/&quot;/g,'"');
+  if(searchEl) searchEl.value=name.replace(/&#39;/g,"'");
   if(results) results.style.display='none';
+  // Cache the full customer object locally so estFillCustomer can access address etc.
+  const c=window._estCustResults?.[id];
+  if(c){
+    const local=S.get('lhs:customers')||[];
+    if(!local.find(x=>x.id===id)){local.push(c);S.set('lhs:customers',local);}
+  }
   estFillCustomer(id);
 }
 
