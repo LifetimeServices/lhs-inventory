@@ -4379,6 +4379,7 @@ function bCalLog(){
     <select onchange="window._calFSts=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
       <option value="">All Status</option>
       <option value="Active"${fSts==='Active'?' selected':''}>🟢 Active</option>
+      <option value="Sent for Calibration"${fSts==='Sent for Calibration'?' selected':''}>🟡 Sent for Calibration</option>
       <option value="Inactive"${fSts==='Inactive'?' selected':''}>🔴 Inactive</option>
     </select>
     <button class="btn btn-n" onclick="oAddCalDevice()">+ Add Device</button>
@@ -4413,13 +4414,16 @@ function bCalLog(){
             No devices match your filters. <button class="btn sm btn-o" style="margin-left:8px" onclick="oAddCalDevice()">+ Add Device</button>
           </td></tr>`
           :list.map(d=>{
-            const active=(d.status||'Active')==='Active';
-            const rowBg=active?'#f1faf2':'#fff5f5';
-            const cellBg=active?'#e4f6e5':'#fde8e8';
-            const bdrCol=active?'#81c784':'#e57373';
-            const txtMain=active?'#1b5e20':'#b71c1c';
-            const txtSub=active?'#2e7d32':'#c62828';
-            const badgeBg=active?'#2e7d32':'#c62828';
+            const sts=d.status||'Active';
+            const isSent=sts==='Sent for Calibration';
+            const isInactive=sts==='Inactive';
+            const rowBg=isSent?'#fffde7':isInactive?'#fff5f5':'#f1faf2';
+            const cellBg=isSent?'#fff9c4':isInactive?'#fde8e8':'#e4f6e5';
+            const bdrCol=isSent?'#f9a825':isInactive?'#e57373':'#81c784';
+            const txtMain=isSent?'#5d3900':isInactive?'#b71c1c':'#1b5e20';
+            const txtSub=isSent?'#7c4a00':isInactive?'#c62828':'#2e7d32';
+            const badgeBg=isSent?'#f9a825':isInactive?'#c62828':'#2e7d32';
+            const badgeTxt=isSent?'#3e2700':'white';
             const dates=typeof d.calibration_dates==='string'?JSON.parse(d.calibration_dates||'{}'):(d.calibration_dates||{});
             return`<tr style="border-bottom:1px solid var(--bdr);background:${rowBg}">
               <td style="position:sticky;left:0;z-index:2;background:${cellBg};border-right:2px solid ${bdrCol};padding:8px 10px;vertical-align:top">
@@ -4428,7 +4432,7 @@ function bCalLog(){
                     <div style="font-weight:700;font-size:13px;color:${txtMain};line-height:1.3;word-break:break-word">${esc(d.serial_number||'—')}</div>
                     ${d.crm_id?`<div style="font-size:11px;color:${txtSub};margin-top:1px">CRM: ${esc(d.crm_id)}</div>`:''}
                     ${d.region||d.state?`<div style="font-size:11px;color:${txtSub};opacity:.85;margin-top:2px">${[d.region,d.state].filter(Boolean).join(' · ')}</div>`:''}
-                    <div style="margin-top:5px"><span style="background:${badgeBg};color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.03em">${active?'Active':'Inactive'}</span></div>
+                    <div style="margin-top:5px"><span style="background:${badgeBg};color:${badgeTxt};font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.03em">${sts}</span></div>
                   </div>
                   <button title="Edit device" onclick="oEditCalDevice('${d.id}')"
                     style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 3px;border-radius:4px;flex-shrink:0;color:${txtMain};opacity:.65;transition:opacity .15s"
@@ -4486,6 +4490,7 @@ function _calDevForm(d,saveFn){
     <div class="fl"><label>Status</label>
       <select id="cdf-sts">
         <option value="Active"${(d.status||'Active')==='Active'?' selected':''}>✅ Active</option>
+        <option value="Sent for Calibration"${d.status==='Sent for Calibration'?' selected':''}>🟡 Sent for Calibration</option>
         <option value="Inactive"${d.status==='Inactive'?' selected':''}>❌ Inactive</option>
       </select>
     </div>
