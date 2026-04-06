@@ -14484,7 +14484,7 @@ function woCreateForm(){
     </div>
   </div>
   <div class="fr" style="margin-bottom:16px">
-    <div class="fl"><label>Add Tech <span id="woc-tech-region-lbl" style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px">${(()=>{const{techs,region}=_techsForState('');return techs.length+' techs · select state to filter';})()}</span></label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Add Tech <span id="woc-tech-region-lbl" style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px">${(()=>{const{techs,region}=_techsForState('');return techs.length+' techs · select state to filter';})()}</span></label>
       <input type="text" id="woc-tech-search" placeholder="&#128269; Search technicians..."
         oninput="filterTechSelect(this,'woc-addtech')"
         data-opts='${(()=>{const{techs}=_techsForState('');return JSON.stringify(_techOptObjs(techs)).replace(/'/g,"&#39;");})()}'
@@ -14741,6 +14741,7 @@ async function svCreateWO(){
   if(clsEl&&clsEl.options.length>1&&!cls){tst('Job Classification is required','error');return}
   const desc=(v('woc-desc')||'').trim();
   if(!desc){tst('Job Description / Notes is required','error');return}
+  if(!(window._wocTechs&&window._wocTechs.length)){tst('At least one technician must be assigned','error');return}
 
   // Get or create customer
   let cust=window._wocSelectedCust;
@@ -18648,28 +18649,34 @@ function renderCustTable(custs){
 
 function custForm(c,saveFn){
   return`<div class="fr">
-    <div class="fl"><label>First Name</label><input id="cf-fn" value="${c.first_name||''}" placeholder="First"></div>
-    <div class="fl"><label>Last Name</label><input id="cf-ln" value="${c.last_name||''}" placeholder="Last"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> First Name</label><input id="cf-fn" value="${c.first_name||''}" placeholder="First"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Last Name</label><input id="cf-ln" value="${c.last_name||''}" placeholder="Last"></div>
     <div class="fl"><label>Company (optional)</label><input id="cf-co" value="${c.company||''}" placeholder="Company name"></div>
   </div><div class="fr">
-    <div class="fl"><label>Phone</label><input id="cf-ph" value="${c.phone||''}" placeholder="(000) 000-0000"></div>
-    <div class="fl"><label>Email</label><input id="cf-em" value="${c.email||''}" placeholder="email"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Phone</label><input id="cf-ph" value="${c.phone||''}" placeholder="(000) 000-0000"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Email</label><input id="cf-em" value="${c.email||''}" placeholder="email"></div>
   </div><div class="fr">
-    <div class="fl" style="position:relative"><label>Street Address</label>
-      <input id="cf-ad" value="${esc(c.address||'')}" placeholder="Start typing address..." autocomplete="off"
-        oninput="addrAutoComplete(this.value,'cf-suggestions','cf-ad','cf-ct','cf-st','cf-zip')"
-        onblur="setTimeout(()=>{const d=document.getElementById('cf-suggestions');if(d)d.style.display='none'},200)">
-      <div id="cf-suggestions" style="display:none"></div>
+    <div class="fl" style="grid-column:span 2"><label><span style="color:var(--red)">*</span> Street Address</label>
+      <div style="display:flex;gap:6px;position:relative">
+        <div style="flex:1;position:relative">
+          <input id="cf-ad" value="${esc(c.address||'')}" placeholder="Start typing address..." autocomplete="off" style="width:100%"
+            oninput="clearAddrVerify();addrAutoComplete(this.value,'cf-suggestions','cf-ad','cf-ct','cf-st','cf-zip')"
+            onblur="setTimeout(()=>{const d=document.getElementById('cf-suggestions');if(d)d.style.display='none'},200)">
+          <div id="cf-suggestions" style="display:none"></div>
+        </div>
+        <button type="button" class="btn btn-o sm" onclick="verifyAddress()" style="white-space:nowrap;flex-shrink:0">&#128205; Verify</button>
+      </div>
+      <div id="addr-verify-result" style="margin-top:4px;font-size:12px;display:none"></div>
     </div>
-    <div class="fl"><label>City</label><input id="cf-ct" value="${esc(c.city||'')}" placeholder="City"></div>
   </div><div class="fr">
-    <div class="fl"><label>State</label>
+    <div class="fl"><label><span style="color:var(--red)">*</span> City</label><input id="cf-ct" value="${esc(c.city||'')}" placeholder="City"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> State</label>
       <select id="cf-st">
         <option value="">— Select —</option>
         ${ALL_STATES.map(s=>`<option value="${s}"${c.state===s?' selected':''}>${s} - ${STATE_NAMES[s]||s}</option>`).join('')}
       </select>
     </div>
-    <div class="fl"><label>Zip</label><input id="cf-zip" value="${c.zip||''}" placeholder="00000"></div>
+    <div class="fl"><label><span style="color:var(--red)">*</span> Zip</label><input id="cf-zip" value="${c.zip||''}" placeholder="00000"></div>
   </div><div class="fr">
     <div class="fl"><label>Division</label>
       <select id="cf-div">
@@ -18905,6 +18912,12 @@ function oAddCustomer(){ oMod('Add Customer',custForm({},'svAddCustomer')); }
 async function svAddCustomer(){
   const fn=v('cf-fn'),ln=v('cf-ln');
   if(!fn||!ln){tst('First and last name required','error');return}
+  const ph=v('cf-ph'),em=v('cf-em');
+  if(!ph&&!em){tst('Phone or email is required','error');return}
+  if(!(v('cf-ad')||'').trim()){tst('Street address is required','error');return}
+  if(!(v('cf-ct')||'').trim()){tst('City is required','error');return}
+  if(!v('cf-st')){tst('State is required','error');return}
+  if(!(v('cf-zip')||'').trim()){tst('Zip code is required','error');return}
   const state=v('cf-st');
   const region=Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||'';
   // Generate next customer number
@@ -18965,6 +18978,12 @@ async function svEditCustomer(){
   const id=window._editCustId;if(!id) return;
   const fn=v('cf-fn'),ln=v('cf-ln');
   if(!fn||!ln){tst('First and last name required','error');return}
+  const ph=v('cf-ph'),em=v('cf-em');
+  if(!ph&&!em){tst('Phone or email is required','error');return}
+  if(!(v('cf-ad')||'').trim()){tst('Street address is required','error');return}
+  if(!(v('cf-ct')||'').trim()){tst('City is required','error');return}
+  if(!v('cf-st')){tst('State is required','error');return}
+  if(!(v('cf-zip')||'').trim()){tst('Zip code is required','error');return}
   const state=v('cf-st');
   const region=Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||'';
   const updates={first_name:fn,last_name:ln,company:v('cf-co')||null,
