@@ -27477,7 +27477,6 @@ function estAddFromPricebook(svcId){
 }
 
 function oNewEstimate(prefill={}){
-  const custs=S.get('lhs:customers')||[];
   const opps=(S.get('lhs:opportunities')||[]).filter(o=>!['Won','Lost'].includes(o.stage));
   const reps=(S.get('lhs:users')||[]).filter(u=>['Sales Rep','Regional Manager','God View','Admin','Director'].includes(u.role));
   // Use max existing number + 1 (not length+1) to avoid collisions after deletes or Supabase merges
@@ -27501,10 +27500,14 @@ function oNewEstimate(prefill={}){
   </div>
   <div class="fr">
     <div class="fl"><label>Customer</label>
-      <select id="est-cust" onchange="estFillCustomer(this.value)">
-        <option value="">— Select Customer —</option>
-        ${custs.map(c=>`<option value="${c.id}"${prefill.customer_id===c.id?' selected':''}>${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}</option>`).join('')}
-      </select>
+      <div style="position:relative">
+        <input id="est-cust-search" placeholder="🔍 Type name, phone, or email…" autocomplete="off" style="width:100%;box-sizing:border-box"
+          oninput="estCustSearch(this.value)"
+          onblur="setTimeout(()=>{const d=document.getElementById('est-cust-results');if(d)d.style.display='none'},200)"
+          value="${(()=>{if(!prefill.customer_id)return'';const c=(S.get('lhs:customers')||[]).find(x=>x.id===prefill.customer_id);return c?(c.first_name||'')+' '+(c.last_name||'')+(c.company?' ('+c.company+')':''):'';})()}">
+        <input type="hidden" id="est-cust" value="${prefill.customer_id||''}">
+        <div id="est-cust-results" style="display:none;position:absolute;z-index:9999;background:#fff;border:1px solid var(--bdr);border-radius:6px;max-height:220px;overflow-y:auto;width:100%;box-shadow:0 4px 16px rgba(0,0,0,.14)"></div>
+      </div>
     </div>
     <div class="fl"><label>Linked Opportunity</label>
       <select id="est-opp">
@@ -27621,6 +27624,48 @@ function oNewEstimate(prefill={}){
   window._estPkg='custom';
   estRenderLines();
   if(prefill.division) estLoadTemplate(true);
+}
+
+async function estCustSearch(q){
+  const results=document.getElementById('est-cust-results');
+  if(!results) return;
+  if(!(q||'').trim()){results.style.display='none';document.getElementById('est-cust').value='';return;}
+  const lq=q.toLowerCase();
+  // Search local cache first
+  let matches=(S.get('lhs:customers')||[]).filter(c=>{
+    const name=((c.first_name||'')+' '+(c.last_name||'')).toLowerCase();
+    return name.includes(lq)||(c.company||'').toLowerCase().includes(lq)||(c.phone||'').includes(lq)||(c.email||'').toLowerCase().includes(lq);
+  }).slice(0,15);
+  // Also query Supabase for customers not in local cache
+  try{
+    const{data}=await DB.from('lhs_customers').select('id,first_name,last_name,company,phone,email,address,city,state,zip').or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`).limit(15);
+    if(data&&data.length){
+      data.forEach(r=>{if(!matches.find(m=>m.id===r.id))matches.push(r);});
+    }
+  }catch{}
+  matches=matches.slice(0,20);
+  if(!matches.length){results.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--muted)">No customers found</div>';results.style.display='block';return;}
+  results.innerHTML=matches.map(c=>{
+    const name=(c.first_name||'')+' '+(c.last_name||'');
+    const sub=[c.company,c.phone||c.email].filter(Boolean).join(' · ');
+    const safeId=c.id.replace(/'/g,'');
+    const safeName=name.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    return`<div onclick="estSelectCust('${safeId}','${safeName}')" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bdr)" onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
+      <div style="font-size:13px;font-weight:600">${esc(name)}</div>
+      ${sub?`<div style="font-size:11px;color:var(--muted)">${esc(sub)}</div>`:''}
+    </div>`;
+  }).join('');
+  results.style.display='block';
+}
+
+function estSelectCust(id,name){
+  const hiddenEl=document.getElementById('est-cust');
+  const searchEl=document.getElementById('est-cust-search');
+  const results=document.getElementById('est-cust-results');
+  if(hiddenEl) hiddenEl.value=id;
+  if(searchEl) searchEl.value=name.replace(/&#39;/g,"'").replace(/&quot;/g,'"');
+  if(results) results.style.display='none';
+  estFillCustomer(id);
 }
 
 function estFillCustomer(custId){
@@ -28093,10 +28138,9 @@ async function svEstimate(existingId){
   };
   // Try Supabase — falls back to localStorage only if table not created yet
   let saved=null;
-  let dbErr=null;
   try{saved=await dbInsert('lhs:estimates',{...est,line_items:est.line_items});}
-  catch(e){dbErr=e?.message||'unknown';}
-  if(!saved&&dbErr) console.warn('svEstimate: Supabase insert failed —',dbErr);
+  catch(e){console.warn('svEstimate exception:',e?.message);}
+  if(!saved) console.warn('svEstimate: Supabase insert returned null — saving locally only. Estimate will persist until next login.');
   const final=saved||{...est,id:'est_'+Date.now()};
   const ests=S.get('lhs:estimates')||[];
   // Guard against duplicates if user double-clicked Save
