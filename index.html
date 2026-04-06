@@ -27502,20 +27502,28 @@ function oNewEstimate(prefill={}){
   const _ests=S.get('lhs:estimates')||[];
   const _maxN=_ests.reduce((mx,e)=>{const m=parseInt((e.estimate_number||'').replace(/\D/g,''))||0;return m>mx?m:mx;},0);
   const nextNum='EST-'+String(_maxN+1).padStart(4,'0');
+  window._estEditId=prefill._editId||null;
   window._estLines={good:[],better:[],best:[],custom:[]};
-  // Load template lines if div+type known
-  if(prefill.division&&prefill.job_type){
+  if(prefill._lines&&prefill._lines.length){
+    // Editing existing estimate — restore saved line items
+    const ls=prefill._lines.map(l=>({...l}));
+    window._estLines.custom=ls;
+    window._estLines.good=ls.filter(l=>l.tier==='good'||!l.tier);
+    window._estLines.better=ls.filter(l=>l.tier==='better');
+    window._estLines.best=ls.filter(l=>l.tier==='best');
+  } else if(prefill.division&&prefill.job_type){
+    // Load template lines if div+type known
     const tmpl=getEstTemplate(prefill.division,prefill.job_type);
     if(tmpl.length){window._estLines.good=tmpl.filter(l=>l.tier==='good'||!l.tier);window._estLines.better=tmpl.filter(l=>l.tier==='better');window._estLines.best=tmpl.filter(l=>l.tier==='best');window._estLines.custom=[...tmpl.map(l=>({...l}))];}}
 
-  oMod('New Estimate',`
+  oMod(prefill._editId?`Edit ${prefill.estimate_number||'Estimate'}`:'New Estimate',`
   <div style="max-height:80vh;overflow-y:auto;padding-right:4px">
   <div class="fr">
-    <div class="fl"><label>Estimate #</label><input id="est-num" value="${nextNum}" readonly style="background:var(--surf);color:var(--muted)"></div>
+    <div class="fl"><label>Estimate #</label><input id="est-num" value="${prefill.estimate_number||nextNum}" readonly style="background:var(--surf);color:var(--muted)"></div>
     <div class="fl"><label>Status</label>
-      <select id="est-status"><option>Draft</option><option>Sent</option><option>Accepted</option><option>Declined</option></select>
+      <select id="est-status">${['Draft','Sent','Accepted','Declined'].map(s=>`<option${s===(prefill.status||'Draft')?' selected':''}>${s}</option>`).join('')}</select>
     </div>
-    <div class="fl"><label>Date</label><input type="date" id="est-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="fl"><label>Date</label><input type="date" id="est-date" value="${prefill.estimate_date||new Date().toISOString().slice(0,10)}"></div>
   </div>
   <div class="fr">
     <div class="fl"><label>Customer</label>
@@ -27633,16 +27641,21 @@ function oNewEstimate(prefill={}){
   </div>
 
   <div class="br2" style="margin-top:16px">
-    <button class="btn btn-n" onclick="svEstimate()">Save Estimate</button>
+    <button class="btn btn-n" onclick="svEstimate()">${prefill._editId?'✏️ Update Estimate':'Save Estimate'}</button>
     <button class="btn btn-o" onclick="estSaveTemplate()">💾 Save as Template</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>
   </div>`);
 
   // Initialize lines and render
-  window._estPkg='custom';
+  window._estPkg=prefill._pkg||'custom';
   estRenderLines();
-  if(prefill.division) estLoadTemplate(true);
+  // Highlight the correct package button
+  ['good','better','best','custom'].forEach(p=>{
+    const b=document.getElementById('pkg-btn-'+p);
+    if(b){b.className=p===window._estPkg?'btn sm btn-n':'btn sm btn-o';}
+  });
+  if(!prefill._lines&&prefill.division) estLoadTemplate(true);
 }
 
 function estCustSearch(q){
@@ -27749,7 +27762,7 @@ function estTogglePbPanel(){
 }
 
 function estDivChange(div){
-  window._estDiv=div; estLoadTemplate(); estRefreshPbPanel(); estRefreshPermitPanel();
+  window._estDiv=div; estLoadTemplate(true); estRefreshPbPanel(); estRefreshPermitPanel();
 }
 
 function estLoadTemplate(silent=false){
@@ -28142,7 +28155,7 @@ function estTogglePermitPanel(){
 }
 
 // ── SAVE ESTIMATE ──────────────────────────────────────────────────────────────
-async function svEstimate(existingId){
+async function svEstimate(){
   const pkg=window._estPkg||'custom';
   const lines=window._estLines?.[pkg]||[];
   const custId=document.getElementById('est-cust')?.value||'';
@@ -28153,6 +28166,9 @@ async function svEstimate(existingId){
   const stateRaw=document.getElementById('est-state-scope')?.value||'';
   const stateCode=stateRaw.includes(' - ')?stateRaw.split(' - ')[0]:stateRaw;
   const regionVal=document.getElementById('est-region-scope')?.value||'';
+  const editId=window._estEditId||null;
+  const existingEsts=S.get('lhs:estimates')||[];
+  const orig=editId?existingEsts.find(x=>x.id===editId):null;
   const est={
     estimate_number:document.getElementById('est-num')?.value||'',
     status:document.getElementById('est-status')?.value||'Draft',
@@ -28172,20 +28188,36 @@ async function svEstimate(existingId){
     line_items:JSON.stringify(lines),
     total_price:grand,
     total_cost:totalCost,
-    created_by:CU?.name||'',
-    created_at:now,
+    created_by:orig?.created_by||CU?.name||'',
+    created_at:orig?.created_at||now,
     updated_at:now,
   };
-  // Try Supabase — falls back to localStorage only if table not created yet
+
+  if(editId){
+    // UPDATE existing estimate
+    const upd={...est};
+    delete upd.created_at; delete upd.created_by; // preserve originals
+    upd.updated_at=now;
+    try{await dbUpdate('lhs:estimates',editId,upd);}catch(e){console.warn('svEstimate update:',e?.message);}
+    const idx=existingEsts.findIndex(x=>x.id===editId);
+    if(idx>=0) existingEsts[idx]={...existingEsts[idx],...upd,id:editId};
+    S.set('lhs:estimates',existingEsts);
+    window._estEditId=null;
+    cMod();
+    tst(`${est.estimate_number} updated — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
+    showPage('sales-estimates');
+    return;
+  }
+
+  // INSERT new estimate
   let saved=null;
   try{saved=await dbInsert('lhs:estimates',{...est,line_items:est.line_items});}
   catch(e){console.warn('svEstimate exception:',e?.message);}
-  if(!saved) console.warn('svEstimate: Supabase insert returned null — saving locally only. Estimate will persist until next login.');
+  if(!saved) console.warn('svEstimate: Supabase insert returned null — saving locally only.');
   const final=saved||{...est,id:'est_'+Date.now()};
-  const ests=S.get('lhs:estimates')||[];
   // Guard against duplicates if user double-clicked Save
-  if(!ests.find(x=>x.id===final.id)){
-    ests.unshift(final);S.set('lhs:estimates',ests);
+  if(!existingEsts.find(x=>x.id===final.id)){
+    existingEsts.unshift(final);S.set('lhs:estimates',existingEsts);
   }
   // Update linked opportunity stage to Estimate Sent
   const oppId=document.getElementById('est-opp')?.value;
@@ -28238,7 +28270,8 @@ function openEstimate(id){
   <!-- Status bar -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
     ${['Draft','Sent','Accepted','Declined'].map(s=>`<button class="btn sm ${e.status===s?'btn-n':'btn-o'}" onclick="updateEstStatus('${id}','${s}')">${s}</button>`).join('')}
-    <button class="btn sm btn-g" style="margin-left:auto" onclick="printEstimate('${id}')">🖨 Print / PDF</button>
+    <button class="btn sm btn-o" style="margin-left:auto" onclick="cMod();editEstimate('${id}')">✏️ Edit</button>
+    <button class="btn sm btn-g" onclick="printEstimate('${id}')">🖨 Print / PDF</button>
     ${e.status==='Accepted'?`<button class="btn sm btn-n" onclick="estToWO('${id}')">→ Create Work Order</button>`:''}
   </div>
 
@@ -28295,6 +28328,33 @@ function openEstimate(id){
 
   ${e.notes?`<div class="card" style="margin-top:12px;padding:12px;font-size:13px"><div class="ct">Site Notes</div>${e.notes}</div>`:''}
   </div>`);
+}
+
+// ── EDIT EXISTING ESTIMATE ────────────────────────────────────────────────────
+function editEstimate(id){
+  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
+  if(!e){tst('Estimate not found','error');return;}
+  const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
+  oNewEstimate({
+    _editId:id,
+    estimate_number:e.estimate_number,
+    status:e.status,
+    estimate_date:e.estimate_date||e.created_at?.slice(0,10)||'',
+    customer_id:e.customer_id||'',
+    opp_id:e.opportunity_id||'',
+    division:e.division||'',
+    state:e.state||'',
+    region:e.region||'',
+    job_type:e.job_type||'',
+    assigned_to:e.assigned_to||'',
+    site_address:e.site_address||'',
+    notes:e.notes||'',
+    internal_notes:e.internal_notes||'',
+    _lines:lines,
+    _pkg:(e.selected_package||'Custom').toLowerCase(),
+    _created_at:e.created_at,
+    _created_by:e.created_by
+  });
 }
 
 async function updateEstStatus(id,status){
