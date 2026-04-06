@@ -22871,8 +22871,7 @@ async function svTORStatus(reqId, action){
     const upd={status:'Denied', approval_stage:99,
       [`approver_${stage}_status`]:'Denied', [`approver_${stage}_at`]:now, approved_by:CU?.name};
     await _applyTORUpdate(reqId, upd, reqs, idx);
-    // Notify the employee
-    await _notifyEmployee(req, 'Denied', CU?.name);
+    try{await _notifyEmployee(req, 'Denied', CU?.name);}catch(e){console.warn('TOR notify failed:',e);}
     tst('Request denied','info');
   } else {
     // Approve this stage
@@ -22883,14 +22882,14 @@ async function svTORStatus(reqId, action){
       // More approvers needed
       const upd={...stageUpd, approval_stage:nextStage, [`approver_${nextStage}_status`]:'Pending', last_reminded_at:now};
       await _applyTORUpdate(reqId, upd, reqs, idx);
-      await _notifyNextApprover({...req,...upd});
+      try{await _notifyNextApprover({...req,...upd});}catch(e){console.warn('TOR notify failed:',e);}
       tst(`Stage ${stage} approved — forwarded to next approver`,'success');
     } else {
       // Final approval
       const upd={...stageUpd, approval_stage:99, status:'Approved', approved_by:CU?.name};
       await _applyTORUpdate(reqId, upd, reqs, idx);
-      await _notifyEmployee(req, 'Approved', CU?.name);
-      _syncTORToCalendar([{...req,...upd}]);
+      try{await _notifyEmployee(req, 'Approved', CU?.name);}catch(e){console.warn('TOR notify failed:',e);}
+      try{await _syncTORToCalendar([{...req,...upd}]);}catch(e){console.warn('TOR calendar sync failed:',e);}
       tst(req.employee_name+' — Fully Approved ✓','success');
     }
   }
