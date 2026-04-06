@@ -1494,6 +1494,7 @@ const TBL={
   'lhs:job_time_entries':'lhs_job_time_entries',
   'lhs:pb_services':'lhs_pb_services',
   'lhs:pb_categories':'lhs_pb_categories',
+  'lhs:cal_devices':'lhs_calibration_devices',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -4308,11 +4309,20 @@ async function delLS(idx){
 
 // ─── TESTERS ─────────────────────────────────────────────────────────────────
 function bTest(){
+  const tab=window._testerTab||'tracker';
+  const tabBtn=(id,label)=>`<button onclick="window._testerTab='${id}';showPage('testers')" style="padding:9px 20px;border:none;border-bottom:${tab===id?'3px solid var(--teal)':'3px solid transparent'};background:none;font-size:13px;font-weight:${tab===id?'700':'500'};color:${tab===id?'var(--teal)':'var(--muted)'};cursor:pointer;white-space:nowrap">${label}</button>`;
+  return`<div class="pt">Testers</div><div class="ps">Radon test kit inventory &amp; calibration tracking</div>
+  <div style="display:flex;border-bottom:1px solid var(--bdr);margin-bottom:18px;gap:0">
+    ${tabBtn('tracker','📡 Tester Tracker')}
+    ${tabBtn('cal','📋 Calibration Log')}
+  </div>
+  ${tab==='tracker'?_bTestTracker():bCalLog()}`;
+}
+function _bTestTracker(){
   const ts=S.get('lhs:ts')||[];
   const tc=s=>s==='At Customer'?'bb':s==='In Transit'?'ba':s==='At Warehouse'?'bg':'bgr';
   const dep=ts.filter(x=>['At Customer','In Transit'].includes(x.status));
-  return`<div class="pt">Tester Tracker</div><div class="ps">Radon test kit inventory</div>
-  <div class="sh"><div style="display:flex;gap:12px">
+  return`<div class="sh"><div style="display:flex;gap:12px">
     ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
     <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">${l}</div>
@@ -4332,6 +4342,218 @@ function bTest(){
     <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
     <td><button class="btn sm btn-o" onclick="oUpdTest(${i})">Update</button></td>
   </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+// ─── CALIBRATION LOG ─────────────────────────────────────────────────────────
+function bCalLog(){
+  if(!window._calYearStart) window._calYearStart=new Date().getFullYear();
+  const ys=window._calYearStart;
+  const years=[ys,ys+1,ys+2,ys+3,ys+4];
+  const curY=new Date().getFullYear();
+  const devs=S.get('lhs:cal_devices')||[];
+  const fReg=window._calFReg||'';
+  const fSta=window._calFSta||'';
+  const fSts=window._calFSts||'';
+  const fQ=(window._calFQ||'').toLowerCase();
+  let list=devs;
+  if(fReg) list=list.filter(d=>d.region===fReg);
+  if(fSta) list=list.filter(d=>d.state===fSta);
+  if(fSts) list=list.filter(d=>(d.status||'Active')===fSts);
+  if(fQ) list=list.filter(d=>(d.serial_number||'').toLowerCase().includes(fQ)||(d.crm_id||'').toLowerCase().includes(fQ));
+  const regions=Object.keys(REGIONS).sort();
+
+  return`
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <input placeholder="🔍 Serial # or CRM ID…" value="${esc(window._calFQ||'')}"
+      oninput="window._calFQ=this.value;showPage('testers')"
+      style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;min-width:190px">
+    <select onchange="window._calFReg=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Regions</option>
+      ${regions.map(r=>`<option value="${esc(r)}"${fReg===r?' selected':''}>${esc(r)}</option>`).join('')}
+    </select>
+    <select onchange="window._calFSta=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All States</option>
+      ${ALL_STATES.map(s=>`<option value="${s}"${fSta===s?' selected':''}>${s}</option>`).join('')}
+    </select>
+    <select onchange="window._calFSts=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Status</option>
+      <option value="Active"${fSts==='Active'?' selected':''}>🟢 Active</option>
+      <option value="Inactive"${fSts==='Inactive'?' selected':''}>🔴 Inactive</option>
+    </select>
+    <button class="btn btn-n" onclick="oAddCalDevice()">+ Add Device</button>
+    <span style="margin-left:auto;font-size:12px;color:var(--muted);font-weight:600">${list.length} device${list.length!==1?'s':''} of ${devs.length}</span>
+  </div>
+
+  <!-- Year navigation -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+    <button class="btn sm btn-o" onclick="calPrevYear()" ${ys<=2020?'disabled':''}>◀ ${ys-1}</button>
+    <span style="font-size:14px;font-weight:700;color:var(--navy);min-width:100px;text-align:center">${ys} – ${ys+4}</span>
+    <button class="btn sm btn-o" onclick="calNextYear()" ${ys>=2046?'disabled':''}>${ys+5} ▶</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;table-layout:fixed">
+        <colgroup>
+          <col style="width:210px;min-width:210px">
+          ${years.map(()=>`<col style="width:126px;min-width:110px">`).join('')}
+        </colgroup>
+        <thead>
+          <tr style="background:var(--navy)">
+            <th style="position:sticky;left:0;z-index:3;background:var(--navy);padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.85);border-right:2px solid rgba(255,255,255,.15)">Device Info</th>
+            ${years.map(y=>`<th style="padding:11px 6px;text-align:center;color:white;font-size:13px;font-weight:700;border-right:1px solid rgba(255,255,255,.12)${y===curY?';background:rgba(255,255,255,.12)':''}">
+              ${y}${y===curY?`<div style="font-size:9px;font-weight:500;opacity:.7;margin-top:1px">Current</div>`:''}
+            </th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${!list.length?`<tr><td colspan="${years.length+1}" style="padding:48px;text-align:center;color:var(--muted);font-size:13px">
+            No devices match your filters. <button class="btn sm btn-o" style="margin-left:8px" onclick="oAddCalDevice()">+ Add Device</button>
+          </td></tr>`
+          :list.map(d=>{
+            const active=(d.status||'Active')==='Active';
+            const rowBg=active?'#f1faf2':'#fff5f5';
+            const cellBg=active?'#e4f6e5':'#fde8e8';
+            const bdrCol=active?'#81c784':'#e57373';
+            const txtMain=active?'#1b5e20':'#b71c1c';
+            const txtSub=active?'#2e7d32':'#c62828';
+            const badgeBg=active?'#2e7d32':'#c62828';
+            const dates=typeof d.calibration_dates==='string'?JSON.parse(d.calibration_dates||'{}'):(d.calibration_dates||{});
+            return`<tr style="border-bottom:1px solid var(--bdr);background:${rowBg}">
+              <td style="position:sticky;left:0;z-index:2;background:${cellBg};border-right:2px solid ${bdrCol};padding:8px 10px;vertical-align:top">
+                <div style="display:flex;align-items:flex-start;gap:5px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:700;font-size:13px;color:${txtMain};line-height:1.3;word-break:break-word">${esc(d.serial_number||'—')}</div>
+                    ${d.crm_id?`<div style="font-size:11px;color:${txtSub};margin-top:1px">CRM: ${esc(d.crm_id)}</div>`:''}
+                    ${d.region||d.state?`<div style="font-size:11px;color:${txtSub};opacity:.85;margin-top:2px">${[d.region,d.state].filter(Boolean).join(' · ')}</div>`:''}
+                    <div style="margin-top:5px"><span style="background:${badgeBg};color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.03em">${active?'Active':'Inactive'}</span></div>
+                  </div>
+                  <button title="Edit device" onclick="oEditCalDevice('${d.id}')"
+                    style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 3px;border-radius:4px;flex-shrink:0;color:${txtMain};opacity:.65;transition:opacity .15s"
+                    onmouseenter="this.style.opacity='1';this.style.background='rgba(0,0,0,.08)'"
+                    onmouseleave="this.style.opacity='.65';this.style.background='none'">✏️</button>
+                </div>
+              </td>
+              ${years.map(y=>{
+                const val=dates[y]||'';
+                const isCur=y===curY;
+                return`<td style="padding:0;background:${isCur?(active?'#f0faf0':'#fff0f0'):(active?'white':'#fff9f9')};border-right:1px solid var(--bdr)">
+                  <input type="text" value="${esc(val)}" placeholder="—"
+                    title="Click to enter calibration date for ${y}"
+                    onfocus="this.style.outline='2px solid var(--teal)';this.style.background='#fffde7'"
+                    onblur="this.style.outline='';this.style.background='';svCalDate('${d.id}',${y},this.value)"
+                    style="width:100%;min-height:42px;border:none;text-align:center;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;cursor:text;box-sizing:border-box;padding:6px 4px;color:${val?'var(--navy)':'#ccc'};font-weight:${val?'600':'400'}">
+                </td>`;
+              }).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function calPrevYear(){if((window._calYearStart||2026)>2020){window._calYearStart=(window._calYearStart||2026)-1;showPage('testers');}}
+function calNextYear(){if((window._calYearStart||2026)<2046){window._calYearStart=(window._calYearStart||2026)+1;showPage('testers');}}
+
+async function svCalDate(devId,year,val){
+  const devs=S.get('lhs:cal_devices')||[];
+  const d=devs.find(x=>x.id===devId);
+  if(!d) return;
+  const dates=typeof d.calibration_dates==='string'?JSON.parse(d.calibration_dates||'{}'):(d.calibration_dates||{});
+  const trimmed=(val||'').trim();
+  if(trimmed) dates[year]=trimmed; else delete dates[year];
+  d.calibration_dates=dates;
+  S.set('lhs:cal_devices',devs);
+  try{await dbUpdate('lhs:cal_devices',devId,{calibration_dates:dates,updated_at:new Date().toISOString()});}
+  catch(e){console.warn('svCalDate:',e?.message);}
+}
+
+function _calDevForm(d,saveFn){
+  const regions=Object.keys(REGIONS).sort();
+  return`<div class="fr">
+    <div class="fl"><label>CRM ID #</label><input id="cdf-crm" value="${esc(d.crm_id||'')}" placeholder="CRM-0001"></div>
+    <div class="fl"><label>Serial Number</label><input id="cdf-sn" value="${esc(d.serial_number||'')}" placeholder="SN-XX-000"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Purchase Date</label><input type="date" id="cdf-pd" value="${d.purchase_date||''}"></div>
+    <div class="fl"><label>Purchase Price</label><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px">$</span><input type="number" id="cdf-pp" value="${d.purchase_price||''}" placeholder="0.00" step="0.01" min="0" style="padding-left:22px"></div></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Calibration Cost</label><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px">$</span><input type="number" id="cdf-cc" value="${d.calibration_cost||''}" placeholder="0.00" step="0.01" min="0" style="padding-left:22px"></div></div>
+    <div class="fl"><label>Status</label>
+      <select id="cdf-sts">
+        <option value="Active"${(d.status||'Active')==='Active'?' selected':''}>✅ Active</option>
+        <option value="Inactive"${d.status==='Inactive'?' selected':''}>❌ Inactive</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Region Assigned</label>
+      <select id="cdf-reg">
+        <option value="">— None —</option>
+        ${regions.map(r=>`<option value="${esc(r)}"${(d.region||'')===r?' selected':''}>${esc(r)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>State Assigned</label>
+      <select id="cdf-sta">
+        <option value="">— None —</option>
+        ${ALL_STATES.map(s=>`<option value="${s}"${(d.state||'')===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="${saveFn}">💾 Save</button>
+    ${d.id?`<button class="btn btn-g" onclick="delCalDevice('${d.id}')">🗑 Delete</button>`:''}
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`;
+}
+
+function oAddCalDevice(){oMod('Add Calibration Device',_calDevForm({},"svAddCalDevice()"));}
+function oEditCalDevice(id){
+  const d=(S.get('lhs:cal_devices')||[]).find(x=>x.id===id);
+  if(!d){tst('Device not found','error');return;}
+  oMod('Edit Device — '+(d.serial_number||d.crm_id||'?'),_calDevForm(d,`svEditCalDevice('${id}')`));
+}
+
+async function svAddCalDevice(){
+  const crm=v('cdf-crm'),sn=v('cdf-sn');
+  if(!crm&&!sn){tst('CRM ID or Serial Number is required','error');return;}
+  const now=new Date().toISOString();
+  const dev={crm_id:crm,serial_number:sn,
+    purchase_date:v('cdf-pd')||null,purchase_price:parseFloat(v('cdf-pp'))||null,
+    calibration_cost:parseFloat(v('cdf-cc'))||null,status:v('cdf-sts')||'Active',
+    region:v('cdf-reg')||null,state:v('cdf-sta')||null,
+    calibration_dates:{},created_at:now,updated_at:now};
+  let saved=null;
+  try{saved=await dbInsert('lhs:cal_devices',dev);}catch(e){console.warn('svAddCalDevice:',e?.message);}
+  const final=saved||{...dev,id:'cd_'+Date.now()};
+  const devs=S.get('lhs:cal_devices')||[];devs.push(final);S.set('lhs:cal_devices',devs);
+  cMod();tst(`${sn||crm} added`,'success');showPage('testers');
+}
+
+async function svEditCalDevice(id){
+  const devs=S.get('lhs:cal_devices')||[];
+  const idx=devs.findIndex(x=>x.id===id);
+  if(idx<0){tst('Device not found','error');return;}
+  const now=new Date().toISOString();
+  const upd={crm_id:v('cdf-crm'),serial_number:v('cdf-sn'),
+    purchase_date:v('cdf-pd')||null,purchase_price:parseFloat(v('cdf-pp'))||null,
+    calibration_cost:parseFloat(v('cdf-cc'))||null,status:v('cdf-sts')||'Active',
+    region:v('cdf-reg')||null,state:v('cdf-sta')||null,updated_at:now};
+  devs[idx]={...devs[idx],...upd};S.set('lhs:cal_devices',devs);
+  try{await dbUpdate('lhs:cal_devices',id,upd);}catch(e){console.warn('svEditCalDevice:',e?.message);}
+  cMod();tst('Device updated','success');showPage('testers');
+}
+
+async function delCalDevice(id){
+  if(!confirm('Delete this device and all its calibration data? This cannot be undone.')) return;
+  const devs=S.get('lhs:cal_devices')||[];
+  S.set('lhs:cal_devices',devs.filter(x=>x.id!==id));
+  try{await dbDelete('lhs:cal_devices',id);}catch(e){console.warn('delCalDevice:',e?.message);}
+  cMod();tst('Device deleted','success');showPage('testers');
 }
 function oAddTest(){
   oMod('Add Tester',`<div class="fr">
