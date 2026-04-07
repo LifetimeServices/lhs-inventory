@@ -1543,7 +1543,7 @@ async function warmCache(){
         // Only order by created_at for tables that have it
         // Tables that use last_updated instead of created_at, or have neither
         // Tables that use last_updated (van/location stock, PO lines, etc.)
-        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock'];
+        const lastUpdTbls=['lhs_wo_sequence','lhs_activities','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock'];
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
@@ -22752,6 +22752,7 @@ async function prCalcTimesheetFromPunches(emp, date, weekStart){
     try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:mealHrs,total_hours:totalHrs}).eq('id',existing.id);}catch(e){console.warn('ts auto-update failed',e?.message);}
   } else {
     const newRow={
+      id:crypto.randomUUID(),
       employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
       date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
       meal_break:mealHrs, other_time:0, pto_hours:0, total_hours:totalHrs,
@@ -22774,6 +22775,71 @@ function prViewMyTimecard(){
   showPage('payroll');
 }
 
+// ── PUNCH MANAGEMENT HELPERS ─────────────────────────────────────────────────
+function _buildPrPunchRows(){
+  const pp=window._prPunches||[];
+  if(!pp.length) return`<div style="color:var(--muted);font-size:12px;padding:6px 0">No punches recorded — click "+ Add Punch" to add</div>`;
+  const typeLabel={clock_in:'🟢 Clock In',clock_out:'🔴 Clock Out',meal_start:'🍽 Meal Start',meal_end:'✅ Meal End'};
+  return pp.map((p,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;margin-bottom:6px">
+      <select id="prp-type-${i}" onchange="prPunchCalc()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        ${Object.entries(typeLabel).map(([v,l])=>`<option value="${v}"${p.type===v?' selected':''}>${l}</option>`).join('')}
+      </select>
+      <input type="time" id="prp-time-${i}" value="${p.time||''}" onchange="prPunchCalc()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+      <button onclick="prRemovePunch(${i})" style="background:none;border:1px solid #ef5350;color:#ef5350;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:14px;line-height:1">×</button>
+    </div>`).join('');
+}
+function prAddPunch(){
+  if(!window._prPunches) window._prPunches=[];
+  const types=window._prPunches.map(p=>p.type);
+  const hasIn=types.includes('clock_in'),hasOut=types.includes('clock_out');
+  const nextType=!hasIn?'clock_in':!hasOut?'clock_out':'clock_in';
+  window._prPunches.push({type:nextType,time:'',_isNew:true});
+  const el=document.getElementById('pr-punch-list');
+  if(el) el.innerHTML=_buildPrPunchRows();
+}
+function prRemovePunch(i){
+  if(!window._prPunches) return;
+  // Sync DOM first
+  window._prPunches.forEach((_,j)=>{
+    const t=document.getElementById(`prp-type-${j}`);
+    const ti=document.getElementById(`prp-time-${j}`);
+    if(t) window._prPunches[j].type=t.value;
+    if(ti) window._prPunches[j].time=ti.value;
+  });
+  window._prPunches.splice(i,1);
+  const el=document.getElementById('pr-punch-list');
+  if(el) el.innerHTML=_buildPrPunchRows();
+  prPunchCalc();
+}
+function prPunchCalc(){
+  if(!window._prPunches) return;
+  window._prPunches.forEach((p,i)=>{
+    const t=document.getElementById(`prp-type-${i}`);
+    const ti=document.getElementById(`prp-time-${i}`);
+    if(t) p.type=t.value;
+    if(ti) p.time=ti.value;
+  });
+  // Calculate working hours from clock_in/clock_out pairs
+  const sorted=[...window._prPunches].filter(p=>p.time).sort((a,b)=>a.time.localeCompare(b.time));
+  let workMins=0,mealMins=0,lastIn=null,lastMealStart=null;
+  for(const p of sorted){
+    const[h,m]=(p.time||'0:0').split(':').map(Number);
+    const mins=h*60+m;
+    if(p.type==='clock_in') lastIn=mins;
+    else if(p.type==='clock_out'&&lastIn!=null){workMins+=(mins-lastIn);lastIn=null;}
+    else if(p.type==='meal_start') lastMealStart=mins;
+    else if(p.type==='meal_end'&&lastMealStart!=null){mealMins+=(mins-lastMealStart);lastMealStart=null;}
+  }
+  const netMins=Math.max(0,workMins-mealMins);
+  const workHrs=Math.round(netMins/15)*0.25;
+  const mealHrs=Math.round(mealMins/15)*0.25;
+  const wEl=document.getElementById('pr-work');
+  const mEl=document.getElementById('pr-meal');
+  if(wEl) wEl.value=workHrs>0?workHrs:'';
+  if(mEl) mEl.value=mealHrs>0?mealHrs:'';
+}
+
 // ── PAYROLL EDIT DAY MODAL ────────────────────────────────────────────────────
 function prEditDay(emp, date, period){
   const allTS=S.get('lhs:timesheets')||[];
@@ -22790,12 +22856,15 @@ function prEditDay(emp, date, period){
   const notes=e.notes||'';
   const isPTO=e.is_pto||false;
   // Load punch data for this day
-  const dayPunches=date?(S.get('lhs:time_punches')||[]).filter(p=>p.employee===emp&&p.date===date).sort((a,b)=>a.punched_at.localeCompare(b.punched_at)):[];
-  const clockIn=dayPunches.find(p=>p.punch_type==='clock_in');
-  const clockOut=[...dayPunches].reverse().find(p=>p.punch_type==='clock_out');
-  const mealStart=dayPunches.find(p=>p.punch_type==='meal_start');
-  const mealEnd=dayPunches.find(p=>p.punch_type==='meal_end');
+  const dayPunches=date?(S.get('lhs:time_punches')||[]).filter(p=>p.employee===emp&&p.date===date).sort((a,b)=>(a.punched_at||'').localeCompare(b.punched_at||'')):[];
   const fmtTime=ts=>ts?new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'—';
+  // Populate module-level punch array for interactive editing
+  window._prPunches=dayPunches.map(p=>{
+    const d=new Date(p.punched_at);
+    const hh=String(d.getHours()).padStart(2,'0');
+    const mm=String(d.getMinutes()).padStart(2,'0');
+    return{_dbId:p.id||null, type:p.punch_type, time:`${hh}:${mm}`, _isNew:false};
+  });
   // Load job entries for this day
   const wos=S.get('lhs:work_orders')||[];
   const dayJtes=date?(S.get('lhs:job_time_entries')||[]).filter(je=>je.tech_name===emp&&je.date===date).sort((a,b)=>(a.start_at||'').localeCompare(b.start_at||'')):[];
@@ -22816,12 +22885,15 @@ function prEditDay(emp, date, period){
         <select id="pr-date">${dateOpts}</select>
       </div>
     </div>
-    ${(clockIn||clockOut)?`<div style="background:#f0f7ff;border:1px solid #b3d4f5;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap">
-      <div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Clock In</div><div style="font-size:15px;font-weight:700;color:var(--navy)">${fmtTime(clockIn?.punched_at)}</div></div>
-      <div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Clock Out</div><div style="font-size:15px;font-weight:700;color:var(--navy)">${fmtTime(clockOut?.punched_at)}</div></div>
-      ${mealStart?`<div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Meal Start</div><div style="font-size:15px;font-weight:700;color:var(--muted)">${fmtTime(mealStart?.punched_at)}</div></div>`:''}
-      ${mealEnd?`<div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">Meal End</div><div style="font-size:15px;font-weight:700;color:var(--muted)">${fmtTime(mealEnd?.punched_at)}</div></div>`:''}
-    </div>`:''}
+    <!-- Clock Punches Manager -->
+    <div style="background:#f0f7ff;border:1px solid #b3d4f5;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">🕐 Clock Punches</div>
+        <button onclick="prAddPunch()" style="background:var(--teal);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer">+ Add Punch</button>
+      </div>
+      <div id="pr-punch-list">${_buildPrPunchRows()}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Hours auto-calculate from punches. You can override below.</div>
+    </div>
     ${dayJtes.length?`<div style="margin-bottom:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:6px">Job Activity</div>
       ${Object.entries(byWO).map(([woId,entries])=>{
@@ -22903,6 +22975,7 @@ async function prSaveEntry(existingId, period){
     const dup=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
     if(dup){tst('Entry already exists for this date — use the edit button on that row','warning');cMod();return;}
     const newRow={
+      id:crypto.randomUUID(),
       employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
       date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
       meal_break:meal, other_time:other, pto_hours:pto, total_hours:totalHrs,
@@ -22915,6 +22988,34 @@ async function prSaveEntry(existingId, period){
       if(saved) newRow.id=saved.id;
       else if(error) console.warn('ts insert failed',error?.message);
     }catch(err){console.warn('ts insert failed',err?.message);}
+  }
+  // Save clock punches — sync DOM state first, then replace all punches for this employee+date
+  if(window._prPunches!==undefined && date){
+    window._prPunches.forEach((p,i)=>{
+      const t=document.getElementById(`prp-type-${i}`);
+      const ti=document.getElementById(`prp-time-${i}`);
+      if(t) p.type=t.value;
+      if(ti) p.time=ti.value;
+    });
+    const validPunches=window._prPunches.filter(p=>p.time);
+    // Delete existing punches for this employee+date then re-insert
+    try{await DB.from('lhs_time_punches').delete().eq('employee',emp).eq('date',date);}catch(e){console.warn('punch delete:',e?.message);}
+    const allPunches=S.get('lhs:time_punches')||[];
+    const kept=allPunches.filter(p=>!(p.employee===emp&&p.date===date));
+    if(validPunches.length){
+      const wsP=prWeekStart(date);
+      const pRows=validPunches.map(p=>{
+        const[h,m]=(p.time||'0:0').split(':').map(Number);
+        const dt=new Date(date);dt.setHours(h,m,0,0);
+        return{employee:emp,employee_id:'',punch_type:p.type,punched_at:dt.toISOString(),date,week_start:wsP};
+      });
+      try{
+        const{data:sp}=await DB.from('lhs_time_punches').insert(pRows).select();
+        if(sp) kept.push(...sp);
+        else kept.push(...pRows);
+      }catch(e){console.warn('punch insert:',e?.message);kept.push(...pRows);}
+    }
+    S.set('lhs:time_punches',kept);
   }
   cMod();
   window._prPeriod=weekStart;
