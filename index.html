@@ -1957,7 +1957,7 @@ async function startApp(){
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
   const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
     'accounts','customers','properties','business','commercial',
-    'sales','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings',
+    'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
@@ -1975,7 +1975,7 @@ async function startApp(){
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const _salesPgs=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings'];
+  const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2123,17 +2123,19 @@ const ACCOUNTS_NAV=[
 ];
 
 const SALES_NAV=[
-  {id:'sales-leads',       l:'Leads'},
-  {id:'sales-accounts',    l:'Accounts'},
-  {id:'sales-opps',        l:'Opportunities'},
-  {id:'sales-estimates',   l:'Estimates'},
-  {id:'sales-pricebook',   l:'Pricebook'},
-  {id:'sales-followups',   l:'Follow Ups'},
-  {id:'sales-activities',  l:'Activities'},
-  {id:'sales-marketing',   l:'Marketing'},
-  {id:'sales-discounts',   l:'Discounts &amp; Promotions'},
-  {id:'sales-permits',     l:'Permits &amp; Licensing'},
-  {id:'sales-settings',    l:'Sales Settings'},
+  {id:'sales-crm-dashboard',l:'CRM Dashboard'},
+  {id:'sales-leads',         l:'Leads'},
+  {id:'sales-accounts',      l:'Accounts'},
+  {id:'sales-opps',          l:'Opportunities'},
+  {id:'sales-estimates',     l:'Estimates'},
+  {id:'sales-pricebook',     l:'Pricebook'},
+  {id:'sales-followups',     l:'Follow Ups'},
+  {id:'sales-activities',    l:'Activities'},
+  {id:'sales-email-sync',    l:'Email Sync'},
+  {id:'sales-marketing',     l:'Marketing'},
+  {id:'sales-discounts',     l:'Discounts &amp; Promotions'},
+  {id:'sales-permits',       l:'Permits &amp; Licensing'},
+  {id:'sales-settings',      l:'Sales Settings'},
 ];
 
 const HR_NAV=[
@@ -2165,7 +2167,7 @@ function _renderSubNav(navMode, navArr, defaultPage){
 
 function renderDispatchNav() { _renderSubNav('dispatch', DISPATCH_NAV, 'dispatch-board'); }
 function renderAccountsNav(){ _renderSubNav('accounts', ACCOUNTS_NAV, 'customers'); }
-function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-leads'); }
+function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-crm-dashboard'); }
 function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
 
 const ACCT_NAV=[
@@ -2340,7 +2342,7 @@ window.addEventListener('popstate',e=>{
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
-  const salesPages=['sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-marketing','sales-discounts','sales-permits','sales-settings'];
+  const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2368,12 +2370,13 @@ function buildPage(id){
     accounts:()=>bPlaceholder('Accounts'),
     business:bBusiness,
     commercial:bCommercial,
-    sales:bSales,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
+    sales:bSales,'sales-crm-dashboard':bCRMDashboard,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
     'sales-accounts':bCustomers,
     'sales-estimates':bSalesEstimates,
     'sales-pricebook':bPricebook,
-    'sales-tasks':bSalesTasks,'sales-followups':bSalesTasks,
+    'sales-tasks':bSalesTasks,'sales-followups':bSalesFollowupQueue,
     'sales-activities':bSalesActivities,
+    'sales-email-sync':bEmailSync,
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
     'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
     'sales-permits':bSalesPermits,
@@ -25843,6 +25846,375 @@ function _salesHeader(subtitle){
 }
 
 // ── LEADS PAGE ─────────────────────────────────────────────────────────────────
+// ── CRM DASHBOARD ─────────────────────────────────────────────────────────────
+function bCRMDashboard(){
+  setTimeout(_crmDashLoad,0);
+  return`<div class="pt">CRM Dashboard</div><div class="ps">Real-time overview of your sales pipeline and activity</div>
+  <div id="crm-dash-content"><div style="text-align:center;padding:40px;color:var(--muted)">Loading...</div></div>`;
+}
+function _crmDashLoad(){
+  const el=document.getElementById('crm-dash-content');
+  if(!el) return;
+  const leads=S.get('lhs:leads')||[];
+  const opps=S.get('lhs:opportunities')||[];
+  const acts=S.get('lhs:activities')||[];
+  const now=new Date();
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+
+  // KPIs
+  const activeLeads=leads.filter(l=>l.status!=='Converted'&&l.status!=='Unqualified').length;
+  const pipeline=opps.filter(o=>o.stage!=='Won'&&o.stage!=='Lost').reduce((s,o)=>s+(o.estimated_value||0),0);
+  const wonMTD=opps.filter(o=>o.stage==='Won'&&new Date(o.updated_at||o.created_at)>=monthStart).reduce((s,o)=>s+(o.estimated_value||0),0);
+  const converted=leads.filter(l=>l.status==='Converted').length;
+  const totalClosed=leads.filter(l=>['Converted','Unqualified'].includes(l.status)).length;
+  const convRate=totalClosed?Math.round(converted/totalClosed*100):0;
+
+  // Today's queue
+  const todayStr=now.toISOString().slice(0,10);
+  const overdueLeads=leads.filter(l=>l.next_followup_at&&l.next_followup_at.slice(0,10)<todayStr&&l.status!=='Converted');
+  const todayLeads=leads.filter(l=>l.next_followup_at&&l.next_followup_at.slice(0,10)===todayStr);
+  const upcomingLeads=leads.filter(l=>l.next_followup_at&&l.next_followup_at.slice(0,10)>todayStr&&l.status!=='Converted').slice(0,3);
+
+  // Pipeline by stage
+  const ss=getSalesSettings();
+  const stages=ss.opp_stages||OPP_STAGES;
+  const stageData=stages.filter(s=>s!=='Lost').map(s=>{
+    const stageOpps=opps.filter(o=>o.stage===s);
+    return{stage:s,cnt:stageOpps.length,val:stageOpps.reduce((sum,o)=>sum+(o.estimated_value||0),0)};
+  });
+  const maxVal=Math.max(1,...stageData.map(s=>s.val));
+  const stageColors={'Prospect':'var(--teal)','Site Visit':'#2980b9','Estimate Sent':'var(--amber)','Negotiation':'#e67e22','Won':'var(--green)'};
+
+  // Recent activities
+  const recentActs=(acts||[]).slice(0,5);
+  const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'?'🏠':t==='Demo'?'🖥️':'📋';
+  const typeColor=t=>t==='Call'?'#dbeafe':t==='Email'?'#f3e5f5':t==='Text'?'#fef3c7':t==='Visit'?'#dcfce7':'#f3f4f6';
+
+  el.innerHTML=`
+  <div class="sg">
+    <div class="sc n"><div class="sl">Active Leads</div><div class="sv">${activeLeads}</div><div class="ss">Total open leads</div></div>
+    <div class="sc g"><div class="sl">Pipeline Value</div><div class="sv">$${Math.round(pipeline/1000)}K</div><div class="ss">Open opportunities</div></div>
+    <div class="sc gr"><div class="sl">Won This Month</div><div class="sv">$${Math.round(wonMTD/1000)}K</div><div class="ss">Closed won MTD</div></div>
+    <div class="sc a"><div class="sl">Conversion Rate</div><div class="sv">${convRate}%</div><div class="ss">Leads converted</div></div>
+    <div class="sc r"><div class="sl">Overdue Follow-ups</div><div class="sv">${overdueLeads.length}</div><div class="ss">Need attention</div></div>
+  </div>
+  <div class="tc" style="margin-bottom:20px">
+    <div class="card">
+      <div class="ct">Pipeline by Stage</div>
+      ${stageData.length?stageData.map(s=>`
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:13px;font-weight:600">${s.stage}</span>
+            <span style="font-size:12px;color:var(--muted)">$${s.val.toLocaleString()} &nbsp;·&nbsp; ${s.cnt} opp${s.cnt!==1?'s':''}</span>
+          </div>
+          <div style="height:6px;background:#e8e4db;border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(s.val/maxVal*100)}%;background:${stageColors[s.stage]||'var(--navy)'};border-radius:3px"></div>
+          </div>
+        </div>`).join(''):'<div style="color:var(--muted);font-size:13px">No open opportunities yet.</div>'}
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="ct" style="margin:0">Today's Queue</div>
+        ${overdueLeads.length?`<span class="bx br">${overdueLeads.length} Overdue</span>`:'<span class="bx bg">All clear</span>'}
+      </div>
+      ${overdueLeads.slice(0,2).map(l=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid #fca5a5;background:#fff5f5;margin-bottom:8px">
+          <div style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${l.first_name} ${l.last_name}</div>
+            <div style="font-size:11px;color:var(--muted)">Due: <strong style="color:var(--red)">${new Date(l.next_followup_at).toLocaleDateString()}</strong> · ${l.status}</div>
+          </div>
+          <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>
+        </div>`).join('')}
+      ${todayLeads.slice(0,2).map(l=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid #86efac;background:#f0fdf4;margin-bottom:8px">
+          <div style="width:9px;height:9px;border-radius:50%;background:var(--green);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${l.first_name} ${l.last_name}</div>
+            <div style="font-size:11px;color:var(--muted)">Due Today · ${l.status}</div>
+          </div>
+          <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>
+        </div>`).join('')}
+      ${upcomingLeads.map(l=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid var(--bdr);background:white;margin-bottom:8px">
+          <div style="width:9px;height:9px;border-radius:50%;background:var(--amber);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13px">${l.first_name} ${l.last_name}</div>
+            <div style="font-size:11px;color:var(--muted)">${new Date(l.next_followup_at).toLocaleDateString()} · ${l.status}</div>
+          </div>
+          <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>
+        </div>`).join('')}
+      ${!overdueLeads.length&&!todayLeads.length&&!upcomingLeads.length?'<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">No follow-ups scheduled.</div>':''}
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct">Recent Activity Feed</div>
+    ${recentActs.length?recentActs.map(a=>{
+      const lead=a.lead_id?(S.get('lhs:leads')||[]).find(l=>l.id===a.lead_id):null;
+      const opp=a.opportunity_id?(S.get('lhs:opportunities')||[]).find(o=>o.id===a.opportunity_id):null;
+      const related=lead?`${lead.first_name} ${lead.last_name}`:opp?opp.name:'—';
+      const relId=lead?lead.id:opp?opp.id:null;
+      const relFn=lead?`openLead('${lead.id}')`:opp?`openOpportunity('${opp.id}')`:null;
+      return`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--bdr)">
+        <div style="width:34px;height:34px;border-radius:50%;background:${typeColor(a.activity_type)};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${typeIcon(a.activity_type)}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${a.activity_type}${a.subject?' — '+a.subject:''}</div>
+          <div style="font-size:12px;color:var(--muted)">${a.performed_by||''}${relFn?` · <a href="#" onclick="event.preventDefault();${relFn}" style="color:var(--teal)">${related}</a>`:''} ${a.outcome?`· <span class="bx bgr" style="font-size:10px">${a.outcome}</span>`:''}</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap">${new Date(a.performed_at).toLocaleDateString()}</div>
+      </div>`;}).join(''):'<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">No activities logged yet.</div>'}
+  </div>`;
+}
+
+// ── LEAD SCORE ────────────────────────────────────────────────────────────────
+function calcLeadScore(l){
+  let score=0;
+  if(l.phone) score+=10;
+  if(l.email) score+=10;
+  if(l.address) score+=5;
+  if(l.assigned_to) score+=10;
+  if(l.next_followup_at) score+=10;
+  if(l.estimated_value>0) score+=Math.min(25,Math.round(l.estimated_value/1000));
+  const acts=(S.get('lhs:activities')||[]).filter(a=>a.lead_id===l.id);
+  score+=Math.min(20,acts.length*5);
+  if(l.status==='Qualified'||l.status==='Converted') score+=10;
+  return Math.min(100,score);
+}
+
+// ── EMAIL SYNC ────────────────────────────────────────────────────────────────
+function bEmailSync(){
+  const ss=getSalesSettings();
+  const gmailConn=ss.gmail_connected||false;
+  const outlookConn=ss.outlook_connected||false;
+  const templates=ss.email_templates||[
+    {name:'Initial Follow-up',subj:'Thanks for reaching out — {{first_name}}!',used:0},
+    {name:'Estimate Delivery',subj:'Your personalized estimate is ready — {{company}}',used:0},
+    {name:'Post-Visit Thank You',subj:'Great meeting you today, {{first_name}}',used:0},
+    {name:'Renewal Reminder',subj:"Time to renew your service plan, {{first_name}}",used:0},
+    {name:'Win-Back — 90 Days',subj:'We miss you! Special offer inside',used:0},
+  ];
+  return`<div class="pt">Email Sync</div>
+  <div class="ps">Connect Gmail or Outlook — emails auto-link to matching leads and opportunities</div>
+
+  <div class="tc" style="margin-bottom:20px">
+    <div class="ic ${gmailConn?'on2':'off2'}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="font-size:28px">📧</div>
+        <div>
+          <div class="in2">Gmail</div>
+          <div class="is2 ${gmailConn?'on':'off'}">● ${gmailConn?'Connected':'Not Connected'}</div>
+        </div>
+      </div>
+      <div class="id2">${gmailConn?`${ss.gmail_email||'Connected'} · Auto-linking: ON`:'Connect your Gmail account to auto-log emails on leads and opportunities'}</div>
+      <div style="display:flex;gap:8px">
+        ${gmailConn?`<button class="btn btn-o sm">⟳ Sync Now</button><button class="btn btn-r sm" onclick="if(confirm('Disconnect Gmail?')){const ss2=getSalesSettings();ss2.gmail_connected=false;saveSalesSettings(ss2);tst('Gmail disconnected','info');showPage('sales-email-sync')}">Disconnect</button>`
+        :`<button class="btn btn-n sm" onclick="tst('Gmail OAuth coming soon — will require Google Workspace setup','info')">Connect Gmail</button>`}
+      </div>
+    </div>
+    <div class="ic ${outlookConn?'on2':'off2'}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="font-size:28px">📨</div>
+        <div>
+          <div class="in2">Microsoft Outlook / Exchange</div>
+          <div class="is2 ${outlookConn?'on':'off'}">● ${outlookConn?'Connected':'Not Connected'}</div>
+        </div>
+      </div>
+      <div class="id2">${outlookConn?'Connected · Auto-linking: ON':'Connect your Outlook or Exchange account to auto-log emails'}</div>
+      <button class="btn btn-n sm" onclick="tst('Outlook OAuth coming soon — will require Microsoft 365 setup','info')">Connect Outlook</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="ct">Sync Settings</div>
+    <div class="tc">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:12px">What to sync</div>
+        ${[{lbl:'Sent emails',k:'sync_sent',def:true},{lbl:'Received emails',k:'sync_received',def:true},{lbl:'Calendar events / meetings',k:'sync_calendar',def:true},{lbl:'Email open &amp; click tracking',k:'sync_tracking',def:false}].map(s=>`
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+            <input type="checkbox" id="es-${s.k}" ${(ss[s.k]!==undefined?ss[s.k]:s.def)?'checked':''} style="width:auto">
+            ${s.lbl}
+          </label>`).join('')}
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:12px">Auto-linking rules</div>
+        ${[{lbl:'Match emails to leads by email address',k:'link_leads',def:true},{lbl:'Match emails to opportunities by contact',k:'link_opps',def:true},{lbl:'Create activity log for each email',k:'link_acts',def:true},{lbl:'Notify rep when lead replies',k:'link_notify',def:false}].map(s=>`
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer">
+            <input type="checkbox" id="es-${s.k}" ${(ss[s.k]!==undefined?ss[s.k]:s.def)?'checked':''} style="width:auto">
+            ${s.lbl}
+          </label>`).join('')}
+      </div>
+    </div>
+    <div class="br2"><button class="btn btn-n" onclick="_saveEmailSyncSettings()">Save Settings</button></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="ct" style="margin:0">Email Templates</div>
+      <button class="btn btn-n sm" onclick="_oAddEmailTemplate()">+ New Template</button>
+    </div>
+    <div id="email-tpl-list">
+    ${templates.map((t,i)=>`
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:10px;background:var(--surf);margin-bottom:8px">
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">${t.name}</div>
+          <div style="font-size:12px;color:var(--muted)">${t.subj}</div>
+        </div>
+        <span class="bx bgr">Used ${t.used||0}×</span>
+        <button class="btn btn-o sm" onclick="_oEditEmailTemplate(${i})">Edit</button>
+        <button class="btn btn-n sm" onclick="_useEmailTemplate(${i})">Use</button>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function _saveEmailSyncSettings(){
+  const ss=getSalesSettings();
+  ['sync_sent','sync_received','sync_calendar','sync_tracking','link_leads','link_opps','link_acts','link_notify'].forEach(k=>{
+    const el=document.getElementById('es-'+k);
+    if(el) ss[k]=el.checked;
+  });
+  saveSalesSettings(ss);
+  tst('Email sync settings saved','success');
+}
+
+function _oAddEmailTemplate(){
+  oMod('New Email Template',`
+  <div class="fr">
+    <div class="fl"><label>Template Name</label><input id="etpl-name" placeholder="e.g. Initial Follow-up"></div>
+    <div class="fl"><label>Subject Line</label><input id="etpl-subj" placeholder="Use {{first_name}}, {{company}}, {{division}}"></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Body (HTML or plain text)</label>
+    <textarea id="etpl-body" rows="6" placeholder="Hi {{first_name}},\n\nThank you for reaching out to us..."></textarea>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="_saveEmailTemplate()">Save Template</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+function _saveEmailTemplate(){
+  const name=document.getElementById('etpl-name')?.value?.trim();
+  const subj=document.getElementById('etpl-subj')?.value?.trim();
+  const body=document.getElementById('etpl-body')?.value?.trim();
+  if(!name||!subj){tst('Name and subject required','error');return;}
+  const ss=getSalesSettings();
+  if(!ss.email_templates) ss.email_templates=[];
+  ss.email_templates.push({name,subj,body:body||'',used:0});
+  saveSalesSettings(ss);
+  tst('Template saved','success');
+  cMod();showPage('sales-email-sync');
+}
+
+function _oEditEmailTemplate(idx){
+  const ss=getSalesSettings();
+  const t=(ss.email_templates||[])[idx];
+  if(!t) return;
+  oMod(`Edit Template — ${t.name}`,`
+  <div class="fr">
+    <div class="fl"><label>Template Name</label><input id="etpl-name" value="${esc(t.name)}"></div>
+    <div class="fl"><label>Subject Line</label><input id="etpl-subj" value="${esc(t.subj)}"></div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Body</label>
+    <textarea id="etpl-body" rows="6">${esc(t.body||'')}</textarea>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="_updateEmailTemplate(${idx})">Save Changes</button>
+    <button class="btn btn-r sm" onclick="_deleteEmailTemplate(${idx})">Delete</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+function _updateEmailTemplate(idx){
+  const ss=getSalesSettings();
+  if(!ss.email_templates||!ss.email_templates[idx]) return;
+  ss.email_templates[idx].name=document.getElementById('etpl-name')?.value?.trim()||ss.email_templates[idx].name;
+  ss.email_templates[idx].subj=document.getElementById('etpl-subj')?.value?.trim()||ss.email_templates[idx].subj;
+  ss.email_templates[idx].body=document.getElementById('etpl-body')?.value?.trim()||'';
+  saveSalesSettings(ss);
+  tst('Template updated','success');cMod();showPage('sales-email-sync');
+}
+
+function _deleteEmailTemplate(idx){
+  if(!confirm('Delete this template?')) return;
+  const ss=getSalesSettings();
+  if(ss.email_templates) ss.email_templates.splice(idx,1);
+  saveSalesSettings(ss);
+  tst('Template deleted','info');cMod();showPage('sales-email-sync');
+}
+
+function _useEmailTemplate(idx){
+  const ss=getSalesSettings();
+  const t=(ss.email_templates||[])[idx];
+  if(!t) return;
+  // Increment use count
+  t.used=(t.used||0)+1;
+  saveSalesSettings(ss);
+  tst(`Template "${t.name}" selected — compose in your email client with this subject: "${t.subj}"`, 'info');
+}
+
+// ── FOLLOW-UP QUEUE ───────────────────────────────────────────────────────────
+function bSalesFollowupQueue(){
+  setTimeout(_fupQueueLoad,0);
+  return`<div class="pt">Follow-up Queue</div><div class="ps">Scheduled follow-ups sorted by urgency — overdue first</div>
+  <div id="fup-queue-content"><div style="text-align:center;padding:40px;color:var(--muted)">Loading...</div></div>`;
+}
+
+function _fupQueueLoad(){
+  const el=document.getElementById('fup-queue-content');
+  if(!el) return;
+  const leads=S.get('lhs:leads')||[];
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  const weekEnd=new Date(now);weekEnd.setDate(weekEnd.getDate()+7);
+  const weekStr=weekEnd.toISOString().slice(0,10);
+
+  const withFup=leads.filter(l=>l.next_followup_at&&l.status!=='Converted');
+  const overdue=withFup.filter(l=>l.next_followup_at.slice(0,10)<todayStr).sort((a,b)=>a.next_followup_at.localeCompare(b.next_followup_at));
+  const today=withFup.filter(l=>l.next_followup_at.slice(0,10)===todayStr);
+  const week=withFup.filter(l=>l.next_followup_at.slice(0,10)>todayStr&&l.next_followup_at.slice(0,10)<=weekStr).sort((a,b)=>a.next_followup_at.localeCompare(b.next_followup_at));
+
+  const fupRow=(l,cls,dotColor)=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid ${cls==='ov'?'#fca5a5':cls==='td'?'#86efac':'var(--bdr)'};background:${cls==='ov'?'#fff5f5':cls==='td'?'#f0fdf4':'white'};margin-bottom:8px;box-shadow:var(--sh)">
+      <div style="width:9px;height:9px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${l.first_name} ${l.last_name}${l.company?' — '+l.company:''}</div>
+        <div style="font-size:12px;color:var(--muted)">
+          Due: <strong style="color:${cls==='ov'?'var(--red)':'inherit'}">${new Date(l.next_followup_at).toLocaleDateString()}</strong>
+          &nbsp;·&nbsp; ${l.status} &nbsp;·&nbsp; ${l.assigned_to||'Unassigned'}
+          ${l.estimated_value?` &nbsp;·&nbsp; $${Number(l.estimated_value).toLocaleString()}`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-n sm" onclick="oAddActivity('${l.id}',null)">Log Activity</button>
+        <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>
+      </div>
+    </div>`;
+
+  el.innerHTML=`
+  <div class="sg">
+    <div class="sc r"><div class="sl">Overdue</div><div class="sv">${overdue.length}</div><div class="ss">Need immediate attention</div></div>
+    <div class="sc g"><div class="sl">Due Today</div><div class="sv">${today.length}</div><div class="ss">Scheduled for today</div></div>
+    <div class="sc n"><div class="sl">This Week</div><div class="sv">${week.length}</div><div class="ss">Next 7 days</div></div>
+    <div class="sc a"><div class="sl">Total Scheduled</div><div class="sv">${withFup.length}</div><div class="ss">All open follow-ups</div></div>
+  </div>
+  ${overdue.length?`<div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:10px">🚨 Overdue (${overdue.length})</div>${overdue.map(l=>fupRow(l,'ov','var(--red)')).join('')}`:''}
+  ${today.length?`<div style="font-size:13px;font-weight:700;color:var(--green);margin:${overdue.length?'16px':0} 0 10px">📅 Due Today (${today.length})</div>${today.map(l=>fupRow(l,'td','var(--green)')).join('')}`:''}
+  ${week.length?`<div style="font-size:13px;font-weight:700;color:var(--navy);margin:${(overdue.length||today.length)?'16px':0} 0 10px">📆 This Week (${week.length})</div>
+  <div class="tw"><table>
+    <thead><tr><th>Lead / Account</th><th>Division</th><th>Status</th><th>Due</th><th>Assigned</th><th>Value</th><th></th></tr></thead>
+    <tbody>${week.map(l=>`<tr>
+      <td><div style="font-weight:700">${l.first_name} ${l.last_name}</div>${l.company?`<div style="font-size:11px;color:var(--muted)">${l.company}</div>`:''}</td>
+      <td>${l.division?`<span class="bx bn">${l.division}</span>`:'—'}</td>
+      <td><span class="bx ${l.status==='New'?'ba':l.status==='Contacted'?'bb':l.status==='Qualified'?'bg':'bgr'}">${l.status}</span></td>
+      <td>${new Date(l.next_followup_at).toLocaleDateString()}</td>
+      <td>${l.assigned_to||'—'}</td>
+      <td style="font-weight:700">${l.estimated_value?'$'+Number(l.estimated_value).toLocaleString():'—'}</td>
+      <td><button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`:''}
+  ${!overdue.length&&!today.length&&!week.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No follow-ups scheduled. Add a follow-up date when editing a lead.</div>':''}`;
+}
+
 function bSalesLeads(){
   return`<div class="pt">Leads</div><div class="ps">All inbound and outbound leads</div>
   ${_salesHeader()}
@@ -25850,10 +26222,57 @@ function bSalesLeads(){
 }
 
 // ── OPPORTUNITIES PAGE ────────────────────────────────────────────────────────
+let _oppView='list';
 function bSalesOpps(){
   return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline</div>
-  ${_salesHeader()}
-  ${renderCRMPipeline()}`;
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    ${_salesHeader()}
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
+        <button onclick="_setOppView('list')" id="ovt-list" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='list'?'var(--navy)':'transparent'};color:${_oppView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
+        <button onclick="_setOppView('kanban')" id="ovt-kanban" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='kanban'?'var(--navy)':'transparent'};color:${_oppView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
+      </div>
+    </div>
+  </div>
+  <div id="opp-view-content">${_oppView==='kanban'?renderCRMKanban():renderCRMPipeline()}</div>`;
+}
+
+function _setOppView(v){
+  _oppView=v;
+  const el=document.getElementById('opp-view-content');
+  if(el) el.innerHTML=v==='kanban'?renderCRMKanban():renderCRMPipeline();
+  document.querySelectorAll('#ovt-list,#ovt-kanban').forEach(b=>{
+    const isActive=b.id==='ovt-'+v;
+    b.style.background=isActive?'var(--navy)':'transparent';
+    b.style.color=isActive?'var(--teal)':'var(--muted)';
+  });
+}
+
+function renderCRMKanban(){
+  const opps=(S.get('lhs:opportunities')||[]);
+  const ss=getSalesSettings();
+  const stages=ss.opp_stages||OPP_STAGES;
+  const stageColor={Prospect:'var(--teal)','Site Visit':'#2980b9','Estimate Sent':'var(--amber)',Negotiation:'#e67e22',Won:'var(--green)',Lost:'var(--muted)'};
+  const cols=stages.map(stage=>{
+    const cards=opps.filter(o=>o.stage===stage);
+    const total=cards.reduce((s,o)=>s+(o.estimated_value||0),0);
+    return`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rl);padding:14px;min-width:175px;flex:0 0 175px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${stage} (${cards.length})</span>
+        <span style="font-size:12px;font-weight:700;color:var(--navy)">$${Math.round(total/1000)}K</span>
+      </div>
+      ${cards.map(o=>`
+        <div onclick="openOpportunity('${o.id}')" style="background:white;border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--bdr);cursor:pointer;box-shadow:var(--sh)">
+          <div style="font-weight:700;font-size:12px;color:var(--navy);margin-bottom:3px">${esc(o.name)}</div>
+          <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:4px">$${Number(o.estimated_value||0).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted)">${o.assigned_to||'Unassigned'}${o.close_date?' · '+new Date(o.close_date).toLocaleDateString():''}</div>
+          <div style="height:3px;background:#e2e0db;border-radius:2px;margin-top:8px"><div style="height:100%;width:${o.probability||0}%;background:${stageColor[stage]||'var(--navy)'};border-radius:2px"></div></div>
+          <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:3px">${o.probability||0}%</div>
+        </div>`).join('')}
+      <button onclick="oAddOpportunity()" style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>`;
+  });
+  return`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:10px">${cols.join('')}</div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -26631,9 +27050,11 @@ function renderCRMLeadsTable(leads){
   const statusColor=s=>s==='New'?'ba':s==='Contacted'?'bn':s==='Qualified'?'bg':s==='Converted'?'bb':'bgr';
   const priColor=p=>p==='Hot'?'var(--red)':p==='Cold'?'var(--muted)':p==='Urgent'?'var(--gold,#c9a84c)':'inherit';
   const priIcon=p=>p==='Hot'?'🔥 ':p==='Cold'?'❄ ':p==='Urgent'?'⚡ ':'';
+  const scoreRing=(s)=>{const cls=s>=70?'background:#fee2e2;color:#b91c1c':s>=40?'background:#fef3c7;color:#b45309':'background:#dbeafe;color:#1d4ed8';return`<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;${cls}">${s}</div>`;};
   return`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Name</th><th>Phone</th><th>Division / Service</th><th>Source</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Value</th><th>Follow-up</th><th></th></tr></thead>
+  <thead><tr><th>Score</th><th>Name</th><th>Phone</th><th>Division / Service</th><th>Source</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Value</th><th>Follow-up</th><th></th></tr></thead>
   <tbody>${leads.map(l=>`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
+    <td>${scoreRing(calcLeadScore(l))}</td>
     <td>
       <div style="font-weight:600">${l.salutation?l.salutation+' ':''} ${l.first_name} ${l.last_name}${l.customer_id?` <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:1px 6px;font-weight:600;vertical-align:middle">👤 CRM</span>`:''}</div>
       ${l.company?`<div style="font-size:11px;color:var(--muted)">${l.company}</div>`:''}
@@ -27464,10 +27885,42 @@ async function svAddLead(){
     _C['lhs:customers']=custs;
   }
 
+  // ── Step 4: Auto-create Opportunity ────────────────────────────
+  const oppName=`${f.first_name} ${f.last_name}${f.division?' — '+f.division:''}`;
+  const newOpp={
+    name:oppName,
+    customer_id:finalCust.id,
+    lead_id:finalLead.id,
+    division:f.division||null,
+    stage:'Prospect',
+    probability:20,
+    estimated_value:f.estimated_value||0,
+    job_type:null,
+    assigned_to:f.assigned_to||null,
+    close_date:null,
+    description:f.notes||null,
+    created_by:CU?.name||'',
+    created_at:now,updated_at:now,
+  };
+  let savedOpp=null;
+  try{savedOpp=await dbInsert('lhs:opportunities',newOpp);}catch(e){console.warn('Opp auto-create:',e.message);}
+  const finalOpp=savedOpp||{...newOpp,id:'opp_'+Date.now()};
+  const opps=S.get('lhs:opportunities')||[];
+  opps.unshift(finalOpp);
+  S.set('lhs:opportunities',opps);
+  // Back-link lead → opportunity
+  finalLead.opportunity_id=finalOpp.id;
+  const leadsRef2=S.get('lhs:leads')||[];
+  const lRef2=leadsRef2.find(x=>x.id===finalLead.id);
+  if(lRef2) lRef2.opportunity_id=finalOpp.id;
+  S.set('lhs:leads',leadsRef2);
+  try{await dbUpdate('lhs:leads',finalLead.id,{opportunity_id:finalOpp.id});}catch{}
+
   cMod();
   const custMsg=savedCust?`Customer ${custNum} created`:'Customer saved locally';
   const propMsg=finalProp?(finalProp.id.startsWith('prop_')?'property saved locally':'property created'):'';
-  tst(`Lead saved · ${custMsg}${propMsg?' · '+propMsg:''}`, 'success');
+  const oppMsg=savedOpp?'opportunity created':'opportunity saved locally';
+  tst(`Lead saved · ${custMsg} · ${oppMsg}${propMsg?' · '+propMsg:''}`, 'success');
   showPage('sales-leads');
 }
 
