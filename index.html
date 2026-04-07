@@ -17650,6 +17650,7 @@ function bProperties(){
     </div>
   </div>
 
+  <div id="prop-sync-banner"></div>
   <div id="prop-list"><div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div></div>
   <div id="prop-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;align-items:center"></div>`;
 }
@@ -17665,16 +17666,15 @@ async function propLoadPage(){
   const listEl=g('prop-list');
   const pagEl=g('prop-pagination');
   const countEl=g('prop-count-line');
+  const bannerEl=g('prop-sync-banner');
   if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div>`;
   try{
     const q=(window._propFSearch||'').trim();
     const fType=window._propFType||'';
-    const fDiv=window._propFDiv||'';
     const fRegion=window._propFRegion||'';
     const from=_propPage*_PROP_PAGE_SIZE;
     const to=from+_PROP_PAGE_SIZE-1;
-    let query=DB.from('lhs_properties')
-      .select('*',{count:'exact'});
+    let query=DB.from('lhs_properties').select('*',{count:'exact'});
     if(q) query=query.or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%`);
     if(fType) query=query.eq('property_type',fType);
     if(fRegion) query=query.eq('region',fRegion);
@@ -17682,9 +17682,49 @@ async function propLoadPage(){
     const{data,error,count}=await query;
     if(error) throw error;
     _propTotal=count||0;
+
+    // ── If Supabase has 0 rows, fall back to localStorage cache ──────────────
+    if(_propTotal===0){
+      const cached=S.get('lhs:props')||[];
+      const localOnly=cached.filter(p=>p.id&&(typeof p.id==='string')&&!p.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i));
+      const allLocal=cached; // use everything in cache
+      if(allLocal.length>0){
+        // Apply filters locally
+        const ql=q.toLowerCase();
+        let filtered=allLocal;
+        if(q) filtered=filtered.filter(p=>(p.address||'').toLowerCase().includes(ql)||(p.city||'').toLowerCase().includes(ql)||(p.zip||'').includes(q));
+        if(fType) filtered=filtered.filter(p=>p.property_type===fType);
+        if(fRegion) filtered=filtered.filter(p=>p.region===fRegion);
+        const totalLocal=filtered.length;
+        const pageData=filtered.slice(from,from+_PROP_PAGE_SIZE);
+        const totalPages=Math.ceil(totalLocal/_PROP_PAGE_SIZE);
+        if(countEl) countEl.textContent=`${totalLocal.toLocaleString()} propert${totalLocal!==1?'ies':'y'} (local cache)${q?' matching "'+q+'"':''} — showing ${totalLocal?from+1:0}–${Math.min(from+pageData.length,totalLocal)}`;
+        // Show sync banner
+        const unsynced=allLocal.filter(p=>!p.id||!String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i));
+        if(bannerEl&&unsynced.length>0) bannerEl.innerHTML=`
+          <div style="background:#fff8e1;border:1px solid #f9a825;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="font-size:13px;color:#5d3900">⚠️ <strong>${unsynced.length.toLocaleString()} properties</strong> are saved locally only — not yet in the cloud database.</div>
+            <button class="btn btn-n sm" onclick="syncPropsToCloud()" id="prop-sync-btn">☁️ Sync to Cloud</button>
+          </div>`;
+        else if(bannerEl) bannerEl.innerHTML='';
+        if(listEl) listEl.innerHTML=renderPropTable(pageData);
+        if(pagEl){
+          if(totalPages<=1){pagEl.innerHTML='';return;}
+          pagEl.innerHTML=`
+            <button class="btn sm btn-o" onclick="_propPage=0;propLoadPage()" ${_propPage===0?'disabled':''}>«</button>
+            <button class="btn sm btn-o" onclick="_propPage--;propLoadPage()" ${_propPage===0?'disabled':''}>‹</button>
+            <span style="font-size:13px;color:var(--muted)">Page ${_propPage+1} of ${totalPages}</span>
+            <button class="btn sm btn-o" onclick="_propPage++;propLoadPage()" ${_propPage>=totalPages-1?'disabled':''}>›</button>
+            <button class="btn sm btn-o" onclick="_propPage=${totalPages-1};propLoadPage()" ${_propPage>=totalPages-1?'disabled':''}>»</button>`;
+        }
+        return;
+      }
+    }
+
     const totalPages=Math.ceil(_propTotal/_PROP_PAGE_SIZE);
     if(countEl) countEl.textContent=`${_propTotal.toLocaleString()} propert${_propTotal!==1?'ies':'y'}${q?' matching "'+q+'"':''} — showing ${_propTotal?from+1:0}–${Math.min(from+(data||[]).length,_propTotal)}`;
-    // Merge fetched rows into cache so openProperty() and WO creation can find them
+    if(bannerEl) bannerEl.innerHTML='';
+    // Merge fetched rows into cache
     if(data&&data.length){
       const existing=S.get('lhs:props')||[];
       const merged=[...existing];
@@ -17704,6 +17744,40 @@ async function propLoadPage(){
   }catch(e){
     if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:red;font-size:13px">Failed to load properties: ${e.message}</div>`;
   }
+}
+
+async function syncPropsToCloud(){
+  const btn=document.getElementById('prop-sync-btn');
+  if(btn){btn.textContent='Syncing…';btn.disabled=true;}
+  const all=S.get('lhs:props')||[];
+  // Only sync records that don't have a real UUID (local-only)
+  const toSync=all.filter(p=>!p.id||!String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i));
+  if(!toSync.length){tst('Nothing to sync','info');return;}
+  let ok=0,fail=0;
+  const chunks=[];for(let i=0;i<toSync.length;i+=100) chunks.push(toSync.slice(i,i+100));
+  for(const chunk of chunks){
+    // Strip local temp IDs so Supabase generates real UUIDs
+    const rows=chunk.map(({id,...rest})=>rest);
+    try{
+      const{data,error}=await DB.from('lhs_properties').insert(rows).select();
+      if(error) throw error;
+      // Replace local records with real Supabase records
+      const saved=data||[];
+      saved.forEach((saved,i)=>{
+        const localId=chunk[i]?.id;
+        const idx=all.findIndex(x=>x.id===localId);
+        if(idx>=0) all[idx]=saved;
+      });
+      ok+=chunk.length;
+    }catch(e){
+      console.warn('syncPropsToCloud chunk failed:',e?.message);
+      fail+=chunk.length;
+    }
+  }
+  S.set('lhs:props',all);
+  if(fail) tst(`${ok} synced, ${fail} failed — check console`,'warning');
+  else tst(`✅ ${ok} properties synced to cloud!`,'success');
+  propLoadPage();
 }
 
 function renderPropTable(props){
