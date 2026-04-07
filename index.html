@@ -1693,14 +1693,16 @@ async function dbUpdate(key,id,updates){
   }catch(e){console.warn('dbUpdate failed',tbl,e.message);return false;}
 }
 
-// Get next PO sequence number (atomic via Supabase)
+// Get next PO sequence number — uses local counter (Supabase RPC optional)
 async function getNextPOSeq(){
-  try{
-    const{data}=await DB.rpc('increment_po_seq');
-    if(data) return data;
-  }catch{}
-  // Fallback: local increment
-  const n=(S.get('lhs:poseq')||0)+1;
+  // Derive next seq from the highest existing PO number in local cache
+  const existing=S.get('lhs:pos')||[];
+  let maxSeq=S.get('lhs:poseq')||0;
+  existing.forEach(p=>{
+    const m=(p.po_number||p.id||'').match(/(\d{4})$/);
+    if(m) maxSeq=Math.max(maxSeq,parseInt(m[1]));
+  });
+  const n=maxSeq+1;
   S.set('lhs:poseq',n);
   return n;
 }
@@ -2626,14 +2628,38 @@ async function svPO(){
   const dd=String(now.getDate()).padStart(2,'0');
   const yy=String(now.getFullYear()).slice(-2);
   const poNum=`PO - ${mm}-${dd}-${yy} - ${String(seq).padStart(4,'0')}`;
-  // Build PO — do NOT set id here; let Supabase generate a real UUID
-  const po={po_number:poNum,created:v('p3'),created_date:v('p3'),
-    vendor:v('p1'),location:v('p2'),delivery_location:v('p2'),
-    status:'Pending',notes:v('p5'),receiptValue:0,receipt_value:0,lines,
+  const createdDate=v('p3')||new Date().toISOString().slice(0,10);
+  // Full local PO object (includes display fields like `created`, `location`, `totalValue`)
+  const po={
+    po_number:poNum,
+    created:createdDate,          // local display alias
+    created_date:createdDate,
+    vendor:v('p1'),
+    location:v('p2'),             // local display alias
+    delivery_location:v('p2'),
+    status:'Pending',
+    notes:v('p5')||null,
+    receiptValue:0,
+    receipt_value:0,
+    lines,
     totalValue:lines.reduce((s,l)=>s+l.qty*l.cost,0),
-    created_by:CU.name,created_at:new Date().toISOString()};
-  // Save to Supabase — include lines so they persist server-side
-  const saved=await dbInsert('lhs:pos',po);
+    created_by:CU.name,
+    created_at:new Date().toISOString()
+  };
+  // Clean Supabase insert — only columns that exist in lhs_purchase_orders
+  const dbRow={
+    po_number:po.po_number,
+    created_date:po.created_date,
+    vendor:po.vendor,
+    delivery_location:po.delivery_location,
+    status:po.status,
+    notes:po.notes,
+    lines:po.lines,
+    receipt_value:0,
+    created_by:po.created_by,
+    created_at:po.created_at
+  };
+  const saved=await dbInsert('lhs:pos',dbRow);
   if(saved){
     po.id=saved.id; // replace with real UUID from Supabase
   } else {
