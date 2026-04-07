@@ -15749,6 +15749,54 @@ async function oAptDetail(aptId, woId){
     </div>
   </details>
 
+  <!-- ── COLLECT PAYMENT ── -->
+  ${(()=>{
+    const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+    const paid=(S.get('lhs:payments')||[]).filter(p=>p.wo_id===woId);
+    const aptPaid=paid.filter(p=>p.appointment_id===aptId);
+    const balance=((wo?.total_price||0)-(wo?.total_paid||0));
+    const balColor=balance<=0?'var(--green)':balance<50?'var(--amber)':'var(--red)';
+    const existingHTML=aptPaid.length?`<div style="margin-bottom:10px;border:1px solid var(--bdr);border-radius:6px;overflow:hidden">
+      ${aptPaid.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;font-size:12px;border-bottom:1px solid var(--bdr)">
+        <span style="color:var(--muted)">${p.payment_method||''}${p.reference_number?' · '+p.reference_number:''}</span>
+        <span style="font-weight:700;color:var(--green)">${f$(p.amount||0)}</span>
+      </div>`).join('')}
+    </div>`:'';
+    return`<details id="aptd-paysec" style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:8px">
+      <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px">
+        <span style="font-size:14px">&#9654;</span> Collect Payment
+        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">${aptPaid.length?'('+aptPaid.length+' posted · '+f$(aptPaid.reduce((s,p)=>s+(p.amount||0),0))+')':'(no payment yet)'}</span>
+        <span style="margin-left:auto;font-size:11px;font-weight:700;color:${balColor}">Balance: ${f$(balance)}</span>
+      </summary>
+      <div style="padding:12px 14px">
+        ${existingHTML}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Amount $</label>
+            <input type="number" id="aptd-pay-amt" step="0.01" placeholder="0.00" value="${balance>0?balance.toFixed(2):''}" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Payment Method</label>
+            <select id="aptd-pay-method" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;background:var(--card)">
+              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Reference / Check #</label>
+            <input id="aptd-pay-ref" placeholder="Optional" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Notes</label>
+            <input id="aptd-pay-notes" placeholder="Payment notes..." style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
+          </div>
+        </div>
+        <button class="btn btn-g sm" onclick="aptPostPayment('${woId}','${aptId}')">&#10003; Post Payment</button>
+      </div>
+    </details>`;
+  })()}
+
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Photos</div>
   <div style="margin-bottom:12px">
     <input type="file" id="aptd-photo" accept="image/*" multiple style="display:none" onchange="aptUploadPhotos('${aptId}','${woId}',this)">
@@ -16187,6 +16235,66 @@ async function svAptDetail(aptId, woId){
   window._aptTesterRows=[];
 
   cMod();tst('Appointment updated','success');openWO(woId);refreshDispBoard();
+}
+
+// ── PAYMENT FROM APPOINTMENT MODAL ────────────────────────────────────────────
+async function aptPostPayment(woId, aptId){
+  const amt=parseFloat(document.getElementById('aptd-pay-amt')?.value)||0;
+  if(!amt){tst('Enter a payment amount','error');return;}
+  const method=document.getElementById('aptd-pay-method')?.value||'Cash';
+  const ref=document.getElementById('aptd-pay-ref')?.value||'';
+  const notes=document.getElementById('aptd-pay-notes')?.value||'';
+
+  const payment={
+    wo_id:woId,
+    appointment_id:aptId,
+    amount:amt,
+    payment_method:method,
+    reference_number:ref||null,
+    notes:notes||null,
+    posted_by:CU.name,
+    posted_at:new Date().toISOString()
+  };
+
+  const saved=await dbInsert('lhs:payments',payment);
+  if(!saved){tst('Failed to post payment','error');return;}
+
+  // Update local cache
+  const pmts=S.get('lhs:payments')||[];
+  pmts.push(saved);
+  S.set('lhs:payments',pmts);
+
+  // Update WO total_paid
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  if(wo){
+    wo.total_paid=(wo.total_paid||0)+amt;
+    S.set('lhs:work_orders',wos);
+    await dbUpdate('lhs:work_orders',woId,{total_paid:wo.total_paid});
+  }
+
+  logWOAudit(woId,'Payment Posted',`${f$(amt)} via ${method}${ref?' ref:'+ref:''} (Appointment)`);
+  tst(`${f$(amt)} posted via ${method}`,'success');
+
+  // Refresh the payment section in-place without closing the modal
+  const paySec=document.getElementById('aptd-paysec');
+  if(paySec){
+    const newBalance=((wo?.total_price||0)-(wo?.total_paid||0));
+    const balColor=newBalance<=0?'var(--green)':newBalance<50?'var(--amber)':'var(--red)';
+    const aptPmts=(S.get('lhs:payments')||[]).filter(p=>p.appointment_id===aptId);
+    // Update summary line
+    const sum=paySec.querySelector('summary span:nth-child(3)');
+    if(sum) sum.textContent=`(${aptPmts.length} posted · ${f$(aptPmts.reduce((s,p)=>s+(p.amount||0),0))})`;
+    const balSpan=paySec.querySelector('summary span[style*="margin-left:auto"]');
+    if(balSpan){balSpan.textContent=`Balance: ${f$(newBalance)}`;balSpan.style.color=balColor;}
+    // Clear the input fields
+    const amtEl=document.getElementById('aptd-pay-amt');
+    const refEl=document.getElementById('aptd-pay-ref');
+    const notesEl=document.getElementById('aptd-pay-notes');
+    if(amtEl) amtEl.value=newBalance>0?newBalance.toFixed(2):'';
+    if(refEl) refEl.value='';
+    if(notesEl) notesEl.value='';
+  }
 }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
