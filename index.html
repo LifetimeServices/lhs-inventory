@@ -14698,7 +14698,7 @@ function woCreateForm(){
       <div id="woc-prop-results" style="border:1px solid var(--bdr);border-radius:6px;max-height:150px;overflow-y:auto;display:none"></div>
     </div>
   </div>
-  <div id="woc-prop-badge" style="display:none;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between"></div>
+  <div id="woc-prop-badge" style="display:none;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;margin-bottom:12px;align-items:center;justify-content:space-between"></div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">No property linked? Leave blank — you can link it later from the property page, or <button onclick="oAddPropertyFromWO()" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:12px;padding:0;text-decoration:underline">create a new property record</button>.</div>
 
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Customer</div>
@@ -18925,55 +18925,94 @@ function openProperty(id){
 }
 
 // ── QUICK PROPERTY SEARCH (for WO create) ────────────────────────────────────
+let _wocPropResults={};
 function propSearchInline(q){
   const el=document.getElementById('woc-prop-results'); if(!el) return;
   if(!q||q.length<2){el.style.display='none';return}
-  const props=S.get('lhs:props')||[];
-  const ql=q.toLowerCase();
-  const matches=props.filter(p=>
-    (p.address||'').toLowerCase().includes(ql)||
-    (p.city||'').toLowerCase().includes(ql)||
-    (p.zip||'').includes(q)
-  ).slice(0,6);
-  if(!matches.length){el.style.display='none';return}
   el.style.display='block';
-  el.innerHTML=matches.map(p=>`
-    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
-      onmousedown="propSelectInline('${p.id}')"
-      onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
-      <strong>${p.address}</strong> — ${p.city} ${p.state} ${p.zip||''}
-      <div style="font-size:11px;color:var(--muted)">${p.property_type||''} ${p.foundation_type?'· '+p.foundation_type:''} ${p.year_built?'· Built '+p.year_built:''} ${p.sq_ft?'· '+p.sq_ft.toLocaleString()+' sq ft':''}</div>
-    </div>`).join('');
+  el.innerHTML='<div style="padding:10px 14px;font-size:13px;color:var(--muted)">Searching...</div>';
+  clearTimeout(window._wocPropTimer);
+  window._wocPropTimer=setTimeout(()=>_propSearchAsync(q),200);
+}
+async function _propSearchAsync(q){
+  const el=document.getElementById('woc-prop-results'); if(!el) return;
+  try{
+    const ql=q.toLowerCase();
+    // First try local cache for instant results
+    const cached=(S.get('lhs:props')||[]).filter(p=>
+      (p.address||'').toLowerCase().includes(ql)||
+      (p.city||'').toLowerCase().includes(ql)||
+      (p.zip||'').includes(q)
+    ).slice(0,8);
+    // Also query Supabase live to catch anything not cached
+    const {data,error}=await DB.from('lhs_properties')
+      .select('id,address,city,state,zip,property_type,foundation_type,year_built,sq_ft,current_customer_id')
+      .or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%`)
+      .order('address',{ascending:true})
+      .range(0,29);
+    if(error) throw error;
+    // Merge: Supabase results take priority, supplement with cache
+    const merged=Object.values(
+      [...(data||[]),...cached].reduce((acc,p)=>{acc[p.id]=p;return acc;},{})
+    ).slice(0,8);
+    _wocPropResults={};
+    merged.forEach(p=>{_wocPropResults[p.id]=p;});
+    if(!document.getElementById('woc-prop-results')) return;
+    if(!merged.length){
+      el.innerHTML='<div style="padding:10px 14px;font-size:13px;color:var(--muted)">No properties found</div>';
+      return;
+    }
+    el.innerHTML=merged.map(p=>`
+      <div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
+        onmousedown="propSelectInline('${esc(p.id)}')"
+        onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
+        <div style="font-weight:600;color:var(--navy)">📍 ${esc(p.address||'')}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(p.city||'')}${p.state?' · '+esc(p.state):''}${p.zip?' '+esc(p.zip):''}${p.property_type?' · '+esc(p.property_type):''}${p.foundation_type?' · '+esc(p.foundation_type):''}${p.year_built?' · Built '+p.year_built:''}${p.sq_ft?' · '+p.sq_ft.toLocaleString()+' sq ft':''}</div>
+      </div>`).join('');
+  }catch(e){
+    if(document.getElementById('woc-prop-results'))
+      el.innerHTML=`<div style="padding:10px 14px;font-size:13px;color:var(--red)">Search error: ${e?.message||'try again'}</div>`;
+  }
 }
 
 function propSelectInline(id){
-  const p=(S.get('lhs:props')||[]).find(x=>x.id===id); if(!p) return;
+  const p=_wocPropResults[id]||(S.get('lhs:props')||[]).find(x=>x.id===id); if(!p) return;
+  // Merge into cache if not already there
+  const props=S.get('lhs:props')||[];
+  if(!props.find(x=>x.id===id)){props.unshift(p);S.set('lhs:props',props);}
   window._wocPropertyId=id;
-  const el=document.getElementById('woc-prop-results');
-  if(el) el.style.display='none';
-  const inp=document.getElementById('woc-prop-search');
-  if(inp) inp.value=`${p.address}, ${p.city} ${p.state}`;
-  // Auto-fill address fields and customer
-  const setVal=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
+  // Hide results dropdown and search input; swap in selected badge
+  const el=document.getElementById('woc-prop-results'); if(el) el.style.display='none';
+  const inp=document.getElementById('woc-prop-search'); if(inp) inp.style.display='none';
+  // Auto-fill address fields
+  const setVal=(eid,val)=>{const e=document.getElementById(eid);if(e&&val)e.value=val;};
   setVal('woc-cad',p.address||'');
+  setVal('woc-cct',p.city||'');
+  setVal('woc-czip',p.zip||'');
+  if(p.state){const sel=document.getElementById('woc-cst');if(sel){const opt=[...sel.options].find(o=>o.value.startsWith(p.state));if(opt)sel.value=opt.value;}}
   // If property has a linked customer, auto-select them
   if(p.current_customer_id&&!window._wocSelectedCust){
     wocSelectCust(p.current_customer_id);
   }
-  // Show property badge
+  // Show selected badge
   const badge=document.getElementById('woc-prop-badge');
   if(badge){
-    badge.style.display='block';
-    badge.innerHTML=`<span style="font-size:12px;color:var(--navy);font-weight:500">📍 ${p.address} &mdash; ${p.foundation_type||p.property_type||''} ${p.year_built?'· Built '+p.year_built:''} ${p.sq_ft?'· '+p.sq_ft.toLocaleString()+' sq ft':''}</span>
-    <button onclick="propClearInline()" style="background:none;border:none;color:var(--muted);cursor:pointer;margin-left:8px;font-size:14px">×</button>`;
+    badge.style.display='flex';
+    badge.innerHTML=`<div>
+      <div style="font-weight:600;font-size:13px;color:var(--navy)">📍 ${esc(p.address||'')}${p.city?', '+esc(p.city):''} ${esc(p.state||'')} ${esc(p.zip||'')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${[p.property_type,p.foundation_type,p.year_built?'Built '+p.year_built:'',p.sq_ft?p.sq_ft.toLocaleString()+' sq ft':''].filter(Boolean).join(' · ')}</div>
+    </div>
+    <button onclick="propClearInline()" class="btn btn-o sm">Change</button>`;
   }
   tst(`Property linked: ${p.address}`,'success');
 }
 
 function propClearInline(){
   window._wocPropertyId=null;
-  const inp=document.getElementById('woc-prop-search');if(inp) inp.value='';
+  const inp=document.getElementById('woc-prop-search');
+  if(inp){inp.value='';inp.style.display='block';}
   const badge=document.getElementById('woc-prop-badge');if(badge) badge.style.display='none';
+  const el=document.getElementById('woc-prop-results');if(el) el.style.display='none';
 }
 
 // ── CREATE WO FOR SPECIFIC PROPERTY ──────────────────────────────────────────
