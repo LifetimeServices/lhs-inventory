@@ -26217,7 +26217,6 @@ function _fupQueueLoad(){
 
 function bSalesLeads(){
   return`<div class="pt">Leads</div><div class="ps">All inbound and outbound leads</div>
-  ${_salesHeader()}
   ${renderCRMLeads()}`;
 }
 
@@ -26225,14 +26224,12 @@ function bSalesLeads(){
 let _oppView='list';
 function bSalesOpps(){
   return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline</div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    ${_salesHeader()}
-    <div style="display:flex;gap:8px;align-items:center">
-      <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
-        <button onclick="_setOppView('list')" id="ovt-list" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='list'?'var(--navy)':'transparent'};color:${_oppView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
-        <button onclick="_setOppView('kanban')" id="ovt-kanban" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='kanban'?'var(--navy)':'transparent'};color:${_oppView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
-      </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:8px;align-items:center">
+    <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
+      <button onclick="_setOppView('list')" id="ovt-list" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='list'?'var(--navy)':'transparent'};color:${_oppView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
+      <button onclick="_setOppView('kanban')" id="ovt-kanban" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='kanban'?'var(--navy)':'transparent'};color:${_oppView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
     </div>
+    <button class="btn btn-n" onclick="oAddOpportunity()">+ New Opportunity</button>
   </div>
   <div id="opp-view-content">${_oppView==='kanban'?renderCRMKanban():renderCRMPipeline()}</div>`;
 }
@@ -27012,7 +27009,6 @@ async function delSalesTask(id){
 // ── ACTIVITIES PAGE ────────────────────────────────────────────────────────────
 function bSalesActivities(){
   return`<div class="pt">Activities</div><div class="ps">All logged sales activities</div>
-  ${_salesHeader()}
   ${renderCRMActivities()}`;
 }
 
