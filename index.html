@@ -22432,12 +22432,29 @@ function bHREmployeeList(){
   const search=(window._hrEmpSearch||'').toLowerCase();
   const fStatus=window._hrEmpStatus||'';
   const fRole=window._hrEmpRole||'';
+  const sortCol=window._hrEmpSort||'name';
+  const sortDir=window._hrEmpSortDir||'asc';
   let filtered=all;
   if(search) filtered=filtered.filter(u=>(u.name||'').toLowerCase().includes(search)||(u.email||'').toLowerCase().includes(search)||(u.division||'').toLowerCase().includes(search)||(u.region||'').toLowerCase().includes(search));
   if(fStatus==='Active')   filtered=filtered.filter(u=>u.active!==false&&!u.terminated);
   if(fStatus==='Inactive') filtered=filtered.filter(u=>u.active===false||u.terminated);
   if(fRole)  filtered=filtered.filter(u=>u.role===fRole);
+  // Sort
+  const sortKey={name:'name',role:'role',division:'division',region:'region',employment:'employment_type',paytype:'pay_type',hiredate:'hire_date',status:'active'}[sortCol]||'name';
+  filtered=[...filtered].sort((a,b)=>{
+    let av=a[sortKey]??'',bv=b[sortKey]??'';
+    if(sortCol==='status'){av=a.active!==false&&!a.terminated?1:0;bv=b.active!==false&&!b.terminated?1:0;}
+    if(sortCol==='hiredate'){av=a.hire_date||'';bv=b.hire_date||'';}
+    const cmp=typeof av==='number'?av-bv:String(av).localeCompare(String(bv));
+    return sortDir==='asc'?cmp:-cmp;
+  });
   const uniqueRoles=[...new Set(all.map(u=>u.role).filter(Boolean))].sort();
+  // Sort header helper
+  const th=(label,col)=>{
+    const active=sortCol===col;
+    const arrow=active?(sortDir==='asc'?'↑':'↓'):'↕';
+    return`<th style="cursor:pointer;user-select:none;white-space:nowrap${active?';color:var(--navy)':''}" onclick="window._hrEmpSort='${col}';window._hrEmpSortDir=${active?`'${sortDir==='asc'?'desc':'asc'}'`:"'asc'"};showPage('hr-employees')">${label} <span style="font-size:11px;opacity:${active?1:0.35}">${arrow}</span></th>`;
+  };
   return`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <div>
@@ -22472,8 +22489,8 @@ function bHREmployeeList(){
 
   <div class="card" style="padding:0"><div class="tw"><table>
     <thead><tr>
-      <th>Employee</th><th>Role</th><th>Division</th><th>Region</th>
-      <th>Employment</th><th>Pay Type</th><th>Hire Date</th><th>Status</th><th></th>
+      ${th('Employee','name')}${th('Role','role')}${th('Division','division')}${th('Region','region')}
+      ${th('Employment','employment')}${th('Pay Type','paytype')}${th('Hire Date','hiredate')}${th('Status','status')}<th></th>
     </tr></thead>
     <tbody>${filtered.length?filtered.map(u=>{
       const active=u.active!==false&&!u.terminated;
