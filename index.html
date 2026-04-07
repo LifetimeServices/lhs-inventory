@@ -4604,7 +4604,7 @@ function oUpdTest(i){
             ${d.location?`<span>Placement</span><span>${esc(d.location)}</span>`:''}
             ${d.delay&&d.delay!=='No Delay'?`<span>Delay</span><span>${esc(d.delay)}</span>`:''}
             ${d.tech_name?`<span>Tech(s)</span><span>${esc(d.tech_name)}</span>`:''}
-            ${(d.wo_number||d.wo_id)?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--teal)">${esc(d.wo_number||d.wo_id)}</span>`:''}
+            ${d.wo_number?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--teal)">${esc(d.wo_number)}</span>`:''}
           </div>
         </div>`).join('')}
       </div>
@@ -16103,7 +16103,7 @@ async function svAptDetail(aptId, woId){
   for(const row of _tRows){
     if(!row.tester_id) continue;
     const depl={
-      tester_id:row.tester_id, wo_id:woId, wo_number:_woRec?.wo_number||woId, appointment_id:aptId,
+      tester_id:row.tester_id, wo_id:woId, wo_number:_woRec?.wo_number||null, appointment_id:aptId,
       action:row.action||'Drop Off', delay:row.delay||'No Delay', location:row.location||'',
       customer_name:_woRec?.customer_name||'',
       customer_address:_woRec?.customer_address||'',
