@@ -22752,7 +22752,6 @@ async function prCalcTimesheetFromPunches(emp, date, weekStart){
     try{await DB.from('lhs_timesheets').update({regular_hours:regularHrs,overtime_hours:overtimeHrs,meal_break:mealHrs,total_hours:totalHrs}).eq('id',existing.id);}catch(e){console.warn('ts auto-update failed',e?.message);}
   } else {
     const newRow={
-      id:'ts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
       date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
       meal_break:mealHrs, other_time:0, pto_hours:0, total_hours:totalHrs,
@@ -22760,7 +22759,11 @@ async function prCalcTimesheetFromPunches(emp, date, weekStart){
     };
     allTS.push(newRow);
     S.set('lhs:timesheets',allTS);
-    try{await DB.from('lhs_timesheets').insert(newRow);}catch(e){console.warn('ts auto-insert failed',e?.message);}
+    try{
+      const{data:saved,error}=await DB.from('lhs_timesheets').insert(newRow).select().single();
+      if(saved) newRow.id=saved.id;
+      else if(error) console.warn('ts auto-insert failed',error?.message);
+    }catch(e){console.warn('ts auto-insert failed',e?.message);}
   }
 }
 
@@ -22900,7 +22903,6 @@ async function prSaveEntry(existingId, period){
     const dup=allTS.find(t=>t.employee===emp&&t.date===date&&t.week_start===weekStart);
     if(dup){tst('Entry already exists for this date — use the edit button on that row','warning');cMod();return;}
     const newRow={
-      id:'ts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       employee:emp, employee_id:userObj.id||'', manager:userObj.manager||'',
       date, week_start:weekStart, regular_hours:regularHrs, overtime_hours:overtimeHrs,
       meal_break:meal, other_time:other, pto_hours:pto, total_hours:totalHrs,
@@ -22908,7 +22910,11 @@ async function prSaveEntry(existingId, period){
     };
     allTS.push(newRow);
     S.set('lhs:timesheets',allTS);
-    try{await DB.from('lhs_timesheets').insert(newRow);}catch(err){console.warn('ts insert failed',err?.message);}
+    try{
+      const{data:saved,error}=await DB.from('lhs_timesheets').insert(newRow).select().single();
+      if(saved) newRow.id=saved.id;
+      else if(error) console.warn('ts insert failed',error?.message);
+    }catch(err){console.warn('ts insert failed',err?.message);}
   }
   cMod();
   window._prPeriod=weekStart;
