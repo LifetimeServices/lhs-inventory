@@ -22945,6 +22945,8 @@ function prEditDay(emp, date, period){
 }
 
 async function prSaveEntry(existingId, period){
+  // Auto-calculate hours from punches before reading hour fields
+  prPunchCalc();
   const emp=document.getElementById('pr-emp')?.value||'';
   const date=document.getElementById('pr-date')?.value||'';
   const workHrs=+(document.getElementById('pr-work')?.value||0);
@@ -22953,9 +22955,10 @@ async function prSaveEntry(existingId, period){
   const pto=+(document.getElementById('pr-pto')?.value||0);
   const notes=document.getElementById('pr-notes')?.value||'';
   const isPTO=document.getElementById('pr-ispto')?.checked||false;
+  const hasValidPunches=(window._prPunches||[]).some(p=>p.time);
 
   if(!emp||!date){tst('Employee and date are required','warning');return;}
-  if(workHrs===0&&pto===0&&other===0){tst('Please enter at least some hours','warning');return;}
+  if(workHrs===0&&pto===0&&other===0&&!hasValidPunches){tst('Please enter at least some hours or add clock punches','warning');return;}
 
   const regularHrs=Math.min(workHrs,8);
   const overtimeHrs=Math.max(0,workHrs-8);
