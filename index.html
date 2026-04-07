@@ -17016,11 +17016,22 @@ function oTechAudit(woId){
   const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
   if(!wo){tst('Work order not found','error');return;}
 
-  // Gather assigned techs for selector
-  const techs=wo.techs||[];
-  const techOpts=techs.length
-    ? techs.map(t=>`<option value="${esc(t.email||t.name||t)}">${esc(t.name||t.email||t)}</option>`).join('')
-    : '<option value="">No techs assigned</option>';
+  const apts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===woId)
+    .sort((a,b)=>(a.scheduled_date||'').localeCompare(b.scheduled_date||''));
+  const allAptTechs=S.get('lhs:apt_techs')||[];
+
+  if(!apts.length){tst('No appointments found on this work order','error');return;}
+
+  // Build appointment options with date label
+  const aptOpts=apts.map((a,i)=>{
+    const label=`Appointment ${i+1}${a.scheduled_date?' — '+a.scheduled_date:''}${a.scheduled_time?' '+a.scheduled_time:''}`;
+    return`<option value="${a.id}">${esc(label)}</option>`;
+  }).join('');
+
+  // If only 1 appointment, pre-build the tech options for it immediately
+  const firstApt=apts[0];
+  const firstTechs=allAptTechs.filter(t=>t.appointment_id===firstApt.id);
+  const firstTechOpts=_buildTechOpts(firstTechs);
 
   const fields=[
     {id:'ta-dispatch', label:'Technician dispatched correctly',        hint:'Arrived on time, correct location, proper uniform'},
@@ -17031,15 +17042,23 @@ function oTechAudit(woId){
 
   oMod(`Tech Audit — ${wo.wo_number}`,`
   <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
-    Review technician performance on this work order. Mark FAIL and add a note for coaching.
+    Review technician performance. Each appointment must be graded separately.
   </div>
 
-  <!-- Technician selector -->
-  <div class="fl" style="margin-bottom:18px">
-    <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Technician Being Audited</label>
+  <!-- Step 1: Appointment selector -->
+  <div style="margin-bottom:14px">
+    <label style="font-size:12px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Step 1 — Select Appointment</label>
+    <select id="ta-apt" onchange="taTechAptChange('${woId}')" style="width:100%;padding:9px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:14px;background:var(--card)">
+      ${apts.length>1?'<option value="">— Select appointment —</option>':''}
+      ${aptOpts}
+    </select>
+  </div>
+
+  <!-- Step 2: Technician selector (populated by appointment choice) -->
+  <div style="margin-bottom:18px">
+    <label style="font-size:12px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Step 2 — Select Technician</label>
     <select id="ta-tech" style="width:100%;padding:9px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:14px;background:var(--card)">
-      <option value="">— Select technician —</option>
-      ${techOpts}
+      ${firstTechOpts}
     </select>
   </div>
 
@@ -17068,12 +17087,51 @@ function oTechAudit(woId){
     <button class="btn btn-n" onclick="svTechAudit('${woId}')">Save Tech Audit</button>
     <button class="btn btn-o" onclick="openWO('${woId}')">Cancel</button>
   </div>`);
+
+  // If single appointment, auto-select it and trigger tech population
+  if(apts.length===1){
+    const aptSel=document.getElementById('ta-apt');
+    if(aptSel) aptSel.value=firstApt.id;
+    // Tech already pre-filled above; auto-select if only 1 tech
+    if(firstTechs.length===1){
+      const techSel=document.getElementById('ta-tech');
+      if(techSel) techSel.value=firstTechs[0].tech_email||firstTechs[0].tech_name||'';
+    }
+  }
+}
+
+// Helper: build <option> tags for a list of apt_tech rows
+function _buildTechOpts(techRows){
+  if(!techRows.length) return '<option value="">No techs assigned to this appointment</option>';
+  const opts=techRows.map(t=>`<option value="${esc(t.tech_email||t.tech_name||'')}">${esc(t.tech_name||t.tech_email||'')}</option>`).join('');
+  return (techRows.length>1?'<option value="">— Select technician —</option>':'')+opts;
+}
+
+// Called when appointment selector changes — repopulate tech dropdown
+function taTechAptChange(woId){
+  const aptId=document.getElementById('ta-apt')?.value;
+  const techSel=document.getElementById('ta-tech');
+  if(!techSel) return;
+  if(!aptId){techSel.innerHTML='<option value="">— Select appointment first —</option>';return;}
+  const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
+  techSel.innerHTML=_buildTechOpts(aptTechs);
+  // Auto-select if only 1 tech
+  if(aptTechs.length===1) techSel.value=aptTechs[0].tech_email||aptTechs[0].tech_name||'';
 }
 
 async function svTechAudit(woId){
+  const aptEl=document.getElementById('ta-apt');
+  const aptId=aptEl?.value||'';
   const techEl=document.getElementById('ta-tech');
   const techName=techEl?.options[techEl.selectedIndex]?.text||'';
   const techVal=techEl?.value||'';
+
+  if(!aptId){tst('Please select an appointment','error');return;}
+  if(!techVal){tst('Please select a technician','error');return;}
+
+  // Get appointment label for toast
+  const apt=(S.get('lhs:appointments')||[]).find(a=>a.id===aptId);
+  const aptLabel=apt?.scheduled_date||aptId.slice(-6);
 
   const fields=['ta-dispatch','ta-pictures','ta-notes','ta-materials'];
   const fieldNames=['dispatched_correctly','pictures_added','notes_entered','materials_inputted'];
@@ -17082,6 +17140,7 @@ async function svTechAudit(woId){
 
   const audit={
     wo_id:woId,
+    appointment_id:aptId,
     audited_by:CU.name,
     audited_at:new Date().toISOString(),
     technician_name:techName,
@@ -17090,23 +17149,20 @@ async function svTechAudit(woId){
 
   let passes=0,fails=0;
   const failItems=[];
+  let incomplete=false;
   fields.forEach((fid,i)=>{
     const failBtn=document.getElementById(fid+'-fail');
     const passBtn=document.getElementById(fid+'-pass');
-    const isFailed=failBtn?.style.background==='var(--red)'||failBtn?.style.background?.includes('red');
-    const isPassed=passBtn?.style.background==='var(--green)'||passBtn?.style.background?.includes('green');
-    // If neither selected, treat as not reviewed yet — require both to be addressed
-    if(!isFailed&&!isPassed){
-      tst(`Please mark all items Pass or Fail before saving`,'error');
-      return;
-    }
+    const isFailed=failBtn?.style.background==='var(--red)'||failBtn?.style.background?.includes('rgb(198');
+    const isPassed=passBtn?.style.background==='var(--green)'||passBtn?.style.background?.includes('rgb(');
+    if(!isFailed&&!isPassed){incomplete=true;return;}
     audit[fieldNames[i]]=!isFailed;
     audit[noteFields[i]]=isFailed?(document.getElementById(fid+'-note')?.value||''):'';
     if(!isFailed) passes++; else {fails++;failItems.push(labelNames[i]);}
   });
 
-  // Check if we exited early due to unreviewed item
-  if(passes+fails<fields.length){return;}
+  if(incomplete){tst('Please mark all items Pass or Fail before saving','error');return;}
+  if(passes+fails<fields.length){tst('Please mark all items Pass or Fail before saving','error');return;}
 
   audit.pass_count=passes;
   audit.fail_count=fails;
@@ -17118,7 +17174,7 @@ async function svTechAudit(woId){
 
   const score=Math.round((passes/(passes+fails))*100);
 
-  // Update the WO cache with latest tech audit score
+  // Update WO with latest tech audit score
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
   if(wo){
@@ -17135,7 +17191,7 @@ async function svTechAudit(woId){
 
   cMod();
   const failMsg=failItems.length?` · Failed: ${failItems.join(', ')}`:'';
-  tst(`Tech Audit saved — ${score}% (${passes} pass, ${fails} fail)${failMsg}`,'success');
+  tst(`Tech Audit saved — ${techName} / ${aptLabel} — ${score}% (${passes}P ${fails}F)${failMsg}`,'success');
   openWO(woId);
 }
 
