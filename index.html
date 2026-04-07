@@ -2648,11 +2648,12 @@ function vPO(i){
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Sent to Vendor</div><div style="margin-top:2px">${p.sent_at?'<span style="color:var(--green)">✓ Sent '+new Date(p.sent_at).toLocaleString()+'</span>':'Not yet sent'}</div></div>
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Vendor Confirmed</div><div style="margin-top:2px">${p.vendor_confirmed_at?'<span style="color:var(--green)">✓ Confirmed '+new Date(p.vendor_confirmed_at).toLocaleString()+'</span>':'<span style="color:var(--amber)">Awaiting confirmation</span>'}</div></div>
   </div>
-  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Short</th><th>Status</th></tr></thead>
+  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th style="color:#c62828">Damaged</th><th>Short</th><th>Status</th></tr></thead>
   <tbody>${(p.lines||[]).map(l=>{const short=Math.max(0,(l.qtyOrdered||0)-(l.qtyReceived||0));return`<tr>
     <td style="font-weight:500">${esc(l.item||l.sku)}</td>
     <td style="text-align:center">${l.qtyOrdered}</td>
     <td style="text-align:center">${l.qtyReceived||0}</td>
+    <td style="text-align:center;font-weight:700;color:${(l.qtyDamaged||0)>0?'#c62828':'var(--muted)'}">${(l.qtyDamaged||0)>0?l.qtyDamaged:'—'}</td>
     <td style="text-align:center;font-weight:700;color:${short>0?'var(--red)':'var(--green)'}">${short>0?short:'✓'}</td>
     <td>${bx(l.status||'Open',l.status==='Received'?'bg':l.status==='Short'?'ba':'bb')}</td>
   </tr>`;}).join('')}</tbody></table></div>
@@ -2814,11 +2815,14 @@ function lRecv(){
   ;
   document.getElementById('rlines').innerHTML=`<div class="card">
   <div class="sh"><h3>PO ${p.id} &#8212; ${p.vendor} &#8594; ${p.location}</h3></div>
-  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Prev</th><th>Receive Now</th><th>Balance</th></tr></thead>
+  <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Prev</th><th>Receive Now</th><th style="color:#c62828">Damaged</th><th>Balance</th></tr></thead>
   <tbody>${(p.lines||[]).map((l,i)=>`<tr>
     <td style="font-weight:500">${l.item||l.sku}</td><td>${l.qtyOrdered}</td><td>${l.qtyReceived||0}</td>
     <td><input type="number" id="rl${i}" value="${l.qtyOrdered-(l.qtyReceived||0)}" min="0"
       style="width:70px;padding:6px 8px;border:1.5px solid var(--bdr);border-radius:6px;font-size:14px;text-align:center"
+      oninput="uBal(${i},${l.qtyOrdered},${l.qtyReceived||0})"></td>
+    <td><input type="number" id="rd${i}" value="0" min="0"
+      style="width:70px;padding:6px 8px;border:1.5px solid #e57373;border-radius:6px;font-size:14px;text-align:center;background:#fff5f5"
       oninput="uBal(${i},${l.qtyOrdered},${l.qtyReceived||0})"></td>
     <td id="bal${i}" style="color:var(--amber);font-family:'DM Sans',sans-serif">${l.qtyOrdered-(l.qtyReceived||0)} left</td>
   </tr>`).join('')}</tbody></table></div>
@@ -2844,8 +2848,8 @@ function lRecv(){
   <button class="btn btn-o" onclick="document.getElementById('rlines').innerHTML=''">Cancel</button></div>
   </div>`;
 }
-function uBal(i,o,pr){const now=pi2('rl'+i);const bal=o-pr-now;const el=g('bal'+i);
-  if(el){el.textContent=bal>0?bal+' left':'&#10003; Done';el.style.color=bal>0?'var(--amber)':'var(--green)';}}
+function uBal(i,o,pr){const now=pi2('rl'+i);const dmg=pi2('rd'+i)||0;const bal=o-pr-now-dmg;const el=g('bal'+i);
+  if(el){el.textContent=bal>0?bal+' left':bal===0?'✓ Done':'⚠ Over';el.style.color=bal>0?'var(--amber)':bal===0?'var(--green)':'#c62828';}}
 
 function prvSlip(input){
   const file=input.files[0]; if(!file) return;
@@ -2902,11 +2906,15 @@ async function postRecv(pi3){
 
   const changedLs=new Set();
   const newLsRows=[];
+  const dmgNotes=[];
   (p.lines||[]).forEach((l,i)=>{
     const now=pi2('rl'+i);
-    l.qtyReceived=(l.qtyReceived||0)+now;
+    const dmg=pi2('rd'+i)||0;
+    l.qtyReceived=(l.qtyReceived||0)+now;          // only good qty counts toward received
+    l.qtyDamaged=(l.qtyDamaged||0)+dmg;            // track cumulative damage
     l.status=l.qtyReceived>=l.qtyOrdered?'Received':'Short';
     if(l.status==='Short') short=true;
+    if(dmg>0) dmgNotes.push(`${l.item||l.sku} ×${dmg} damaged`);
     if(now>0){
       const ex=ls.find(r=>r.sku===l.sku&&r.location===p.location);
       if(ex){ex.qty+=now; changedLs.add(ex);}
@@ -2916,8 +2924,9 @@ async function postRecv(pi3){
   p.status=(p.lines||[]).every(l=>l.status==='Received')?'Received in Full':'Partial - Awaiting Balance';
   p.receivedDate=dt;p.receivedBy=CU.name;
   p.receiptValue=(p.lines||[]).reduce((s,l)=>s+(l.qtyReceived||0)*l.cost,0);
-  if(short) p.notes='Short: '+(p.lines||[]).filter(l=>l.status==='Short')
-    .map(l=>`${l.item} (${l.qtyReceived}/${l.qtyOrdered})`).join(', ');
+  const shortNotes=short?'Short: '+(p.lines||[]).filter(l=>l.status==='Short').map(l=>`${l.item} (${l.qtyReceived}/${l.qtyOrdered})`).join(', '):'';
+  const dmgStr=dmgNotes.length?'Damaged: '+dmgNotes.join(', '):'';
+  p.notes=[shortNotes,dmgStr].filter(Boolean).join(' | ')||p.notes||null;
   pos[pi3]=p; S.set('lhs:pos',pos); S.set('lhs:ls',ls);
   tst(p.status==='Received in Full'?`${p.id} fully received`:`${p.id} partial — balance due`,
     p.status==='Received in Full'?'success':'info');
