@@ -22697,8 +22697,8 @@ async function prPunch(type){
   const date=now.toISOString().slice(0,10);
   const weekStart=prWeekStart(date);
   const punch={
-    id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
-    employee:CU.name, employee_id:CU.id||'',
+    id:crypto.randomUUID(),
+    employee:CU.name,
     punch_type:type, punched_at:now.toISOString(),
     date, week_start:weekStart
   };
@@ -23012,12 +23012,12 @@ async function prSaveEntry(existingId, period){
       const pRows=validPunches.map(p=>{
         const[h,m]=p.time.split(':').map(Number);
         const dt=new Date(date);dt.setHours(h,m,0,0);
-        return{employee:emp,employee_id:'',punch_type:p.type,punched_at:dt.toISOString(),date,week_start:wsP};
+        return{id:crypto.randomUUID(),employee:emp,punch_type:p.type,punched_at:dt.toISOString(),date,week_start:wsP};
       });
       try{
-        const{data:sp}=await DB.from('lhs_time_punches').insert(pRows).select();
-        if(sp) kept.push(...sp);
-        else kept.push(...pRows);
+        const{error:pe}=await DB.from('lhs_time_punches').insert(pRows);
+        if(pe) console.warn('punch insert:',pe.message);
+        kept.push(...pRows);
       }catch(e){console.warn('punch insert:',e?.message);kept.push(...pRows);}
     }
     S.set('lhs:time_punches',kept);
