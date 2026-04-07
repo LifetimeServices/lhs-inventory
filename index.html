@@ -4587,11 +4587,19 @@ function oUpdTest(i){
   const ts=S.get('lhs:ts')||[];const t=ts[i];
   const history=(S.get('lhs:tester_deployments')||[]).filter(d=>d.tester_id===t.id).sort((a,b)=>b.created_at?.localeCompare(a.created_at||''));
   const actColor=a=>a==='Drop Off'?'#2e7d32':'#1565c0';
+  // Resolve address for a deployment record — fall back to WO then customer cache
+  const resolveAddr=d=>{
+    if(d.customer_address) return d.customer_address;
+    const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===d.wo_id);
+    if(wo?.customer_address) return wo.customer_address;
+    const cust=(S.get('lhs:customers')||[]).find(c=>c.id===wo?.customer_id);
+    return cust?.address||cust?.street||'';
+  };
   const histHTML=history.length?`
     <div style="margin-top:16px;border-top:1px solid var(--bdr);padding-top:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">📋 Deployment History (${history.length})</div>
       <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-        ${history.map(d=>`
+        ${history.map(d=>{const addr=resolveAddr(d);return`
         <div style="border:1px solid var(--bdr);border-radius:7px;padding:8px 12px;background:var(--surf);font-size:12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             <span style="background:${actColor(d.action)};color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">${d.action||'?'}</span>
@@ -4600,13 +4608,13 @@ function oUpdTest(i){
           </div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;color:var(--muted)">
             ${d.customer_name?`<span>Customer</span><span style="color:var(--navy);font-weight:500">${esc(d.customer_name)}</span>`:''}
-            ${d.customer_address?`<span>Address</span><span>${esc(d.customer_address)}</span>`:''}
+            ${addr?`<span>Address</span><span>${esc(addr)}</span>`:''}
             ${d.location?`<span>Placement</span><span>${esc(d.location)}</span>`:''}
             ${d.delay&&d.delay!=='No Delay'?`<span>Delay</span><span>${esc(d.delay)}</span>`:''}
             ${d.tech_name?`<span>Tech(s)</span><span>${esc(d.tech_name)}</span>`:''}
-            ${d.wo_number?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--teal)">${esc(d.wo_number)}</span>`:''}
+            ${(d.wo_number||d.wo_id)?`<span>WO</span><span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--teal)">${esc(d.wo_number||(d.wo_id?'WO-…'+d.wo_id.slice(-6):'-'))}</span>`:''}
           </div>
-        </div>`).join('')}
+        </div>`}).join('')}
       </div>
     </div>`:`<div style="margin-top:14px;font-size:12px;color:var(--muted);border-top:1px solid var(--bdr);padding-top:12px">No deployment history yet.</div>`;
   oMod('Tester: '+t.id,`
@@ -16098,6 +16106,9 @@ async function svAptDetail(aptId, woId){
   // ── Save Radon Tester Deployments ─────────────────────────────────────────
   const _tRows=window._aptTesterRows||[];
   const _woRec=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  // Address fallback: WO.customer_address → customer record address
+  const _custRec=(S.get('lhs:customers')||[]).find(c=>c.id===(_woRec?.customer_id));
+  const _deplAddr=_woRec?.customer_address||_custRec?.address||_custRec?.street||'';
   const _aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId).map(t=>t.tech_name).join(', ');
   const _aptDateFinal=reschedDate||(S.get('lhs:appointments')||[]).find(a=>a.id===aptId)?.scheduled_date||new Date().toISOString().slice(0,10);
   for(const row of _tRows){
@@ -16106,7 +16117,7 @@ async function svAptDetail(aptId, woId){
       tester_id:row.tester_id, wo_id:woId, wo_number:_woRec?.wo_number||null, appointment_id:aptId,
       action:row.action||'Drop Off', delay:row.delay||'No Delay', location:row.location||'',
       customer_name:_woRec?.customer_name||'',
-      customer_address:_woRec?.customer_address||'',
+      customer_address:_deplAddr,
       tech_name:_aptTechs, event_date:_aptDateFinal,
       created_by:CU?.name||'', created_at:new Date().toISOString(), updated_at:new Date().toISOString()
     };
@@ -16120,7 +16131,7 @@ async function svAptDetail(aptId, woId){
     const _tester=_tsList.find(t=>t.id===row.tester_id);
     if(_tester){
       _tester.status=row.action==='Drop Off'?'At Customer':'At Warehouse';
-      if(row.action==='Drop Off'){_tester.customer=_woRec?.customer_name||'';_tester.address=_woRec?.customer_address||'';_tester.dropDate=_aptDateFinal;}
+      if(row.action==='Drop Off'){_tester.customer=_woRec?.customer_name||'';_tester.address=_deplAddr;_tester.dropDate=_aptDateFinal;}
       else{_tester.customer='';_tester.address='';}
       S.set('lhs:ts',_tsList);
       // Note: lhs_testers uses non-UUID IDs — status updates tracked via lhs_tester_deployments instead
