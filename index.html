@@ -15557,6 +15557,10 @@ async function openWO(woId){
   <div style="margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:14px;font-weight:600;color:var(--navy)">&#128203; Audit Log</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${wo.creation_audit_score!=null?`<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${wo.creation_audit_score>=80?'#d4edda':wo.creation_audit_score>=60?'#fff3cd':'#f8d7da'};color:${wo.creation_audit_score>=80?'#155724':wo.creation_audit_score>=60?'#856404':'#721c24'};font-weight:600">Creation ${wo.creation_audit_score}%</span>`:''}
+        ${wo.tech_audit_score!=null?`<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${wo.tech_audit_score>=80?'#d1ecf1':wo.tech_audit_score>=60?'#fff3cd':'#f8d7da'};color:${wo.tech_audit_score>=80?'#0c5460':wo.tech_audit_score>=60?'#856404':'#721c24'};font-weight:600">Tech ${wo.tech_audit_score}%</span>`:''}
+      </div>
     </div>
     <div style="max-height:160px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px">
       ${auditHTML}
@@ -15568,6 +15572,7 @@ async function openWO(woId){
     <span style="font-size:13px;color:var(--muted);line-height:32px">Status:</span>
     ${WO_STATUSES.map(s=>s==='Cancelled'?`<button class="btn sm ${liveStatus===s?'btn-n':'btn-o'}" onclick="oCancelWO('${woId}')">${s}</button>`:`<button class="btn sm ${liveStatus===s?'btn-n':'btn-o'}" onclick="updateWOStatus('${woId}','${s}')">${s}</button>`).join('')}
     <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="oTechAudit('${woId}')">&#128203; Tech Audit</button>
       <button class="btn sm btn-r" onclick="oWOAudit('${woId}')">&#9998; Creation Audit</button>
     </div>
   </div>`:''}
@@ -17004,6 +17009,134 @@ async function svWOAudit(woId){
   await dbUpdate('lhs:work_orders',woId,{creation_audit_score:score,creation_audit_by:CU.name,
     creation_audit_at:new Date().toISOString()});
   cMod();tst(`Audit saved — ${score}% (${passes} pass, ${fails} fail)`,'success');openWO(woId);
+}
+
+// ── TECH AUDIT ────────────────────────────────────────────────────────────────
+function oTechAudit(woId){
+  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  if(!wo){tst('Work order not found','error');return;}
+
+  // Gather assigned techs for selector
+  const techs=wo.techs||[];
+  const techOpts=techs.length
+    ? techs.map(t=>`<option value="${esc(t.email||t.name||t)}">${esc(t.name||t.email||t)}</option>`).join('')
+    : '<option value="">No techs assigned</option>';
+
+  const fields=[
+    {id:'ta-dispatch', label:'Technician dispatched correctly',        hint:'Arrived on time, correct location, proper uniform'},
+    {id:'ta-pictures', label:'Required pictures added',                hint:'Before/after, documentation photos uploaded to WO'},
+    {id:'ta-notes',    label:'Required notes entered',                 hint:'Job notes, customer communication, issues logged'},
+    {id:'ta-materials',label:'All materials used were inputted',       hint:'Every part, material, or item consumed recorded on WO'},
+  ];
+
+  oMod(`Tech Audit — ${wo.wo_number}`,`
+  <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    Review technician performance on this work order. Mark FAIL and add a note for coaching.
+  </div>
+
+  <!-- Technician selector -->
+  <div class="fl" style="margin-bottom:18px">
+    <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Technician Being Audited</label>
+    <select id="ta-tech" style="width:100%;padding:9px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:14px;background:var(--card)">
+      <option value="">— Select technician —</option>
+      ${techOpts}
+    </select>
+  </div>
+
+  ${fields.map(f=>`
+  <div style="border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div>
+        <div style="font-weight:500;font-size:14px">${f.label}</div>
+        <div style="font-size:12px;color:var(--muted)">${f.hint}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px">
+        <button class="btn sm btn-g" id="${f.id}-pass" onclick="auditToggle('${f.id}','pass')">&#10003; Pass</button>
+        <button class="btn sm btn-o" id="${f.id}-fail" onclick="auditToggle('${f.id}','fail')" style="border-color:var(--red);color:var(--red)">&#10007; Fail</button>
+      </div>
+    </div>
+    <div id="${f.id}-note-wrap" style="display:none;margin-top:8px">
+      <input id="${f.id}-note" placeholder="Describe the issue for coaching..." style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box">
+    </div>
+  </div>`).join('')}
+
+  <div class="fl" style="margin-bottom:16px">
+    <label>Overall Coaching Notes</label>
+    <textarea id="ta-coaching" rows="3" placeholder="Summary for employee review / coaching session..."></textarea>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svTechAudit('${woId}')">Save Tech Audit</button>
+    <button class="btn btn-o" onclick="openWO('${woId}')">Cancel</button>
+  </div>`);
+}
+
+async function svTechAudit(woId){
+  const techEl=document.getElementById('ta-tech');
+  const techName=techEl?.options[techEl.selectedIndex]?.text||'';
+  const techVal=techEl?.value||'';
+
+  const fields=['ta-dispatch','ta-pictures','ta-notes','ta-materials'];
+  const fieldNames=['dispatched_correctly','pictures_added','notes_entered','materials_inputted'];
+  const noteFields=['dispatch_note','pictures_note','notes_note','materials_note'];
+  const labelNames=['Dispatched Correctly','Pictures Added','Notes Entered','Materials Inputted'];
+
+  const audit={
+    wo_id:woId,
+    audited_by:CU.name,
+    audited_at:new Date().toISOString(),
+    technician_name:techName,
+    technician_ref:techVal,
+  };
+
+  let passes=0,fails=0;
+  const failItems=[];
+  fields.forEach((fid,i)=>{
+    const failBtn=document.getElementById(fid+'-fail');
+    const passBtn=document.getElementById(fid+'-pass');
+    const isFailed=failBtn?.style.background==='var(--red)'||failBtn?.style.background?.includes('red');
+    const isPassed=passBtn?.style.background==='var(--green)'||passBtn?.style.background?.includes('green');
+    // If neither selected, treat as not reviewed yet — require both to be addressed
+    if(!isFailed&&!isPassed){
+      tst(`Please mark all items Pass or Fail before saving`,'error');
+      return;
+    }
+    audit[fieldNames[i]]=!isFailed;
+    audit[noteFields[i]]=isFailed?(document.getElementById(fid+'-note')?.value||''):'';
+    if(!isFailed) passes++; else {fails++;failItems.push(labelNames[i]);}
+  });
+
+  // Check if we exited early due to unreviewed item
+  if(passes+fails<fields.length){return;}
+
+  audit.pass_count=passes;
+  audit.fail_count=fails;
+  audit.overall_pass=fails===0;
+  audit.coaching_notes=document.getElementById('ta-coaching')?.value||'';
+
+  const saved=await dbInsert('lhs:wo_tech_audit',audit);
+  if(!saved){tst('Failed to save tech audit','error');return;}
+
+  const score=Math.round((passes/(passes+fails))*100);
+
+  // Update the WO cache with latest tech audit score
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  if(wo){
+    wo.tech_audit_score=score;
+    wo.tech_audit_by=CU.name;
+    wo.tech_audit_at=new Date().toISOString();
+    S.set('lhs:work_orders',wos);
+  }
+  await dbUpdate('lhs:work_orders',woId,{
+    tech_audit_score:score,
+    tech_audit_by:CU.name,
+    tech_audit_at:new Date().toISOString()
+  });
+
+  cMod();
+  const failMsg=failItems.length?` · Failed: ${failItems.join(', ')}`:'';
+  tst(`Tech Audit saved — ${score}% (${passes} pass, ${fails} fail)${failMsg}`,'success');
+  openWO(woId);
 }
 
 // ── EDIT WO PRICING ───────────────────────────────────────────────────────────
