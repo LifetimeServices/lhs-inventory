@@ -14990,10 +14990,24 @@ function filterTechSelect(inputEl,selectId){
   const q=(inputEl.value||'').toLowerCase().trim();
   const sel=document.getElementById(selectId);
   if(!sel) return;
-  const opts=JSON.parse(inputEl.dataset.opts||'[]');
+  let opts=[];
+  try{ opts=JSON.parse(inputEl.dataset.opts||'[]'); }catch{}
+  // Fallback: if opts empty, rebuild from current select options
+  if(!opts.length){
+    opts=[...sel.options].filter(o=>o.value).map(o=>({v:o.value,t:o.text}));
+  }
+  const filtered=opts.filter(o=>!q||o.t.toLowerCase().includes(q));
   sel.innerHTML='<option value="">— Select tech —</option>'+
-    opts.filter(o=>!q||o.t.toLowerCase().includes(q))
-      .map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+    filtered.map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+  // Expand the select to show filtered results as a list when searching
+  if(q&&filtered.length){
+    sel.size=Math.min(filtered.length+1,8);
+    sel.style.borderRadius='0 0 8px 8px';
+    sel.style.position='relative';
+    sel.style.zIndex='10';
+  } else {
+    sel.size=1;
+  }
 }
 
 // Called when woc-cst state changes — re-filters the WO creation tech list
@@ -15024,6 +15038,11 @@ function wocAddTech(val){
       ${t.name}
       <button onclick="wocRemoveTech(${i})" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:14px;line-height:1">&#215;</button>
     </span>`).join('');
+  // Collapse select and clear search after picking
+  const sel=document.getElementById('woc-addtech');
+  if(sel) sel.size=1;
+  const srch=document.getElementById('woc-tech-search');
+  if(srch){srch.value='';srch.dispatchEvent(new Event('input'));}
   document.getElementById('woc-addtech').value='';
 }
 
