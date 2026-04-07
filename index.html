@@ -17674,8 +17674,8 @@ async function propLoadPage(){
     const from=_propPage*_PROP_PAGE_SIZE;
     const to=from+_PROP_PAGE_SIZE-1;
     let query=DB.from('lhs_properties')
-      .select('id,address,city,state,zip,property_type,foundation_type,year_built,sq_ft,region,current_customer_id,customer_name',{count:'exact'});
-    if(q) query=query.or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%,customer_name.ilike.%${q}%`);
+      .select('*',{count:'exact'});
+    if(q) query=query.or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%`);
     if(fType) query=query.eq('property_type',fType);
     if(fRegion) query=query.eq('region',fRegion);
     query=query.order('address',{ascending:true}).range(from,to);
