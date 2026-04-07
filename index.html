@@ -22453,7 +22453,8 @@ function bHREmployeeList(){
   const th=(label,col)=>{
     const active=sortCol===col;
     const arrow=active?(sortDir==='asc'?'↑':'↓'):'↕';
-    return`<th style="cursor:pointer;user-select:none;white-space:nowrap${active?';color:var(--navy)':''}" onclick="window._hrEmpSort='${col}';window._hrEmpSortDir=${active?`'${sortDir==='asc'?'desc':'asc'}'`:"'asc'"};showPage('hr-employees')">${label} <span style="font-size:11px;opacity:${active?1:0.35}">${arrow}</span></th>`;
+    const nextDir=active?(sortDir==='asc'?'desc':'asc'):'asc';
+    return`<th style="cursor:pointer;user-select:none;white-space:nowrap${active?';color:var(--navy)':''}" onclick="window._hrEmpSort='${col}';window._hrEmpSortDir='${nextDir}';showPage('hr-employees')">${label} <span style="font-size:11px;opacity:${active?1:0.35}">${arrow}</span></th>`;
   };
   return`
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
