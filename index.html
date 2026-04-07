@@ -3785,7 +3785,7 @@ function _getAddrDrop(dropId){
   return drop;
 }
 
-async function addrAutoComplete(query, dropId, streetId, cityId, stateId, zipId){
+async function addrAutoComplete(query, dropId, streetId, cityId, stateId, zipId, countyId){
   const inputEl=document.getElementById(streetId);
   if(!inputEl) return;
   const drop=_getAddrDrop(dropId);
@@ -3812,7 +3812,7 @@ async function addrAutoComplete(query, dropId, streetId, cityId, stateId, zipId)
         return`<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
           onmouseenter="this.style.background='#f0fafa'"
           onmouseleave="this.style.background=''"
-          onmousedown="addrPick(${i},${JSON.stringify(results).replace(/"/g,'&quot;')},'${streetId}','${cityId}','${stateId}','${zipId}','${dropId}')">
+          onmousedown="addrPick(${i},${JSON.stringify(results).replace(/"/g,'&quot;')},'${streetId}','${cityId}','${stateId}','${zipId}','${dropId}','${countyId||''}')">
           <div style="font-weight:600;color:var(--navy)">${esc(line1)}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(line2)}</div>
         </div>`;
@@ -3824,7 +3824,7 @@ async function addrAutoComplete(query, dropId, streetId, cityId, stateId, zipId)
   },350);
 }
 
-function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId){
+function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId, countyId){
   let results;
   try{ results=typeof resultsJson==='string'?JSON.parse(resultsJson.replace(/&quot;/g,'"')):resultsJson; }
   catch{ return; }
@@ -3838,6 +3838,8 @@ function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId){
   const stateCode=Object.entries(STATE_NAMES).find(([code,name])=>
     name.toLowerCase()===stateName.toLowerCase()
   )?.[0]||a.state_code||'';
+  // Nominatim returns county as e.g. "Brown County" — keep as-is for display
+  const county=a.county||'';
 
   const streetEl=document.getElementById(streetId);
   const cityEl=document.getElementById(cityId);
@@ -3846,6 +3848,18 @@ function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId){
   if(streetEl) streetEl.value=street;
   if(cityEl)   cityEl.value=city;
   if(zipEl)    zipEl.value=zip;
+
+  // Fill county if a countyId was provided
+  if(countyId){
+    const countyEl=document.getElementById(countyId);
+    if(countyEl&&county){
+      countyEl.value=county;
+      // Trigger territory auto-lookup if it's the WO county field
+      if(countyId==='woc-county') wocAutoTerritory();
+      // Trigger territory for property form
+      if(countyId==='pf-county') countyEl.dispatchEvent(new Event('input'));
+    }
+  }
 
   if(stateEl&&stateCode){
     const opts=[...stateEl.options];
@@ -14725,7 +14739,7 @@ function woCreateForm(){
         <div style="display:flex;gap:6px;position:relative">
           <div style="flex:1;position:relative">
             <input id="woc-cad" placeholder="Start typing address..." style="width:100%" autocomplete="off"
-              oninput="clearAddrVerify();addrAutoComplete(this.value,'woc-suggestions','woc-cad','woc-cct','woc-cst','woc-czip')"
+              oninput="clearAddrVerify();addrAutoComplete(this.value,'woc-suggestions','woc-cad','woc-cct','woc-cst','woc-czip','woc-county')"
               onblur="setTimeout(()=>{const d=document.getElementById('woc-suggestions');if(d)d.style.display='none'},200)">
             <div id="woc-suggestions" style="display:none"></div>
           </div>
@@ -18647,7 +18661,7 @@ function propForm(p,saveFn){
     <div class="fl" style="grid-column:span 2"><label>Street Address *</label>
       <div style="position:relative">
         <input id="pf-addr" value="${esc(p.address||'')}" placeholder="Start typing address..." autocomplete="off"
-          oninput="addrAutoComplete(this.value,'pf-suggestions','pf-addr','pf-city','pf-state','pf-zip')"
+          oninput="addrAutoComplete(this.value,'pf-suggestions','pf-addr','pf-city','pf-state','pf-zip','pf-county')"
           onblur="setTimeout(()=>{const d=document.getElementById('pf-suggestions');if(d)d.style.display='none'},200)">
         <div id="pf-suggestions" style="display:none"></div>
       </div>
@@ -29425,16 +29439,19 @@ async function verifyAddress(){
     const zip=a.postcode||'';
     const stateName=a.state||'';
     const stateCode=Object.entries(STATE_NAMES).find(([c,n])=>n.toLowerCase()===stateName.toLowerCase())?.[0]||a.state_code||'';
+    const county=a.county||'';
     const fullStreet=[houseNum,road].filter(Boolean).join(' ');
     // Fill whichever set of fields is visible
-    [['woc-cad','woc-cct','woc-cst','woc-czip'],
-     ['ewo-caddr','ewo-ccity','ewo-cstate','ewo-czip'],
-     ['cf-ad','cf-ct','cf-st','cf-zip']].forEach(([sid,cid,stid,zid])=>{
+    // [streetId, cityId, stateId, zipId, countyId]
+    [['woc-cad','woc-cct','woc-cst','woc-czip','woc-county'],
+     ['ewo-caddr','ewo-ccity','ewo-cstate','ewo-czip',''],
+     ['cf-ad','cf-ct','cf-st','cf-zip','']].forEach(([sid,cid,stid,zid,cnid])=>{
       const sel=document.getElementById(sid);
       if(!sel||!sel.offsetParent&&sel!==streetEl) return;
       if(fullStreet) sel.value=fullStreet;
       const cel=document.getElementById(cid); if(cel&&city) cel.value=city;
       const zel=document.getElementById(zid); if(zel&&zip) zel.value=zip;
+      if(cnid){const cnel=document.getElementById(cnid);if(cnel&&county){cnel.value=county;if(cnid==='woc-county') wocAutoTerritory();}}
       const stel=document.getElementById(stid);
       if(stel&&stateCode){
         const opt=[...stel.options].find(o=>o.value===stateCode||o.value.startsWith(stateCode+' ')||o.text.startsWith(stateCode+' ')||o.text.startsWith(stateCode+'-'));
