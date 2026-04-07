@@ -1543,11 +1543,11 @@ async function warmCache(){
         // Only order by created_at for tables that have it
         // Tables that use last_updated instead of created_at, or have neither
         // Tables that use last_updated (van/location stock, PO lines, etc.)
-        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_properties','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock','lhs_po_lines'];
+        const lastUpdTbls=['lhs_wo_sequence','lhs_leads','lhs_opportunities','lhs_activities','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock'];
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
-        const noSortTbls=['lhs_wo_materials'];
+        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
@@ -3062,12 +3062,13 @@ async function postRecv(pi3){
       }
     });
   }
-  // Save location stock changes to Supabase
+  // Save location stock changes to Supabase — use real column names (qty_on_hand, min_qty, max_qty, bin_shelf)
   for(const r of changedLs){
-    if(r.id) dbUpdate('lhs:ls',r.id,{qty:r.qty}).catch(e=>console.warn('ls update:',e?.message));
+    if(r.id) dbUpdate('lhs:ls',r.id,{qty_on_hand:r.qty,last_updated:new Date().toISOString()}).catch(e=>console.warn('ls update:',e?.message));
   }
   for(const nr of newLsRows){
-    dbInsert('lhs:ls',nr).then(saved=>{if(saved) nr.id=saved.id;}).catch(e=>console.warn('ls insert:',e?.message));
+    const lsDb={sku:nr.sku,item_name:nr.item||nr.sku,location:nr.location,qty_on_hand:nr.qty||0,min_qty:nr.min||0,max_qty:nr.max||0,bin_shelf:nr.bin||'',last_updated:new Date().toISOString()};
+    dbInsert('lhs:ls',lsDb).then(saved=>{if(saved) nr.id=saved.id;}).catch(e=>console.warn('ls insert:',e?.message));
   }
 }
 
@@ -4420,7 +4421,9 @@ async function svAddLS(){
   const loc=v('lsa1');
   if(ls.find(r=>r.sku===sku&&r.location===loc)){tst('Entry already exists for this item at this location. Use Edit to update.','error');return}
   const newRow={sku,item:it?.name||sku,location:loc,qty:pi('lsa2'),min:pi('lsa3'),max:pi('lsa4'),bin:v('lsa5'),updated:td()};
-  const saved=await dbInsert('lhs:ls',newRow);
+  // Map local field names to real Supabase column names
+  const lsDbRow={sku,item_name:it?.name||sku,location:loc,qty_on_hand:newRow.qty,min_qty:newRow.min,max_qty:newRow.max,bin_shelf:newRow.bin,last_updated:new Date().toISOString()};
+  const saved=await dbInsert('lhs:ls',lsDbRow);
   if(saved) newRow.id=saved.id;
   else tst('Warning: saved locally only — check connection','info');
   ls.push(newRow);
@@ -4446,7 +4449,8 @@ async function svEditLS(idx){
   const r=ls[idx];
   r.qty=pi('lse0');r.min=pi('lse1');r.max=pi('lse2');r.bin=v('lse3');r.updated=td();
   S.set('lhs:ls',ls);
-  if(r.id) await dbUpdate('lhs:ls',r.id,{qty:r.qty,min:r.min,max:r.max,bin:r.bin,updated:r.updated});
+  // Use real Supabase column names: qty_on_hand, min_qty, max_qty, bin_shelf, last_updated
+  if(r.id) await dbUpdate('lhs:ls',r.id,{qty_on_hand:r.qty,min_qty:r.min,max_qty:r.max,bin_shelf:r.bin,last_updated:new Date().toISOString()});
   else tst('Warning: no DB id — saved locally only','info');
   cMod();tst('Stock updated','success');showPage('locstock');
 }
@@ -4472,29 +4476,46 @@ function bTest(){
   ${tab==='tracker'?_bTestTracker():bCalLog()}`;
 }
 function _bTestTracker(){
-  const ts=S.get('lhs:ts')||[];
+  const allTs=S.get('lhs:ts')||[];
+  const showInactive=window._testShowInactive||false;
+  // Active = active field is not explicitly false
+  const ts=showInactive?allTs:allTs.filter(t=>t.active!==false&&t.active!=='Inactive');
   const tc=s=>s==='At Customer'?'bb':s==='In Transit'?'ba':s==='At Warehouse'?'bg':'bgr';
-  const dep=ts.filter(x=>['At Customer','In Transit'].includes(x.status));
-  return`<div class="sh"><div style="display:flex;gap:12px">
+  const activeDep=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&['At Customer','In Transit'].includes(x.status));
+  const activeWarehouse=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&x.status==='At Warehouse');
+  const inactiveCount=allTs.filter(t=>t.active===false||t.active==='Inactive').length;
+  return`<div class="sh"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
     ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
     <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">${l}</div>
       <div style="font-size:24px;font-weight:700;font-family:'DM Sans',sans-serif;color:var(--navy)">
-        ${l==='At Warehouse'?ts.filter(x=>x.status==='At Warehouse').length:dep.filter(x=>x.type===l).length}
+        ${l==='At Warehouse'?activeWarehouse.length:activeDep.filter(x=>x.type===l).length}
       </div><div style="font-size:11px;color:var(--muted)">${l==='At Warehouse'?'Available':'Cust/Transit'}</div>
     </div>`).join('')}
-  </div><button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button></div>
+    ${inactiveCount>0?`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Inactive</div>
+      <div style="font-size:24px;font-weight:700;font-family:'DM Sans',sans-serif;color:var(--muted)">${inactiveCount}</div>
+      <div style="font-size:11px;color:var(--muted)">Retired</div>
+    </div>`:''}
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button>
+    ${inactiveCount>0?`<button class="btn btn-o sm" onclick="window._testShowInactive=!window._testShowInactive;showPage('testers')">${showInactive?'Hide Inactive':'Show Inactive ('+inactiveCount+')'}</button>`:''}
+  </div></div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
-  <tbody>${ts.map((t,i)=>`<tr>
+  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>Active</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
+  <tbody>${ts.length?ts.map((t,i)=>{const realI=allTs.indexOf(t);return`<tr style="opacity:${t.active===false||t.active==='Inactive'?0.55:1}">
     <td style="font-family:'DM Sans',sans-serif;font-weight:700;color:var(--navy)">${t.id}</td>
     <td>${bx(t.type,t.type==='Electronic'?'bb':'bn')}</td>
-    <td style="font-family:'DM Sans',sans-serif;font-size:12px">${t.serial}</td>
-    <td>${bx(t.status,tc(t.status))}</td><td>${t.vehicle||'&#8212;'}</td>
+    <td style="font-family:'DM Sans',sans-serif;font-size:12px">${t.serial||'—'}</td>
+    <td>${bx(t.status,tc(t.status))}</td>
+    <td>${t.active===false||t.active==='Inactive'?bx('Inactive','bgr'):bx('Active','bg')}</td>
+    <td>${t.vehicle||'&#8212;'}</td>
     <td style="font-weight:500">${t.customer||'&#8212;'}</td>
     <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
-    <td><button class="btn sm btn-o" onclick="oUpdTest(${i})">Update</button></td>
-  </tr>`).join('')}</tbody></table></div></div>`;
+    <td><button class="btn sm btn-o" onclick="oUpdTest(${realI})">Update</button></td>
+  </tr>`}).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No testers found</td></tr>`}
+  </tbody></table></div></div>`;
 }
 
 // ─── CALIBRATION LOG ─────────────────────────────────────────────────────────
@@ -4751,12 +4772,14 @@ function oAddTest(){
   </div><div class="fr">
     <div class="fl"><label>Customer</label><input id="at6" placeholder="Last, First"></div>
     <div class="fl"><label>Address</label><input id="at7"></div>
+    <div class="fl"><label>Active</label><select id="at-active"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svTest()">Add</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
 }
 async function svTest(){
+  const activeVal=v('at-active')||'Active';
   const t={id:v('at0'),type:v('at1'),serial:v('at2'),status:v('at3'),vehicle:v('at4'),
-    customer:v('at6'),address:v('at7'),dropDate:v('at5'),created_at:new Date().toISOString()};
+    customer:v('at6'),address:v('at7'),dropDate:v('at5'),active:activeVal!=='Inactive',created_at:new Date().toISOString()};
   if(!t.id){tst('ID required','error');return}
   // Save to Supabase — map local field names to DB column names
   const dbRow={
@@ -4768,6 +4791,7 @@ async function svTest(){
     customer:t.customer||null,
     address:t.address||null,
     drop_date:t.dropDate||null,
+    active:t.active,
     created_at:t.created_at
   };
   const saved=await dbInsert('lhs:ts',dbRow);
@@ -4830,6 +4854,10 @@ function oUpdTest(i){
   <div class="fr">
     <div class="fl"><label>Customer</label><input id="ut2" value="${esc(t.customer||'')}"></div>
     <div class="fl"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
+    <div class="fl"><label>Active</label><select id="ut-active">
+      <option value="Active"${t.active!==false&&t.active!=='Inactive'?' selected':''}>Active</option>
+      <option value="Inactive"${t.active===false||t.active==='Inactive'?' selected':''}>Inactive</option>
+    </select></div>
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
   ${histHTML}`);
@@ -4837,10 +4865,11 @@ function oUpdTest(i){
 async function svUpdTest(i){
   const ts=S.get('lhs:ts')||[];
   const t=ts[i];
-  t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');
+  const activeVal=v('ut-active')||'Active';
+  t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');t.active=activeVal!=='Inactive';
   S.set('lhs:ts',ts);
   // Update in Supabase by tester_id (human ID like CRM-0001) since _supaId may not exist for old records
-  const updates={status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,updated_at:new Date().toISOString()};
+  const updates={status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,active:t.active,updated_at:new Date().toISOString()};
   try{
     const{error}=await DB.from('lhs_testers').update(updates).eq('tester_id',t.id);
     if(error) console.warn('svUpdTest Supabase:',error.message);
