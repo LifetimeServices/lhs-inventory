@@ -15752,47 +15752,97 @@ async function oAptDetail(aptId, woId){
   <!-- ── COLLECT PAYMENT ── -->
   ${(()=>{
     const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
-    const paid=(S.get('lhs:payments')||[]).filter(p=>p.wo_id===woId);
-    const aptPaid=paid.filter(p=>p.appointment_id===aptId);
+    const aptPaid=(S.get('lhs:payments')||[]).filter(p=>p.appointment_id===aptId);
     const balance=((wo?.total_price||0)-(wo?.total_paid||0));
     const balColor=balance<=0?'var(--green)':balance<50?'var(--amber)':'var(--red)';
-    const existingHTML=aptPaid.length?`<div style="margin-bottom:10px;border:1px solid var(--bdr);border-radius:6px;overflow:hidden">
-      ${aptPaid.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;font-size:12px;border-bottom:1px solid var(--bdr)">
-        <span style="color:var(--muted)">${p.payment_method||''}${p.reference_number?' · '+p.reference_number:''}</span>
+    const existingHTML=aptPaid.length?`<div style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:6px;overflow:hidden">
+      ${aptPaid.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;background:var(--surf);border-bottom:1px solid var(--bdr)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:600;color:var(--navy)">${p.payment_method||'Cash'}</span>
+          ${p.card_brand?`<span style="font-size:11px;color:var(--muted)">${p.card_brand}</span>`:''}
+          ${p.reference_number?`<span style="font-size:11px;color:var(--muted)">····${p.reference_number}</span>`:''}
+          <span style="font-size:11px;color:var(--muted)">${p.posted_by||''}</span>
+        </div>
         <span style="font-weight:700;color:var(--green)">${f$(p.amount||0)}</span>
       </div>`).join('')}
     </div>`:'';
     return`<details id="aptd-paysec" style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:8px">
       <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px">
         <span style="font-size:14px">&#9654;</span> Collect Payment
-        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">${aptPaid.length?'('+aptPaid.length+' posted · '+f$(aptPaid.reduce((s,p)=>s+(p.amount||0),0))+')':'(no payment yet)'}</span>
-        <span style="margin-left:auto;font-size:11px;font-weight:700;color:${balColor}">Balance: ${f$(balance)}</span>
+        <span id="aptd-pay-badge" style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">${aptPaid.length?'('+aptPaid.length+' posted · '+f$(aptPaid.reduce((s,p)=>s+(p.amount||0),0))+')':'(no payment yet)'}</span>
+        <span id="aptd-pay-bal" style="margin-left:auto;font-size:11px;font-weight:700;color:${balColor}">Balance: ${f$(balance)}</span>
       </summary>
-      <div style="padding:12px 14px">
+      <div style="padding:14px">
         ${existingHTML}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Amount $</label>
-            <input type="number" id="aptd-pay-amt" step="0.01" placeholder="0.00" value="${balance>0?balance.toFixed(2):''}" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Payment Method</label>
-            <select id="aptd-pay-method" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;background:var(--card)">
-              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Reference / Check #</label>
-            <input id="aptd-pay-ref" placeholder="Optional" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px">Notes</label>
-            <input id="aptd-pay-notes" placeholder="Payment notes..." style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:14px;box-sizing:border-box">
+
+        <!-- Step 1: Payment received? -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Payment Received?</div>
+          <div style="display:flex;gap:10px">
+            <button id="aptd-pay-yes" class="btn btn-o" style="flex:1;font-size:14px;font-weight:600;padding:10px"
+              onclick="aptPayToggleReceived(true,'${woId}','${aptId}')">&#10003; Yes</button>
+            <button id="aptd-pay-no" class="btn btn-o" style="flex:1;font-size:14px;font-weight:600;padding:10px"
+              onclick="aptPayToggleReceived(false,'${woId}','${aptId}')">&#10007; No</button>
           </div>
         </div>
-        <button class="btn btn-g sm" onclick="aptPostPayment('${woId}','${aptId}')">&#10003; Post Payment</button>
+
+        <!-- Step 2: Payment detail (shown after Yes) -->
+        <div id="aptd-pay-detail" style="display:none">
+
+          <!-- Method buttons -->
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Payment Method</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button id="aptd-pm-cash"   class="btn btn-o" style="flex:1;font-size:13px;font-weight:600;padding:9px" onclick="aptPayMethod('cash')">&#128181; Cash</button>
+            <button id="aptd-pm-check"  class="btn btn-o" style="flex:1;font-size:13px;font-weight:600;padding:9px" onclick="aptPayMethod('check')">&#9999; Check</button>
+            <button id="aptd-pm-credit" class="btn btn-o" style="flex:1;font-size:13px;font-weight:600;padding:9px" onclick="aptPayMethod('credit')">&#128179; Credit Card</button>
+          </div>
+
+          <!-- Amount (always shown) -->
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:5px">Amount $</label>
+            <input type="number" id="aptd-pay-amt" step="0.01" placeholder="0.00" value="${balance>0?balance.toFixed(2):''}"
+              style="width:100%;padding:10px 12px;border:2px solid var(--bdr);border-radius:8px;font-size:18px;font-weight:700;box-sizing:border-box;text-align:right">
+          </div>
+
+          <!-- Check: last 4 of check number -->
+          <div id="aptd-check-fields" style="display:none;margin-bottom:12px">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:5px">Last 4 of Check Number</label>
+            <input id="aptd-pay-check4" maxlength="4" placeholder="e.g. 4821"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:16px;font-weight:600;box-sizing:border-box;letter-spacing:3px;text-align:center">
+          </div>
+
+          <!-- Credit Card: brand + last 4 -->
+          <div id="aptd-cc-fields" style="display:none;margin-bottom:12px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:5px">Card Brand</label>
+                <select id="aptd-pay-brand" style="width:100%;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:14px;background:var(--card)">
+                  <option value="">— Select —</option>
+                  <option>Visa</option>
+                  <option>Mastercard</option>
+                  <option>American Express</option>
+                  <option>Discover</option>
+                  <option>Diners Club</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:5px">Last 4 Digits</label>
+                <input id="aptd-pay-cc4" maxlength="4" placeholder="e.g. 4242"
+                  style="width:100%;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:16px;font-weight:600;box-sizing:border-box;letter-spacing:3px;text-align:center">
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-g" style="width:100%;padding:12px;font-size:15px;font-weight:700;margin-top:4px"
+            onclick="aptPostPayment('${woId}','${aptId}')">&#10003; Post Payment</button>
+        </div>
+
+        <!-- No payment note -->
+        <div id="aptd-pay-noblock" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;font-size:13px;color:#856404;font-weight:500;text-align:center">
+          &#128274; No payment collected at this appointment
+        </div>
+
       </div>
     </details>`;
   })()}
@@ -16238,20 +16288,66 @@ async function svAptDetail(aptId, woId){
 }
 
 // ── PAYMENT FROM APPOINTMENT MODAL ────────────────────────────────────────────
+// Toggle Yes/No received buttons
+function aptPayToggleReceived(yes, woId, aptId){
+  const yBtn=document.getElementById('aptd-pay-yes');
+  const nBtn=document.getElementById('aptd-pay-no');
+  const detail=document.getElementById('aptd-pay-detail');
+  const noBlock=document.getElementById('aptd-pay-noblock');
+  if(yBtn){yBtn.style.background=yes?'var(--green)':'';yBtn.style.color=yes?'white':'';}
+  if(nBtn){nBtn.style.background=!yes?'var(--red)':'';nBtn.style.color=!yes?'white':'';}
+  if(detail) detail.style.display=yes?'block':'none';
+  if(noBlock) noBlock.style.display=!yes?'block':'none';
+  // Reset method selection when toggling
+  if(yes) aptPayMethod(null);
+}
+
+// Highlight selected method button and show/hide extra fields
+function aptPayMethod(method){
+  ['cash','check','credit'].forEach(m=>{
+    const btn=document.getElementById('aptd-pm-'+m);
+    if(btn){btn.style.background=m===method?'var(--navy)':'';btn.style.color=m===method?'white':'';}
+  });
+  const checkF=document.getElementById('aptd-check-fields');
+  const ccF=document.getElementById('aptd-cc-fields');
+  if(checkF) checkF.style.display=method==='check'?'block':'none';
+  if(ccF) ccF.style.display=method==='credit'?'block':'none';
+  // Store selected method on a hidden data attribute
+  const detail=document.getElementById('aptd-pay-detail');
+  if(detail) detail.dataset.method=method||'';
+}
+
 async function aptPostPayment(woId, aptId){
+  const detail=document.getElementById('aptd-pay-detail');
+  const method=detail?.dataset.method||'';
+  if(!method){tst('Select a payment method','error');return;}
+
   const amt=parseFloat(document.getElementById('aptd-pay-amt')?.value)||0;
   if(!amt){tst('Enter a payment amount','error');return;}
-  const method=document.getElementById('aptd-pay-method')?.value||'Cash';
-  const ref=document.getElementById('aptd-pay-ref')?.value||'';
-  const notes=document.getElementById('aptd-pay-notes')?.value||'';
+
+  // Method-specific fields
+  let ref='', brand='', methodLabel='';
+  if(method==='check'){
+    ref=document.getElementById('aptd-pay-check4')?.value||'';
+    if(!ref){tst('Enter the last 4 digits of the check','error');return;}
+    methodLabel='Check';
+  } else if(method==='credit'){
+    brand=document.getElementById('aptd-pay-brand')?.value||'';
+    ref=document.getElementById('aptd-pay-cc4')?.value||'';
+    if(!brand){tst('Select the card brand','error');return;}
+    if(!ref){tst('Enter the last 4 digits of the card','error');return;}
+    methodLabel=brand+' Credit Card';
+  } else {
+    methodLabel='Cash';
+  }
 
   const payment={
     wo_id:woId,
     appointment_id:aptId,
     amount:amt,
-    payment_method:method,
+    payment_method:methodLabel,
+    card_brand:brand||null,
     reference_number:ref||null,
-    notes:notes||null,
     posted_by:CU.name,
     posted_at:new Date().toISOString()
   };
@@ -16273,28 +16369,28 @@ async function aptPostPayment(woId, aptId){
     await dbUpdate('lhs:work_orders',woId,{total_paid:wo.total_paid});
   }
 
-  logWOAudit(woId,'Payment Posted',`${f$(amt)} via ${method}${ref?' ref:'+ref:''} (Appointment)`);
-  tst(`${f$(amt)} posted via ${method}`,'success');
+  const refStr=ref?` ····${ref}`:'';
+  logWOAudit(woId,'Payment Posted',`${f$(amt)} via ${methodLabel}${refStr}`);
+  tst(`${f$(amt)} posted via ${methodLabel}${refStr}`,'success');
 
-  // Refresh the payment section in-place without closing the modal
-  const paySec=document.getElementById('aptd-paysec');
-  if(paySec){
-    const newBalance=((wo?.total_price||0)-(wo?.total_paid||0));
-    const balColor=newBalance<=0?'var(--green)':newBalance<50?'var(--amber)':'var(--red)';
-    const aptPmts=(S.get('lhs:payments')||[]).filter(p=>p.appointment_id===aptId);
-    // Update summary line
-    const sum=paySec.querySelector('summary span:nth-child(3)');
-    if(sum) sum.textContent=`(${aptPmts.length} posted · ${f$(aptPmts.reduce((s,p)=>s+(p.amount||0),0))})`;
-    const balSpan=paySec.querySelector('summary span[style*="margin-left:auto"]');
-    if(balSpan){balSpan.textContent=`Balance: ${f$(newBalance)}`;balSpan.style.color=balColor;}
-    // Clear the input fields
-    const amtEl=document.getElementById('aptd-pay-amt');
-    const refEl=document.getElementById('aptd-pay-ref');
-    const notesEl=document.getElementById('aptd-pay-notes');
-    if(amtEl) amtEl.value=newBalance>0?newBalance.toFixed(2):'';
-    if(refEl) refEl.value='';
-    if(notesEl) notesEl.value='';
-  }
+  // Refresh balance badge and reset the form
+  const newBalance=((wo?.total_price||0)-(wo?.total_paid||0));
+  const balColor=newBalance<=0?'var(--green)':newBalance<50?'var(--amber)':'var(--red)';
+  const aptPmts=(S.get('lhs:payments')||[]).filter(p=>p.appointment_id===aptId);
+  const badge=document.getElementById('aptd-pay-badge');
+  const balEl=document.getElementById('aptd-pay-bal');
+  if(badge) badge.textContent=`(${aptPmts.length} posted · ${f$(aptPmts.reduce((s,p)=>s+(p.amount||0),0))})`;
+  if(balEl){balEl.textContent=`Balance: ${f$(newBalance)}`;balEl.style.color=balColor;}
+  // Reset form back to Yes/No state
+  const amtEl=document.getElementById('aptd-pay-amt');
+  if(amtEl) amtEl.value=newBalance>0?newBalance.toFixed(2):'';
+  ['aptd-pay-check4','aptd-pay-cc4'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const brandEl=document.getElementById('aptd-pay-brand');
+  if(brandEl) brandEl.value='';
+  aptPayMethod(null);
+  // Reset Yes button back to green (payment was received)
+  const yBtn=document.getElementById('aptd-pay-yes');
+  if(yBtn){yBtn.style.background='var(--green)';yBtn.style.color='white';}
 }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
