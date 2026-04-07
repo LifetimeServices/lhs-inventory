@@ -22776,6 +22776,19 @@ function prViewMyTimecard(){
 }
 
 // ── PUNCH MANAGEMENT HELPERS ─────────────────────────────────────────────────
+function _prTimeOpts(selected){
+  let o='<option value="">— Time —</option>';
+  for(let h=5;h<24;h++){
+    for(let m=0;m<60;m+=15){
+      const val=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const ampm=h<12?'AM':h===12?'PM':'PM';
+      const dh=h>12?h-12:h===0?12:h;
+      const label=`${dh}:${String(m).padStart(2,'0')} ${ampm}`;
+      o+=`<option value="${val}"${val===selected?' selected':''}>${label}</option>`;
+    }
+  }
+  return o;
+}
 function _buildPrPunchRows(){
   const pp=window._prPunches||[];
   if(!pp.length) return`<div style="color:var(--muted);font-size:12px;padding:6px 0">No punches recorded — click "+ Add Punch" to add</div>`;
@@ -22785,7 +22798,9 @@ function _buildPrPunchRows(){
       <select id="prp-type-${i}" onchange="prPunchCalc()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
         ${Object.entries(typeLabel).map(([v,l])=>`<option value="${v}"${p.type===v?' selected':''}>${l}</option>`).join('')}
       </select>
-      <input type="time" id="prp-time-${i}" value="${p.time||''}" onchange="prPunchCalc()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+      <select id="prp-time-${i}" onchange="prPunchCalc()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        ${_prTimeOpts(p.time||'')}
+      </select>
       <button onclick="prRemovePunch(${i})" style="background:none;border:1px solid #ef5350;color:#ef5350;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:14px;line-height:1">×</button>
     </div>`).join('');
 }
