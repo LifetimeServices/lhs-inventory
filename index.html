@@ -2487,7 +2487,7 @@ function bPO(){
     return true; // 'all'
   });
   if(searchQ) pos=pos.filter(p=>
-    (p.id||'').toLowerCase().includes(searchQ)||
+    (p.po_number||p.id||'').toLowerCase().includes(searchQ)||
     (p.vendor||'').toLowerCase().includes(searchQ)||
     (p.location||'').toLowerCase().includes(searchQ)
   );
@@ -2520,7 +2520,7 @@ function bPO(){
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Location</th><th>Status</th><th>Sent</th><th>Vendor Confirmed</th><th>Value</th><th></th></tr></thead>
   <tbody id="po-tbody">${pos.length?pos.map((p)=>{const i=allPos.indexOf(p);return`<tr>
-    <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${p.id}</td>
+    <td style="font-weight:800;letter-spacing:0.4px;color:var(--navy);font-size:13px">${p.po_number||p.id}</td>
     <td style="color:var(--muted);font-size:12px">${p.created}</td>
     <td style="font-weight:500">${p.vendor}</td>
     <td>${p.location}</td>
@@ -2541,14 +2541,19 @@ function bPO(){
   </tbody></table></div></div>`;
 }
 
-function deletePO(i){
+async function deletePO(i){
   const pos=S.get('lhs:pos')||[];
   const p=pos[i];
   if(!p) return;
-  if(!confirm(`Delete ${p.id}?\nThis cannot be undone.`)) return;
+  const label=p.po_number||p.id;
+  if(!confirm(`Delete ${label}?\nThis cannot be undone.`)) return;
   pos.splice(i,1);
   S.set('lhs:pos',pos);
-  tst(`${p.id} deleted`,'info');
+  // Delete from Supabase if we have a real UUID (not a legacy po_number string id)
+  if(p.id && String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)){
+    await dbDelete('lhs:pos',p.id);
+  }
+  tst(`${label} deleted`,'info');
   showPage('po');
 }
 
@@ -2621,17 +2626,26 @@ async function svPO(){
   const dd=String(now.getDate()).padStart(2,'0');
   const yy=String(now.getFullYear()).slice(-2);
   const poNum=`PO - ${mm}-${dd}-${yy} - ${String(seq).padStart(4,'0')}`;
-  const po={po_number:poNum,id:poNum,created:v('p3'),created_date:v('p3'),
+  // Build PO — do NOT set id here; let Supabase generate a real UUID
+  const po={po_number:poNum,created:v('p3'),created_date:v('p3'),
     vendor:v('p1'),location:v('p2'),delivery_location:v('p2'),
     status:'Pending',notes:v('p5'),receiptValue:0,receipt_value:0,lines,
     totalValue:lines.reduce((s,l)=>s+l.qty*l.cost,0),
     created_by:CU.name,created_at:new Date().toISOString()};
-  // Save to Supabase
-  const saved=await dbInsert('lhs:pos',{...po,lines:undefined});
-  if(saved) po.id=saved.id;
+  // Save to Supabase — include lines so they persist server-side
+  const saved=await dbInsert('lhs:pos',po);
+  if(saved){
+    po.id=saved.id; // replace with real UUID from Supabase
+  } else {
+    // Fallback: use po_number as local-only id so the record is still usable offline
+    po.id=poNum;
+    tst(`${poNum} saved locally — Supabase sync failed, check console`,'error');
+  }
   const pos=S.get('lhs:pos')||[];
   pos.unshift(po);S.set('lhs:pos',pos);
-  cMod();tst(`${poNum} created`,'success');showPage('po');
+  cMod();
+  if(saved) tst(`${poNum} created`,'success');
+  showPage('po');
 }
 function vPO(i){
   const p=(S.get('lhs:pos')||[])[i];
@@ -2639,7 +2653,7 @@ function vPO(i){
   const vens=S.get('lhs:vens')||[];
   const ven=vens.find(v=>(typeof v==='string'?v:v.name)===p.vendor);
   const venEmail=typeof ven==='object'?ven?.email:'';
-  oMod('PO &#8212; '+p.id,`
+  oMod('PO &#8212; '+(p.po_number||p.id),`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Vendor</div><div style="font-weight:600;margin-top:2px">${esc(p.vendor)}</div>${venEmail?`<div style="font-size:11px;color:var(--muted)">${esc(venEmail)}</div>`:''}</div>
     <div><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Deliver To</div><div style="font-weight:600;margin-top:2px">${esc(p.location)}</div></div>
@@ -2792,7 +2806,7 @@ function bRecv(){
   <div class="card"><div class="fr">
     <div class="fl"><label>Select PO</label><select id="rsel" onchange="lRecv()">
       <option value="">&#8212; Select PO &#8212;</option>
-      ${op.map(p=>`<option value="${pos.indexOf(p)}">${p.id} &#8212; ${p.vendor} &#8594; ${p.location}</option>`).join('')}
+      ${op.map(p=>`<option value="${pos.indexOf(p)}">${p.po_number||p.id} &#8212; ${p.vendor} &#8594; ${p.location}</option>`).join('')}
     </select></div>
     <div class="fl"><label>Received By</label><input id="rby" value="${CU.name}" readonly style="background:#f5f5f5"></div>
     <div class="fl"><label>Date</label><input type="date" id="rdt" value="${td()}"></div>
@@ -2814,7 +2828,7 @@ function lRecv(){
     </div>`:''
   ;
   document.getElementById('rlines').innerHTML=`<div class="card">
-  <div class="sh"><h3>PO ${p.id} &#8212; ${p.vendor} &#8594; ${p.location}</h3></div>
+  <div class="sh"><h3>PO ${p.po_number||p.id} &#8212; ${p.vendor} &#8594; ${p.location}</h3></div>
   <div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Item</th><th>Ordered</th><th>Prev</th><th>Receive Now</th><th style="color:#c62828">Damaged</th><th>Balance</th></tr></thead>
   <tbody>${(p.lines||[]).map((l,i)=>`<tr>
     <td style="font-weight:500">${l.item||l.sku}</td><td>${l.qtyOrdered}</td><td>${l.qtyReceived||0}</td>
@@ -2928,11 +2942,14 @@ async function postRecv(pi3){
   const dmgStr=dmgNotes.length?'Damaged: '+dmgNotes.join(', '):'';
   p.notes=[shortNotes,dmgStr].filter(Boolean).join(' | ')||p.notes||null;
   pos[pi3]=p; S.set('lhs:pos',pos); S.set('lhs:ls',ls);
-  tst(p.status==='Received in Full'?`${p.id} fully received`:`${p.id} partial — balance due`,
+  tst(p.status==='Received in Full'?`${p.po_number||p.id} fully received`:`${p.po_number||p.id} partial — balance due`,
     p.status==='Received in Full'?'success':'info');
   showPage('receive');
   // Save PO update to Supabase
-  if(p.id) dbUpdate('lhs:pos',p.id,{status:p.status,receivedDate:p.receivedDate,receivedBy:p.receivedBy,receiptValue:p.receiptValue,lines:p.lines,notes:p.notes||null,packing_slip_url:p.packing_slip_url||null,packing_slip_name:p.packing_slip_name||null}).catch(e=>console.warn('PO update:',e?.message));
+  // Only update Supabase if p.id is a real UUID (new POs), not a legacy po_number string
+  if(p.id && String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)){
+    dbUpdate('lhs:pos',p.id,{status:p.status,receivedDate:p.receivedDate,receivedBy:p.receivedBy,receiptValue:p.receiptValue,lines:p.lines,notes:p.notes||null,packing_slip_url:p.packing_slip_url||null,packing_slip_name:p.packing_slip_name||null}).catch(e=>console.warn('PO update:',e?.message));
+  }
   // Save location stock changes to Supabase
   for(const r of changedLs){
     if(r.id) dbUpdate('lhs:ls',r.id,{qty:r.qty}).catch(e=>console.warn('ls update:',e?.message));
