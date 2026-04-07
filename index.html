@@ -1443,7 +1443,7 @@ const S={
 // Table map: localStorage key -> Supabase table
 const TBL={
   'lhs:items':'lhs_items','lhs:ls':'lhs_location_stock','lhs:vi':'lhs_van_inventory',
-  'lhs:pos':'lhs_purchase_orders','lhs:ts':'lhs_testers','lhs:xfrs':'lhs_transfers',
+  'lhs:pos':'lhs_purchase_orders','lhs:po_lines':'lhs_po_lines','lhs:ts':'lhs_testers','lhs:xfrs':'lhs_transfers',
   'lhs:locs':'lhs_locations','lhs:divs':'lhs_divisions','lhs:vens':'lhs_vendors',
   'lhs:users':'lhs_users','lhs:tools':'lhs_tools','lhs:tool_audit':'lhs_tool_audit',
   'lhs:job_subtypes':'lhs_job_subtypes',
@@ -2667,6 +2667,25 @@ async function svPO(){
   const saved=await dbInsert('lhs:pos',dbRow);
   if(saved){
     po.id=saved.id; // replace with real UUID from Supabase
+    // Save each line item to lhs_po_lines
+    if(lines.length){
+      const lineRows=lines.map(l=>({
+        po_id:saved.id,
+        sku:l.sku||null,
+        item_name:l.item||l.item_name||null,
+        qty_ordered:l.qtyOrdered||l.qty||0,
+        qty_received:0,
+        unit_cost:l.cost||0,
+        status:'Open',
+        notes:null
+      }));
+      try{
+        const{data:savedLines,error:lineErr}=await DB.from('lhs_po_lines').insert(lineRows).select();
+        if(lineErr) console.warn('PO lines insert:',lineErr.message);
+        // Store line IDs back into local lines so receive can update them
+        if(savedLines) savedLines.forEach((sl,i)=>{if(po.lines[i]) po.lines[i]._lineId=sl.id;});
+      }catch(e){console.warn('PO lines insert failed:',e.message);}
+    }
   } else {
     // Fallback: use po_number as local-only id so the record is still usable offline
     po.id=poNum;
@@ -2675,11 +2694,36 @@ async function svPO(){
   const pos=S.get('lhs:pos')||[];
   pos.unshift(po);S.set('lhs:pos',pos);
   cMod();
-  if(saved) tst(`${poNum} created`,'success');
+  if(saved) tst(`${poNum} created — ${lines.length} line${lines.length!==1?'s':''} saved`,'success');
   showPage('po');
 }
-function vPO(i){
-  const p=(S.get('lhs:pos')||[])[i];
+async function vPO(i){
+  const pos=S.get('lhs:pos')||[];
+  const p=pos[i];
+  if(!p) return;
+  // If this PO has a real UUID, load fresh lines from lhs_po_lines
+  if(p.id && String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)){
+    try{
+      const{data:dbLines,error}=await DB.from('lhs_po_lines').select('*').eq('po_id',p.id).order('item_name',{ascending:true});
+      if(!error && dbLines && dbLines.length){
+        // Map DB columns back to local line format
+        p.lines=dbLines.map(l=>({
+          _lineId:l.id,
+          sku:l.sku||'',
+          item:l.item_name||'',
+          item_name:l.item_name||'',
+          qty:l.qty_ordered||0,
+          qtyOrdered:l.qty_ordered||0,
+          qtyReceived:l.qty_received||0,
+          qtyDamaged:l.qty_damaged||0,
+          cost:parseFloat(l.unit_cost)||0,
+          status:l.status||'Open',
+          notes:l.notes||''
+        }));
+        S.set('lhs:pos',pos); // update local cache with fresh lines
+      }
+    }catch(e){console.warn('vPO lines load:',e.message);}
+  }
   const canSend=['God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
   const vens=S.get('lhs:vens')||[];
   const ven=vens.find(v=>(typeof v==='string'?v:v.name)===p.vendor);
@@ -2989,6 +3033,34 @@ async function postRecv(pi3){
       packing_slip_url:p.packing_slip_url||null,
       packing_slip_name:p.packing_slip_name||null
     }).catch(e=>console.warn('PO update:',e?.message));
+  }
+  // Update lhs_po_lines received quantities for UUID-based POs
+  if(p.id && String(p.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)){
+    (p.lines||[]).forEach(l=>{
+      if(l._lineId){
+        DB.from('lhs_po_lines').update({
+          qty_received:l.qtyReceived||0,
+          status:l.status||'Open',
+          notes:l.notes||null
+        }).eq('id',l._lineId).then(({error})=>{
+          if(error) console.warn('PO line update:',error.message);
+        });
+      } else {
+        // Line doesn't have a Supabase ID yet — upsert by po_id + sku
+        DB.from('lhs_po_lines').upsert({
+          po_id:p.id,
+          sku:l.sku||null,
+          item_name:l.item||l.item_name||null,
+          qty_ordered:l.qtyOrdered||0,
+          qty_received:l.qtyReceived||0,
+          unit_cost:l.cost||0,
+          status:l.status||'Open',
+          notes:l.notes||null
+        },{onConflict:'po_id,sku'}).then(({error})=>{
+          if(error) console.warn('PO line upsert:',error.message);
+        });
+      }
+    });
   }
   // Save location stock changes to Supabase
   for(const r of changedLs){
