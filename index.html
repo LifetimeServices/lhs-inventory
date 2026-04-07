@@ -22999,9 +22999,10 @@ async function prSaveEntry(existingId, period){
       const t=document.getElementById(`prp-type-${i}`);
       const ti=document.getElementById(`prp-time-${i}`);
       if(t) p.type=t.value;
-      if(ti) p.time=ti.value;
+      // mkDispTimeInput stores display "8:06 AM" — convert to 24h for storage
+      if(ti) p.time=parseTime12to24(ti.value)||p.time||'';
     });
-    const validPunches=window._prPunches.filter(p=>p.time);
+    const validPunches=window._prPunches.filter(p=>p.time&&/^\d{2}:\d{2}$/.test(p.time));
     // Delete existing punches for this employee+date then re-insert
     try{await DB.from('lhs_time_punches').delete().eq('employee',emp).eq('date',date);}catch(e){console.warn('punch delete:',e?.message);}
     const allPunches=S.get('lhs:time_punches')||[];
@@ -23009,7 +23010,7 @@ async function prSaveEntry(existingId, period){
     if(validPunches.length){
       const wsP=prWeekStart(date);
       const pRows=validPunches.map(p=>{
-        const[h,m]=(p.time||'0:0').split(':').map(Number);
+        const[h,m]=p.time.split(':').map(Number);
         const dt=new Date(date);dt.setHours(h,m,0,0);
         return{employee:emp,employee_id:'',punch_type:p.type,punched_at:dt.toISOString(),date,week_start:wsP};
       });
