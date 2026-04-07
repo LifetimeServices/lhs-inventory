@@ -17603,76 +17603,127 @@ const PROP_TYPES=['Single Family Residential','Multi-Family','Commercial','Condo
 const FOUNDATION_TYPES=['Basement','Crawl Space','Slab-on-Grade','Combination','Pier & Beam','Walk-Out Basement'];
 
 // ── PROPERTY LIST PAGE ────────────────────────────────────────────────────────
+let _propPage=0;
+const _PROP_PAGE_SIZE=50;
+let _propTotal=0;
+let _propSearchTimer=null;
+
 function bProperties(){
-  const props=S.get('lhs:props')||[];
   const _fType=window._propFType||'';
   const _fDiv=window._propFDiv||'';
   const _fRegion=window._propFRegion||'';
-  const _fSearch=(window._propFSearch||'').toLowerCase();
-  let filtered=props;
-  if(_fType) filtered=filtered.filter(p=>p.property_type===_fType);
-  if(_fDiv) filtered=filtered.filter(p=>(p.divisions||[]).includes(_fDiv)||p.primary_division===_fDiv);
-  if(_fRegion) filtered=filtered.filter(p=>p.region===_fRegion);
-  if(_fSearch) filtered=filtered.filter(p=>
-    (p.address||'').toLowerCase().includes(_fSearch)||
-    (p.city||'').toLowerCase().includes(_fSearch)||
-    (p.zip||'').toLowerCase().includes(_fSearch)||
-    (p.customer_name||'').toLowerCase().includes(_fSearch)
-  );
-
+  const _fSearch=window._propFSearch||'';
+  setTimeout(propLoadPage,0);
   return`<div class="pt">Properties</div>
-  <div class="ps">${props.length} propert${props.length!==1?'ies':'y'} &mdash; ${filtered.length} shown</div>
+  <div class="ps" id="prop-count-line">Loading properties…</div>
 
   <!-- Filters -->
   <div style="background:var(--surf);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
     <div class="fl" style="margin:0;min-width:160px"><label>Type</label>
-      <select onchange="window._propFType=this.value;showPage('properties')">
+      <select id="prop-f-type" onchange="window._propFType=this.value;_propPage=0;propLoadPage()">
         <option value="">All Types</option>
         ${PROP_TYPES.map(t=>`<option${_fType===t?' selected':''}>${t}</option>`).join('')}
       </select>
     </div>
     <div class="fl" style="margin:0;min-width:150px"><label>Division</label>
-      <select onchange="window._propFDiv=this.value;showPage('properties')">
+      <select id="prop-f-div" onchange="window._propFDiv=this.value;_propPage=0;propLoadPage()">
         <option value="">All Divisions</option>
         ${DIVS.map(d=>`<option${_fDiv===d?' selected':''}>${d}</option>`).join('')}
       </select>
     </div>
     <div class="fl" style="margin:0;min-width:130px"><label>Region</label>
-      <select onchange="window._propFRegion=this.value;showPage('properties')">
+      <select id="prop-f-region" onchange="window._propFRegion=this.value;_propPage=0;propLoadPage()">
         <option value="">All Regions</option>
         ${Object.keys(REGIONS).map(r=>`<option${_fRegion===r?' selected':''}>${r}</option>`).join('')}
       </select>
     </div>
-    <div class="fl" style="margin:0;min-width:200px"><label>Search</label>
-      <input id="prop-search" placeholder="Address, city, zip, customer..." value="${_fSearch}"
-        onkeydown="if(event.key==='Enter'){window._propFSearch=this.value;showPage('properties')}"
+    <div class="fl" style="margin:0;min-width:220px"><label>Search</label>
+      <input id="prop-search" placeholder="&#128269; Address, city, zip, customer..." value="${esc(_fSearch)}"
+        oninput="propSearchChanged(this.value)"
+        onkeydown="if(event.key==='Enter'){propSearchChanged(this.value)}"
         style="padding:7px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     </div>
-    <button class="btn btn-n sm" onclick="window._propFSearch=document.getElementById('prop-search')?.value||'';showPage('properties')">Search</button>
-    <button class="btn btn-o sm" onclick="window._propFType='';window._propFDiv='';window._propFRegion='';window._propFSearch='';showPage('properties')">Clear</button>
+    <button class="btn btn-o sm" onclick="window._propFType='';window._propFDiv='';window._propFRegion='';window._propFSearch='';_propPage=0;showPage('properties')">Clear</button>
     <div style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-o" onclick="oImportAccounts('properties')">&#8679; Import</button>
       <button class="btn btn-n" onclick="oAddProperty()">+ Add Property</button>
     </div>
   </div>
 
-  <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Address</th><th>Type</th><th>Owner</th><th>Foundation</th><th>Sq Ft</th><th>Year Built</th><th>Region</th><th>WOs</th><th></th></tr></thead>
-  <tbody>${filtered.length?filtered.map(p=>{
-    const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id);
+  <div id="prop-list"><div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div></div>
+  <div id="prop-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;align-items:center"></div>`;
+}
+
+function propSearchChanged(val){
+  window._propFSearch=val;
+  _propPage=0;
+  clearTimeout(_propSearchTimer);
+  _propSearchTimer=setTimeout(propLoadPage,300);
+}
+
+async function propLoadPage(){
+  const listEl=g('prop-list');
+  const pagEl=g('prop-pagination');
+  const countEl=g('prop-count-line');
+  if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:var(--muted)">Loading…</div>`;
+  try{
+    const q=(window._propFSearch||'').trim();
+    const fType=window._propFType||'';
+    const fDiv=window._propFDiv||'';
+    const fRegion=window._propFRegion||'';
+    const from=_propPage*_PROP_PAGE_SIZE;
+    const to=from+_PROP_PAGE_SIZE-1;
+    let query=DB.from('lhs_properties')
+      .select('id,address,city,state,zip,property_type,foundation_type,year_built,sq_ft,region,primary_division,current_customer_id,customer_name',{count:'exact'});
+    if(q) query=query.or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%,customer_name.ilike.%${q}%`);
+    if(fType) query=query.eq('property_type',fType);
+    if(fRegion) query=query.eq('region',fRegion);
+    if(fDiv) query=query.eq('primary_division',fDiv);
+    query=query.order('address',{ascending:true}).range(from,to);
+    const{data,error,count}=await query;
+    if(error) throw error;
+    _propTotal=count||0;
+    const totalPages=Math.ceil(_propTotal/_PROP_PAGE_SIZE);
+    if(countEl) countEl.textContent=`${_propTotal.toLocaleString()} propert${_propTotal!==1?'ies':'y'}${q?' matching "'+q+'"':''} — showing ${_propTotal?from+1:0}–${Math.min(from+(data||[]).length,_propTotal)}`;
+    // Merge fetched rows into cache so openProperty() and WO creation can find them
+    if(data&&data.length){
+      const existing=S.get('lhs:props')||[];
+      const merged=[...existing];
+      data.forEach(r=>{if(!merged.find(x=>x.id===r.id)) merged.push(r);});
+      S.set('lhs:props',merged);
+    }
+    if(listEl) listEl.innerHTML=renderPropTable(data||[]);
+    if(pagEl){
+      if(totalPages<=1){pagEl.innerHTML='';return;}
+      pagEl.innerHTML=`
+        <button class="btn sm btn-o" onclick="_propPage=0;propLoadPage()" ${_propPage===0?'disabled':''}>«</button>
+        <button class="btn sm btn-o" onclick="_propPage--;propLoadPage()" ${_propPage===0?'disabled':''}>‹</button>
+        <span style="font-size:13px;color:var(--muted)">Page ${_propPage+1} of ${totalPages}</span>
+        <button class="btn sm btn-o" onclick="_propPage++;propLoadPage()" ${_propPage>=totalPages-1?'disabled':''}>›</button>
+        <button class="btn sm btn-o" onclick="_propPage=${totalPages-1};propLoadPage()" ${_propPage>=totalPages-1?'disabled':''}>»</button>`;
+    }
+  }catch(e){
+    if(listEl) listEl.innerHTML=`<div style="padding:32px;text-align:center;color:red;font-size:13px">Failed to load properties: ${e.message}</div>`;
+  }
+}
+
+function renderPropTable(props){
+  if(!props.length) return`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No properties found.</div>`;
+  return`<div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>Address</th><th>Type</th><th>Owner</th><th>Foundation</th><th>Sq Ft</th><th>Year Built</th><th>Region</th><th></th></tr></thead>
+  <tbody>${props.map(p=>{
     const cust=(S.get('lhs:customers')||[]).find(c=>c.id===p.current_customer_id);
+    const ownerName=cust?`${cust.first_name} ${cust.last_name}`:p.customer_name||'—';
     return`<tr style="cursor:pointer" onclick="openProperty('${p.id}')">
-      <td style="font-weight:600;color:var(--navy)">${p.address||'—'}<div style="font-size:11px;font-weight:400;color:var(--muted)">${p.city||''} ${p.state||''} ${p.zip||''}</div></td>
+      <td style="font-weight:600;color:var(--navy)">${esc(p.address||'—')}<div style="font-size:11px;font-weight:400;color:var(--muted)">${esc(p.city||'')} ${esc(p.state||'')} ${esc(p.zip||'')}</div></td>
       <td style="font-size:12px">${bx(p.property_type||'—','bn')}</td>
-      <td style="font-size:13px">${cust?`${cust.first_name} ${cust.last_name}`:'—'}</td>
-      <td style="font-size:12px;color:var(--muted)">${p.foundation_type||'—'}</td>
-      <td style="font-family:'DM Sans',sans-serif;font-size:12px">${p.sq_ft?p.sq_ft.toLocaleString():' —'}</td>
+      <td style="font-size:13px">${esc(ownerName)}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(p.foundation_type||'—')}</td>
+      <td style="font-family:'DM Sans',sans-serif;font-size:12px">${p.sq_ft?Number(p.sq_ft).toLocaleString():'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${p.year_built||'—'}</td>
-      <td>${p.region?`<span style="background:${REGIONS[p.region]?.light||'#f3f4f6'};color:${REGIONS[p.region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">${p.region}</span>`:'—'}</td>
-      <td style="text-align:center;font-weight:600">${wos.length}</td>
+      <td>${p.region?`<span style="background:${REGIONS[p.region]?.light||'#f3f4f6'};color:${REGIONS[p.region]?.color||'#666'};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">${esc(p.region)}</span>`:'—'}</td>
       <td><button class="btn sm btn-o" onclick="event.stopPropagation();openProperty('${p.id}')">View</button></td>
-    </tr>`;}).join('')
-  :`<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No properties found — click + Add Property to start</td></tr>`}
+    </tr>`;}).join('')}
   </tbody></table></div></div>`;
 }
 
@@ -18795,8 +18846,20 @@ async function svEditProperty(){
 }
 
 // ── OPEN PROPERTY DETAIL ──────────────────────────────────────────────────────
-function openProperty(id){
-  const p=(S.get('lhs:props')||[]).find(x=>x.id===id); if(!p) return;
+async function openProperty(id){
+  let p=(S.get('lhs:props')||[]).find(x=>x.id===id);
+  if(!p){
+    // Not in cache (12K+ props paginated) — fetch from Supabase
+    try{
+      const{data}=await DB.from('lhs_properties').select('*').eq('id',id).limit(1);
+      if(data&&data[0]){
+        p=data[0];
+        const props=S.get('lhs:props')||[];
+        if(!props.find(x=>x.id===id)){props.unshift(p);S.set('lhs:props',props);}
+      }
+    }catch(e){console.warn('openProperty fetch:',e?.message);}
+  }
+  if(!p){tst('Property not found','error');return;}
   const wos=(S.get('lhs:work_orders')||[])
     .filter(w=>w.property_id===id)
     .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
