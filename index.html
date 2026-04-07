@@ -4713,6 +4713,32 @@ async function delCalDevice(id){
   try{await dbDelete('lhs:cal_devices',id);}catch(e){console.warn('delCalDevice:',e?.message);}
   cMod();tst('Device deleted','success');showPage('testers');
 }
+// One-time sync: push any localStorage-only testers up to Supabase
+async function syncTestersToCloud(){
+  const ts=S.get('lhs:ts')||[];
+  if(!ts.length) return;
+  let synced=0;
+  for(const t of ts){
+    if(t._supaId) continue; // already has a Supabase UUID
+    try{
+      // Check if already in Supabase by tester_id
+      const{data}=await DB.from('lhs_testers').select('id').eq('tester_id',t.id).limit(1);
+      if(data&&data[0]){t._supaId=data[0].id;continue;} // already there
+      const dbRow={
+        tester_id:t.id,tester_type:t.type||null,serial_number:t.serial||null,
+        status:t.status||'At Warehouse',vehicle:t.vehicle||null,
+        customer:t.customer||null,address:t.address||null,
+        drop_date:t.dropDate||null,created_at:t.created_at||new Date().toISOString()
+      };
+      const saved=await dbInsert('lhs:ts',dbRow);
+      if(saved){t._supaId=saved.id;synced++;}
+    }catch(e){console.warn('syncTesters:',e.message);}
+  }
+  if(synced>0){S.set('lhs:ts',ts);console.log(`Synced ${synced} tester(s) to Supabase`);}
+}
+// Run tester sync in background on page load (silent)
+(async()=>{try{await syncTestersToCloud();}catch{}})();
+
 function oAddTest(){
   oMod('Add Tester',`<div class="fr">
     <div class="fl"><label>ID</label><input id="at0" placeholder="TEST-004"></div>
@@ -4728,12 +4754,27 @@ function oAddTest(){
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svTest()">Add</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
 }
-function svTest(){
+async function svTest(){
   const t={id:v('at0'),type:v('at1'),serial:v('at2'),status:v('at3'),vehicle:v('at4'),
-    customer:v('at6'),address:v('at7'),dropDate:v('at5')};
+    customer:v('at6'),address:v('at7'),dropDate:v('at5'),created_at:new Date().toISOString()};
   if(!t.id){tst('ID required','error');return}
+  // Save to Supabase — map local field names to DB column names
+  const dbRow={
+    tester_id:t.id,
+    tester_type:t.type||null,
+    serial_number:t.serial||null,
+    status:t.status||'At Warehouse',
+    vehicle:t.vehicle||null,
+    customer:t.customer||null,
+    address:t.address||null,
+    drop_date:t.dropDate||null,
+    created_at:t.created_at
+  };
+  const saved=await dbInsert('lhs:ts',dbRow);
+  if(saved) t._supaId=saved.id; // store real UUID for future updates
+  else tst('Saved locally — Supabase sync failed','error');
   const ts=S.get('lhs:ts')||[];ts.push(t);S.set('lhs:ts',ts);
-  cMod();tst(`${t.id} added`,'success');showPage('testers');
+  cMod();if(saved) tst(`${t.id} added`,'success');showPage('testers');
 }
 function oUpdTest(i){
   const ts=S.get('lhs:ts')||[];const t=ts[i];
@@ -4793,10 +4834,18 @@ function oUpdTest(i){
   <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
   ${histHTML}`);
 }
-function svUpdTest(i){
+async function svUpdTest(i){
   const ts=S.get('lhs:ts')||[];
-  ts[i].status=v('ut0');ts[i].vehicle=v('ut1');ts[i].customer=v('ut2');ts[i].address=v('ut3');
-  S.set('lhs:ts',ts);cMod();tst('Updated','success');showPage('testers');
+  const t=ts[i];
+  t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');
+  S.set('lhs:ts',ts);
+  // Update in Supabase by tester_id (human ID like CRM-0001) since _supaId may not exist for old records
+  const updates={status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,updated_at:new Date().toISOString()};
+  try{
+    const{error}=await DB.from('lhs_testers').update(updates).eq('tester_id',t.id);
+    if(error) console.warn('svUpdTest Supabase:',error.message);
+  }catch(e){console.warn('svUpdTest failed:',e.message);}
+  cMod();tst('Updated','success');showPage('testers');
 }
 
 // ─── INTEGRATIONS ────────────────────────────────────────────────────────────
