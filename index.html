@@ -15173,10 +15173,10 @@ function renderDispBoard(){
       const techApts=[];
       // Show ALL appointments for this tech regardless of which division the WO belongs to
       // Tech rows are home-division pinned, but cross-div WOs show in their row too
-      // filteredWOIds already excludes Cancelled WOs — also exclude Cancelled appointments
+      // Triple-layer: filteredWOIds + explicit WO status + appointment status
       allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)&&a.status!=='Cancelled').forEach(apt=>{
         const wo=allWOs.find(w=>w.id===apt.wo_id);
-        if(!wo) return;
+        if(!wo||wo.status==='Cancelled') return;
         // Match by name OR email
         const isTechOnApt=allTechs.some(t=>
           t.appointment_id===apt.id&&
@@ -18939,27 +18939,36 @@ async function svCancelWO(woId){
   const reason=(document.getElementById('cancel-reason-sel')?.value||'').trim();
   const notes=(document.getElementById('cancel-notes-ta')?.value||'').trim();
   if(!reason) return tst('Please select a reason for cancellation','warn');
+  const now=new Date().toISOString();
+
+  // ── 1. Update WO in local cache ───────────────────────────────────────────
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
   const prev=wo?.status;
-  if(wo){
-    wo.status='Cancelled';
-    wo.cancel_reason=reason;
-    wo.cancel_notes=notes;
-    wo.updated_at=new Date().toISOString();
-    S.set('lhs:work_orders',wos);
-  }
-  await dbUpdate('lhs:work_orders',woId,{status:'Cancelled',cancel_reason:reason,cancel_notes:notes,updated_at:new Date().toISOString()});
+  if(wo){wo.status='Cancelled';wo.cancel_reason=reason;wo.cancel_notes=notes;wo.updated_at=now;S.set('lhs:work_orders',wos);}
 
-  // Also cancel all linked appointments so they are fully removed from the dispatch board
+  // ── 2. Update WO in Supabase — direct call, surface any error ─────────────
+  const{error:woErr}=await DB.from('lhs_work_orders').update({status:'Cancelled',cancel_reason:reason,cancel_notes:notes,updated_at:now}).eq('id',woId);
+  if(woErr){tst('⚠️ WO cancel failed to save — try again','error');console.error('svCancelWO WO update failed:',woErr.message);return;}
+
+  // ── 3. Cancel ALL linked appointments in local cache ──────────────────────
   const apts=S.get('lhs:appointments')||[];
-  const linkedApts=apts.filter(a=>a.wo_id===woId&&a.status!=='Cancelled');
-  if(linkedApts.length){
-    linkedApts.forEach(a=>{a.status='Cancelled';a.updated_at=new Date().toISOString();});
-    S.set('lhs:appointments',apts);
-    try{
-      await DB.from('lhs_appointments').update({status:'Cancelled',updated_at:new Date().toISOString()}).eq('wo_id',woId).neq('status','Cancelled');
-    }catch(e){console.warn('cancel apts failed:',e?.message);}
+  const linkedAptIds=[];
+  apts.forEach(a=>{if(a.wo_id===woId){a.status='Cancelled';a.updated_at=now;linkedAptIds.push(a.id);}});
+  S.set('lhs:appointments',apts);
+
+  // ── 4. Cancel ALL linked appointments in Supabase ─────────────────────────
+  if(linkedAptIds.length){
+    const{error:aptErr}=await DB.from('lhs_appointments').update({status:'Cancelled',updated_at:now}).eq('wo_id',woId);
+    if(aptErr) console.warn('svCancelWO apt cancel failed:',aptErr.message);
+  }
+
+  // ── 5. Remove appointment_techs so they don't ghost on the board ──────────
+  if(linkedAptIds.length){
+    const aptTechs=S.get('lhs:apt_techs')||[];
+    const cleaned=aptTechs.filter(t=>!linkedAptIds.includes(t.appointment_id));
+    S.set('lhs:apt_techs',cleaned);
+    await DB.from('lhs_appointment_techs').delete().in('appointment_id',linkedAptIds).catch(e=>console.warn('svCancelWO apt_techs delete failed:',e?.message));
   }
 
   await logWOAudit(woId,'Status Changed',`${prev} → Cancelled | Reason: ${reason}${notes?' | Notes: '+notes:''}`);
