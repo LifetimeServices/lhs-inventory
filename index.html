@@ -11975,31 +11975,909 @@ async function delAcctCode(id){
   tst('Code deleted','success'); showPage('acct-settings');
 }
 
-// ── MARKETING ─────────────────────────────────────────────────────────────────
-function bSalesMarketing(){
-  const mktTab=window._mktTab||'campaigns';
-  const campaigns=JSON.parse(localStorage.getItem('lms_campaigns')||'[]');
-  const mktSettings=JSON.parse(localStorage.getItem('lms_mkt_settings')||'{}');
+// ══════════════════════════════════════════════════════════════════════════════
+// MARKETING MODULE — COMPREHENSIVE
+// ══════════════════════════════════════════════════════════════════════════════
+let _mkTab='overview';
+function _getMkSettings(){return S.get('lms:mk_settings')||{company_name:'Lifetime Home Services',physical_address:'',looker_embed:'',gsc_embed:'',ga_property_id:'',social:{facebook:'',instagram:'',google_profile:'',nextdoor:''},unsubscribe_email:''};}
+function _saveMkSettings(s){S.set('lms:mk_settings',s);}
 
+function bSalesMarketing(){
   const tabs=[
-    {id:'campaigns',l:'&#128139; Email Campaigns'},
-    {id:'analytics',l:'&#128200; Google Analytics'},
-    {id:'seo',l:'&#128269; Search Console / SEO'},
-    {id:'settings',l:'&#9881;&#65039; Settings'},
+    {id:'overview',l:'📊 Overview'},
+    {id:'campaigns',l:'📢 Campaigns'},
+    {id:'social',l:'📱 Social Media'},
+    {id:'analytics',l:'📈 Website & Analytics'},
+    {id:'events',l:'🏪 Events & Shows'},
+    {id:'drip',l:'✉️ Email Drip'},
   ];
 
-  return`<div class="pt">&#128293; Marketing</div>
-  <div class="ps">Email campaigns, analytics, and SEO performance</div>
+  return`<div class="pt">Marketing</div>
+  <div class="ps">Campaigns · Social Media · Analytics · Events · Email Drip</div>
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:24px;background:white;padding:0 16px;border-radius:16px 16px 0 0;box-shadow:0 2px 8px rgba(15,31,61,.06);overflow-x:auto;white-space:nowrap">
+    ${tabs.map(t=>`<button onclick="_mkGoTab('${t.id}')" style="padding:12px 16px;font-size:13px;font-weight:${_mkTab===t.id?'700':'500'};border:none;background:none;cursor:pointer;border-bottom:3px solid ${_mkTab===t.id?'var(--navy)':'transparent'};color:${_mkTab===t.id?'var(--navy)':'var(--muted)'};margin-bottom:-2px;font-family:'DM Sans',sans-serif;white-space:nowrap">${t.l}</button>`).join('')}
+  </div>
+  <div id="mk-tab-body">${_mkRenderTab()}</div>`;
+}
 
-  <!-- Sub tabs -->
-  <div class="tabs" style="margin-bottom:20px">
-    ${tabs.map(t=>`<button class="tab${mktTab===t.id?' active':''}" onclick="window._mktTab='${t.id}';showPage('sales-marketing')">${t.l}</button>`).join('')}
+function _mkGoTab(t){
+  _mkTab=t;
+  const el=document.getElementById('mk-tab-body');
+  if(el) el.innerHTML=_mkRenderTab();
+  document.querySelectorAll('[data-mktab]').forEach(b=>b.setAttribute('style',''));
+}
+
+function _mkRenderTab(){
+  if(_mkTab==='overview')  return bMkOverview();
+  if(_mkTab==='campaigns') return bMkCampaigns();
+  if(_mkTab==='social')    return bMkSocial();
+  if(_mkTab==='analytics') return bMkAnalytics();
+  if(_mkTab==='events')    return bMkEvents();
+  if(_mkTab==='drip')      return bMkDrip();
+  return '';
+}
+
+// ── OVERVIEW ──────────────────────────────────────────────────────────────────
+function bMkOverview(){
+  const camps=S.get('lhs:mk_campaigns')||[];
+  const events=S.get('lhs:mk_events')||[];
+  const drips=S.get('lhs:mk_drip')||[];
+  const leads=S.get('lhs:leads')||[];
+  const now=new Date();
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+
+  const activeCamps=camps.filter(c=>c.status==='Active').length;
+  const totalLeadsMTD=leads.filter(l=>new Date(l.created_at||0)>=monthStart).length;
+  const totalSpend=camps.reduce((s,c)=>s+(Number(c.actual_spend)||0),0);
+  const totalRevenue=camps.reduce((s,c)=>s+(Number(c.revenue)||0),0);
+  const activeDrips=drips.filter(d=>d.status==='Active').length;
+  const upcomingEvents=events.filter(e=>e.start_date&&new Date(e.start_date)>=now);
+
+  const channelLeads={};
+  leads.forEach(l=>{const ch=l.source_category||l.source||'Unknown';channelLeads[ch]=(channelLeads[ch]||0)+1;});
+  const topChannels=Object.entries(channelLeads).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxLeads=Math.max(1,...topChannels.map(([,n])=>n));
+
+  const roi=totalSpend?Math.round((totalRevenue-totalSpend)/totalSpend*100):0;
+
+  return`
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px">
+    <div class="sc n"><div class="sl">Active Campaigns</div><div class="sv">${activeCamps}</div><div class="ss">${camps.length} total</div></div>
+    <div class="sc g"><div class="sl">Leads This Month</div><div class="sv">${totalLeadsMTD}</div><div class="ss">across all channels</div></div>
+    <div class="sc a"><div class="sl">Marketing Spend</div><div class="sv">$${Math.round(totalSpend/1000*10)/10||'0'}K</div><div class="ss">all active campaigns</div></div>
+    <div class="sc gr"><div class="sl">Revenue Tracked</div><div class="sv">$${Math.round(totalRevenue/1000*10)/10||'0'}K</div><div class="ss">from campaigns</div></div>
+    <div class="sc r"><div class="sl">Blended ROI</div><div class="sv">${totalSpend?roi+'%':'—'}</div><div class="ss">${totalSpend?'(rev−spend)÷spend':'no spend tracked'}</div></div>
+    <div class="sc p" style="border-left-color:#8b5cf6"><div class="sl">Active Drip Seqs</div><div class="sv">${activeDrips}</div><div class="ss">${drips.length} total sequences</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card">
+      <div class="ct">Leads by Source Channel</div>
+      ${topChannels.length?topChannels.map(([ch,n])=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--navy);width:130px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ch)}</div>
+          <div style="flex:1;height:10px;background:#e8e4db;border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.round(n/maxLeads*100)}%;background:var(--teal);border-radius:5px"></div></div>
+          <div style="font-size:12px;font-weight:700;color:var(--navy);width:50px;text-align:right">${n} lead${n!==1?'s':''}</div>
+        </div>`).join('')
+      :`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Add leads with source tags to see channel breakdown</div>`}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Upcoming Events</div>
+        ${upcomingEvents.length?upcomingEvents.slice(0,3).map(e=>{
+          const d=e.start_date?new Date(e.start_date):null;
+          const mon=d?d.toLocaleDateString('en-US',{month:'short'}):'';
+          const day=d?d.getDate():'';
+          return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr)">
+            <div style="background:#fef3c7;border-radius:8px;padding:4px 10px;text-align:center;min-width:42px;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:#92400e">${mon}</div><div style="font-size:18px;font-weight:700;color:#b45309">${day}</div></div>
+            <div style="flex:1"><div style="font-weight:700;font-size:13px">${esc(e.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(e.city||'')}${e.event_type?' · '+esc(e.event_type):''}</div></div>
+            <button class="btn btn-o sm" onclick="_mkTab='events';document.getElementById('mk-tab-body').innerHTML=bMkEvents()">View</button>
+          </div>`;}).join('')
+        :`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">No upcoming events. <button class="btn btn-n sm" onclick="_mkTab='events';document.getElementById('mk-tab-body').innerHTML=bMkEvents()">Add Event</button></div>`}
+      </div>
+      <div class="card" style="margin-bottom:0;background:#fff8f0;border:1px solid #fde68a">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:8px">📊 Google Analytics — Integration Note</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.7">
+          Live GA4 data <strong>cannot</strong> be pulled directly into a browser app — it requires a secure server-side connection (the API key would be exposed). Here's what works now:<br><br>
+          <strong>✅ Option 1:</strong> <a href="https://lookerstudio.google.com" target="_blank" style="color:var(--teal)">Looker Studio</a> — free, connect your GA4, share the report, paste the embed URL in Website & Analytics settings. Your live data appears here.<br><br>
+          <strong>✅ Option 2:</strong> Manual KPI entry — enter key metrics yourself for tracking.<br><br>
+          <strong>🔮 Option 3 (future):</strong> We can build a Supabase Edge Function to securely proxy the GA4 Data API — contact your developer.
+        </div>
+        <button class="btn btn-n sm" style="margin-top:10px" onclick="_mkTab='analytics';document.getElementById('mk-tab-body').innerHTML=bMkAnalytics()">Go to Analytics Settings</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
+function bMkCampaigns(){
+  const camps=S.get('lhs:mk_campaigns')||[];
+  const statusColor=s=>s==='Active'?'bg':s==='Paused'?'ba':s==='Ended'?'bgr':'bb';
+  const roiColor=(rev,spend)=>{if(!spend) return 'color:var(--muted)';const r=(rev-spend)/spend*100;return r>=200?'color:var(--green);font-weight:700':r>=50?'color:var(--amber);font-weight:700':'color:var(--red);font-weight:700';};
+  const roiVal=(rev,spend)=>{if(!spend||!rev) return '—';return Math.round((rev-spend)/spend*100)+'%';};
+  return`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All (${camps.length})</button>
+      <button class="btn btn-o sm">🟢 Active (${camps.filter(c=>c.status==='Active').length})</button>
+      <button class="btn btn-o sm">⏸ Paused (${camps.filter(c=>c.status==='Paused').length})</button>
+      <button class="btn btn-o sm">⬛ Ended (${camps.filter(c=>c.status==='Ended').length})</button>
+    </div>
+    <button class="btn btn-n" onclick="oAddMkCampaign()">+ New Campaign</button>
+  </div>
+  <div class="card" style="padding:0;margin-bottom:16px">
+    <div class="tw" style="margin:0">
+      <table>
+        <thead><tr><th>Campaign</th><th>Status</th><th>Channel</th><th>Budget</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Leads</th><th>CPL</th><th>Revenue</th><th>ROI</th><th></th></tr></thead>
+        <tbody>${camps.length?camps.map(c=>{
+          const ctr=c.impressions&&c.clicks?((c.clicks/c.impressions)*100).toFixed(1)+'%':'—';
+          const cpl=c.actual_spend&&c.leads?'$'+Math.round(c.actual_spend/c.leads):'—';
+          return`<tr style="cursor:pointer" onclick="openMkCampaign('${c.id}')">
+            <td><div style="font-weight:700">${esc(c.name)}</div><div style="font-size:11px;color:var(--muted)">${c.start_date?new Date(c.start_date).toLocaleDateString():''}</div></td>
+            <td>${bx(c.status||'Active',statusColor(c.status))}</td>
+            <td><span class="bx bb">${esc(c.channel||'—')}</span></td>
+            <td>${c.budget?'$'+Number(c.budget).toLocaleString():'—'}</td>
+            <td style="${Number(c.actual_spend)>Number(c.budget)&&c.budget?'color:var(--red);font-weight:700':''}">${c.actual_spend?'$'+Number(c.actual_spend).toLocaleString():'—'}</td>
+            <td>${c.impressions?Number(c.impressions).toLocaleString():'—'}</td>
+            <td>${c.clicks?Number(c.clicks).toLocaleString():'—'}</td>
+            <td>${ctr}</td>
+            <td style="font-weight:700;color:var(--teal)">${c.leads||'—'}</td>
+            <td>${cpl}</td>
+            <td style="font-weight:700">${c.revenue?'$'+Number(c.revenue).toLocaleString():'—'}</td>
+            <td style="${roiColor(c.revenue,c.actual_spend)}">${roiVal(c.revenue,c.actual_spend)}</td>
+            <td><button class="btn sm btn-n" onclick="event.stopPropagation();openMkCampaign('${c.id}')">Open</button></td>
+          </tr>`;}).join('')
+        :`<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--muted)">No campaigns yet. Click + New Campaign to get started.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  ${camps.length?`<div class="card">
+    <div class="ct">Attribution Summary</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;text-align:center">
+      ${[
+        ['Total Leads',camps.reduce((s,c)=>s+(Number(c.leads)||0),0),'var(--teal)'],
+        ['Total Spend','$'+camps.reduce((s,c)=>s+(Number(c.actual_spend)||0),0).toLocaleString(),'var(--navy)'],
+        ['Revenue Tracked','$'+camps.reduce((s,c)=>s+(Number(c.revenue)||0),0).toLocaleString(),'var(--green)'],
+        ['Avg. CPL',()=>{const s=camps.reduce((a,c)=>a+(Number(c.actual_spend)||0),0);const l=camps.reduce((a,c)=>a+(Number(c.leads)||0),0);return l?'$'+Math.round(s/l):'—';},'var(--amber)'],
+        ['Blended ROI',()=>{const s=camps.reduce((a,c)=>a+(Number(c.actual_spend)||0),0);const r=camps.reduce((a,c)=>a+(Number(c.revenue)||0),0);return s&&r?Math.round((r-s)/s*100)+'%':'—';},'var(--green)'],
+      ].map(([l,v,c])=>`<div><div style="font-size:22px;font-weight:700;color:${c}">${typeof v==='function'?v():v}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${l}</div></div>`).join('')}
+    </div>
+  </div>`:''}`;
+}
+
+function oAddMkCampaign(){
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const channels=['Google Ads','Google LSA','Facebook/Instagram','Nextdoor','Direct Mail','Door Hangers','Referral Program','Radio/TV','Sponsorship','Other'];
+  oMod('New Marketing Campaign',`
+  <div style="min-width:560px">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl" style="grid-column:span 2"><label>Campaign Name</label><input id="mc-name" placeholder="e.g. Spring Lawn — Google Ads 2026"></div>
+    <div class="fl"><label>Channel</label><select id="mc-channel"><option value="">— Select —</option>${channels.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div class="fl"><label>Status</label><select id="mc-status"><option>Active</option><option>Paused</option><option>Draft</option></select></div>
+    <div class="fl"><label>Start Date</label><input type="date" id="mc-start"></div>
+    <div class="fl"><label>End Date</label><input type="date" id="mc-end"></div>
+    <div class="fl"><label>Budget ($)</label><input type="number" id="mc-budget" placeholder="0"></div>
+    <div class="fl"><label>Actual Spend ($)</label><input type="number" id="mc-spend" placeholder="0"></div>
+    <div class="fl"><label>Impressions</label><input type="number" id="mc-imp" placeholder="0"></div>
+    <div class="fl"><label>Clicks</label><input type="number" id="mc-clicks" placeholder="0"></div>
+    <div class="fl"><label>Leads Generated</label><input type="number" id="mc-leads" placeholder="0"></div>
+    <div class="fl"><label>Revenue Closed ($)</label><input type="number" id="mc-revenue" placeholder="0 — update over time"></div>
+    <div class="fl"><label>Division</label><select id="mc-div"><option value="">All Divisions</option>${divs.map(d=>`<option>${d}</option>`).join('')}</select></div>
+    <div class="fl"><label>Assigned To</label><input id="mc-assigned" placeholder="Rep or team name"></div>
+  </div>
+  <div class="fl" style="margin-bottom:12px"><label>Notes</label><textarea id="mc-notes" rows="2" placeholder="Campaign details, targeting, creative notes..."></textarea></div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddMkCampaign()">Save Campaign</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  </div>`);
+}
+
+async function svAddMkCampaign(){
+  const name=v('mc-name').trim();
+  if(!name){tst('Campaign name required','error');return;}
+  const now=new Date().toISOString();
+  const camp={id:'mkc_'+Date.now(),name,channel:v('mc-channel'),status:v('mc-status')||'Active',
+    start_date:v('mc-start')||null,end_date:v('mc-end')||null,
+    budget:v('mc-budget')||0,actual_spend:v('mc-spend')||0,
+    impressions:v('mc-imp')||0,clicks:v('mc-clicks')||0,
+    leads:v('mc-leads')||0,revenue:v('mc-revenue')||0,
+    division:v('mc-div')||null,assigned_to:v('mc-assigned')||null,
+    notes:v('mc-notes')||null,created_at:now,updated_at:now};
+  const camps=S.get('lhs:mk_campaigns')||[];
+  camps.push(camp);S.set('lhs:mk_campaigns',camps);
+  try{await dbInsert('lhs:mk_campaigns',camp);}catch{}
+  cMod();tst('Campaign saved','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkCampaigns();
+}
+
+function openMkCampaign(id){
+  const camps=S.get('lhs:mk_campaigns')||[];
+  const c=camps.find(x=>x.id===id);if(!c) return;
+  const channels=['Google Ads','Google LSA','Facebook/Instagram','Nextdoor','Direct Mail','Door Hangers','Referral Program','Radio/TV','Sponsorship','Other'];
+  const ctr=c.impressions&&c.clicks?((c.clicks/c.impressions)*100).toFixed(1)+'%':'—';
+  const cpl=c.actual_spend&&c.leads?'$'+Math.round(c.actual_spend/c.leads):'—';
+  const roi=c.actual_spend&&c.revenue?Math.round((c.revenue-c.actual_spend)/c.actual_spend*100)+'%':'—';
+  oMod(`Campaign — ${esc(c.name)}`,`
+  <div style="min-width:580px">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div class="sc n" style="padding:12px 14px"><div class="sl">Spend</div><div class="sv" style="font-size:20px">$${Number(c.actual_spend||0).toLocaleString()}</div></div>
+    <div class="sc g" style="padding:12px 14px"><div class="sl">Leads</div><div class="sv" style="font-size:20px;color:var(--teal)">${c.leads||0}</div><div class="ss">CPL: ${cpl}</div></div>
+    <div class="sc gr" style="padding:12px 14px"><div class="sl">Revenue</div><div class="sv" style="font-size:20px;color:var(--green)">$${Number(c.revenue||0).toLocaleString()}</div></div>
+    <div class="sc a" style="padding:12px 14px"><div class="sl">ROI</div><div class="sv" style="font-size:20px">${roi}</div><div class="ss">CTR: ${ctr}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Campaign Name</label><input id="ec-name" value="${esc(c.name)}"></div>
+    <div class="fl"><label>Channel</label><select id="ec-channel">${channels.map(ch=>`<option${c.channel===ch?' selected':''}>${ch}</option>`).join('')}</select></div>
+    <div class="fl"><label>Status</label><select id="ec-status">${['Active','Paused','Ended','Draft'].map(s=>`<option${c.status===s?' selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="fl"><label>Budget ($)</label><input type="number" id="ec-budget" value="${c.budget||''}"></div>
+    <div class="fl"><label>Actual Spend ($)</label><input type="number" id="ec-spend" value="${c.actual_spend||''}"></div>
+    <div class="fl"><label>Impressions</label><input type="number" id="ec-imp" value="${c.impressions||''}"></div>
+    <div class="fl"><label>Clicks</label><input type="number" id="ec-clicks" value="${c.clicks||''}"></div>
+    <div class="fl"><label>Leads Generated</label><input type="number" id="ec-leads" value="${c.leads||''}"></div>
+    <div class="fl"><label>Revenue Closed ($)</label><input type="number" id="ec-revenue" value="${c.revenue||''}"></div>
+  </div>
+  <div class="fl" style="margin-bottom:12px"><label>Notes</label><textarea id="ec-notes" rows="2">${esc(c.notes||'')}</textarea></div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svEditMkCampaign('${id}')">Save Changes</button>
+    <button class="btn btn-r sm" onclick="delMkCampaign('${id}')">Delete</button>
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div></div>`);
+}
+
+async function svEditMkCampaign(id){
+  const camps=S.get('lhs:mk_campaigns')||[];
+  const c=camps.find(x=>x.id===id);if(!c) return;
+  c.name=v('ec-name')||c.name;c.channel=v('ec-channel')||c.channel;c.status=v('ec-status')||c.status;
+  c.budget=v('ec-budget')||0;c.actual_spend=v('ec-spend')||0;c.impressions=v('ec-imp')||0;
+  c.clicks=v('ec-clicks')||0;c.leads=v('ec-leads')||0;c.revenue=v('ec-revenue')||0;
+  c.notes=v('ec-notes')||null;c.updated_at=new Date().toISOString();
+  S.set('lhs:mk_campaigns',camps);
+  try{await dbUpdate('lhs:mk_campaigns',c.id,c);}catch{}
+  cMod();tst('Campaign updated','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkCampaigns();
+}
+
+async function delMkCampaign(id){
+  if(!confirm('Delete this campaign?')) return;
+  const camps=(S.get('lhs:mk_campaigns')||[]).filter(c=>c.id!==id);
+  S.set('lhs:mk_campaigns',camps);
+  try{await dbDelete('lhs:mk_campaigns',id);}catch{}
+  cMod();tst('Campaign deleted','info');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkCampaigns();
+}
+
+// ── SOCIAL MEDIA ──────────────────────────────────────────────────────────────
+function bMkSocial(){
+  const ms=_getMkSettings();
+  const social=ms.social||{};
+  const platforms=[
+    {id:'facebook',name:'Facebook',icon:'📘',bg:'#e7f3ff',connected:!!social.facebook,followers:social.fb_followers||0,reach:social.fb_reach||0,engagement:social.fb_engage||0,posts:social.fb_posts||0},
+    {id:'instagram',name:'Instagram',icon:'📸',bg:'#fce4ec',connected:!!social.instagram,followers:social.ig_followers||0,reach:social.ig_reach||0,engagement:social.ig_engage||0,posts:social.ig_posts||0},
+    {id:'google',name:'Google Profile',icon:'📍',bg:'#e8f5e9',connected:!!social.google_profile,views:social.g_views||0,calls:social.g_calls||0,rating:social.g_rating||'—',reviews:social.g_reviews||0},
+    {id:'nextdoor',name:'Nextdoor',icon:'🏘',bg:'#f3e8ff',connected:!!social.nextdoor,impressions:social.nd_imp||0,reach:social.nd_reach||0,clicks:social.nd_clicks||0,recommends:social.nd_rec||0},
+    {id:'linkedin',name:'LinkedIn',icon:'💼',bg:'#e0f2fe',connected:!!social.linkedin,followers:social.li_followers||0,impressions:social.li_imp||0,engagement:social.li_engage||0,posts:social.li_posts||0},
+  ];
+  const pCard=(p)=>{
+    const connected=p.connected;
+    return`<div style="background:white;border-radius:14px;padding:18px;box-shadow:0 2px 12px rgba(15,31,61,.08);border:1px solid var(--bdr)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="width:36px;height:36px;border-radius:50%;background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:18px">${p.icon}</div>
+        <div><div style="font-weight:700;font-size:14px;color:var(--navy)">${p.name}</div>
+          <div style="font-size:11px;font-weight:600;color:${connected?'var(--green)':'var(--muted)'}">${connected?'● Connected':'● Not Connected'}</div>
+        </div>
+      </div>
+      ${connected?`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${p.followers!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Followers</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.followers).toLocaleString()||'—'}</div></div>`:''}
+        ${p.reach!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Reach</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.reach).toLocaleString()||'—'}</div></div>`:''}
+        ${p.engagement!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Engagement</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${p.engagement||'—'}${p.engagement?'%':''}</div></div>`:''}
+        ${p.posts!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Posts</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${p.posts||'—'}</div></div>`:''}
+        ${p.views!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Profile Views</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.views).toLocaleString()||'—'}</div></div>`:''}
+        ${p.rating!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">⭐ Rating</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${p.rating} <span style="font-size:11px;color:var(--muted)">(${p.reviews} reviews)</span></div></div>`:''}
+        ${p.calls!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Calls</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.calls).toLocaleString()||'—'}</div></div>`:''}
+        ${p.impressions!==undefined&&p.id==='nextdoor'?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Impressions</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.impressions).toLocaleString()||'—'}</div></div>`:''}
+        ${p.clicks!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Clicks</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${Number(p.clicks).toLocaleString()||'—'}</div></div>`:''}
+        ${p.recommends!==undefined?`<div style="background:var(--surf);border-radius:8px;padding:8px 10px"><div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Recommends</div><div style="font-size:16px;font-weight:700;color:var(--navy)">${p.recommends||'—'}</div></div>`:''}
+      </div>
+      <button class="btn btn-o sm" style="margin-top:12px;width:100%" onclick="oEditSocialMetrics('${p.id}')">Update Metrics</button>`
+      :`<div style="text-align:center;padding:12px;color:var(--muted);font-size:13px">Connect your ${p.name} page to track performance</div>
+      <button class="btn btn-n sm" style="width:100%;margin-top:8px" onclick="oConnectSocial('${p.id}')">Connect ${p.name}</button>`}
+    </div>`;
+  };
+  return`
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    ${platforms.map(pCard).join('')}
+  </div>
+  <div style="background:#eef2fa;border-radius:10px;padding:12px 16px;font-size:13px;color:var(--muted);margin-bottom:20px">
+    <strong style="color:var(--navy)">ℹ️ How to update metrics:</strong> Each platform (Facebook, Instagram, Google, Nextdoor) provides analytics in their own dashboards.
+    Use the "Update Metrics" button above to manually enter your key numbers each week or month for tracking over time.
+    Direct API integration with each platform requires their individual OAuth approval process.
+  </div>`;
+}
+
+function oConnectSocial(platformId){
+  const ms=_getMkSettings();
+  const names={facebook:'Facebook Page URL',instagram:'Instagram Profile URL',google:'Google Business Profile URL',nextdoor:'Nextdoor Business URL',linkedin:'LinkedIn Page URL'};
+  const key={facebook:'facebook',instagram:'instagram',google:'google_profile',nextdoor:'nextdoor',linkedin:'linkedin'};
+  oMod(`Connect ${platformId.charAt(0).toUpperCase()+platformId.slice(1)}`,`
+  <div class="fl" style="margin-bottom:12px"><label>${names[platformId]||'Profile URL'}</label>
+    <input id="sc-url" placeholder="https://..."></div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="(function(){const ms=_getMkSettings();ms.social=ms.social||{};ms.social['${key[platformId]||platformId}']=document.getElementById('sc-url').value.trim();_saveMkSettings(ms);cMod();tst('Platform connected','success');document.getElementById('mk-tab-body').innerHTML=bMkSocial();})()">Save</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+function oEditSocialMetrics(platformId){
+  const ms=_getMkSettings();
+  const s=ms.social||{};
+  const fields={
+    facebook:[['fb_followers','Followers'],['fb_reach','Reach (this month)'],['fb_engage','Engagement Rate %'],['fb_posts','Posts Published']],
+    instagram:[['ig_followers','Followers'],['ig_reach','Reach (this month)'],['ig_engage','Engagement Rate %'],['ig_posts','Posts Published']],
+    google:[['g_views','Profile Views'],['g_calls','Phone Calls'],['g_rating','⭐ Rating (e.g. 4.8)'],['g_reviews','Total Reviews']],
+    nextdoor:[['nd_imp','Impressions'],['nd_reach','Reach'],['nd_clicks','Clicks'],['nd_rec','Recommendations']],
+    linkedin:[['li_followers','Followers'],['li_imp','Impressions'],['li_engage','Engagement Rate %'],['li_posts','Posts Published']],
+  };
+  const flds=fields[platformId]||[];
+  oMod(`Update ${platformId} Metrics`,`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    ${flds.map(([k,lbl])=>`<div class="fl"><label>${lbl}</label><input id="sm-${k}" value="${esc(s[k]||'')}"></div>`).join('')}
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="(function(){const ms=_getMkSettings();ms.social=ms.social||{};${flds.map(([k])=>`ms.social['${k}']=document.getElementById('sm-${k}')?.value||'';`).join('')}_saveMkSettings(ms);cMod();tst('Metrics updated','success');document.getElementById('mk-tab-body').innerHTML=bMkSocial();})()">Save Metrics</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+// ── ANALYTICS (GA4) ───────────────────────────────────────────────────────────
+function bMkAnalytics(){
+  const ms=_getMkSettings();
+  const embed=ms.looker_embed||'';
+  const gaProp=ms.ga_property_id||'';
+  const manualKpis=ms.manual_kpis||{};
+  return`
+  <div class="card" style="background:linear-gradient(135deg,#0f1f3d,#1a3a5c);color:white;margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:32px">📊</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:6px">Google Analytics 4 — Integration Guide</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.75);line-height:1.7;max-width:600px">
+            <strong style="color:var(--teal)">Why can't GA4 data pull automatically?</strong><br>
+            The GA4 Data API requires a private Service Account key that cannot be safely stored in a browser app — it would expose your Google account to anyone viewing the page source.
+            <br><br>
+            <strong style="color:var(--teal)">✅ Best option right now — Looker Studio embed:</strong><br>
+            1. Go to <a href="https://lookerstudio.google.com" target="_blank" style="color:var(--teal)">Looker Studio</a> → create a report → connect your GA4 property<br>
+            2. Share → Embed → enable embedding → copy the embed URL<br>
+            3. Paste it below — your live GA4 dashboard appears inside this page, updated automatically.<br>
+            <br>
+            <strong style="color:var(--teal)">🔮 Future option — Supabase Edge Function:</strong> We can build a secure server-side proxy that calls the GA4 API without exposing keys. Ask your developer to set up a Supabase Edge Function with your Service Account.
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+        <a href="https://lookerstudio.google.com" target="_blank" class="btn btn-g" style="text-decoration:none;text-align:center">Open Looker Studio ↗</a>
+        <a href="https://analytics.google.com" target="_blank" class="btn btn-o" style="text-decoration:none;text-align:center;border-color:rgba(255,255,255,.3);color:white">Open GA4 ↗</a>
+      </div>
+    </div>
   </div>
 
-  ${mktTab==='campaigns'?mktCampaigns(campaigns,mktSettings):''}
-  ${mktTab==='analytics'?mktAnalytics(mktSettings):''}
-  ${mktTab==='seo'?mktSEO(mktSettings):''}
-  ${mktTab==='settings'?mktSettings_tab(mktSettings):''}`;
+  <!-- EMBED SETTINGS -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="ct">GA4 / Looker Studio Settings</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="fl"><label>GA4 Property ID (for reference)</label><input id="ga-prop" value="${esc(gaProp)}" placeholder="G-XXXXXXXXXX or 318-402-8821"></div>
+      <div class="fl"><label>GA4 Looker Studio Embed URL</label><input id="ga-embed" value="${esc(embed)}" placeholder="https://lookerstudio.google.com/embed/reporting/..."></div>
+    </div>
+    <div class="br2"><button class="btn btn-n" onclick="svAnalyticsSettings()">Save Settings</button><a href="https://lookerstudio.google.com" target="_blank" class="btn btn-o">Open Looker Studio ↗</a></div>
+  </div>
+
+  <!-- MANUAL KPI ENTRY -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="ct">Manual KPI Entry — Update Weekly/Monthly</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Enter your key metrics from GA4, Google Ads, or your website platform to track trends over time.</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px">
+      ${[['kpi-sessions','Sessions'],['kpi-new-users','New Users'],['kpi-engagement','Engagement Rate %'],['kpi-conversions','Conversions'],['kpi-duration','Avg. Duration (sec)']].map(([id,lbl])=>`<div class="fl"><label>${lbl}</label><input id="${id}" type="number" value="${manualKpis[id.replace('kpi-','')]||''}"></div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+      ${[['kpi-organic','Organic Sessions'],['kpi-paid','Paid Sessions'],['kpi-social','Social Sessions'],['kpi-direct','Direct Sessions']].map(([id,lbl])=>`<div class="fl"><label>${lbl}</label><input id="${id}" type="number" value="${manualKpis[id.replace('kpi-','')]||''}"></div>`).join('')}
+    </div>
+    <div class="br2"><button class="btn btn-n" onclick="svManualKpis()">Save KPIs</button></div>
+  </div>
+
+  ${manualKpis.sessions?`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    <div class="sc n"><div class="sl">Sessions</div><div class="sv">${Number(manualKpis.sessions||0).toLocaleString()}</div></div>
+    <div class="sc g"><div class="sl">New Users</div><div class="sv">${Number(manualKpis['new-users']||0).toLocaleString()}</div></div>
+    <div class="sc gr"><div class="sl">Engagement</div><div class="sv">${manualKpis.engagement||0}%</div></div>
+    <div class="sc a"><div class="sl">Conversions</div><div class="sv">${Number(manualKpis.conversions||0).toLocaleString()}</div></div>
+    <div class="sc r"><div class="sl">Avg. Duration</div><div class="sv">${Math.floor((manualKpis.duration||0)/60)}:${String((manualKpis.duration||0)%60).padStart(2,'0')}</div></div>
+  </div>`:''}
+
+  <!-- EMBED PANEL -->
+  ${embed?`<div class="card" style="padding:0;overflow:hidden;margin-bottom:0">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--bdr);font-weight:700;font-size:14px;color:var(--navy);display:flex;justify-content:space-between;align-items:center">
+      📊 Live GA4 Report — Looker Studio
+      <a href="${esc(embed)}" target="_blank" class="btn btn-o sm">Open Full Report ↗</a>
+    </div>
+    <iframe src="${esc(embed)}" style="width:100%;height:700px;border:none" allowfullscreen></iframe>
+  </div>`:`<div class="card" style="text-align:center;padding:48px;color:var(--muted)">
+    <div style="font-size:40px;margin-bottom:12px">📊</div>
+    <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px">No Looker Studio Report Connected</div>
+    <div style="font-size:13px;max-width:500px;margin:0 auto 16px">Create a free Looker Studio report using your GA4 data, enable embedding, copy the embed URL, and paste it in Settings above.</div>
+    <a href="https://lookerstudio.google.com" target="_blank" class="btn btn-n">Create Report in Looker Studio ↗</a>
+  </div>`}`;
+}
+
+function svAnalyticsSettings(){
+  const ms=_getMkSettings();
+  ms.ga_property_id=document.getElementById('ga-prop')?.value||'';
+  ms.looker_embed=document.getElementById('ga-embed')?.value||'';
+  _saveMkSettings(ms);
+  tst('Analytics settings saved','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkAnalytics();
+}
+
+function svManualKpis(){
+  const ms=_getMkSettings();
+  ms.manual_kpis=ms.manual_kpis||{};
+  ['sessions','new-users','engagement','conversions','duration','organic','paid','social','direct'].forEach(k=>{
+    const el=document.getElementById('kpi-'+k);
+    if(el) ms.manual_kpis[k]=el.value||'';
+  });
+  ms.manual_kpis.updated=new Date().toISOString();
+  _saveMkSettings(ms);
+  tst('KPIs saved','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkAnalytics();
+}
+
+// ── EVENTS & SHOWS ────────────────────────────────────────────────────────────
+function bMkEvents(){
+  const events=S.get('lhs:mk_events')||[];
+  const now=new Date();
+  const roiColor=(rev,cost)=>{if(!cost||!rev) return '';const r=(rev-cost)/cost*100;return r>=200?'color:var(--green);font-weight:700':r>=50?'color:var(--amber);font-weight:700':'color:var(--red);font-weight:700';};
+  const roiVal=(rev,cost)=>{if(!cost) return '—';if(!rev) return 'Tracking…';return Math.round((rev-cost)/cost*100)+'%';};
+  const totalLeads=events.reduce((s,e)=>s+(Number(e.leads)||0),0);
+  const totalCost=events.reduce((s,e)=>s+(Number(e.total_cost)||0),0);
+  const totalRev=events.reduce((s,e)=>s+(Number(e.revenue)||0),0);
+  return`
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    <div class="sc n"><div class="sl">Total Events</div><div class="sv">${events.length}</div><div class="ss">${events.filter(e=>new Date(e.start_date)>=now).length} upcoming</div></div>
+    <div class="sc g"><div class="sl">Total Leads</div><div class="sv">${totalLeads}</div><div class="ss">across all events</div></div>
+    <div class="sc a"><div class="sl">Total Spend</div><div class="sv">$${Math.round(totalCost/1000*10)/10||'0'}K</div><div class="ss">all events combined</div></div>
+    <div class="sc gr"><div class="sl">Revenue Closed</div><div class="sv">$${Math.round(totalRev/1000*10)/10||'0'}K</div><div class="ss">from event leads</div></div>
+    <div class="sc r"><div class="sl">Blended ROI</div><div class="sv">${totalCost&&totalRev?Math.round((totalRev-totalCost)/totalCost*100)+'%':'—'}</div></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">All (${events.length})</button>
+      <button class="btn btn-o sm">📅 Upcoming (${events.filter(e=>e.start_date&&new Date(e.start_date)>=now).length})</button>
+      <button class="btn btn-o sm">✅ Past (${events.filter(e=>e.start_date&&new Date(e.start_date)<now).length})</button>
+    </div>
+    <button class="btn btn-n" onclick="oAddMkEvent()">+ Add Event</button>
+  </div>
+  <div class="card" style="padding:0;margin-bottom:0">
+    <div class="tw" style="margin:0"><table>
+      <thead><tr><th>Event</th><th>Type</th><th>Date</th><th>Location</th><th>Total Cost</th><th>Leads</th><th>Qual.</th><th>CPL</th><th>Pipeline</th><th>Revenue</th><th>ROI</th><th>Follow-up</th><th></th></tr></thead>
+      <tbody>${events.length?events.map(e=>{
+        const cpl=e.total_cost&&e.leads?'$'+Math.round(e.total_cost/e.leads):'—';
+        const typeColor=t=>t==='Home Show'?'ba':t==='Trade Show'?'bb':t==='Community Fair'?'bg':t==='Sponsorship'?'bp':'bgr';
+        const fuColor=f=>f==='Won'||f==='Complete'?'bg':f==='In Progress'?'ba':f==='Not Started'?'br':'bgr';
+        return`<tr style="cursor:pointer" onclick="openMkEvent('${e.id}')">
+          <td><div style="font-weight:700">${esc(e.name)}</div><div style="font-size:11px;color:var(--muted)">${e.start_date?new Date(e.start_date).toLocaleDateString():''}</div></td>
+          <td>${bx(e.event_type||'Event',typeColor(e.event_type))}</td>
+          <td style="font-size:12px;color:var(--muted)">${e.start_date?new Date(e.start_date).toLocaleDateString():'—'}${e.end_date&&e.end_date!==e.start_date?'–'+new Date(e.end_date).toLocaleDateString():''}</td>
+          <td style="font-size:12px;color:var(--muted)">${esc(e.city||'')}${e.state?', '+esc(e.state):''}</td>
+          <td style="font-weight:600">${e.total_cost?'$'+Number(e.total_cost).toLocaleString():'—'}</td>
+          <td style="font-weight:700;color:var(--teal)">${e.leads||'—'}</td>
+          <td>${e.qual_leads||'—'}</td>
+          <td>${cpl}</td>
+          <td>${e.pipeline?'$'+Number(e.pipeline).toLocaleString():'—'}</td>
+          <td style="${e.revenue?'font-weight:700':''}">${e.revenue?'$'+Number(e.revenue).toLocaleString():'Tracking…'}</td>
+          <td style="${roiColor(e.revenue,e.total_cost)}">${roiVal(e.revenue,e.total_cost)}</td>
+          <td>${bx(e.followup_status||'Not Started',fuColor(e.followup_status))}</td>
+          <td><button class="btn sm btn-n" onclick="event.stopPropagation();openMkEvent('${e.id}')">Open</button></td>
+        </tr>`;}).join('')
+      :`<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--muted)">No events yet. Add your first home show or trade show to start tracking ROI.</td></tr>`}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function oAddMkEvent(){
+  oMod('Add Event / Trade Show',`
+  <div style="min-width:600px;max-height:80vh;overflow-y:auto">
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:10px">Event Info</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl" style="grid-column:span 2"><label>Event Name</label><input id="ev-name" placeholder="e.g. Spring Home Expo 2026"></div>
+    <div class="fl"><label>Event Type</label><select id="ev-type"><option>Home Show</option><option>Trade Show</option><option>Community Fair</option><option>Sponsorship</option><option>Networking</option><option>Other</option></select></div>
+    <div class="fl"><label>Assigned Staff</label><input id="ev-staff" placeholder="Rep or team"></div>
+    <div class="fl"><label>Start Date</label><input type="date" id="ev-start"></div>
+    <div class="fl"><label>End Date</label><input type="date" id="ev-end"></div>
+    <div class="fl"><label>Venue / Location</label><input id="ev-venue" placeholder="Convention center name"></div>
+    <div class="fl"><label>City</label><input id="ev-city" placeholder="Fort Lauderdale"></div>
+    <div class="fl"><label>State</label><input id="ev-state" placeholder="FL"></div>
+    <div class="fl"><label>Booth / Space #</label><input id="ev-booth" placeholder="e.g. Booth #44"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:10px;padding-top:10px;border-top:1px solid var(--bdr)">Cost Breakdown</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Booth / Registration Fee ($)</label><input type="number" id="ev-booth-fee" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Travel &amp; Mileage ($)</label><input type="number" id="ev-travel" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Lodging ($)</label><input type="number" id="ev-lodging" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Marketing Materials ($)</label><input type="number" id="ev-materials" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Giveaways / Promo ($)</label><input type="number" id="ev-promo" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Staff Cost ($)</label><input type="number" id="ev-staff-cost" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label>Shipping / Freight ($)</label><input type="number" id="ev-ship" placeholder="0" oninput="calcEventTotal()"></div>
+    <div class="fl"><label style="color:var(--green)">Total Cost (auto)</label><input id="ev-total" value="$0" readonly style="background:#f0fdf4;border-color:#86efac;font-weight:700"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);margin-bottom:10px;padding-top:10px;border-top:1px solid var(--bdr)">Results (fill after event)</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Leads Collected</label><input type="number" id="ev-leads" placeholder="0"></div>
+    <div class="fl"><label>Qualified Leads</label><input type="number" id="ev-qlead" placeholder="0"></div>
+    <div class="fl"><label>Est. Pipeline Value ($)</label><input type="number" id="ev-pipeline" placeholder="0"></div>
+    <div class="fl"><label>Revenue Closed ($)</label><input type="number" id="ev-revenue" placeholder="0 — update over time"></div>
+    <div class="fl"><label>Follow-up Status</label><select id="ev-fu"><option>Not Started</option><option>In Progress</option><option>Complete</option></select></div>
+  </div>
+  <div class="fl" style="margin-bottom:12px"><label>Notes</label><textarea id="ev-notes" rows="2" placeholder="Key contacts, observations, what worked..."></textarea></div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddMkEvent()">Save Event</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  </div>`);
+}
+
+function calcEventTotal(){
+  const ids=['ev-booth-fee','ev-travel','ev-lodging','ev-materials','ev-promo','ev-staff-cost','ev-ship'];
+  const total=ids.reduce((s,id)=>s+(Number(document.getElementById(id)?.value)||0),0);
+  const el=document.getElementById('ev-total');
+  if(el) el.value='$'+total.toLocaleString();
+  return total;
+}
+
+async function svAddMkEvent(){
+  const name=v('ev-name').trim();
+  if(!name){tst('Event name required','error');return;}
+  const total=calcEventTotal();
+  const now=new Date().toISOString();
+  const ev={id:'mke_'+Date.now(),name,event_type:v('ev-type'),assigned_to:v('ev-staff'),
+    start_date:v('ev-start')||null,end_date:v('ev-end')||null,
+    venue:v('ev-venue'),city:v('ev-city'),state:v('ev-state'),booth:v('ev-booth'),
+    booth_fee:v('ev-booth-fee')||0,travel:v('ev-travel')||0,lodging:v('ev-lodging')||0,
+    materials:v('ev-materials')||0,promo:v('ev-promo')||0,staff_cost:v('ev-staff-cost')||0,
+    shipping:v('ev-ship')||0,total_cost:total,
+    leads:v('ev-leads')||0,qual_leads:v('ev-qlead')||0,
+    pipeline:v('ev-pipeline')||0,revenue:v('ev-revenue')||0,
+    followup_status:v('ev-fu')||'Not Started',notes:v('ev-notes')||null,
+    created_at:now,updated_at:now};
+  const events=S.get('lhs:mk_events')||[];
+  events.push(ev);S.set('lhs:mk_events',events);
+  try{await dbInsert('lhs:mk_events',ev);}catch{}
+  cMod();tst('Event saved','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkEvents();
+}
+
+function openMkEvent(id){
+  const events=S.get('lhs:mk_events')||[];
+  const e=events.find(x=>x.id===id);if(!e) return;
+  const roi=e.total_cost&&e.revenue?Math.round((e.revenue-e.total_cost)/e.total_cost*100)+'%':'—';
+  const cpl=e.total_cost&&e.leads?'$'+Math.round(e.total_cost/e.leads):'—';
+  oMod(`Event — ${esc(e.name)}`,`
+  <div style="min-width:560px">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+    <div class="sc a" style="padding:12px 14px"><div class="sl">Total Cost</div><div class="sv" style="font-size:20px">$${Number(e.total_cost||0).toLocaleString()}</div></div>
+    <div class="sc g" style="padding:12px 14px"><div class="sl">Leads</div><div class="sv" style="font-size:20px;color:var(--teal)">${e.leads||0}</div><div class="ss">CPL: ${cpl}</div></div>
+    <div class="sc gr" style="padding:12px 14px"><div class="sl">Revenue</div><div class="sv" style="font-size:20px;color:var(--green)">$${Number(e.revenue||0).toLocaleString()}</div></div>
+    <div class="sc n" style="padding:12px 14px"><div class="sl">ROI</div><div class="sv" style="font-size:20px">${roi}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Leads Collected</label><input type="number" id="eo-leads" value="${e.leads||''}"></div>
+    <div class="fl"><label>Qualified Leads</label><input type="number" id="eo-qlead" value="${e.qual_leads||''}"></div>
+    <div class="fl"><label>Est. Pipeline ($)</label><input type="number" id="eo-pipeline" value="${e.pipeline||''}"></div>
+    <div class="fl"><label>Revenue Closed ($)</label><input type="number" id="eo-revenue" value="${e.revenue||''}"></div>
+    <div class="fl"><label>Follow-up Status</label><select id="eo-fu">${['Not Started','In Progress','Complete','Won'].map(s=>`<option${e.followup_status===s?' selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="fl"><label>Linked Campaign</label><select id="eo-camp"><option value="">— None —</option>${(S.get('lhs:mk_campaigns')||[]).map(c=>`<option value="${c.id}"${e.campaign_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+  </div>
+  <div class="fl" style="margin-bottom:12px"><label>Notes</label><textarea id="eo-notes" rows="2">${esc(e.notes||'')}</textarea></div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svEditMkEvent('${id}')">Save Updates</button>
+    <button class="btn btn-r sm" onclick="delMkEvent('${id}')">Delete</button>
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div></div>`);
+}
+
+async function svEditMkEvent(id){
+  const events=S.get('lhs:mk_events')||[];
+  const e=events.find(x=>x.id===id);if(!e) return;
+  e.leads=v('eo-leads')||0;e.qual_leads=v('eo-qlead')||0;
+  e.pipeline=v('eo-pipeline')||0;e.revenue=v('eo-revenue')||0;
+  e.followup_status=v('eo-fu')||e.followup_status;
+  e.campaign_id=document.getElementById('eo-camp')?.value||null;
+  e.notes=v('eo-notes')||null;e.updated_at=new Date().toISOString();
+  S.set('lhs:mk_events',events);
+  try{await dbUpdate('lhs:mk_events',id,e);}catch{}
+  cMod();tst('Event updated','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkEvents();
+}
+
+async function delMkEvent(id){
+  if(!confirm('Delete this event?')) return;
+  const events=(S.get('lhs:mk_events')||[]).filter(e=>e.id!==id);
+  S.set('lhs:mk_events',events);
+  try{await dbDelete('lhs:mk_events',id);}catch{}
+  cMod();tst('Event deleted','info');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkEvents();
+}
+
+// ── EMAIL DRIP CAMPAIGNS ──────────────────────────────────────────────────────
+function bMkDrip(){
+  const drips=S.get('lhs:mk_drip')||[];
+  const ms=_getMkSettings();
+  const hasAddr=!!(ms.physical_address&&ms.physical_address.trim());
+  const hasUnsub=!!(ms.unsubscribe_email&&ms.unsubscribe_email.trim());
+  const complianceOk=hasAddr&&hasUnsub;
+
+  return`
+  ${!complianceOk?`<div style="background:#fff8f0;border:1.5px solid #fcd9a0;border-radius:12px;padding:16px 18px;margin-bottom:20px;display:flex;gap:14px;align-items:flex-start">
+    <div style="font-size:24px;flex-shrink:0">⚠️</div>
+    <div>
+      <div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:6px">CAN-SPAM Compliance Setup Required</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.7;margin-bottom:10px">
+        Federal law (CAN-SPAM Act) requires every marketing email to include your <strong>physical mailing address</strong> and a clear <strong>unsubscribe mechanism</strong>.
+        ${!hasAddr?'<br>❌ <strong>Physical address not set</strong>':'<br>✅ Physical address set'}
+        ${!hasUnsub?'<br>❌ <strong>Unsubscribe email not set</strong>':'<br>✅ Unsubscribe email set'}
+      </div>
+      <button class="btn btn-n sm" onclick="oMkDripSettings()">Set Up Compliance Info</button>
+    </div>
+  </div>`:''}
+
+  <div style="background:#eef2fa;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:var(--text);line-height:1.7">
+    <div style="font-weight:700;color:var(--navy);margin-bottom:6px">📋 Email Compliance Summary</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      <div>${hasAddr?'✅':'❌'} Physical mailing address in every email (CAN-SPAM §5)</div>
+      <div>${hasUnsub?'✅':'❌'} Unsubscribe link / opt-out mechanism (CAN-SPAM §5)</div>
+      <div>✅ Opt-out honored within 10 business days (federal requirement)</div>
+      <div>✅ Accurate "From" name and email address (CAN-SPAM §4)</div>
+      <div>✅ No deceptive subject lines (FTC guidelines)</div>
+      <div>✅ Track opt-in consent date per contact (best practice)</div>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+      <strong>Florida:</strong> Follows federal CAN-SPAM. Fines up to $11,000 per violation, $1M+ for mass violations. &nbsp;
+      <strong>Best practice:</strong> Use confirmed opt-in (double opt-in) to document consent before enrolling contacts.
+    </div>
+    <button class="btn btn-o sm" style="margin-top:10px" onclick="oMkDripSettings()">⚙️ Compliance Settings</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    <div class="sc n"><div class="sl">Active Sequences</div><div class="sv">${drips.filter(d=>d.status==='Active').length}</div></div>
+    <div class="sc g"><div class="sl">Total Enrolled</div><div class="sv">${drips.reduce((s,d)=>s+(Number(d.active_contacts)||0),0)}</div><div class="ss">across all sequences</div></div>
+    <div class="sc gr"><div class="sl">Emails Sent</div><div class="sv">${drips.reduce((s,d)=>s+(Number(d.total_sent)||0),0).toLocaleString()}</div></div>
+    <div class="sc a"><div class="sl">Avg. Open Rate</div><div class="sv">${drips.length?Math.round(drips.reduce((s,d)=>s+(Number(d.open_rate)||0),0)/drips.length)+'%':'—'}</div><div class="ss">Industry avg: 22%</div></div>
+    <div class="sc r"><div class="sl">Conversions</div><div class="sv">${drips.reduce((s,d)=>s+(Number(d.conversions)||0),0)}</div></div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All (${drips.length})</button>
+      <button class="btn btn-o sm">▶ Active (${drips.filter(d=>d.status==='Active').length})</button>
+      <button class="btn btn-o sm">⏸ Paused (${drips.filter(d=>d.status==='Paused').length})</button>
+      <button class="btn btn-o sm">📝 Draft (${drips.filter(d=>d.status==='Draft').length})</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-o" onclick="oMkDripSettings()">⚙️ Compliance Settings</button>
+      <button class="btn btn-n" onclick="oAddDripCampaign()" ${!complianceOk?'title="Set up compliance info first"':''}>+ New Drip Campaign</button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;margin-bottom:0">
+    <div class="tw" style="margin:0"><table>
+      <thead><tr><th>Campaign</th><th>Status</th><th>Trigger</th><th>Steps</th><th>Active</th><th>Sent</th><th>Open Rate</th><th>Click Rate</th><th>Replies</th><th>Unsubs</th><th>Conv.</th><th></th></tr></thead>
+      <tbody>${drips.length?drips.map(d=>{
+        return`<tr style="cursor:pointer" onclick="openDripCampaign('${d.id}')">
+          <td><div style="font-weight:700">${esc(d.name)}</div><div style="font-size:11px;color:var(--muted)">${esc(d.goal||'')}</div></td>
+          <td>${bx(d.status||'Draft',d.status==='Active'?'bg':d.status==='Paused'?'ba':'bgr')}</td>
+          <td>${bx(d.trigger||'Manual','bn')}</td>
+          <td style="text-align:center;font-weight:700">${(d.steps||[]).length}</td>
+          <td style="font-weight:700;color:var(--teal)">${d.active_contacts||0}</td>
+          <td>${Number(d.total_sent||0).toLocaleString()}</td>
+          <td style="font-weight:700;color:${Number(d.open_rate)>=30?'var(--green)':Number(d.open_rate)>=20?'var(--amber)':'var(--red)'}">${d.open_rate?d.open_rate+'%':'—'}</td>
+          <td>${d.click_rate?d.click_rate+'%':'—'}</td>
+          <td>${d.replies||'—'}</td>
+          <td style="color:${Number(d.unsub_count)>5?'var(--red)':'var(--muted)'}">${d.unsub_count||'0'}</td>
+          <td style="font-weight:700;color:var(--green)">${d.conversions||0}</td>
+          <td><button class="btn sm btn-n" onclick="event.stopPropagation();openDripCampaign('${d.id}')">Open</button></td>
+        </tr>`;}).join('')
+      :`<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--muted)">No drip campaigns yet. Set up compliance info, then create your first sequence.</td></tr>`}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function oMkDripSettings(){
+  const ms=_getMkSettings();
+  oMod('Email Drip — Compliance Settings',`
+  <div style="min-width:520px">
+  <div style="background:#fff8f0;border:1px solid #fcd9a0;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--text);line-height:1.7">
+    <strong style="color:var(--navy)">⚠️ Why this matters:</strong> The <strong>CAN-SPAM Act</strong> (federal law) requires every commercial email to include:
+    <br>• Your <strong>physical postal address</strong> (P.O. Box or street address)
+    <br>• A <strong>clear opt-out / unsubscribe mechanism</strong> that works within 10 business days
+    <br>Violations can result in fines up to <strong>$51,744 per email</strong>.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Company Name (in emails)</label><input id="ds-company" value="${esc(ms.company_name||'')}"></div>
+    <div class="fl"><label>From / Sender Email</label><input id="ds-from" type="email" value="${esc(ms.from_email||'')}" placeholder="no-reply@yourcompany.com"></div>
+    <div class="fl" style="grid-column:span 2"><label>Physical Mailing Address (required by law)</label><input id="ds-addr" value="${esc(ms.physical_address||'')}" placeholder="e.g. 123 Main St, Suite 100, Miami, FL 33101"></div>
+    <div class="fl"><label>Unsubscribe Email (opt-out inbox)</label><input id="ds-unsub" value="${esc(ms.unsubscribe_email||'')}" placeholder="unsubscribe@yourcompany.com"></div>
+    <div class="fl"><label>Unsubscribe Link / Page URL</label><input id="ds-unsubl" value="${esc(ms.unsubscribe_url||'')}" placeholder="https://yoursite.com/unsubscribe"></div>
+  </div>
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted);margin-bottom:12px">
+    ✅ Every drip email will automatically include the physical address and unsubscribe link in the footer.
+    ✅ Contacts who unsubscribe are added to a suppression list and excluded from all future sends.
+    ✅ You must process unsubscribe requests within 10 business days (federal law).
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svMkDripSettings()">Save Compliance Info</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  </div>`);
+}
+
+function svMkDripSettings(){
+  const ms=_getMkSettings();
+  ms.company_name=document.getElementById('ds-company')?.value||ms.company_name;
+  ms.from_email=document.getElementById('ds-from')?.value||'';
+  ms.physical_address=document.getElementById('ds-addr')?.value||'';
+  ms.unsubscribe_email=document.getElementById('ds-unsub')?.value||'';
+  ms.unsubscribe_url=document.getElementById('ds-unsubl')?.value||'';
+  _saveMkSettings(ms);
+  cMod();tst('Compliance settings saved','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkDrip();
+}
+
+function oAddDripCampaign(){
+  const ms=_getMkSettings();
+  if(!ms.physical_address||!ms.unsubscribe_email){tst('Set up compliance info first (physical address & unsubscribe email)','error');oMkDripSettings();return;}
+  const triggers=['New Lead Created','Estimate Sent','Service Completed','No Contact — 30 Days','No Contact — 60 Days','Seasonal / Manual','Tag Applied','Post-Event Lead'];
+  oMod('New Drip Campaign',`
+  <div style="min-width:540px">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl" style="grid-column:span 2"><label>Campaign Name</label><input id="dc-name" placeholder="e.g. New Lead Welcome — Pest Control"></div>
+    <div class="fl"><label>Trigger</label><select id="dc-trigger"><option value="">— Select —</option>${triggers.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="fl"><label>Status</label><select id="dc-status"><option>Draft</option><option>Active</option><option>Paused</option></select></div>
+    <div class="fl"><label>Division Filter</label><select id="dc-div"><option value="">All Divisions</option>${(S.get('lhs:divs')||[]).map(d=>`<option>${d.name||d}</option>`).join('')}</select></div>
+    <div class="fl"><label>Goal / Exit Condition</label><input id="dc-goal" placeholder="e.g. Books Appointment or Replies"></div>
+  </div>
+  <div class="fl" style="margin-bottom:14px"><label>Description / Notes</label><textarea id="dc-notes" rows="2" placeholder="Who is this for, what's the objective..."></textarea></div>
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text);margin-bottom:12px">
+    ✅ Your physical address (<strong>${esc(ms.physical_address)}</strong>) and unsubscribe link will be automatically added to every email footer in this campaign.
+  </div>
+  <div class="br2"><button class="btn btn-n" onclick="svAddDripCampaign()">Create Campaign</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
+  </div>`);
+}
+
+async function svAddDripCampaign(){
+  const name=v('dc-name').trim();
+  if(!name){tst('Campaign name required','error');return;}
+  const now=new Date().toISOString();
+  const camp={id:'mdd_'+Date.now(),name,trigger:v('dc-trigger'),status:v('dc-status')||'Draft',
+    division:v('dc-div')||null,goal:v('dc-goal')||null,notes:v('dc-notes')||null,
+    steps:[],active_contacts:0,total_sent:0,open_rate:0,click_rate:0,replies:0,unsub_count:0,conversions:0,
+    created_at:now,updated_at:now};
+  const drips=S.get('lhs:mk_drip')||[];
+  drips.push(camp);S.set('lhs:mk_drip',drips);
+  try{await dbInsert('lhs:mk_drip',camp);}catch{}
+  cMod();tst('Drip campaign created','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkDrip();
+}
+
+function openDripCampaign(id){
+  const drips=S.get('lhs:mk_drip')||[];
+  const d=drips.find(x=>x.id===id);if(!d) return;
+  const steps=d.steps||[];
+  const ms=_getMkSettings();
+  const stepHtml=steps.length?steps.map((s,i)=>`
+    <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:8px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0;margin-right:4px">
+        <div style="width:12px;height:12px;border-radius:50%;background:var(--navy);flex-shrink:0;margin-top:12px"></div>
+        ${i<steps.length-1?`<div style="width:2px;background:#d1d5db;flex:1;min-height:28px"></div>`:''}
+      </div>
+      <div style="flex:1;background:white;border:1.5px solid var(--bdr);border-radius:10px;padding:12px 14px;box-shadow:0 1px 4px rgba(15,31,61,.06)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px">📧 Step ${i+1} — ${esc(s.delay||'Immediately')}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--navy)">${esc(s.template_name||'Unnamed Step')}</div>
+        <div style="font-size:12px;color:var(--muted)">Subject: ${esc(s.subject||'—')}</div>
+        ${s.sent?`<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--muted)">
+          <span>Sent: <strong style="color:var(--navy)">${s.sent}</strong></span>
+          <span>Opens: <strong style="color:var(--green)">${s.open_rate||0}%</strong></span>
+          <span>Clicks: <strong style="color:var(--navy)">${s.click_rate||0}%</strong></span>
+        </div>`:''}
+        <button class="btn btn-r sm" style="margin-top:8px" onclick="delDripStep('${id}',${i})">Remove</button>
+      </div>
+    </div>`).join('')
+  :'<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">No steps yet. Add your first email step below.</div>';
+  oMod(`Drip — ${esc(d.name)}`,`
+  <div style="min-width:620px;max-height:80vh;overflow-y:auto">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+    <div class="sc n" style="padding:12px 14px"><div class="sl">Active</div><div class="sv" style="font-size:20px;color:var(--teal)">${d.active_contacts||0}</div></div>
+    <div class="sc g" style="padding:12px 14px"><div class="sl">Sent</div><div class="sv" style="font-size:20px">${Number(d.total_sent||0).toLocaleString()}</div></div>
+    <div class="sc a" style="padding:12px 14px"><div class="sl">Open Rate</div><div class="sv" style="font-size:20px">${d.open_rate||0}%</div></div>
+    <div class="sc gr" style="padding:12px 14px"><div class="sl">Conversions</div><div class="sv" style="font-size:20px;color:var(--green)">${d.conversions||0}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fl"><label>Status</label><select id="do-status">${['Active','Paused','Draft','Archived'].map(s=>`<option${d.status===s?' selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="fl"><label>Trigger</label><input id="do-trigger" value="${esc(d.trigger||'')}"></div>
+    <div class="fl"><label>Open Rate % (actual)</label><input type="number" id="do-openrate" value="${d.open_rate||''}"></div>
+    <div class="fl"><label>Click Rate % (actual)</label><input type="number" id="do-clickrate" value="${d.click_rate||''}"></div>
+    <div class="fl"><label>Active Contacts</label><input type="number" id="do-active" value="${d.active_contacts||''}"></div>
+    <div class="fl"><label>Total Sent</label><input type="number" id="do-sent" value="${d.total_sent||''}"></div>
+    <div class="fl"><label>Replies</label><input type="number" id="do-replies" value="${d.replies||''}"></div>
+    <div class="fl"><label>Unsubscribes</label><input type="number" id="do-unsubs" value="${d.unsub_count||''}"></div>
+    <div class="fl"><label>Conversions</label><input type="number" id="do-conv" value="${d.conversions||''}"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;padding-top:10px;border-top:1px solid var(--bdr)">Email Sequence (${steps.length} steps)</div>
+  <div style="margin-bottom:12px">${stepHtml}</div>
+  <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">+ Add Step</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="fl"><label>Step Name / Template</label><input id="ns-tplname" placeholder="e.g. Welcome Email"></div>
+      <div class="fl"><label>Subject Line</label><input id="ns-subj" placeholder="e.g. {{first_name}}, thanks for reaching out!"></div>
+      <div class="fl"><label>Delay</label><select id="ns-delay"><option value="Immediately">Immediately</option><option value="Wait 1 Day">Wait 1 Day</option><option value="Wait 2 Days">Wait 2 Days</option><option value="Wait 3 Days">Wait 3 Days</option><option value="Wait 5 Days">Wait 5 Days</option><option value="Wait 7 Days">Wait 7 Days</option><option value="Wait 14 Days">Wait 14 Days</option><option value="Wait 30 Days">Wait 30 Days</option></select></div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;font-size:11px;color:var(--text);margin-bottom:10px">
+      📋 <strong>CAN-SPAM footer auto-added to every email:</strong><br>
+      "${esc(ms.company_name)} · ${esc(ms.physical_address)}<br>
+      To unsubscribe: ${esc(ms.unsubscribe_url||ms.unsubscribe_email)} | Reply STOP to opt out"
+    </div>
+    <button class="btn btn-n sm" onclick="addDripStep('${id}')">Add Step</button>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svEditDrip('${id}')">Save Changes</button>
+    <button class="btn btn-r sm" onclick="delDrip('${id}')">Delete Campaign</button>
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div>
+  </div>`);
+}
+
+async function addDripStep(campId){
+  const name=document.getElementById('ns-tplname')?.value?.trim();
+  const subj=document.getElementById('ns-subj')?.value?.trim();
+  const delay=document.getElementById('ns-delay')?.value||'Immediately';
+  if(!name){tst('Step name required','error');return;}
+  const drips=S.get('lhs:mk_drip')||[];
+  const d=drips.find(x=>x.id===campId);if(!d) return;
+  d.steps=d.steps||[];
+  d.steps.push({template_name:name,subject:subj||'',delay,sent:0,open_rate:0,click_rate:0});
+  d.updated_at=new Date().toISOString();
+  S.set('lhs:mk_drip',drips);
+  try{await dbUpdate('lhs:mk_drip',campId,d);}catch{}
+  tst('Step added','success');openDripCampaign(campId);
+}
+
+async function delDripStep(campId,idx){
+  if(!confirm('Remove this step?')) return;
+  const drips=S.get('lhs:mk_drip')||[];
+  const d=drips.find(x=>x.id===campId);if(!d) return;
+  d.steps.splice(idx,1);d.updated_at=new Date().toISOString();
+  S.set('lhs:mk_drip',drips);
+  try{await dbUpdate('lhs:mk_drip',campId,d);}catch{}
+  tst('Step removed','info');openDripCampaign(campId);
+}
+
+async function svEditDrip(id){
+  const drips=S.get('lhs:mk_drip')||[];
+  const d=drips.find(x=>x.id===id);if(!d) return;
+  d.status=document.getElementById('do-status')?.value||d.status;
+  d.trigger=document.getElementById('do-trigger')?.value||d.trigger;
+  d.open_rate=Number(document.getElementById('do-openrate')?.value)||d.open_rate;
+  d.click_rate=Number(document.getElementById('do-clickrate')?.value)||d.click_rate;
+  d.active_contacts=Number(document.getElementById('do-active')?.value)||d.active_contacts;
+  d.total_sent=Number(document.getElementById('do-sent')?.value)||d.total_sent;
+  d.replies=Number(document.getElementById('do-replies')?.value)||d.replies;
+  d.unsub_count=Number(document.getElementById('do-unsubs')?.value)||d.unsub_count;
+  d.conversions=Number(document.getElementById('do-conv')?.value)||d.conversions;
+  d.updated_at=new Date().toISOString();
+  S.set('lhs:mk_drip',drips);
+  try{await dbUpdate('lhs:mk_drip',id,d);}catch{}
+  cMod();tst('Campaign updated','success');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkDrip();
+}
+
+async function delDrip(id){
+  if(!confirm('Delete this drip campaign?')) return;
+  const drips=(S.get('lhs:mk_drip')||[]).filter(d=>d.id!==id);
+  S.set('lhs:mk_drip',drips);
+  try{await dbDelete('lhs:mk_drip',id);}catch{}
+  cMod();tst('Campaign deleted','info');
+  const el=document.getElementById('mk-tab-body');if(el) el.innerHTML=bMkDrip();
 }
 
 function mktCampaigns(campaigns,settings){
