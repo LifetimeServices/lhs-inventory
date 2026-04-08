@@ -12371,8 +12371,9 @@ async function sendVAMessage(text){
   _vaRender();
   const st=document.getElementById('va-status');if(st)st.textContent='Thinking…';
   const endpoint=(S.get('lhs:acct_ai_endpoint')||'').trim();
-  if(!endpoint){
-    _vaHistory[_vaHistory.length-1]={role:'assistant',content:'⚠️ No AI endpoint configured. Go to **Accounting → Settings → AI Configuration** to set up your Cloudflare Worker endpoint first.'};
+  const groqKey=(S.get('lhs:groq_api_key')||'').trim();
+  if(!groqKey&&!endpoint){
+    _vaHistory[_vaHistory.length-1]={role:'assistant',content:'⚠️ No AI configured. Go to **Accounting → Settings** and add a free Groq API key to enable the Assistant.'};
     _vaRender();if(st)st.textContent='Ready';return;
   }
   try{
@@ -12381,7 +12382,6 @@ async function sendVAMessage(text){
     const messages=hist.map(m=>({role:m.role,content:m.content.replace(/<[^>]+>/g,'').replace(/\*\*/g,'').trim()})).filter(m=>m.content);
     messages.push({role:'user',content:text.trim()});
 
-    const groqKey=(S.get('lhs:groq_api_key')||'').trim();
     let res,data,reply;
 
     if(groqKey){
