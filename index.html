@@ -5368,14 +5368,20 @@ function oPermModal(role,modKey){
         <span style="font-size:13px;color:var(--muted)">Off</span>
         <div style="position:relative;width:44px;height:24px">
           <input type="checkbox" id="pm-access" ${acc||isCreatorRole?'checked':''} ${isCreatorRole?'disabled':''}
-            onchange="document.querySelectorAll('.pm-sub').forEach(el=>{el.disabled=!this.checked;el.closest('label').style.opacity=this.checked?'1':'.4'})"
+            onchange="(function(cb){
+              const on=cb.checked;
+              document.getElementById('pm-toggle-track').style.background=on?'var(--green)':'var(--bdr)';
+              document.getElementById('pm-toggle-knob').style.transform=on?'translateX(20px)':'translateX(0)';
+              document.getElementById('pm-toggle-label').style.color=on?'var(--green)':'var(--muted)';
+              document.querySelectorAll('.pm-sub').forEach(el=>{el.disabled=!on;el.closest('label').style.opacity=on?'1':'.4'});
+            })(this)"
             style="opacity:0;width:0;height:0;position:absolute">
-          <div onclick="if(!${isCreatorRole}){const cb=document.getElementById('pm-access');cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}"
+          <div id="pm-toggle-track" onclick="if(!${isCreatorRole}){const cb=document.getElementById('pm-access');cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}"
             style="position:absolute;inset:0;border-radius:12px;background:${acc||isCreatorRole?'var(--green)':'var(--bdr)'};transition:background .2s;cursor:pointer;display:flex;align-items:center;padding:2px">
-            <div style="width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s;transform:${acc||isCreatorRole?'translateX(20px)':'translateX(0)'}"></div>
+            <div id="pm-toggle-knob" style="width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s;transform:${acc||isCreatorRole?'translateX(20px)':'translateX(0)'}"></div>
           </div>
         </div>
-        <span style="font-size:13px;font-weight:600;color:${acc||isCreatorRole?'var(--green)':'var(--muted)'}">On</span>
+        <span id="pm-toggle-label" style="font-size:13px;font-weight:600;color:${acc||isCreatorRole?'var(--green)':'var(--muted)'}">On</span>
       </label>
     </div>
     <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Granular Permissions</div>
