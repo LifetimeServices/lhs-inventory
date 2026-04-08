@@ -26402,23 +26402,44 @@ function bSalesLeads(){
 }
 
 // ── OPPORTUNITIES PAGE ────────────────────────────────────────────────────────
-let _oppView='list';
+let _oppView='kanban';
+let _oppDivFilter='';
+let _oppRepFilter='';
 function bSalesOpps(){
-  return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline</div>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:8px;align-items:center">
-    <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
-      <button onclick="_setOppView('list')" id="ovt-list" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='list'?'var(--navy)':'transparent'};color:${_oppView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
-      <button onclick="_setOppView('kanban')" id="ovt-kanban" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='kanban'?'var(--navy)':'transparent'};color:${_oppView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const reps=(S.get('lhs:users')||[]).map(u=>u.name||u.full_name||'').filter(Boolean);
+  return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline &nbsp;·&nbsp; Drag cards between stages or click to open</div>
+  <div style="display:flex;justify-content:space-between;margin-bottom:16px;gap:8px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
+        <button onclick="_setOppView('kanban')" id="ovt-kanban" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='kanban'?'var(--navy)':'transparent'};color:${_oppView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
+        <button onclick="_setOppView('list')" id="ovt-list" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_oppView==='list'?'var(--navy)':'transparent'};color:${_oppView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
+      </div>
+      <select onchange="_oppDivFilter=this.value;_refreshOppView()" style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white">
+        <option value="">All Divisions</option>
+        ${divs.map(d=>`<option value="${esc(d)}"${_oppDivFilter===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <select onchange="_oppRepFilter=this.value;_refreshOppView()" style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white">
+        <option value="">All Reps</option>
+        ${reps.map(r=>`<option value="${esc(r)}"${_oppRepFilter===r?' selected':''}>${esc(r)}</option>`).join('')}
+      </select>
     </div>
     <button class="btn btn-n" onclick="oAddOpportunity()">+ New Opportunity</button>
   </div>
-  <div id="opp-view-content">${_oppView==='kanban'?renderCRMKanban():renderCRMPipeline()}</div>`;
+  <div id="opp-view-content">${_oppView==='kanban'?renderCRMKanban():renderCRMPipeline()}</div>
+  <div id="opp-forecast-card">${renderOppForecast()}</div>`;
+}
+
+function _refreshOppView(){
+  const el=document.getElementById('opp-view-content');
+  if(el) el.innerHTML=_oppView==='kanban'?renderCRMKanban():renderCRMPipeline();
+  const fc=document.getElementById('opp-forecast-card');
+  if(fc) fc.innerHTML=renderOppForecast();
 }
 
 function _setOppView(v){
   _oppView=v;
-  const el=document.getElementById('opp-view-content');
-  if(el) el.innerHTML=v==='kanban'?renderCRMKanban():renderCRMPipeline();
+  _refreshOppView();
   document.querySelectorAll('#ovt-list,#ovt-kanban').forEach(b=>{
     const isActive=b.id==='ovt-'+v;
     b.style.background=isActive?'var(--navy)':'transparent';
@@ -26426,28 +26447,51 @@ function _setOppView(v){
   });
 }
 
-function renderCRMKanban(){
+function renderOppForecast(){
   const opps=(S.get('lhs:opportunities')||[]);
+  const f=o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter);
+  const filtered=opps.filter(f);
+  const total=filtered.filter(o=>o.stage!=='Lost').reduce((s,o)=>s+(o.estimated_value||0),0);
+  const bestCase=filtered.filter(o=>!['Lost','Prospect'].includes(o.stage)).reduce((s,o)=>s+(o.estimated_value||0),0);
+  const commit=filtered.filter(o=>['Negotiation','Won'].includes(o.stage)).reduce((s,o)=>s+(o.estimated_value||0),0);
+  const won=filtered.filter(o=>o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0);
+  const weighted=filtered.filter(o=>o.stage!=='Lost').reduce((s,o)=>s+(o.estimated_value||0)*(o.probability||0)/100,0);
+  const fmt=n=>'$'+(n>=1000?Math.round(n/1000)+'K':Math.round(n).toLocaleString());
+  return`<div class="card" style="margin-top:16px">
+    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:16px">Forecast Summary</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:var(--teal)">${fmt(total)}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Total Pipeline</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#2980b9">${fmt(bestCase)}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Best Case</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--navy)">${fmt(commit)}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Commit</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(won)}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Won (MTD)</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--amber)">${fmt(weighted)}</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Weighted</div></div>
+    </div>
+  </div>`;
+}
+
+function renderCRMKanban(){
+  const allOpps=(S.get('lhs:opportunities')||[]);
+  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter));
   const ss=getSalesSettings();
   const stages=ss.opp_stages||OPP_STAGES;
   const stageColor={Prospect:'var(--teal)','Site Visit':'#2980b9','Estimate Sent':'var(--amber)',Negotiation:'#e67e22',Won:'var(--green)',Lost:'var(--muted)'};
   const cols=stages.map(stage=>{
     const cards=opps.filter(o=>o.stage===stage);
     const total=cards.reduce((s,o)=>s+(o.estimated_value||0),0);
-    return`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rl);padding:14px;min-width:175px;flex:0 0 175px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    return`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rl);padding:14px;min-width:190px;flex:0 0 190px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:2px solid var(--bdr)">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${stage} (${cards.length})</span>
-        <span style="font-size:12px;font-weight:700;color:var(--navy)">$${Math.round(total/1000)}K</span>
+        <span style="font-size:13px;font-weight:700;color:var(--navy)">${total>=1000?'$'+Math.round(total/1000)+'K':total?'$'+total:'—'}</span>
       </div>
-      ${cards.map(o=>`
-        <div onclick="openOpportunity('${o.id}')" style="background:white;border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--bdr);cursor:pointer;box-shadow:var(--sh)">
-          <div style="font-weight:700;font-size:12px;color:var(--navy);margin-bottom:3px">${esc(o.name)}</div>
-          <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:4px">$${Number(o.estimated_value||0).toLocaleString()}</div>
-          <div style="font-size:11px;color:var(--muted)">${o.assigned_to||'Unassigned'}${o.close_date?' · '+new Date(o.close_date).toLocaleDateString():''}</div>
-          <div style="height:3px;background:#e2e0db;border-radius:2px;margin-top:8px"><div style="height:100%;width:${o.probability||0}%;background:${stageColor[stage]||'var(--navy)'};border-radius:2px"></div></div>
+      ${cards.map(o=>{const cust=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id);return`
+        <div onclick="openOpportunity('${o.id}')" style="background:white;border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid ${stage==='Won'?'#86efac':stage==='Lost'?'#fca5a5':'var(--bdr)'};cursor:pointer;box-shadow:var(--sh);${stage==='Lost'?'opacity:.6':''}">
+          <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:4px">${esc(o.name)}</div>
+          <div style="font-size:14px;font-weight:700;color:${stage==='Won'?'var(--green)':stage==='Lost'?'var(--muted)':'var(--teal)'};margin-bottom:4px">$${Number(o.estimated_value||0).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${cust?esc(cust.name||''):''}${o.assigned_to?' · '+esc(o.assigned_to):''}${o.close_date?' · '+new Date(o.close_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}</div>
+          <div style="height:4px;background:#e2e0db;border-radius:2px"><div style="height:100%;width:${o.probability||0}%;background:${stageColor[stage]||'var(--navy)'};border-radius:2px"></div></div>
           <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:3px">${o.probability||0}%</div>
-        </div>`).join('')}
-      <button onclick="oAddOpportunity()" style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+        </div>`;}  ).join('')}
+      ${stage!=='Won'&&stage!=='Lost'?`<button onclick="oAddOpportunity()" style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>`:''}
     </div>`;
   });
   return`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:10px">${cols.join('')}</div>`;
@@ -27188,8 +27232,11 @@ async function delSalesTask(id){
 }
 
 // ── ACTIVITIES PAGE ────────────────────────────────────────────────────────────
+let _actFilter='All';
+let _actLogOpen=false;
 function bSalesActivities(){
-  return`<div class="pt">Activities</div><div class="ps">All logged sales activities</div>
+  return`<div class="pt">Activities</div>
+  <div class="ps">All logged sales activities — calls, emails, texts, visits, demos</div>
   ${renderCRMActivities()}`;
 }
 
@@ -27310,22 +27357,20 @@ function renderCRMLeadsTable(leads){
 }
 
 function renderCRMPipeline(){
-  const opps=(S.get('lhs:opportunities')||[]).sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0));
+  const allOpps=(S.get('lhs:opportunities')||[]).sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0));
+  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter));
   const ss=getSalesSettings();
   const stages=ss.opp_stages||OPP_STAGES;
   const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
-  return`<div style="display:flex;justify-content:space-between;margin-bottom:12px">
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${stages.map(s=>{
-        const cnt=opps.filter(o=>o.stage===s).length;
-        const val=opps.filter(o=>o.stage===s).reduce((sum,o)=>sum+(o.estimated_value||0),0);
-        return`<div style="background:var(--surf);border-radius:8px;padding:8px 14px;font-size:12px;text-align:center;min-width:90px">
-          <div style="font-weight:700;font-size:15px">${cnt}</div>
-          <div style="color:var(--muted)">${s}</div>
-          <div style="font-size:11px;color:var(--navy);font-family:'DM Sans',sans-serif">$${Math.round(val).toLocaleString()}</div>
-        </div>`;}).join('')}
-    </div>
-    <button class="btn btn-n" onclick="oAddOpportunity()">+ New Opportunity</button>
+  return`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    ${stages.map(s=>{
+      const cnt=opps.filter(o=>o.stage===s).length;
+      const val=opps.filter(o=>o.stage===s).reduce((sum,o)=>sum+(o.estimated_value||0),0);
+      return`<div style="background:var(--surf);border-radius:8px;padding:8px 14px;font-size:12px;text-align:center;min-width:90px;border:1px solid var(--bdr)">
+        <div style="font-weight:700;font-size:16px;color:var(--navy)">${cnt}</div>
+        <div style="color:var(--muted);margin:2px 0">${s}</div>
+        <div style="font-size:11px;font-weight:600;color:var(--teal)">$${Math.round(val).toLocaleString()}</div>
+      </div>`;}).join('')}
   </div>
   ${!opps.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No opportunities yet.</div>'
   :`<div class="card" style="padding:0"><div class="tw"><table>
@@ -27344,24 +27389,141 @@ function renderCRMPipeline(){
 }
 
 function renderCRMActivities(){
-  const acts=(S.get('lhs:activities')||[]).sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
-  const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'?'🏠':t==='Demo'?'🖥️':'📋';
-  return`<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <button class="btn btn-n" onclick="oLogActivity()">+ Log Activity</button>
+  const allActs=(S.get('lhs:activities')||[]).sort((a,b)=>new Date(b.performed_at||b.created_at)-new Date(a.performed_at||a.created_at));
+  const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Demo'?'🖥️':'📋';
+  const typeBg=t=>t==='Call'?'#dbeafe':t==='Email'?'#f3e5f5':t==='Text'?'#fef3c7':t==='Visit'||t==='Site Visit'?'#dcfce7':t==='Demo'?'#fce7f3':'#f0f0f0';
+  const acts=_actFilter==='All'?allActs:allActs.filter(a=>(a.activity_type||a.type)===_actFilter);
+  const leads=S.get('lhs:leads')||[];
+  const opps=S.get('lhs:opportunities')||[];
+
+  // Group by date
+  const groups={};
+  acts.forEach(a=>{
+    const d=new Date(a.performed_at||a.created_at);
+    const key=isNaN(d)?'Unknown':d.toDateString();
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(a);
+  });
+
+  const today=new Date().toDateString();
+  const yesterday=new Date(Date.now()-86400000).toDateString();
+  const dateLabel=k=>k===today?'Today — '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):k===yesterday?'Yesterday — '+new Date(Date.now()-86400000).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):k==='Unknown'?'Unknown Date':new Date(k).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  const timelineHtml=Object.keys(groups).map((key,gi)=>{
+    const dayActs=groups[key];
+    return`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);${gi>0?'margin-top:16px;':''}margin-bottom:10px">${dateLabel(key)}</div>
+    ${dayActs.map((a,i)=>{
+      const t=a.activity_type||a.type||'Note';
+      const d=new Date(a.performed_at||a.created_at);
+      const timeStr=isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      const relLead=leads.find(l=>l.id===a.lead_id);
+      const relOpp=opps.find(o=>o.id===a.opportunity_id);
+      const relName=relOpp?esc(relOpp.name):relLead?esc(relLead.first_name+' '+relLead.last_name):'';
+      return`<div style="display:flex;gap:14px;align-items:flex-start;padding:12px 0;${i<dayActs.length-1?'border-bottom:1px solid var(--bdr)':''}">
+        <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:${typeBg(t)}">${typeIcon(t)}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${typeIcon(t)} ${esc(t)} — ${esc(a.subject||'—')}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${a.performed_by||'—'}${relName?' &nbsp;·&nbsp; '+relName:''}${a.outcome?` &nbsp;·&nbsp; <span style="background:#f0f0f0;border-radius:12px;padding:1px 8px;font-size:11px">${esc(a.outcome)}</span>`:''}</div>
+          ${a.notes||a.description?`<div style="font-size:13px;margin-top:4px;color:var(--navy)">${esc(a.notes||a.description)}</div>`:''}
+        </div>
+        <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:8px">${timeStr}</div>
+      </div>`;
+    }).join('')}`;
+  }).join('');
+
+  const logLeads=leads.slice(0,20).map(l=>`<option value="lead:${l.id}">${esc(l.first_name+' '+l.last_name)} (Lead)</option>`).join('');
+  const logOpps=opps.slice(0,20).map(o=>`<option value="opp:${o.id}">${esc(o.name)} (Opp)</option>`).join('');
+
+  return`
+  <div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;align-items:center">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${['All','Call','Email','Text','Visit','Demo'].map(f=>`<button class="btn ${_actFilter===f?'btn-n':'btn-o'} sm" onclick="_actSetFilter('${f}',this)">${f==='All'?'All':f==='Call'?'📞 Calls':f==='Email'?'✉️ Emails':f==='Text'?'💬 Texts':f==='Visit'?'🏠 Visits':'🖥 Demos'}</button>`).join('')}
+    </div>
+    <button class="btn btn-n" onclick="_actToggleLog()">+ Log Activity</button>
   </div>
-  ${!acts.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No activities logged yet.</div>'
-  :`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Type</th><th>Subject</th><th>Outcome</th><th>Next Action</th><th>By</th><th>Date</th></tr></thead>
-  <tbody>${acts.slice(0,50).map(a=>`<tr>
-    <td>${typeIcon(a.activity_type)} ${a.activity_type}</td>
-    <td style="font-weight:500">${a.subject||'—'}</td>
-    <td style="font-size:12px;color:var(--muted)">${a.outcome||'—'}</td>
-    <td style="font-size:12px;color:${a.next_action_date&&new Date(a.next_action_date)<new Date()?'var(--red)':'var(--muted)'}">
-      ${a.next_action||'—'}${a.next_action_date?` · ${new Date(a.next_action_date).toLocaleDateString()}`:''}
-    </td>
-    <td style="font-size:12px">${a.performed_by||'—'}</td>
-    <td style="font-size:12px;color:var(--muted)">${new Date(a.performed_at).toLocaleDateString()}</td>
-  </tr>`).join('')}</tbody></table></div></div>`}`;
+
+  <div id="act-log-form" style="display:${_actLogOpen?'block':'none'}">
+  <div class="card" style="background:#f0f4ff;border:1px solid #c8d8f8;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:14px">Log New Activity</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="fl"><label>Activity Type</label>
+        <select id="act-type" style="width:100%">
+          <option>Call</option><option>Email</option><option>Text</option><option>Visit</option><option>Demo</option><option>Note</option>
+        </select>
+      </div>
+      <div class="fl"><label>Subject / Brief</label><input id="act-subject" placeholder="What happened?"></div>
+      <div class="fl"><label>Outcome</label>
+        <select id="act-outcome">
+          <option value="">— Select —</option>
+          <option>Connected</option><option>Left Voicemail</option><option>No Answer</option><option>Scheduled Follow-up</option><option>Sent Estimate</option><option>Meeting Booked</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="fl"><label>Related Lead / Opportunity</label>
+        <select id="act-related">
+          <option value="">— Select —</option>
+          ${logLeads}${logOpps}
+        </select>
+      </div>
+      <div class="fl"><label>Date &amp; Time</label><input type="datetime-local" id="act-datetime"></div>
+      <div class="fl"><label>Next Action Date</label><input type="date" id="act-next-date"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Notes</label>
+      <textarea id="act-notes" rows="2" placeholder="What was discussed, what's the status, what's next..." style="width:100%;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-n" onclick="svLogActivity()">Save Activity</button>
+      <button class="btn btn-o" onclick="_actToggleLog()">Cancel</button>
+    </div>
+  </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px">Activity Timeline</div>
+    ${!acts.length?`<div style="text-align:center;padding:24px;color:var(--muted)">No activities logged yet.</div>`:timelineHtml}
+  </div>`;
+}
+
+function _actSetFilter(f){
+  _actFilter=f;
+  const el=document.getElementById('p-sales-activities');
+  if(el) el.innerHTML=bSalesActivities();
+}
+
+function _actToggleLog(){
+  _actLogOpen=!_actLogOpen;
+  const frm=document.getElementById('act-log-form');
+  if(frm) frm.style.display=_actLogOpen?'block':'none';
+}
+
+async function svLogActivity(){
+  const typeEl=document.getElementById('act-type');
+  const t=typeEl?typeEl.value:'Note';
+  const subject=document.getElementById('act-subject')?.value||'';
+  const outcome=document.getElementById('act-outcome')?.value||'';
+  const related=document.getElementById('act-related')?.value||'';
+  const dt=document.getElementById('act-datetime')?.value;
+  const nextDate=document.getElementById('act-next-date')?.value||null;
+  const notes=document.getElementById('act-notes')?.value||'';
+  if(!subject){tst('Please enter a subject','error');return;}
+  const now=new Date().toISOString();
+  const act={
+    activity_type:t,type:t,subject,outcome:outcome||null,notes:notes||null,
+    performed_by:CU?.name||'',performed_at:dt?new Date(dt).toISOString():now,
+    next_action_date:nextDate,created_at:now,updated_at:now,
+    lead_id:related.startsWith('lead:')?related.replace('lead:',''):null,
+    opportunity_id:related.startsWith('opp:')?related.replace('opp:',''):null,
+    customer_id:null,
+  };
+  const acts=S.get('lhs:activities')||[];
+  const saved={...act,id:'act_'+Date.now()};
+  acts.push(saved);S.set('lhs:activities',acts);
+  try{await dbInsert('lhs:activities',act);}catch{}
+  _actLogOpen=false;
+  tst('Activity logged','success');
+  const el=document.getElementById('p-sales-activities');
+  if(el) el.innerHTML=bSalesActivities();
 }
 
 // ── ADD LEAD ──────────────────────────────────────────────────────────────────
