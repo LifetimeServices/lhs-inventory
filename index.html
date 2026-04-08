@@ -16038,8 +16038,47 @@ function parseDispTime(val){
 }
 const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
 
+// Write payroll attribution entries for task blocks
+// isUpdate=true will upsert (overwrite existing entry for same block_id)
+async function _writePayrollAttribution(blocks, isUpdate=false){
+  if(!blocks||!blocks.length) return;
+  const entries=blocks.map(b=>{
+    const[h,m]=(b.time||'08:00').split(':').map(Number);
+    const hrs=Math.round((b.duration||60)/60*100)/100;
+    return{
+      id: isUpdate ? ('tb_'+b.id) : ('tb_'+b.id),
+      block_id: b.id,
+      employee_name: b.tech,
+      date: b.date,
+      hours: hrs,
+      type: b.type||'Other',
+      label: b.label||b.type||'Other',
+      region: b.region||'',
+      division: b.division||'',
+      is_pto: b.is_pto||false,
+      source: 'task_block',
+      created_by: b.created_by||CU?.name||'',
+      created_at: new Date().toISOString()
+    };
+  });
+  // Store in local cache under timesheets key
+  const ts=S.get('lhs:timesheets')||[];
+  entries.forEach(e=>{
+    const idx=ts.findIndex(x=>x.block_id===e.block_id);
+    if(idx>=0) ts[idx]={...ts[idx],...e};
+    else ts.push(e);
+  });
+  S.set('lhs:timesheets',ts);
+  // Persist to Supabase
+  try{
+    await DB.from('lhs_timesheets').upsert(entries,{onConflict:'block_id'});
+  }catch(e){console.warn('payroll attribution failed:',e?.message);}
+}
+
 function oAddGreyBlock(){
   const dispUsers=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  const divOpts=(S.get('lhs:divs')||[]).map(d=>typeof d==='string'?d:(d.name||'')).filter(Boolean);
+  const regOpts=Object.keys(REGIONS);
   oMod('Add Task Block',`
   <div class="fr">
     <div class="fl"><label>Block Type</label>
@@ -16056,6 +16095,20 @@ function oAddGreyBlock(){
       <option value="">— Select —</option>
       ${dispUsers.map(u=>`<option value="${u.name}">${u.name} (${u.division||u.role})</option>`).join('')}
     </select>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Region <span style="color:var(--red)">*</span></label>
+      <select id="gb-region" required>
+        <option value="">— Select Region —</option>
+        ${regOpts.map(r=>`<option value="${r}">${r}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Division <span style="color:var(--red)">*</span> <span style="font-size:11px;color:var(--muted)">(hours attributed to this division)</span></label>
+      <select id="gb-division" required>
+        <option value="">— Select Division —</option>
+        ${divOpts.map(d=>`<option value="${d}">${d}</option>`).join('')}
+      </select>
+    </div>
   </div>
   <div class="fr">
     <div class="fl"><label>Start Date</label><input type="date" id="gb-date-from" value="${_dispDate}"></div>
@@ -16105,7 +16158,11 @@ async function svAddGreyBlock(){
   const tech=techRaw.includes(' (')?techRaw.split(' (')[0]:techRaw;
   const dateFrom=document.getElementById('gb-date-from')?.value;
   const dateTo=document.getElementById('gb-date-to')?.value;
+  const region=v('gb-region');
+  const division=v('gb-division');
   if(!tech||!dateFrom){tst('Technician and start date required','error');return}
+  if(!region){tst('Region is required for payroll attribution','error');return}
+  if(!division){tst('Division is required for payroll attribution','error');return}
   const locked=document.getElementById('gb-lock')?.checked||false;
   const isPTO=type==='PTO'||type==='UTO';
   const time=parseDispTime(v('gb-time')||'08:00');
@@ -16147,6 +16204,7 @@ async function svAddGreyBlock(){
       group_id:groupId,
       label,type,tech,date,time,duration:dur,
       color:'#90A4AE',locked,is_pto:isPTO,
+      region,division,
       created_by:CU?.name||'',
     };
     blocks.push(blk);
@@ -16157,9 +16215,11 @@ async function svAddGreyBlock(){
   try{await DB.from('lhs_grey_blocks').insert(newBlocks);}catch(e){console.warn('grey_blocks insert failed',e?.message);}
   // Auto-sync PTO/UTO blocks to Company Calendar as Out of Office
   if(isPTO) await _syncPTOToCalendar(newBlocks);
+  // Write payroll attribution for each block
+  await _writePayrollAttribution(newBlocks);
   cMod();
   if(isPTO) tst(`${type} — ${dates.length} day${dates.length!==1?'s':''} added for ${tech} — auto-added to Company Calendar as Out of Office`,'info');
-  else tst(`${dates.length} task block${dates.length!==1?'s':''} added for ${tech}`,'success');
+  else tst(`${dates.length} task block${dates.length!==1?'s':''} added for ${tech} — hours attributed to ${division}`,'success');
   showPage('dispatch-board');
 }
 
@@ -16169,6 +16229,8 @@ function oEditGreyBlock(id){
   const canDelete=!b.locked||BLOCK_LOCKED_ROLES.includes(CU?.role);
   const canEdit=!b.locked||BLOCK_LOCKED_ROLES.includes(CU?.role);
   const dispUsers=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  const divOpts=(S.get('lhs:divs')||[]).map(d=>typeof d==='string'?d:(d.name||'')).filter(Boolean);
+  const regOpts=Object.keys(REGIONS);
   oMod(`Task Block — ${b.label}`,`
   ${b.locked?`<div style="background:#FFF8E1;border:1px solid #FFD54F;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#E65100;display:flex;align-items:center;gap:8px">
     &#128274; Manager locked — only managers can edit or delete this block
@@ -16188,6 +16250,20 @@ function oEditGreyBlock(id){
     <select id="egb-tech" ${!canEdit?'disabled':''}>
       ${dispUsers.map(u=>`<option${u.name===b.tech?' selected':''}>${u.name} (${u.division||u.role})</option>`).join('')}
     </select>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Region <span style="color:var(--red)">*</span></label>
+      <select id="egb-region" ${!canEdit?'disabled':''} required>
+        <option value="">— Select Region —</option>
+        ${regOpts.map(r=>`<option value="${r}"${(b.region||'')===r?' selected':''}>${r}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Division <span style="color:var(--red)">*</span> <span style="font-size:11px;color:var(--muted)">(hours attributed to this division)</span></label>
+      <select id="egb-division" ${!canEdit?'disabled':''} required>
+        <option value="">— Select Division —</option>
+        ${divOpts.map(d=>`<option value="${d}"${(b.division||'')===d?' selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
   </div>
   <div class="fr">
     <div class="fl"><label>Date</label><input type="date" id="egb-date" value="${b.date}" ${!canEdit?'disabled':''}></div>
@@ -16214,6 +16290,10 @@ async function svEditGreyBlock(id){
   const customLabel=v('egb-label');
   const locked=document.getElementById('egb-lock')?.checked??blocks[i].locked;
   const isPTO=type==='PTO'||type==='UTO';
+  const region=v('egb-region');
+  const division=v('egb-division');
+  if(!region){tst('Region is required for payroll attribution','error');return}
+  if(!division){tst('Division is required for payroll attribution','error');return}
   // Get tech name without the division suffix
   const techRaw=v('egb-tech')||'';
   const tech=techRaw.includes(' (')?techRaw.split(' (')[0]:techRaw;
@@ -16222,15 +16302,19 @@ async function svEditGreyBlock(id){
   blocks[i]={...blocks[i],
     label:customLabel||type,type,tech,
     date:v('egb-date'),time:egbTime,
-    duration:dur,locked,is_pto:isPTO,color:'#90A4AE'};
+    duration:dur,locked,is_pto:isPTO,color:'#90A4AE',
+    region,division};
   S.set('lhs:grey_blocks',blocks);
   try{await DB.from('lhs_grey_blocks').update({
     label:blocks[i].label,type,tech,date:blocks[i].date,
-    time:blocks[i].time,duration:dur,locked,is_pto:isPTO
+    time:blocks[i].time,duration:dur,locked,is_pto:isPTO,
+    region,division
   }).eq('id',id);}catch(e){console.warn('grey_blocks update failed',e?.message);}
+  // Re-write payroll attribution with updated values
+  await _writePayrollAttribution([blocks[i]], true);
   // Re-sync to calendar if it became PTO
   if(isPTO) await _syncPTOToCalendar([blocks[i]]);
-  cMod(); tst('Block updated','success'); showPage('dispatch-board');
+  cMod(); tst(`Block updated — hours attributed to ${division}`,'success'); showPage('dispatch-board');
 }
 
 async function delGreyBlock(id,deleteGroup=false){
