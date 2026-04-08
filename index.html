@@ -2645,8 +2645,8 @@ function _pickerRows(id, q){
   const lq=(q||'').toLowerCase();
   const filtered=lq?items.filter(i=>(i.name||'').toLowerCase().includes(lq)||(i.sku||'').toLowerCase().includes(lq)):items;
   if(!filtered.length) return'<div class="ip-none">No items found</div>';
-  const canSeeCo=['God View','Admin'].includes(CU?.role);
-  const canSeeCustCost=['God View','Admin','Director','Regional Manager'].includes(CU?.role);
+  const canSeeCo=['Creator','God View','Admin'].includes(CU?.role);
+  const canSeeCustCost=['Creator','God View','Admin','Director','Regional Manager'].includes(CU?.role);
   return filtered.slice(0,60).map(i=>`<div class="ipi" onmousedown="pickerSelect('${id}','${esc(i.sku)}','${esc(i.name).replace(/'/g,"\\'")}',${i.unit_cost||i.cost||0},${i.customer_cost||0})">
     <span class="ip-name">${esc(i.name)}</span>
     <span class="ip-sku">${esc(i.sku)}</span>
@@ -2690,7 +2690,7 @@ function pickerGetValue(id){
 // ─── PO ──────────────────────────────────────────────────────────────────────
 function bPO(){
   const allPos=S.get('lhs:pos')||[];
-  const canSend=['God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
+  const canSend=['Creator','God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
   const filterStatus=window._poFilterStatus||'active';
   const searchQ=(window._poSearch||'').toLowerCase();
 
@@ -2937,7 +2937,7 @@ async function vPO(i){
       }
     }catch(e){console.warn('vPO lines load:',e.message);}
   }
-  const canSend=['God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
+  const canSend=['Creator','God View','Admin','Director','Operations Manager','Regional Manager'].includes(CU?.role);
   const vens=S.get('lhs:vens')||[];
   const ven=vens.find(v=>(typeof v==='string'?v:v.name)===p.vendor);
   const venEmail=typeof ven==='object'?ven?.email:'';
@@ -3667,8 +3667,8 @@ function bVans(){
   const vi=S.get('lhs:vi')||[];
   const tools=S.get('lhs:tools')||[];
   const items=S.get('lhs:items')||[];
-  const canEdit=['God View','Director','Regional Manager'].includes(CU?.role);
-  const canShowVanCost=['God View','Regional Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Director','Regional Manager'].includes(CU?.role);
+  const canShowVanCost=['Creator','God View','Regional Manager'].includes(CU?.role);
 
   // Only vehicles (service vans + sales vehicles), active only
   let vehicles = CU.role==='Van Tech'
@@ -5627,7 +5627,7 @@ function aWOSettings(){
   const wins=getArrivalWindows();
   const tags=getWOTags();
   const allDivs=S.get('lhs:divs')||[];
-  const canManageTags=['God View','Admin','Director','Regional Manager'].includes(CU?.role);
+  const canManageTags=['Creator','God View','Admin','Director','Regional Manager'].includes(CU?.role);
 
   return`<div class="sh"><h3>Work Order Settings</h3></div>
 
@@ -7234,7 +7234,7 @@ async function delOpsAssignment(id){
 
 // ─── ADMIN ───────────────────────────────────────────────────────────────────
 function bAdmin(){
-  if(!['God View','Admin','Director'].includes(CU?.role))
+  if(!['Creator','God View','Admin','Director'].includes(CU?.role))
     return`<div class="pt">Admin</div><div class="al al-r">Access restricted. Contact your administrator.</div>`;
   return`<div class="pt">Admin</div>
   <div class="ps">System settings, users, integrations, and configuration</div>
@@ -9857,7 +9857,7 @@ function viewReceipt(id){
   const codes=S.get('lhs:accounting_codes')||[];
   const code=codes.find(c=>c.id===r.primary_code_id);
   const fmt=n=>f$(n);
-  const canApprove=['God View','Admin','Director'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director'].includes(CU?.role);
   oMod('&#129518; Receipt Detail',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div><label style="font-size:11px;color:var(--muted)">Date</label><div style="font-weight:600">${r.receipt_date||'—'}</div></div>
@@ -10076,7 +10076,7 @@ function bAcctInvoices(){
   const customers=S.get('lhs:customers')||[];
   const df=window._acctDateFrom||'';
   const dt=window._acctDateTo||'9';
-  const canEdit=['God View','Admin','Director','Operations Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Operations Manager'].includes(CU?.role);
 
   const filtered=invs.filter(i=>{
     const d=(i.invoice_date||i.created_at||'').slice(0,10);
@@ -10442,7 +10442,7 @@ function bAcctAP(){
   const bills=S.get('lhs:acct_bills')||[];
   const df=window._acctDateFrom||'';
   const dt=window._acctDateTo||'9';
-  const canEdit=['God View','Admin','Director','Operations Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Operations Manager'].includes(CU?.role);
   const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   const filtered=bills.filter(b=>{
@@ -10624,7 +10624,7 @@ function bAcctCOA(){
   // Always ensure COA is persisted to localStorage so Edit/Delete can find records
   let coa=S.get('lhs:acct_coa');
   if(!coa||!coa.length){coa=_defaultCOA();S.set('lhs:acct_coa',coa);}
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
 
   const types=['Asset','Liability','Equity','Revenue','Cost of Goods Sold','Expense','Other Income','Other Expense'];
   const grouped={};
@@ -10809,7 +10809,7 @@ function bAcctJournal(){
   const entries=S.get('lhs:acct_journal')||[];
   const df=window._acctDateFrom||'';
   const dt=window._acctDateTo||'9';
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   const fmt=v=>'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   const filtered=entries.filter(e=>{
@@ -11015,7 +11015,7 @@ async function delJournalEntry(id){
 function bAcctBank(){
   const accounts=S.get('lhs:acct_bank_accounts')||[];
   const txns=S.get('lhs:acct_bank_txns')||[];
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   const fmt=v=>'$'+Number(Math.abs(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const selAcct=window._bankAcctSel||accounts[0]?.id||null;
   const activeAcct=accounts.find(a=>a.id===selAcct)||accounts[0]||null;
@@ -11371,7 +11371,7 @@ function renameInvoiceTemplate(id){
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 function bAcctSettings(){
   const codes=S.get('lhs:accounting_codes')||[];
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   const aiEndpoint=S.get('lhs:acct_ai_endpoint')||'';
   return`<div class="pt">&#9881;&#65039; Accounting Settings</div>
   <div class="ps">Invoice templates, chart of accounts, and system configuration</div>
@@ -13905,7 +13905,7 @@ function bDash(){
   const leads=S.get('lhs:leads')||[];
   const opps=S.get('lhs:opps')||[];
   const notifs=(S.get('lhs:notifications')||[]).filter(n=>n.user_email===CU?.email&&!n.is_read);
-  const canSeeCost=['God View','Regional Manager'].includes(CU?.role);
+  const canSeeCost=['Creator','God View','Regional Manager'].includes(CU?.role);
   const isField=CU?.role==='Van Tech';
 
   // ── KPI calculations ──────────────────────────────────────────────────────
@@ -15390,7 +15390,7 @@ function renderDispBoard(){
       const _isClockedIn=_ciCount>_coCount;
       const _clockInPunch=_techPunches.filter(p=>p.punch_type==='clock_in').slice(-1)[0];
       const _clockInTime=_clockInPunch?new Date(_clockInPunch.punched_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
-      const _canClockMgr=['God View','Admin','Director','Regional Manager','Location Manager','Manager'].includes(CU?.role);
+      const _canClockMgr=['Creator','God View','Admin','Director','Regional Manager','Location Manager','Manager'].includes(CU?.role);
       return`<div style="display:flex;border-bottom:1px solid var(--bdr)">
         <div style="width:${labelW}px;min-width:${labelW}px;padding:6px 8px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;gap:4px;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:6px">
@@ -15816,7 +15816,7 @@ function dispShowTooltip(e,aptId,woId){
     const ehr12=eh%12||12;
     const endFmt=`${ehr12}:${String(em).padStart(2,'0')} ${eampm}`;
     const balance=(wo.total_price||0)-(wo.total_paid||0);
-    const canSeePrice=['God View','Regional Manager','Admin','Director'].includes(CU?.role);
+    const canSeePrice=['Creator','God View','Regional Manager','Admin','Director'].includes(CU?.role);
     tip.innerHTML=`
       <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:6px;border-bottom:1px solid var(--bdr);padding-bottom:6px">${esc(wo.wo_number)}</div>
       <div style="font-size:13px;font-weight:600;margin-bottom:2px">${esc(wo.customer_name)}</div>
@@ -16074,7 +16074,7 @@ function parseDispTime(val){
   if(pm&&h<12) h+=12; if(am&&h===12) h=0;
   return String(Math.min(h,23)).padStart(2,'0')+':'+String(Math.min(m,59)).padStart(2,'0');
 }
-const BLOCK_LOCKED_ROLES=['God View','Admin','Operations Manager','Regional Manager'];
+const BLOCK_LOCKED_ROLES=['Creator','God View','Admin','Operations Manager','Regional Manager'];
 
 // Write payroll attribution entries for task blocks
 // isUpdate=true will upsert (overwrite existing entry for same block_id)
@@ -17175,8 +17175,8 @@ async function openWO(woId){
   const matTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.unit_cost||0),0);
   const matCustTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.customer_cost||0),0);
   const isTech=CU?.role==='Van Tech';
-  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
-  const canSeeCost=['God View','Regional Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
+  const canSeeCost=['Creator','God View','Regional Manager'].includes(CU?.role);
 
   // ── Pre-compute active tags (avoids string-literal bug inside map callback) ─
   const _woActiveTags=getTagsForWO(woId);
@@ -17511,7 +17511,7 @@ async function oAptDetail(aptId, woId){
   const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
   const aptTechs=(S.get('lhs:apt_techs')||[]).filter(t=>t.appointment_id===aptId);
   const isTech=CU?.role==='Van Tech';
-  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher'].includes(CU?.role);
   if(!apt||!wo) return;
 
   oMod(`<span style="display:flex;align-items:center;gap:8px"><button onclick="openWO('${woId}')" style="background:none;border:none;cursor:pointer;padding:2px 6px 2px 0;font-size:18px;color:var(--navy);line-height:1" title="Back to Work Order">&#8592;</button>Appointment ${apt.appointment_number||''} — ${wo.wo_number}</span>`,`
@@ -17882,8 +17882,8 @@ function matRowHTML(m, aptId, woId){
   }
 
   const custExt=fN(qty*(m.customer_cost||0));
-  const canSeeCo=['God View','Admin'].includes(CU?.role);
-  const canSeeCustCost=['God View','Admin','Director','Regional Manager'].includes(CU?.role);
+  const canSeeCo=['Creator','God View','Admin'].includes(CU?.role);
+  const canSeeCustCost=['Creator','God View','Admin','Director','Regional Manager'].includes(CU?.role);
   return`<div style="border:1px solid var(--bdr);border-radius:6px;margin-bottom:5px;background:${isPreset?'var(--surf)':'white'};overflow:visible">
     <!-- Row 1: label + item picker -->
     <div style="display:flex;align-items:center;gap:8px;padding:7px 10px 4px">
@@ -19429,7 +19429,7 @@ function viewPhoto(photoId,aptId,woId){
 function renderPhotoViewer(photos,idx,aptId,woId){
   if(!photos.length) return;
   const p=photos[idx];
-  const canScore=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canScore=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   oMod(`Photo ${idx+1} of ${photos.length} — ${p.file_name||'Photo'}`,`
   <div style="max-height:80vh;overflow-y:auto">
     <!-- Navigation -->
@@ -22900,7 +22900,7 @@ function bCloseout(){
   const wos=S.get('lhs:work_orders')||[];
   const apts=S.get('lhs:appointments')||[];
   const techs=S.get('lhs:apt_techs')||[];
-  const canReview=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canReview=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
 
   // Show WOs where at least one appointment is Completed AND WO is not yet Closed
   const pending=wos.filter(w=>{
@@ -23033,7 +23033,7 @@ async function logToolAudit({tool_id,tool_name,action,assigned_to,assigned_from,
 function bTools(){
   const tools=S.get('lhs:tools')||[];
   const locs=S.get('lhs:locs')||[];
-  const canEdit=['God View','Director','Regional Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Director','Regional Manager'].includes(CU?.role);
 
   // All active vehicles
   let vehicles=locs.filter(l=>(l.type==='Service Van'||l.type==='Sales Vehicle')&&l.active!==false);
@@ -23484,7 +23484,7 @@ function bPayroll(){
 }
 
 function bPayrollDashboard(){
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const isOwnView=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
   const users=S.get('lhs:users')||[];
   const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
@@ -23681,7 +23681,7 @@ function prClosePanel(){
 function prRenderPanel(){
   const panel=document.getElementById('pr-panel');
   if(!panel) return;
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const emp=window._prPanelEmp;
   const period=window._prPeriod;
   const allTS=S.get('lhs:timesheets')||[];
@@ -23836,7 +23836,7 @@ function prRenderPanel(){
 
 // ── PAYROLL DETAIL VIEW ───────────────────────────────────────────────────────
 function bPayrollDetail(){
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const isOwnView=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
   const users=S.get('lhs:users')||[];
   const tsUsers=users.filter(u=>u.timesheet_needed!==false&&u.active!==false);
@@ -24225,7 +24225,7 @@ function prPrevWeekStart(){
 
 function isTimesheetBlockActive(){
   if(!CU) return false;
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   if(canApprove) return false; // Managers never get blocked
   const now=new Date();
   if(now.getDay()!==1) return false; // Only Mondays
@@ -24888,7 +24888,7 @@ function bHREmployees(){
 }
 
 function bHREmployeeList(){
-  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const all=(S.get('lhs:users')||[]);
   const search=(window._hrEmpSearch||'').toLowerCase();
   const fStatus=window._hrEmpStatus||'';
@@ -24994,7 +24994,7 @@ function bHREmployeeDetail(){
   const users=S.get('lhs:users')||[];
   const u=users.find(x=>x.id===window._hrEmpId||x.email===window._hrEmpId);
   if(!u) return`<div class="al al-r">Employee not found. <button class="btn btn-o sm" onclick="window._hrEmpView='list';showPage('hr-employees')">Back</button></div>`;
-  const canEdit=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const tab=window._hrEmpTab||'profile';
   const active=u.active!==false&&!u.terminated;
   const certs=u.certifications||[];
@@ -25538,7 +25538,7 @@ function _hrEmployeeForm(u, saveFn){
 }
 
 // Only manager-level users can be approvers
-const HR_APPROVER_ROLES=['God View','Admin','Director','Regional Manager','Operations Manager','Location Manager'];
+const HR_APPROVER_ROLES=['Creator','God View','Admin','Director','Regional Manager','Operations Manager','Location Manager'];
 function _hrManagerOptions(users, selectedEmail){
   return users.filter(u=>HR_APPROVER_ROLES.includes(u.role)&&u.active!==false)
     .sort((a,b)=>a.name.localeCompare(b.name))
@@ -25711,7 +25711,7 @@ window._torEmpF  = window._torEmpF  || '';
 window._torTypeF = window._torTypeF || '';
 
 function bHRTimeOff(){
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const isOwn=['Van Tech','Sales Rep','Field Tech'].includes(CU?.role)&&!canApprove;
   const all=S.get('lhs:time_off_requests')||[];
   const users=S.get('lhs:users')||[];
@@ -25800,7 +25800,7 @@ function _myApprovalStage(r){
   const stage=r.approval_stage||1;
   const emailForStage=stage===1?r.approver_1_email:stage===2?r.approver_2_email:stage===3?r.approver_3_email:null;
   // Also allow God View / Admin to act on any pending request
-  if(['God View','Admin'].includes(CU?.role)&&(!r.status||r.status==='Pending')) return stage;
+  if(['Creator','God View','Admin'].includes(CU?.role)&&(!r.status||r.status==='Pending')) return stage;
   return emailForStage===CU.email?stage:null;
 }
 
@@ -25822,7 +25822,7 @@ function _torApprovalChainBadges(r){
 
 function oAddTimeOffRequest(){
   const users=S.get('lhs:users')||[];
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   const empList=canApprove?users:users.filter(u=>u.name===CU?.name);
   oMod('New Time Off Request',`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
@@ -25861,7 +25861,7 @@ async function svAddTimeOffRequest(){
   if(!startDate){tst('Start date required','error');return}
   const users=S.get('lhs:users')||[];
   const emp=users.find(u=>u.name===empName)||{};
-  const canApprove=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canApprove=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   // Build approval chain from employee record
   const chain=_buildApprovalChain(emp);
   const rec=_buildTORRecord({empName, emp, chain, startDate, leaveType:v('tor-type'), endDate:v('tor-end'), hours:v('tor-hours'), notes:v('tor-notes'), forceStatus:canApprove?v('tor-status'):null});
@@ -26044,7 +26044,7 @@ async function _syncTORToCalendar(reqs){
 window._hrStateSearch='';
 
 function bHRState(){
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   const all=S.get('lhs:hr_state_settings')||[];
   const search=(window._hrStateSearch||'').toLowerCase();
   const filtered=search?all.filter(s=>(s.state||'').toLowerCase().includes(search)||(s.notes||'').toLowerCase().includes(search)):all;
@@ -26168,7 +26168,7 @@ async function delHRState(id){
 
 // ─── HR SETTINGS ──────────────────────────────────────────────────────────────
 function bHRSettings(){
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   const cfg=S.get('lhs:hr_config')||{};
   return`
   <div class="pt" style="margin-bottom:4px">HR Settings</div>
@@ -26614,7 +26614,7 @@ const REPORT_DEFS=[
 const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'];
 
 function bReports(){
-  const canSeeReports=['God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
+  const canSeeReports=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   if(!canSeeReports) return`<div class="pt">Reports</div><div class="card" style="text-align:center;padding:32px;color:var(--muted)">Reports are available to managers and above.</div>`;
 
   const _rptView=window._rptView||'library';
@@ -30055,7 +30055,7 @@ function bSalesSettings(){
 
 function renderSalesSettings(){
   const ss=getSalesSettings();
-  const canEdit=['God View','Admin','Director'].includes(CU?.role);
+  const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   return`
   <div id="est-doc-settings-card">${renderEstDocSettingsCard()}</div>
 
@@ -30722,7 +30722,7 @@ async function checkTORReminders(){
     for(const req of pendingReqs){
       const stage=req.approval_stage||1;
       const activeApprover=stage===1?req.approver_1_email:stage===2?req.approver_2_email:stage===3?req.approver_3_email:null;
-      const isMyTurn=activeApprover===CU.email||['God View','Admin'].includes(CU?.role);
+      const isMyTurn=activeApprover===CU.email||['Creator','God View','Admin'].includes(CU?.role);
       if(!isMyTurn) continue;
       if(req.last_reminded_at&&req.last_reminded_at>twentyHrsAgo) continue;
       const dates=req.start_date+(req.end_date&&req.end_date!==req.start_date?' – '+req.end_date:'');
