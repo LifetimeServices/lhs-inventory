@@ -2391,10 +2391,10 @@ function getUserPerms(){
   const roleRec=rolePermsArr.find(r=>r.role===role);
   let basePerms;
   if(roleRec?.perms){
-    // Extract module-level access from stored granular perms
-    const stored={};
-    Object.entries(roleRec.perms).forEach(([k,v])=>{stored[k]=typeof v==='object'?v._enabled||0:v;});
-    basePerms=stored;
+    // Start with DEFAULT_PERMS so unset modules keep their default access,
+    // then overlay only the modules that have been explicitly saved in Supabase
+    basePerms={...(DEFAULT_PERMS[role]||DEFAULT_PERMS['Technician'])};
+    Object.entries(roleRec.perms).forEach(([k,v])=>{basePerms[k]=typeof v==='object'?v._enabled||0:v;});
   } else {
     basePerms=DEFAULT_PERMS[role]||DEFAULT_PERMS['Technician'];
   }
