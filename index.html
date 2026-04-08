@@ -16053,6 +16053,7 @@ async function _writePayrollAttribution(blocks, isUpdate=false){
       hours: hrs,
       type: b.type||'Other',
       label: b.label||b.type||'Other',
+      territory: b.territory||'',
       region: b.region||'',
       division: b.division||'',
       is_pto: b.is_pto||false,
@@ -16078,7 +16079,7 @@ async function _writePayrollAttribution(blocks, isUpdate=false){
 function oAddGreyBlock(){
   const dispUsers=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name));
   const divOpts=(S.get('lhs:divs')||[]).map(d=>typeof d==='string'?d:(d.name||'')).filter(Boolean);
-  const regOpts=Object.keys(REGIONS);
+  const terrOpts=(S.get('lhs:territories')||[]).filter(t=>t.active!==false).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   oMod('Add Task Block',`
   <div class="fr">
     <div class="fl"><label>Block Type</label>
@@ -16097,10 +16098,10 @@ function oAddGreyBlock(){
     </select>
   </div>
   <div class="fr">
-    <div class="fl"><label>Region <span style="color:var(--red)">*</span></label>
-      <select id="gb-region" required>
-        <option value="">— Select Region —</option>
-        ${regOpts.map(r=>`<option value="${r}">${r}</option>`).join('')}
+    <div class="fl"><label>Territory <span style="color:var(--red)">*</span></label>
+      <select id="gb-territory" required>
+        <option value="">— Select Territory —</option>
+        ${terrOpts.map(t=>`<option value="${t.name}">${t.name}</option>`).join('')}
       </select>
     </div>
     <div class="fl"><label>Division <span style="color:var(--red)">*</span> <span style="font-size:11px;color:var(--muted)">(hours attributed to this division)</span></label>
@@ -16158,10 +16159,12 @@ async function svAddGreyBlock(){
   const tech=techRaw.includes(' (')?techRaw.split(' (')[0]:techRaw;
   const dateFrom=document.getElementById('gb-date-from')?.value;
   const dateTo=document.getElementById('gb-date-to')?.value;
-  const region=v('gb-region');
+  const territory=v('gb-territory');
   const division=v('gb-division');
+  const terrRec=(S.get('lhs:territories')||[]).find(t=>t.name===territory);
+  const region=terrRec?.region||'';
   if(!tech||!dateFrom){tst('Technician and start date required','error');return}
-  if(!region){tst('Region is required for payroll attribution','error');return}
+  if(!territory){tst('Territory is required for payroll attribution','error');return}
   if(!division){tst('Division is required for payroll attribution','error');return}
   const locked=document.getElementById('gb-lock')?.checked||false;
   const isPTO=type==='PTO'||type==='UTO';
@@ -16204,7 +16207,7 @@ async function svAddGreyBlock(){
       group_id:groupId,
       label,type,tech,date,time,duration:dur,
       color:'#90A4AE',locked,is_pto:isPTO,
-      region,division,
+      territory,region,division,
       created_by:CU?.name||'',
     };
     blocks.push(blk);
@@ -16230,7 +16233,7 @@ function oEditGreyBlock(id){
   const canEdit=!b.locked||BLOCK_LOCKED_ROLES.includes(CU?.role);
   const dispUsers=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name));
   const divOpts=(S.get('lhs:divs')||[]).map(d=>typeof d==='string'?d:(d.name||'')).filter(Boolean);
-  const regOpts=Object.keys(REGIONS);
+  const terrOpts=(S.get('lhs:territories')||[]).filter(t=>t.active!==false).sort((a,x)=>(a.name||'').localeCompare(x.name||''));
   oMod(`Task Block — ${b.label}`,`
   ${b.locked?`<div style="background:#FFF8E1;border:1px solid #FFD54F;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#E65100;display:flex;align-items:center;gap:8px">
     &#128274; Manager locked — only managers can edit or delete this block
@@ -16252,10 +16255,10 @@ function oEditGreyBlock(id){
     </select>
   </div>
   <div class="fr">
-    <div class="fl"><label>Region <span style="color:var(--red)">*</span></label>
-      <select id="egb-region" ${!canEdit?'disabled':''} required>
-        <option value="">— Select Region —</option>
-        ${regOpts.map(r=>`<option value="${r}"${(b.region||'')===r?' selected':''}>${r}</option>`).join('')}
+    <div class="fl"><label>Territory <span style="color:var(--red)">*</span></label>
+      <select id="egb-territory" ${!canEdit?'disabled':''} required>
+        <option value="">— Select Territory —</option>
+        ${terrOpts.map(t=>`<option value="${t.name}"${(b.territory||'')===t.name?' selected':''}>${t.name}</option>`).join('')}
       </select>
     </div>
     <div class="fl"><label>Division <span style="color:var(--red)">*</span> <span style="font-size:11px;color:var(--muted)">(hours attributed to this division)</span></label>
@@ -16290,9 +16293,11 @@ async function svEditGreyBlock(id){
   const customLabel=v('egb-label');
   const locked=document.getElementById('egb-lock')?.checked??blocks[i].locked;
   const isPTO=type==='PTO'||type==='UTO';
-  const region=v('egb-region');
+  const territory=v('egb-territory');
   const division=v('egb-division');
-  if(!region){tst('Region is required for payroll attribution','error');return}
+  const terrRec=(S.get('lhs:territories')||[]).find(t=>t.name===territory);
+  const region=terrRec?.region||'';
+  if(!territory){tst('Territory is required for payroll attribution','error');return}
   if(!division){tst('Division is required for payroll attribution','error');return}
   // Get tech name without the division suffix
   const techRaw=v('egb-tech')||'';
@@ -16303,12 +16308,12 @@ async function svEditGreyBlock(id){
     label:customLabel||type,type,tech,
     date:v('egb-date'),time:egbTime,
     duration:dur,locked,is_pto:isPTO,color:'#90A4AE',
-    region,division};
+    territory,region,division};
   S.set('lhs:grey_blocks',blocks);
   try{await DB.from('lhs_grey_blocks').update({
     label:blocks[i].label,type,tech,date:blocks[i].date,
     time:blocks[i].time,duration:dur,locked,is_pto:isPTO,
-    region,division
+    territory,region,division
   }).eq('id',id);}catch(e){console.warn('grey_blocks update failed',e?.message);}
   // Re-write payroll attribution with updated values
   await _writePayrollAttribution([blocks[i]], true);
