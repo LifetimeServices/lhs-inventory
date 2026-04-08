@@ -2371,7 +2371,7 @@ function buildPage(id){
     business:bBusiness,
     commercial:bCommercial,
     sales:bSales,'sales-crm-dashboard':bCRMDashboard,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
-    'sales-accounts':bCustomers,
+    'sales-accounts':bSalesAccountsPage,
     'sales-estimates':bSalesEstimates,
     'sales-pricebook':bPricebook,
     'sales-tasks':bSalesTasks,'sales-followups':bSalesFollowupQueue,
@@ -26215,8 +26215,189 @@ function _fupQueueLoad(){
   ${!overdue.length&&!today.length&&!week.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No follow-ups scheduled. Add a follow-up date when editing a lead.</div>':''}`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CRM ACCOUNTS PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+let _acctFilter='All';
+let _acctSearch='';
+let _acctOpenId=null;
+
+function bSalesAccountsPage(){
+  setTimeout(_acctLoad,0);
+  return`<div class="pt">Accounts</div>
+  <div class="ps">Customer accounts — linked leads, opportunities, activities, and revenue</div>
+  <div id="acct-page-body"><div style="text-align:center;padding:40px;color:var(--muted)">Loading accounts…</div></div>`;
+}
+
+async function _acctLoad(){
+  const el=document.getElementById('acct-page-body');
+  if(!el) return;
+  const customers=S.get('lhs:customers')||[];
+  const opps=S.get('lhs:opportunities')||[];
+  const activities=S.get('lhs:activities')||[];
+  const leads=S.get('lhs:leads')||[];
+
+  const typeFilters=['All','Active','Residential','Commercial','HOA / Multi-Unit'];
+  const typeFor=c=>{
+    const n=(c.name||'').toLowerCase();
+    if(n.includes('hoa')||n.includes('community')||n.includes('association')) return'HOA / Multi-Unit';
+    if(c.customer_type==='Commercial'||c.company_type==='Commercial') return'Commercial';
+    if(c.customer_type==='Residential'||!c.customer_type) return'Residential';
+    return c.customer_type||'Residential';
+  };
+
+  const healthFor=c=>{
+    const cOpps=opps.filter(o=>o.customer_id===c.id);
+    const cActs=activities.filter(a=>a.customer_id===c.id);
+    const lastAct=cActs.length?new Date(Math.max(...cActs.map(a=>new Date(a.created_at||0)))):null;
+    const daysSince=lastAct?(Date.now()-lastAct)/(1000*60*60*24):999;
+    if(cOpps.length>0&&daysSince<30) return'High';
+    if(cOpps.length>0||daysSince<60) return'Medium';
+    return'Low';
+  };
+
+  let filtered=customers;
+  if(_acctFilter==='Active'){
+    filtered=customers.filter(c=>{
+      const cOpps=opps.filter(o=>o.customer_id===c.id&&o.stage!=='Lost');
+      return cOpps.length>0;
+    });
+  } else if(_acctFilter!=='All'){
+    filtered=customers.filter(c=>typeFor(c)===_acctFilter);
+  }
+  if(_acctSearch) filtered=filtered.filter(c=>(c.name||'').toLowerCase().includes(_acctSearch.toLowerCase())||(c.city||'').toLowerCase().includes(_acctSearch.toLowerCase()));
+
+  const healthColor=h=>h==='High'?'bg':h==='Medium'?'ba':'br';
+  const typeColor=t=>t==='Commercial'?'bn':t==='HOA / Multi-Unit'?'bg':'bb';
+
+  const lastActLabel=c=>{
+    const cActs=activities.filter(a=>a.customer_id===c.id);
+    if(!cActs.length) return'Never';
+    const last=new Date(Math.max(...cActs.map(a=>new Date(a.created_at||0))));
+    const days=Math.round((Date.now()-last)/(1000*60*60*24));
+    if(days===0) return'Today';
+    if(days===1) return'Yesterday';
+    if(days<7) return`${days}d ago`;
+    if(days<30) return`${Math.round(days/7)}w ago`;
+    return`${Math.round(days/30)}mo ago`;
+  };
+
+  const tableRows=filtered.map(c=>{
+    const cOpps=opps.filter(o=>o.customer_id===c.id&&o.stage!=='Lost'&&o.stage!=='Won');
+    const totalRev=opps.filter(o=>o.customer_id===c.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0);
+    const health=healthFor(c);
+    const type=typeFor(c);
+    return`<tr style="cursor:pointer" onclick="_openAcctDetail('${c.id}')">
+      <td>
+        <div style="font-weight:700">${esc(c.name||'')}</div>
+        ${c.company?`<div style="font-size:11px;color:var(--muted)">${esc(c.company)}</div>`:''}
+      </td>
+      <td>${bx(type,typeColor(type))}</td>
+      <td style="font-size:12px${!c.assigned_to?';color:var(--muted)':''}">${c.assigned_to||'Unassigned'}</td>
+      <td style="font-size:12px">${c.phone||c.primary_phone||'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${[c.city,c.state].filter(Boolean).join(', ')||'—'}</td>
+      <td style="text-align:center;font-weight:700;color:${cOpps.length?'var(--teal)':'var(--muted)'}">${cOpps.length||'0'}</td>
+      <td style="font-weight:700">${totalRev?'$'+Number(totalRev).toLocaleString():'<span style="color:var(--muted)">$0</span>'}</td>
+      <td style="color:var(--muted);font-size:12px">${lastActLabel(c)}</td>
+      <td>${bx(health,healthColor(health))}</td>
+      <td><button class="btn sm btn-n" onclick="event.stopPropagation();_openAcctDetail('${c.id}')">Open</button></td>
+    </tr>`;
+  }).join('');
+
+  const detailHtml=_acctOpenId?_renderAcctDetail(_acctOpenId,opps,activities,leads):'';
+
+  el.innerHTML=`
+  <div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;align-items:center">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${typeFilters.map(f=>`<button class="btn ${_acctFilter===f?'btn-n':'btn-o'} sm" onclick="_acctSetFilter('${f}',this)">${f}${f==='All'?` (${customers.length})`:''}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input placeholder="Search accounts…" value="${esc(_acctSearch)}" oninput="clearTimeout(window._acctST);window._acctST=setTimeout(()=>{_acctSearch=this.value;_acctLoad()},300)"
+        style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;width:220px;outline:none;font-family:inherit">
+      <button class="btn btn-n" onclick="oAddCustomer()">+ New Account</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;margin-bottom:${_acctOpenId?'20px':'0'}">
+    <div class="tw" style="margin:0"><table>
+      <thead><tr><th>Account</th><th>Type</th><th>Owner</th><th>Phone</th><th>Location</th><th style="text-align:center">Open Opps</th><th>Total Revenue</th><th>Last Activity</th><th>Health</th><th></th></tr></thead>
+      <tbody>${tableRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No accounts found.</td></tr>'}</tbody>
+    </table></div>
+  </div>
+  ${detailHtml}`;
+}
+
+function _acctSetFilter(f){
+  _acctFilter=f;
+  _acctLoad();
+}
+
+function _openAcctDetail(id){
+  _acctOpenId=(_acctOpenId===id)?null:id;
+  _acctLoad();
+}
+
+function _renderAcctDetail(id,opps,activities,leads){
+  const customers=S.get('lhs:customers')||[];
+  const c=customers.find(x=>x.id===id);
+  if(!c) return'';
+  const cOpps=opps.filter(o=>o.customer_id===id);
+  const cActs=activities.filter(a=>a.customer_id===id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,4);
+  const since=c.created_at?new Date(c.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}):'';
+  const typeFor=()=>{
+    const n=(c.name||'').toLowerCase();
+    if(n.includes('hoa')||n.includes('community')||n.includes('association')) return'HOA / Multi-Unit';
+    if(c.customer_type==='Commercial') return'Commercial';
+    return c.customer_type||'Residential';
+  };
+  const actIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':'📋';
+  const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
+
+  return`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#eef2fa;padding:8px 12px;border-radius:8px;margin-bottom:12px">
+    Account Detail — ${esc(c.name||'')}
+    <button onclick="_openAcctDetail('${id}')" style="float:right;border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;font-weight:400">✕</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:4px">${esc(c.name||'')}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${typeFor()}${since?' &nbsp;·&nbsp; Customer since '+since:''}</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin-bottom:16px">
+        ${c.assigned_to?`<span style="color:var(--muted);font-weight:600">Owner</span><span>${esc(c.assigned_to)}</span>`:''}
+        ${c.phone||c.primary_phone?`<span style="color:var(--muted);font-weight:600">Phone</span><span>${esc(c.phone||c.primary_phone)}</span>`:''}
+        ${c.email?`<span style="color:var(--muted);font-weight:600">Email</span><span>${esc(c.email)}</span>`:''}
+        ${c.address?`<span style="color:var(--muted);font-weight:600">Address</span><span>${esc(c.address)}${c.city?', '+esc(c.city):''}${c.state?' '+esc(c.state):''}${c.zip?' '+esc(c.zip):''}</span>`:''}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${c.phone||c.primary_phone?`<button class="btn btn-o sm">📞 Call</button>`:''}
+        ${c.email?`<button class="btn btn-o sm">✉️ Email</button>`:''}
+        <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New Opportunity</button>
+        <button class="btn btn-o sm" onclick="openCustomer('${id}')">Edit Account</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Related Opportunities (${cOpps.length})</div>
+        ${cOpps.length?cOpps.slice(0,4).map(o=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center">
+          <span>${esc(o.name)}</span>
+          <span style="display:flex;gap:8px;align-items:center"><strong>$${Number(o.estimated_value||0).toLocaleString()}</strong> ${bx(o.stage,stageColor(o.stage))}</span>
+        </div>`).join(''):'<div style="color:var(--muted);font-size:13px">No opportunities yet.</div>'}
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Recent Activity</div>
+        ${cActs.length?cActs.map(a=>{
+          const d=a.created_at?new Date(a.created_at):null;
+          const label=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+          return`<div style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--bdr)">
+            ${actIcon(a.type)} ${esc(a.type||'Activity')} — ${esc(a.notes||a.description||'—')} &nbsp;<span style="color:var(--muted)">(${label})</span>
+          </div>`;
+        }).join(''):'<div style="color:var(--muted);font-size:13px">No activity logged.</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── LEADS PAGE ────────────────────────────────────────────────────────────────
 function bSalesLeads(){
-  return`<div class="pt">Leads</div><div class="ps">All inbound and outbound leads</div>
+  return`<div class="pt">Leads</div><div class="ps">All inbound and outbound leads &nbsp;·&nbsp; Scored by engagement and completeness</div>
   ${renderCRMLeads()}`;
 }
 
@@ -27012,33 +27193,83 @@ function bSalesActivities(){
   ${renderCRMActivities()}`;
 }
 
+let _leadView='list';
 function renderCRMLeads(){
   const leads=(S.get('lhs:leads')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const ss=getSalesSettings();
   const statuses=ss.lead_statuses||LEAD_STATUSES;
-  const statusColor=s=>s==='New'?'ba':s==='Contacted'?'bn':s==='Qualified'?'bg':s==='Converted'?'bb':'bgr';
-  return`<div style="display:flex;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+  return`<div style="display:flex;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;align-items:center">
     <div style="display:flex;gap:6px;flex-wrap:wrap" id="lead-filter-btns">
-      <button class="btn btn-o sm" style="background:var(--navy);color:white" onclick="filterLeads('All',this)">All (${leads.length})</button>
+      <button class="btn btn-n sm" onclick="filterLeads('All',this)">All (${leads.length})</button>
       ${statuses.map(s=>{
         const cnt=leads.filter(l=>l.status===s).length;
         return`<button class="btn btn-o sm" onclick="filterLeads('${s}',this)">${s} (${cnt})</button>`;
       }).join('')}
     </div>
-    <button class="btn btn-n" onclick="oAddLead()">+ New Lead</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px">
+        <button id="lvt-list" onclick="_setLeadView('list')" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_leadView==='list'?'var(--navy)':'transparent'};color:${_leadView==='list'?'var(--teal)':'var(--muted)'}">≡ List</button>
+        <button id="lvt-kanban" onclick="_setLeadView('kanban')" style="padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;background:${_leadView==='kanban'?'var(--navy)':'transparent'};color:${_leadView==='kanban'?'var(--teal)':'var(--muted)'}">▦ Kanban</button>
+      </div>
+      <button class="btn btn-n" onclick="oAddLead()">+ New Lead</button>
+    </div>
   </div>
   <div id="leads-list">
-  ${renderCRMLeadsTable(leads)}
+  ${_leadView==='kanban'?renderLeadsKanban():renderCRMLeadsTable(leads)}
+  </div>
+  <div style="margin-top:12px;padding:12px 16px;background:#eef2fa;border-radius:10px;font-size:13px;color:var(--muted)">
+    <strong style="color:var(--navy)">Lead Score</strong> is auto-calculated: contact completeness, activity engagement, estimated value, assigned rep, and scheduled follow-up. &nbsp;
+    <span style="color:#b91c1c;font-weight:600">🔥 Hot 70+</span> &nbsp;·&nbsp;
+    <span style="color:#b45309;font-weight:600">Warm 40–69</span> &nbsp;·&nbsp;
+    <span style="color:#1d4ed8;font-weight:600">❄ Cold &lt;40</span>
   </div>`;
 }
 
+function _setLeadView(v){
+  _leadView=v;
+  const leads=(S.get('lhs:leads')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const el=document.getElementById('leads-list');
+  if(el) el.innerHTML=v==='kanban'?renderLeadsKanban():renderCRMLeadsTable(leads);
+  document.querySelectorAll('#lvt-list,#lvt-kanban').forEach(b=>{
+    const isActive=b.id==='lvt-'+v;
+    b.style.background=isActive?'var(--navy)':'transparent';
+    b.style.color=isActive?'var(--teal)':'var(--muted)';
+  });
+}
+
+function renderLeadsKanban(){
+  const leads=(S.get('lhs:leads')||[]);
+  const ss=getSalesSettings();
+  const statuses=ss.lead_statuses||LEAD_STATUSES;
+  const statusColor={New:'var(--amber)','Contacted':'var(--teal)','Qualified':'var(--green)','Converted':'#2980b9','Unqualified':'var(--muted)'};
+  const cols=statuses.map(status=>{
+    const cards=leads.filter(l=>l.status===status);
+    return`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rl);padding:14px;min-width:190px;flex:0 0 190px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${status} (${cards.length})</span>
+      </div>
+      ${cards.map(l=>`
+        <div onclick="openLead('${l.id}')" style="background:white;border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--bdr);cursor:pointer;box-shadow:var(--sh)">
+          <div style="font-weight:700;font-size:12px;color:var(--navy);margin-bottom:2px">${esc((l.first_name||'')+' '+(l.last_name||''))}</div>
+          ${l.company?`<div style="font-size:11px;color:var(--muted);margin-bottom:3px">${esc(l.company)}</div>`:''}
+          <div style="font-size:12px;font-weight:700;color:var(--teal)">$${Number(l.estimated_value||0).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${l.assigned_to||'Unassigned'}</div>
+        </div>`).join('')}
+      <button onclick="oAddLead()" style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>`;
+  });
+  return`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:10px">${cols.join('')}</div>`;
+}
+
 function filterLeads(status,btn){
-  document.querySelectorAll('#lead-filter-btns .btn').forEach(b=>{b.style.background='';b.style.color='';});
-  if(btn){btn.style.background='var(--navy)';btn.style.color='white';}
-  const leads=S.get('lhs:leads')||[];
+  document.querySelectorAll('#lead-filter-btns .btn').forEach(b=>{
+    b.classList.remove('btn-n');b.classList.add('btn-o');
+  });
+  if(btn){btn.classList.remove('btn-o');btn.classList.add('btn-n');}
+  const leads=(S.get('lhs:leads')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const filtered=status==='All'?leads:leads.filter(l=>l.status===status);
   const el=document.getElementById('leads-list');
-  if(el) el.innerHTML=renderCRMLeadsTable(filtered);
+  if(el) el.innerHTML=_leadView==='kanban'?renderLeadsKanban():renderCRMLeadsTable(filtered);
 }
 
 function renderCRMLeadsTable(leads){
@@ -27048,33 +27279,34 @@ function renderCRMLeadsTable(leads){
   const priIcon=p=>p==='Hot'?'🔥 ':p==='Cold'?'❄ ':p==='Urgent'?'⚡ ':'';
   const scoreRing=(s)=>{const cls=s>=70?'background:#fee2e2;color:#b91c1c':s>=40?'background:#fef3c7;color:#b45309':'background:#dbeafe;color:#1d4ed8';return`<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;${cls}">${s}</div>`;};
   return`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Score</th><th>Name</th><th>Phone</th><th>Division / Service</th><th>Source</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Value</th><th>Follow-up</th><th></th></tr></thead>
-  <tbody>${leads.map(l=>`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
-    <td>${scoreRing(calcLeadScore(l))}</td>
+  <thead><tr><th>Score</th><th>Name</th><th>Phone / Email</th><th>Source</th><th>Division</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Est. Value</th><th>Next Follow-up</th><th></th></tr></thead>
+  <tbody>${leads.map(l=>{const sc=calcLeadScore(l);return`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
+    <td>${scoreRing(sc)}</td>
     <td>
-      <div style="font-weight:600">${l.salutation?l.salutation+' ':''} ${l.first_name} ${l.last_name}${l.customer_id?` <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:1px 6px;font-weight:600;vertical-align:middle">👤 CRM</span>`:''}</div>
-      ${l.company?`<div style="font-size:11px;color:var(--muted)">${l.company}</div>`:''}
-      ${l.address?`<div style="font-size:11px;color:var(--muted)">${l.city||''} ${l.state||''}</div>`:''}
-    </td>
-    <td style="font-size:12px">${l.phone||'—'}</td>
-    <td>
-      ${l.division?bx(l.division,'bn'):''}
-      ${l.services_of_interest?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${l.services_of_interest}</div>`:''}
+      <div style="font-weight:700">${l.salutation?l.salutation+' ':''} ${l.first_name||''} ${l.last_name||''}${l.customer_id?` <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:1px 6px;font-weight:600;vertical-align:middle">👤 CRM</span>`:''}</div>
+      ${l.company?`<div style="font-size:11px;color:var(--muted)">${esc(l.company)}</div>`:''}
     </td>
     <td style="font-size:12px">
-      ${l.source_category?`<div style="font-weight:500">${l.source_category}</div>`:''}
-      ${l.source_detail?`<div style="font-size:11px;color:var(--muted)">${l.source_detail}</div>`:''}
-      ${!l.source_category&&l.source?`<div style="color:var(--muted)">${l.source}</div>`:''}
+      ${l.phone?`<div>${esc(l.phone)}</div>`:''}
+      ${l.email?`<div style="color:var(--muted)">${esc(l.email)}</div>`:(!l.phone?'<span style="color:var(--muted)">—</span>':'')}
     </td>
-    <td style="font-size:12px">${l.assigned_to||'—'}</td>
+    <td style="font-size:12px">
+      ${l.source_category?`<div style="font-weight:600">${esc(l.source_category)}</div>`:''}
+      ${l.source_detail?`<div style="color:var(--muted)">${esc(l.source_detail)}</div>`:(!l.source_category&&l.source?`<div style="color:var(--muted)">${esc(l.source)}</div>`:'')}
+      ${!l.source_category&&!l.source?'<span style="color:var(--muted)">—</span>':''}
+    </td>
+    <td>${l.division?bx(l.division,'bn'):'<span style="color:var(--muted)">—</span>'}
+      ${l.services_of_interest?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(l.services_of_interest)}</div>`:''}
+    </td>
+    <td style="font-size:12px${!l.assigned_to?';color:var(--muted)':''}">${l.assigned_to||'Unassigned'}</td>
     <td>${bx(l.status||'New',statusColor(l.status))}</td>
     <td style="font-weight:600;color:${priColor(l.priority)}">${priIcon(l.priority)}${l.priority||'Normal'}</td>
-    <td style="font-family:'DM Sans',sans-serif;font-size:12px">$${Number(l.estimated_value||0).toLocaleString()}</td>
-    <td style="font-size:12px;color:${l.next_followup_at&&new Date(l.next_followup_at)<new Date()?'var(--red)':'var(--muted)'}">
+    <td style="font-weight:700;font-size:13px">$${Number(l.estimated_value||0).toLocaleString()}</td>
+    <td style="font-size:12px;${l.next_followup_at&&new Date(l.next_followup_at)<new Date()?'color:var(--red);font-weight:700':'color:var(--muted)'}">
       ${l.next_followup_at?new Date(l.next_followup_at).toLocaleDateString():'—'}
     </td>
     <td><button class="btn sm btn-n" onclick="event.stopPropagation();openLead('${l.id}')">Open</button></td>
-  </tr>`).join('')}</tbody></table></div></div>`;
+  </tr>`;}  ).join('')}</tbody></table></div></div>`;
 }
 
 function renderCRMPipeline(){
