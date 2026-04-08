@@ -1496,6 +1496,8 @@ const TBL={
   'lhs:pb_categories':'lhs_pb_categories',
   'lhs:cal_devices':'lhs_calibration_devices',
   'lhs:tester_deployments':'lhs_tester_deployments',
+  'lhs:audit_log':'lhs_audit_log',
+  'lhs:training_assignments':'lhs_training_assignments',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -1779,11 +1781,55 @@ function locVehPick(obj){
 }
 let CU=null;
 
+// ─── SECURITY: HELPERS ────────────────────────────────────────────────────────
+async function sha256(str){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function _getLockout(email){
+  try{const k='lms_fail_'+btoa(email.toLowerCase()).replace(/[^a-z0-9]/gi,'').slice(0,24);
+    return JSON.parse(localStorage.getItem(k))||{count:0,until:0};}catch{return{count:0,until:0};}
+}
+function _setLockout(email,d){
+  try{const k='lms_fail_'+btoa(email.toLowerCase()).replace(/[^a-z0-9]/gi,'').slice(0,24);
+    localStorage.setItem(k,JSON.stringify(d));}catch{}
+}
+function _checkLockout(email){
+  const d=_getLockout(email);
+  if(d.until&&Date.now()<d.until) return Math.ceil((d.until-Date.now())/60000);
+  return 0;
+}
+function _recordAttempt(email,success){
+  if(success){_setLockout(email,{count:0,until:0});return;}
+  const d=_getLockout(email);
+  d.count=(d.count||0)+1;
+  if(d.count>=5) d.until=Date.now()+15*60*1000;
+  _setLockout(email,d);
+}
+function logAudit(action,details){
+  try{
+    const log=JSON.parse(localStorage.getItem('lms_audit_log')||'[]');
+    log.unshift({ts:new Date().toISOString(),user:CU?.email||'system',name:CU?.name||'System',action,details:details||{}});
+    if(log.length>500) log.splice(500);
+    localStorage.setItem('lms_audit_log',JSON.stringify(log));
+    // Fire-and-forget to Supabase (best effort)
+    try{DB.from('lhs_audit_log').insert({ts:new Date().toISOString(),user_email:CU?.email||'system',user_name:CU?.name||'System',action,details:JSON.stringify(details||{})}).then(()=>{}).catch(()=>{});}catch{}
+  }catch{}
+}
+
 async function doLogin(){
   const u=document.getElementById('lu').value.trim().toLowerCase();
   const p=document.getElementById('lp').value.trim();
   const errEl=document.getElementById('lerr');
   const btn=document.querySelector('.btnl');
+  // Check lockout before attempting
+  const _lockedMins=_checkLockout(u);
+  if(_lockedMins>0){
+    errEl.style.display='block';
+    errEl.textContent=`Account locked. Try again in ${_lockedMins} minute${_lockedMins===1?'':'s'}.`;
+    return;
+  }
+
   if(btn){btn.textContent='Signing in...';btn.disabled=true;}
 
   let user=null;
@@ -1796,12 +1842,26 @@ async function doLogin(){
       .eq('active',true)
       .single();
     if(!error&&data){
-      const pwMatch=data.password_hash===p||data.pw===p;
+      const storedHash=data.password_hash||data.pw||'';
+      // SHA-256 hashes are exactly 64 hex chars — detect and compare accordingly
+      const isHashed=/^[a-f0-9]{64}$/.test(storedHash);
+      let pwMatch=false;
+      if(isHashed){
+        const enteredHash=await sha256(p);
+        pwMatch=enteredHash===storedHash;
+      } else {
+        // Legacy plaintext comparison — auto-migrate on success
+        pwMatch=storedHash===p;
+        if(pwMatch){
+          const newHash=await sha256(p);
+          DB.from('lhs_users').update({password_hash:newHash,pw:newHash}).eq('id',data.id).then(()=>{}).catch(()=>{});
+        }
+      }
       if(pwMatch){
         user={
           name:data.name,
           email:data.email,
-          pw:data.password_hash||data.pw,
+          pw:storedHash,
           role:data.role||'Van Tech',
           loc:data.home_location||data.loc||'',
           division:data.division||'',
@@ -1812,21 +1872,33 @@ async function doLogin(){
         };
       }
     }
-  }catch(e){console.warn('Supabase login failed, trying local:',e.message);}
+  }catch(e){console.warn('Supabase login failed:',e.message);}
 
   // SECURITY: Hardcoded fallback removed — Supabase is the sole auth provider.
 
   if(btn){btn.textContent='Sign In →';btn.disabled=false;}
 
   if(!user){
+    _recordAttempt(u,false);
+    const _ld=_getLockout(u);
     errEl.style.display='block';
-    errEl.textContent='Incorrect email or password. Please try again.';
+    if(_checkLockout(u)>0){
+      errEl.textContent='Too many failed attempts. Account locked for 15 minutes.';
+      logAudit('login_locked',{email:u});
+    } else {
+      const _rem=5-(_ld.count||0);
+      errEl.textContent=`Incorrect email or password. ${_rem} attempt${_rem===1?'':'s'} remaining before lockout.`;
+    }
+    logAudit('login_failed',{email:u});
     return;
   }
 
+  _recordAttempt(u,true);
   errEl.style.display='none';
   CU=user;
-  sessionStorage.setItem('lhs_s',JSON.stringify({e:user.email,p:user.pw}));
+  // SECURITY: Store email + id only — never store password in session
+  sessionStorage.setItem('lhs_s',JSON.stringify({e:user.email,id:user.id}));
+  logAudit('login_success',{email:u,name:user.name,role:user.role});
   startApp();
 }
 
@@ -1835,6 +1907,7 @@ document.addEventListener('keydown',e=>{
 });
 
 function doLogout(){
+  logAudit('logout',{email:CU?.email});
   CU=null; sessionStorage.removeItem('lhs_s');
   document.getElementById('app').style.display='none';
   document.getElementById('ls').style.display='flex';
@@ -1859,7 +1932,9 @@ window.addEventListener('DOMContentLoaded',async()=>{
       try{
         const{data,error}=await DB.from('lhs_users')
           .select('*').ilike('email',d.e).eq('active',true).single();
-        if(!error&&data&&(data.password_hash===d.p||data.pw===d.p)){
+        // Validate session by user ID (new format) or password (legacy format — backward compat)
+        const _sessValid=d.id?data.id===d.id:(data.password_hash===d.p||data.pw===d.p);
+        if(!error&&data&&_sessValid){
           user={name:data.name,email:data.email,pw:data.password_hash||data.pw,
             role:data.role||'Van Tech',loc:data.home_location||'',
             division:data.division||'',region:data.region||'',
@@ -1953,6 +2028,7 @@ async function startApp(){
     <div class="page" id="p-hr-settings"></div>
     <div class="page" id="p-my-timeoff"></div>
     <div class="page" id="p-sales-marketing"></div>
+    <div class="page" id="p-admin-security"></div>
   `;
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
@@ -1965,7 +2041,7 @@ async function startApp(){
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
-    'reports','operations','admin'];
+    'reports','operations','admin','admin-security'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -2401,7 +2477,7 @@ function buildPage(id){
     'hr-settings':bHRSettings,
     'my-timeoff':bMyTimeOff,
     payroll:bPayroll,
-    reports:bReports, operations:bOperations, admin:bAdmin,
+    reports:bReports, operations:bOperations, admin:bAdmin, 'admin-security':aSecurityTraining,
   };
   return (pages[id]||bDash)();
 }
@@ -6898,6 +6974,7 @@ function bAdmin(){
     <button class="tab" onclick="aTab('wo-settings',this)">W/O Settings</button>
     <button class="tab" onclick="aTab('vendors',this)">Vendors</button>
     <button class="tab" onclick="aTab('integrations',this)">Integrations</button>
+    <button class="tab" onclick="aTab('security',this)">🔒 Security & Training</button>
   </div>
   <div id="atab">${aUsers()}</div>`;
 }
@@ -6907,7 +6984,7 @@ function aTab(tab,btn){
   btn.classList.add('active');
   const el=g('atab'); if(!el) return;
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
-    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt};
+    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt,security:aSecurityTraining};
   if(fns[tab]) el.innerHTML=fns[tab]();
   if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
 }
@@ -7041,10 +7118,11 @@ async function svAddUser(){
   const work_end=v('au-wend')||'17:00';
   const timezone=v('au-tz')||'America/Chicago';
   const work_days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].filter(d=>document.getElementById('au-wd-'+d)?.checked).join(',');
+  const pwHash=await sha256(pw);
   const newUser={
     name,
     email:email.toLowerCase().trim(),
-    password_hash:pw,
+    password_hash:pwHash,
     role,
     home_location:loc||'',
     division:division||'',
@@ -7081,6 +7159,7 @@ async function svAddUser(){
   S.set('lhs:users',users);
 
   cMod();
+  logAudit('user_added',{name,email:email.toLowerCase().trim(),role,added_by:CU?.email});
   tst(`${name} added successfully. They can now log in from any device.`,'success');
   g('atab').innerHTML=aUsers();
 }
@@ -7170,9 +7249,12 @@ async function svEditUser(i){
   const users=S.get('lhs:users')||[...USERS];
   const _incDisp=document.getElementById('eu-disp')?.value;
   const _tsNeeded=document.getElementById('eu-ts')?.value;
+  const _rawPw=v('eu2')||'';
+  // Only hash if the password field was changed (not already a SHA-256 hash)
+  const _newPwHash=/^[a-f0-9]{64}$/.test(_rawPw)?_rawPw:await sha256(_rawPw);
   const updated={
     ...users[i],
-    name:v('eu0'),email:v('eu1'),pw:v('eu2'),password_hash:v('eu2'),
+    name:v('eu0'),email:v('eu1'),pw:_newPwHash,password_hash:_newPwHash,
     role:v('eu3'),division:v('eu4'),region:v('eu5'),
     loc:v('eu6'),home_location:v('eu6'),manager:v('eu7'),
     include_dispatch:_incDisp===undefined?true:_incDisp!=='false',
@@ -7194,6 +7276,7 @@ async function svEditUser(i){
       timezone:updated.timezone,work_days:updated.work_days};
     await dbUpdate('lhs:users',updated.id,dbFields);
   }
+  logAudit('user_updated',{name:updated.name,email:updated.email,role:updated.role,updated_by:CU?.email});
   cMod();tst('User updated','success');g('atab').innerHTML=aUsers();
 }
 function delUser(i){
@@ -7203,6 +7286,357 @@ function delUser(i){
   users.splice(i,1);S.set('lhs:users',users);
   if(USERS[i]) USERS.splice(i,1);
   tst('User deleted','info');g('atab').innerHTML=aUsers();
+}
+
+// ─── SECURITY & TRAINING ───────────────────────────────────────────────────────
+let _secTab='dashboard';
+const SECURITY_COURSES=[
+  {id:'wizer',name:'Phishing & Social Engineering',provider:'Wizer Training',url:'https://app.wizer-training.com/',duration:'~30 min',cert:false,topics:'Phishing, Social Engineering, Passwords',desc:'Free forever — admin dashboard with per-employee completion tracking. Best all-around option.'},
+  {id:'teex',name:'Cybersecurity Awareness Certificate',provider:'TEEX / Texas A&M (FEMA)',url:'https://teex.org/program/cybersecurity-awareness/',duration:'~6 hours',cert:true,topics:'Full Awareness, Risk, Phishing, Malware',desc:'Government-backed certificate mailed on completion. 6 courses covering all core topics.'},
+  {id:'cisa',name:'Cybersecurity Awareness Training',provider:'CISA (US Gov)',url:'https://www.cisa.gov/cybersecurity-training-exercises',duration:'Self-paced',cert:true,topics:'Phishing, Ransomware, Best Practices',desc:'Free federal training open to the public. Covers phishing, ransomware, and general awareness.'},
+  {id:'computersec',name:'Security Awareness Training',provider:'Computer Security US',url:'https://computersecurity.us/',duration:'~2 hours',cert:true,topics:'General Awareness, Passwords, Safe Browsing',desc:'Free verifiable certificate of completion. Good for employees who need proof of training.'},
+  {id:'google',name:'Phishing Quiz',provider:'Google / Jigsaw',url:'https://phishingquiz.withgoogle.com/',duration:'~10 min',cert:false,topics:'Phishing Identification',desc:'Quick interactive test — can spot a phishing email? Great as a refresher or assessment.'},
+  {id:'knowbe4',name:'Free Security Awareness Videos',provider:'KnowBe4',url:'https://www.knowbe4.com/free-cybersecurity-training',duration:'~1 hour',cert:false,topics:'Phishing, Ransomware, Passwords, Social Engineering',desc:'Short awareness videos from the industry leader. No signup required to view.'},
+];
+
+function aSecurityTraining(){
+  return`<div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;border-bottom:2px solid var(--bdr);padding-bottom:12px" id="sec-sub-tabs">
+      ${['dashboard','training','settings','incident'].map((t,i)=>{
+        const labels=['🔒 Security Dashboard','📚 Training','⚙️ Settings','🚨 Incident Response'];
+        return`<button class="tab${_secTab===t?' active':''}" onclick="aSecTab('${t}',this)">${labels[i]}</button>`;
+      }).join('')}
+    </div>
+    <div id="sec-tab-content">${_secTabContent()}</div>
+  </div>`;
+}
+function aSecTab(t,btn){
+  _secTab=t;
+  document.querySelectorAll('#sec-sub-tabs .tab').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  const el=g('sec-tab-content'); if(el) el.innerHTML=_secTabContent();
+}
+function _secTabContent(){
+  if(_secTab==='dashboard') return aSecDashboard();
+  if(_secTab==='training') return aSecTrainingMgmt();
+  if(_secTab==='settings') return aSecSettings();
+  if(_secTab==='incident') return aSecIncident();
+  return '';
+}
+
+function aSecDashboard(){
+  const log=JSON.parse(localStorage.getItem('lms_audit_log')||'[]');
+  const now=Date.now();
+  // Find currently locked accounts
+  const users=S.get('lhs:users')||[];
+  const locked=users.filter(u=>{const d=_getLockout(u.email||'');return d.until&&now<d.until;});
+  const iconMap={login_success:'✅',login_failed:'🔴',login_locked:'🚫',logout:'👋',user_added:'👤',user_updated:'✏️',user_deleted:'🗑️',pw_changed:'🔑'};
+  const colorMap={login_success:'var(--green)',login_failed:'var(--red)',login_locked:'var(--red)',logout:'var(--muted)'};
+  const todayLogins=log.filter(e=>e.action==='login_success'&&e.ts>new Date(Date.now()-86400000).toISOString()).length;
+  const todayFails=log.filter(e=>e.action==='login_failed'&&e.ts>new Date(Date.now()-86400000).toISOString()).length;
+  const todayLocks=log.filter(e=>e.action==='login_locked'&&e.ts>new Date(Date.now()-86400000).toISOString()).length;
+  return`<div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      <div class="sg sc" style="border-left-color:var(--green)"><div class="sv">${todayLogins}</div><div class="sk">Logins Today</div></div>
+      <div class="sg sc" style="border-left-color:${todayFails>0?'var(--red)':'var(--green)'}"><div class="sv">${todayFails}</div><div class="sk">Failed Attempts Today</div></div>
+      <div class="sg sc" style="border-left-color:${todayLocks>0?'var(--red)':'var(--green)'}"><div class="sv">${todayLocks}</div><div class="sk">Lockouts Today</div></div>
+      <div class="sg sc" style="border-left-color:${locked.length>0?'var(--red)':'var(--green)'}"><div class="sv">${locked.length}</div><div class="sk">Currently Locked</div></div>
+      <div class="sg sc" style="border-left-color:var(--navy)"><div class="sv">${log.length}</div><div class="sk">Total Audit Events</div></div>
+    </div>
+    ${locked.length>0?`<div style="background:#fff3f3;border:1.5px solid var(--red);border-radius:8px;padding:14px 18px;margin-bottom:16px">
+      <div style="font-weight:700;color:var(--red);margin-bottom:8px">🚫 Currently Locked Accounts</div>
+      ${locked.map(u=>{const d=_getLockout(u.email);const mins=Math.ceil((d.until-now)/60000);
+        return`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #fdd">
+          <span style="font-weight:600">${u.name} <span style="color:var(--muted);font-weight:400">&lt;${u.email}&gt;</span></span>
+          <span style="color:var(--red);font-size:13px">${mins} min remaining <button class="btn btn-o" style="margin-left:12px;padding:2px 10px;font-size:12px" onclick="_unlockAccount('${u.email}')">Unlock</button></span>
+        </div>`;}).join('')}
+    </div>`:''}
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Recent Audit Log</div>
+    <div style="border:1.5px solid var(--bdr);border-radius:8px;overflow:hidden;max-height:480px;overflow-y:auto">
+      ${log.length===0?`<div style="padding:24px;text-align:center;color:var(--muted)">No audit events yet. Events are logged as users interact with the platform.</div>`
+      :log.slice(0,100).map(e=>{
+        const ts=new Date(e.ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+        const icon=iconMap[e.action]||'📋';
+        const color=colorMap[e.action]||'var(--text)';
+        const detStr=e.details?Object.entries(e.details).filter(([k,v])=>k!=='email').map(([k,v])=>`${k}: ${v}`).join(' · '):'';
+        return`<div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--bdr);font-size:13px">
+          <span style="font-size:16px">${icon}</span>
+          <span style="color:var(--muted);white-space:nowrap;min-width:130px">${ts}</span>
+          <span style="font-weight:600;color:${color};white-space:nowrap">${e.action.replace(/_/g,' ')}</span>
+          <span style="color:var(--muted)">${e.user||''}</span>
+          ${detStr?`<span style="color:var(--muted);font-size:12px;margin-left:auto">${detStr}</span>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-o" onclick="if(confirm('Clear audit log from this device?')){localStorage.removeItem('lms_audit_log');g('sec-tab-content').innerHTML=_secTabContent();}">Clear Local Log</button>
+    </div>
+  </div>`;
+}
+function _unlockAccount(email){
+  _setLockout(email,{count:0,until:0});
+  logAudit('account_unlocked',{email,unlocked_by:CU?.email});
+  tst(`${email} unlocked`,'success');
+  g('sec-tab-content').innerHTML=_secTabContent();
+}
+
+function aSecTrainingMgmt(){
+  const assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  const users=S.get('lhs:users')||[];
+  const byUser={};
+  assignments.forEach(a=>{if(!byUser[a.user_email])byUser[a.user_email]=[];byUser[a.user_email].push(a);});
+  const totalAssigned=assignments.length;
+  const totalCompleted=assignments.filter(a=>a.status==='completed').length;
+  const pct=totalAssigned?Math.round(totalCompleted/totalAssigned*100):0;
+  return`<div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      <div class="sg sc" style="border-left-color:var(--navy)"><div class="sv">${SECURITY_COURSES.length}</div><div class="sk">Available Courses</div></div>
+      <div class="sg sc" style="border-left-color:var(--amber)"><div class="sv">${totalAssigned}</div><div class="sk">Total Assignments</div></div>
+      <div class="sg sc" style="border-left-color:var(--green)"><div class="sv">${totalCompleted}</div><div class="sk">Completed</div></div>
+      <div class="sg sc" style="border-left-color:${pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)'}"><div class="sv">${pct}%</div><div class="sk">Completion Rate</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">📚 Course Library (Free)</div>
+        ${SECURITY_COURSES.map(c=>`<div style="border:1.5px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div>
+              <div style="font-weight:700;font-size:14px">${c.name}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">${c.provider} · ${c.duration} ${c.cert?'· <span style="color:var(--green);font-weight:600">Certificate</span>':''}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">${c.desc}</div>
+              <div style="margin-top:6px;font-size:11px;color:var(--teal)">${c.topics}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <a href="${c.url}" target="_blank" class="btn btn-n" style="font-size:12px;padding:4px 12px;text-decoration:none">Open Course ↗</a>
+            <button class="btn btn-o" style="font-size:12px;padding:4px 12px" onclick="oAssignCourse('${c.id}')">Assign to Employee</button>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">👥 Employee Assignments</div>
+        ${users.filter(u=>u.active!==false).map(u=>{
+          const uAssign=byUser[u.email]||[];
+          const uDone=uAssign.filter(a=>a.status==='completed').length;
+          return`<div style="border:1.5px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-weight:600">${u.name} <span style="font-size:12px;color:var(--muted);font-weight:400">${u.role}</span></div>
+              <span style="font-size:12px;color:var(--muted)">${uDone}/${uAssign.length} done</span>
+            </div>
+            ${uAssign.length===0?`<div style="font-size:12px;color:var(--muted);font-style:italic">No training assigned</div>`
+            :uAssign.map(a=>`<div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px solid var(--bdr)">
+                <span>${a.course_name}</span>
+                <span style="display:flex;align-items:center;gap:6px">
+                  ${a.status==='completed'
+                    ?`<span style="color:var(--green);font-weight:600">✅ Done</span>`
+                    :`<button class="btn btn-n" style="font-size:11px;padding:2px 8px" onclick="_markTrainingDone('${a.id}')">Mark Complete</button>`}
+                  <button class="btn btn-o" style="font-size:11px;padding:2px 6px" onclick="_removeAssignment('${a.id}')">✕</button>
+                </span>
+              </div>`).join('')}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function oAssignCourse(courseId){
+  const users=S.get('lhs:users')||[];
+  const c=SECURITY_COURSES.find(x=>x.id===courseId);
+  if(!c) return;
+  oMod(`Assign: ${c.name}`,`<div>
+    <div style="background:var(--surf);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--muted)">${c.provider} · ${c.duration}</div>
+    <label style="font-weight:600;display:block;margin-bottom:6px">Assign to:</label>
+    <select id="assign-user" style="width:100%;margin-bottom:10px">
+      <option value="">— Select Employee —</option>
+      <option value="ALL">All Active Employees</option>
+      ${users.filter(u=>u.active!==false).map(u=>`<option value="${u.email}">${u.name} (${u.role})</option>`).join('')}
+    </select>
+    <label style="font-weight:600;display:block;margin-bottom:6px">Due Date (optional):</label>
+    <input type="date" id="assign-due" style="width:100%;margin-bottom:16px">
+    <div class="br2">
+      <button class="btn btn-n" onclick="svAssignCourse('${courseId}')">Assign</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>
+  </div>`);
+}
+function svAssignCourse(courseId){
+  const userEmail=v('assign-user'); const dueDate=v('assign-due');
+  if(!userEmail){tst('Select an employee','error');return;}
+  const c=SECURITY_COURSES.find(x=>x.id===courseId);
+  const allUsers=S.get('lhs:users')||[];
+  const targets=userEmail==='ALL'?allUsers.filter(u=>u.active!==false):[allUsers.find(u=>u.email===userEmail)].filter(Boolean);
+  const existing=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  let added=0;
+  targets.forEach(u=>{
+    if(existing.find(a=>a.user_email===u.email&&a.course_id===courseId)){return;} // skip if already assigned
+    existing.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      user_email:u.email,user_name:u.name,course_id:courseId,course_name:c.name,
+      provider:c.provider,url:c.url,assigned_by:CU?.email,
+      assigned_date:new Date().toISOString().slice(0,10),due_date:dueDate||'',status:'assigned'});
+    added++;
+  });
+  localStorage.setItem('lms_training',JSON.stringify(existing));
+  logAudit('training_assigned',{course:c.name,count:added});
+  cMod(); tst(`Assigned to ${added} employee${added===1?'':'s'}`,'success');
+  g('sec-tab-content').innerHTML=_secTabContent();
+}
+function _markTrainingDone(id){
+  const assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  const a=assignments.find(x=>x.id===id); if(!a) return;
+  a.status='completed'; a.completed_date=new Date().toISOString().slice(0,10);
+  localStorage.setItem('lms_training',JSON.stringify(assignments));
+  logAudit('training_completed',{course:a.course_name,user:a.user_name});
+  tst(`${a.user_name} marked complete`,'success');
+  g('sec-tab-content').innerHTML=_secTabContent();
+}
+function _removeAssignment(id){
+  let assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  assignments=assignments.filter(x=>x.id!==id);
+  localStorage.setItem('lms_training',JSON.stringify(assignments));
+  g('sec-tab-content').innerHTML=_secTabContent();
+}
+
+function aSecSettings(){
+  const ld5=_getLockout('__test5__'); // just for display
+  return`<div style="max-width:700px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:4px">🔒 Security Configuration</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Current security posture and settings for the platform</div>
+
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Password Policy</div>
+    <div style="border:1.5px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:20px">
+      ${[['Hashing Algorithm','SHA-256 (Web Crypto API)','✅ Active'],
+         ['Auto-Migration','Plaintext → SHA-256 on next login','✅ Active'],
+         ['Minimum Length','No minimum enforced (recommend 10+)','⚠️ Advisory'],
+         ['Complexity','No complexity rules enforced','⚠️ Advisory'],
+         ['Expiry','Passwords do not expire','⚠️ Advisory'],
+      ].map(([k,v,s])=>`<div style="display:grid;grid-template-columns:200px 1fr 120px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--bdr);font-size:13px;align-items:center">
+        <span style="font-weight:600">${k}</span><span style="color:var(--muted)">${v}</span>
+        <span style="font-weight:600;color:${s.startsWith('✅')?'var(--green)':s.startsWith('⚠️')?'var(--amber)':'var(--red)'}">${s}</span>
+      </div>`).join('')}
+    </div>
+
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Login Lockout</div>
+    <div style="border:1.5px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:20px">
+      ${[['Threshold','5 failed attempts','✅ Active'],
+         ['Lockout Duration','15 minutes','✅ Active'],
+         ['Scope','Per email address (browser-local)','✅ Active'],
+         ['Audit Logging','All attempts logged locally','✅ Active'],
+         ['Admin Override','Admin can unlock from Security Dashboard','✅ Active'],
+      ].map(([k,v,s])=>`<div style="display:grid;grid-template-columns:200px 1fr 120px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--bdr);font-size:13px;align-items:center">
+        <span style="font-weight:600">${k}</span><span style="color:var(--muted)">${v}</span>
+        <span style="font-weight:600;color:${s.startsWith('✅')?'var(--green)':'var(--amber)'}">${s}</span>
+      </div>`).join('')}
+    </div>
+
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Session Security</div>
+    <div style="border:1.5px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:20px">
+      ${[['Session Storage','Email + User ID only (no password)','✅ Secured'],
+         ['Session Lifetime','Browser session (clears on tab close)','✅ Active'],
+         ['Session Validation','User ID matched against Supabase on restore','✅ Active'],
+         ['Password in Memory','Cleared after login process','✅ Active'],
+      ].map(([k,v,s])=>`<div style="display:grid;grid-template-columns:200px 1fr 120px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--bdr);font-size:13px;align-items:center">
+        <span style="font-weight:600">${k}</span><span style="color:var(--muted)">${v}</span>
+        <span style="font-weight:600;color:var(--green)">${s}</span>
+      </div>`).join('')}
+    </div>
+
+    <div style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Recommendations (Next Steps)</div>
+    <div style="border:1.5px solid var(--amber);border-radius:8px;overflow:hidden">
+      ${[['MFA / Two-Factor Auth','Not yet implemented','🔴 Not Active','High priority — prevents 99% of credential theft attacks'],
+         ['Cloudflare WAF','Not configured','🔴 Not Active','Free — point DNS to Cloudflare for DDoS & bot protection'],
+         ['Phishing Training','Use Training tab to assign','⚠️ Pending','Assign TEEX or Wizer courses to all employees'],
+         ['Password Minimum Length','Not enforced in UI','⚠️ Advisory','Recommend requiring 10+ characters when setting passwords'],
+      ].map(([k,s,badge,note])=>`<div style="padding:10px 16px;border-bottom:1px solid var(--bdr);font-size:13px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+          <span style="font-weight:600">${k}</span>
+          <span style="font-weight:600;color:${badge.startsWith('🔴')?'var(--red)':'var(--amber)'}">${badge}</span>
+        </div>
+        <div style="color:var(--muted)">${note}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function aSecIncident(){
+  return`<div style="max-width:760px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-weight:700;font-size:15px">🚨 Incident Response Plan</div>
+      <button class="btn btn-o" onclick="window.print()">🖨️ Print / Save PDF</button>
+    </div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:20px">What to do if a security incident occurs. Review with your team and keep this accessible.</div>
+
+    ${[
+      ['1','Suspected Phishing Email Received','🎣',
+        ['Do NOT click any links or open attachments.',
+         'Forward the email to your IT contact or manager.',
+         'Report it to Google (if Gmail): Report phishing in the three-dot menu.',
+         'If you clicked a link: immediately change your password for this platform and any others where you use the same password.',
+         'Notify your manager and document what you clicked and when.'],
+        'Low — catch early'
+      ],
+      ['2','Credentials May Be Compromised','🔑',
+        ['Change your password immediately in Admin → Users → Edit.',
+         'Log out all devices: clear sessionStorage in your browser (Settings → Privacy → Clear browsing data).',
+         'Review the Security Dashboard audit log for suspicious login times or locations.',
+         'Lock the account temporarily if needed (Admin → Security → Audit Dashboard → Lock).',
+         'Check whether the same password was used on any other service — change those too.',
+         'Notify George Booth (owner) immediately.'],
+        'High — act within 1 hour'
+      ],
+      ['3','Unauthorized Access Detected','🚪',
+        ['Lock the compromised account immediately (Security Dashboard → Lock).',
+         'Screenshot the audit log showing unauthorized access timestamps.',
+         'Do NOT delete any logs — preserve all evidence.',
+         'Change all admin and God View passwords immediately.',
+         'Contact Supabase support at supabase.com/support to report unauthorized data access.',
+         'If customer data was accessed: consult with legal counsel. Florida law requires breach notification within 30 days (Fla. Stat. § 501.171).',
+         'Document everything: who noticed, when, what was accessed, what actions were taken.'],
+        'Critical — act within 30 minutes'
+      ],
+      ['4','Ransomware or Malware on a Device','💀',
+        ['Disconnect the affected device from WiFi and all networks IMMEDIATELY.',
+         'Do NOT pay any ransom.',
+         'Do NOT try to remove malware yourself — power off the device.',
+         'Call a professional IT recovery service.',
+         'Change all passwords for this platform and connected services from a DIFFERENT, clean device.',
+         'Notify your cyber insurance provider if you have one.',
+         'File a report with the FBI Internet Crime Complaint Center: ic3.gov',
+         'Contact local law enforcement if business operations are disrupted.'],
+        'Critical — act immediately'
+      ],
+      ['5','Employee Terminated or Resigned','👤',
+        ['Immediately deactivate their user account: Admin → Users → Edit → set Active = false.',
+         'Change any shared passwords they may have known.',
+         'Review the audit log for the past 30 days for their email.',
+         'Revoke access to any other business systems they had access to (email, payroll software, etc.).',
+         'Recover any company devices within 24 hours.'],
+        'Standard — complete within 24 hours'
+      ],
+    ].map(([num,title,icon,steps,urgency])=>`<div style="border:1.5px solid var(--bdr);border-radius:8px;margin-bottom:14px;overflow:hidden">
+      <div style="background:var(--navy);color:white;padding:10px 16px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">${icon}</span>
+        <div>
+          <div style="font-weight:700">Scenario ${num}: ${title}</div>
+          <div style="font-size:12px;opacity:.75">Urgency: ${urgency}</div>
+        </div>
+      </div>
+      <div style="padding:14px 16px">
+        <ol style="margin:0;padding-left:18px">
+          ${steps.map(s=>`<li style="margin-bottom:6px;font-size:13px">${s}</li>`).join('')}
+        </ol>
+      </div>
+    </div>`).join('')}
+
+    <div style="background:#f0f8ff;border:1.5px solid var(--teal);border-radius:8px;padding:14px 16px;margin-top:8px">
+      <div style="font-weight:700;margin-bottom:6px">📞 Key Contacts</div>
+      <div style="font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><b>Supabase Support:</b> supabase.com/support</div>
+        <div><b>FBI Cybercrime:</b> ic3.gov</div>
+        <div><b>CISA Hotline:</b> 888-282-0870</div>
+        <div><b>FL Data Breach Law:</b> Fla. Stat. § 501.171</div>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ─── TERRITORIES ──────────────────────────────────────────────────────────────
