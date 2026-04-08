@@ -484,15 +484,10 @@ const ROLE_ALIAS={'Van Tech':'Technician','Sales Rep':'Sales','Location Manager'
 // Permission module definitions — key maps to nav id, perms = granular sub-permissions
 const PERM_MODS=[
   {key:'dashboard',label:'Dashboard',icon:'📊',perms:['view']},
-  {key:'chatter',label:'Chatter',icon:'💬',perms:['view','post','delete_own','delete_any']},
-  {key:'mytasks',label:'My Tasks',icon:'✅',perms:['view']},
-  {key:'tasks',label:'All Tasks',icon:'📋',perms:['view','create','edit','delete','assign']},
   {key:'dispatch',label:'Dispatch',icon:'🗓️',perms:['view','edit_schedule','manage_routes','view_all_divs']},
   {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','view_cost']},
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
   {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete']},
-  {key:'customers',label:'Customers',icon:'👥',perms:['view','create','edit','delete','export']},
-  {key:'properties',label:'Properties',icon:'🏠',perms:['view','create','edit','delete']},
   {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','export']},
   {key:'hr',label:'HR',icon:'👤',perms:['view','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all']},
   {key:'payroll',label:'Payroll',icon:'💵',perms:['view','process','export','view_all']},
@@ -1438,24 +1433,26 @@ function getClassifications(division, jobType, subtype){
 }
 
 // ── DEFAULT PERMISSIONS ───────────────────────────────────────────────────────
-// tabs: dashboard, dispatch, workorders, closeout, inventory, payroll, reports, admin
+// Matrix columns (13): dashboard, dispatch, workorders, closeout, accounts,
+//   inventory, hr, payroll, accounting, reports, operations, admin, sales
+// Note: chatter, mytasks, tasks, customers, properties = universal access (not in matrix)
 const DEFAULT_PERMS={
   // ── New roles ────────────────────────────────────────────────────────────────
-  'Creator':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'God View':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Director':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Admin':             {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Regional Director': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Regional Manager':  {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
-  'Operations Manager':{dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
-  'Territory Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
-  'Dispatcher':        {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Technician':        {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Sales':             {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:0,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  'Creator':           {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'God View':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Director':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Admin':             {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Regional Director': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Regional Manager':  {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
+  'Operations Manager':{dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
+  'Territory Manager': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
+  'Dispatcher':        {dashboard:1,dispatch:1,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Technician':        {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Sales':             {dashboard:1,dispatch:0,workorders:0,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
   // ── Legacy aliases — keeps existing DB users working during role migration ──
-  'Van Tech':          {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Sales Rep':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
-  'Location Manager':  {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
+  'Van Tech':          {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Sales Rep':         {dashboard:1,dispatch:0,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  'Location Manager':  {dashboard:1,dispatch:0,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
 };
 
 let WH=['Green Bay WI','Brookfield WI','Colorado'];
