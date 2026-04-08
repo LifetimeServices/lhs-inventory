@@ -488,14 +488,18 @@ const PERM_MODS=[
   {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','unassign_techs','dispatch_techs','cancel_dispatch','arrive_techs','view_cost','view_pricing','adjust_materials','edit_tech_audit','edit_creation_audit','wo_assigned_only','wo_window_prior','wo_window_ahead']},
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
   {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete','import','download']},
-  {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export']},
-  {key:'hr',label:'HR',icon:'👤',perms:['view','edit','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all','view_managed_only']},
+  {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export'],
+    tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_inv_reports','tab_testers','tab_tools']},
+  {key:'hr',label:'HR',icon:'👤',perms:['view','edit','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all','view_managed_only'],
+    tabs:['tab_payroll','tab_employees','tab_hr_state','tab_timeoff','tab_hr_settings']},
   {key:'payroll',label:'Payroll',icon:'💵',perms:['view','edit','process','export','view_all','payroll_managed_only']},
-  {key:'accounting',label:'Accounting',icon:'🧾',perms:['view_invoices','create_invoices','view_ar_ap','view_bank','record_txns','export']},
+  {key:'accounting',label:'Accounting',icon:'🧾',perms:['view_invoices','create_invoices','view_ar_ap','view_bank','record_txns','export'],
+    tabs:['tab_acct_dash','tab_acct_division','tab_invoices','tab_ar','tab_ap','tab_coa','tab_journal','tab_bank','tab_receipts','tab_acct_settings']},
   {key:'reports',label:'Reports',icon:'📈',perms:['view','export','view_financial']},
   {key:'operations',label:'Operations',icon:'⚙️',perms:['view','create','edit','manage_assignments']},
   {key:'admin',label:'Admin',icon:'🔐',perms:['view','manage_users','change_permissions','manage_integrations','view_audit']},
-  {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook']},
+  {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook'],
+    tabs:['tab_crm_dash','tab_leads','tab_sales_accounts','tab_opps','tab_estimates','tab_pricebook','tab_followups','tab_activities','tab_email_sync','tab_marketing','tab_discounts','tab_permits','tab_sales_settings']},
 ];
 
 const PERM_LABELS={
@@ -518,6 +522,24 @@ const PERM_LABELS={
   create_opportunities:'Can Create / Edit Opportunities',view_marketing:'Can View Marketing',
   manage_marketing:'Can Manage Campaigns & Events',view_pricebook:'Can View Price Book',
   edit_pricebook:'Can Edit Prices & Discounts',manage_assignments:'Can Manage Assignments',
+  // ── Inventory sub-tabs ────────────────────────────────────────────────────
+  tab_inv_dash:'Overview',tab_inv_master:'Master Inventory',tab_po:'Purchase Orders',
+  tab_receive:'Receive',tab_transfer:'Transfer',tab_vans:'Van Stock',
+  tab_locations:'Locations',tab_locstock:'Location Stock',tab_inv_reports:'Reports',
+  tab_testers:'Testers',tab_tools:'Tool Management',
+  // ── HR sub-tabs ───────────────────────────────────────────────────────────
+  tab_payroll:'Payroll',tab_employees:'Employee Info',tab_hr_state:'State Settings',
+  tab_timeoff:'Time Off Requests',tab_hr_settings:'HR Settings',
+  // ── Accounting sub-tabs ───────────────────────────────────────────────────
+  tab_acct_dash:'Dashboard',tab_acct_division:'P&L',tab_invoices:'Invoices',
+  tab_ar:'AR Aging',tab_ap:'Payables',tab_coa:'Chart of Accounts',
+  tab_journal:'Journal',tab_bank:'Bank',tab_receipts:'Receipts',tab_acct_settings:'Settings',
+  // ── Sales sub-tabs ────────────────────────────────────────────────────────
+  tab_crm_dash:'CRM Dashboard',tab_leads:'Leads',tab_sales_accounts:'Accounts',
+  tab_opps:'Opportunities',tab_estimates:'Estimates',tab_pricebook:'Pricebook',
+  tab_followups:'Follow Ups',tab_activities:'Activities',tab_email_sync:'Email Sync',
+  tab_marketing:'Marketing',tab_discounts:'Discounts & Promotions',
+  tab_permits:'Permits & Licensing',tab_sales_settings:'Sales Settings',
 };
 
 // ── REGIONS ──────────────────────────────────────────────────────────────────
@@ -5394,6 +5416,21 @@ function oPermModal(role,modKey){
         </label>`;
       }).join('')}
     </div>
+    ${mdef.tabs&&mdef.tabs.length?`
+    <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:18px 0 10px;padding-top:14px;border-top:1.5px solid var(--bdr)">
+      Sub-Tab Access
+      <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:6px">Control which tabs are visible for this role</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${mdef.tabs.map(t=>{
+        const on=gran[t]!==undefined?gran[t]:acc;
+        return`<label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1.5px solid #e0e7ff;border-radius:6px;cursor:pointer;background:#f8f9ff;gap:8px;opacity:${acc||isCreatorRole?'1':'.4'}">
+          <span style="font-size:12px;font-weight:500;color:var(--navy)">📑 ${PERM_LABELS[t]||t}</span>
+          <input type="checkbox" id="pm-${t}" class="pm-sub" ${on||isCreatorRole?'checked':''} ${(!acc&&!isCreatorRole)||isCreatorRole?'disabled':''}
+            style="width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex-shrink:0">
+        </label>`;
+      }).join('')}
+    </div>`:''}
     ${!isCreatorRole?`<div class="br2" style="margin-top:18px">
       <button class="btn btn-n" onclick="svRoleModPerms('${role}','${modKey}')">💾 Save Changes</button>
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -5406,6 +5443,7 @@ async function svRoleModPerms(role,modKey){
   const enabled=window._pmAccess?1:0;
   const granular={_enabled:enabled};
   mdef.perms.forEach(p=>{granular[p]=document.getElementById('pm-'+p)?.checked?1:0;});
+  if(mdef.tabs) mdef.tabs.forEach(t=>{granular[t]=document.getElementById('pm-'+t)?.checked?1:0;});
   const stored=S.get('lhs:role_permissions')||[];
   let rec=stored.find(r=>r.role===role);
   if(!rec){rec={role,perms:{}};stored.push(rec);}
