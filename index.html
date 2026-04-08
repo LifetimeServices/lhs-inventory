@@ -484,7 +484,7 @@ const ROLE_ALIAS={'Van Tech':'Technician','Sales Rep':'Sales','Location Manager'
 // Permission module definitions — key maps to nav id, perms = granular sub-permissions
 const PERM_MODS=[
   {key:'dashboard',label:'Dashboard',icon:'📊',perms:['view']},
-  {key:'dispatch',label:'Dispatch',icon:'🗓️',perms:['view','edit_schedule','manage_routes','view_all_divs']},
+  {key:'dispatch',label:'Dispatch',icon:'🗓️',perms:['view','edit_schedule','manage_routes','view_all_divs','clockin_tech','view_company_cal','edit_company_cal']},
   {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','view_cost','view_pricing']},
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
   {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete']},
@@ -502,7 +502,7 @@ const PERM_LABELS={
   view:'Can View',post:'Can Post Messages',delete_own:'Can Delete Own Messages',delete_any:'Can Delete Any Message',
   create:'Can Create',edit:'Can Edit',delete:'Can Delete',assign:'Can Assign to Others',
   edit_schedule:'Can Edit Schedule',manage_routes:'Can Manage Routes',view_all_divs:'Can View All Divisions',
-  assign_techs:'Can Assign Technicians',view_cost:'Can View Cost',view_pricing:'Can View Pricing',
+  assign_techs:'Can Assign Technicians',view_cost:'Can View Cost',view_pricing:'Can View Pricing',clockin_tech:'Can Clock In Technician',view_company_cal:'Can View Company Calendar',edit_company_cal:'Can Edit Company Calendar',
   submit:'Can Submit Closeout',approve:'Can Approve Closeout',override:'Can Override Closeout',
   export:'Can Export Data',transfer:'Can Transfer Inventory',create_po:'Can Create Purchase Orders',
   approve_po:'Can Approve Purchase Orders',
