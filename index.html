@@ -15061,7 +15061,7 @@ function renderDispBoard(){
   });
 
   // Add appointments to relevant divisions (apts only — tech rows are owned by home division only)
-  allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)).forEach(apt=>{
+  allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)&&a.status!=='Cancelled').forEach(apt=>{
     const wo=allWOs.find(w=>w.id===apt.wo_id);
     if(!wo) return;
     // Normalize to canonical DIVS name to prevent duplicate rows from casing/whitespace differences
@@ -15173,8 +15173,8 @@ function renderDispBoard(){
       const techApts=[];
       // Show ALL appointments for this tech regardless of which division the WO belongs to
       // Tech rows are home-division pinned, but cross-div WOs show in their row too
-      // filteredWOIds already excludes Cancelled WOs so they never appear on the board
-      allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)).forEach(apt=>{
+      // filteredWOIds already excludes Cancelled WOs — also exclude Cancelled appointments
+      allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)&&a.status!=='Cancelled').forEach(apt=>{
         const wo=allWOs.find(w=>w.id===apt.wo_id);
         if(!wo) return;
         // Match by name OR email
