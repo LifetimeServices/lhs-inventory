@@ -476,8 +476,54 @@ const WO_STATUSES=['Scheduled','In Progress','On Hold','Completed','Cancelled','
 const APT_STATUSES=['Scheduled','Dispatched','En Route','On Site','Completed','Cancelled'];
 
 // ── ROLES ────────────────────────────────────────────────────────────────────
-const ROLES=['God View','Admin','Director','Regional Manager','Operations Manager',
-  'Dispatcher','Location Manager','Van Tech','Sales Rep'];
+const ROLES=['Creator','God View','Director','Admin','Regional Director','Regional Manager','Operations Manager','Territory Manager','Dispatcher','Technician','Sales'];
+
+// Legacy role aliases — maps old DB role names to new role names for permission lookups
+const ROLE_ALIAS={'Van Tech':'Technician','Sales Rep':'Sales','Location Manager':'Territory Manager'};
+
+// Permission module definitions — key maps to nav id, perms = granular sub-permissions
+const PERM_MODS=[
+  {key:'dashboard',label:'Dashboard',icon:'📊',perms:['view']},
+  {key:'chatter',label:'Chatter',icon:'💬',perms:['view','post','delete_own','delete_any']},
+  {key:'mytasks',label:'My Tasks',icon:'✅',perms:['view']},
+  {key:'tasks',label:'All Tasks',icon:'📋',perms:['view','create','edit','delete','assign']},
+  {key:'dispatch',label:'Dispatch',icon:'🗓️',perms:['view','edit_schedule','manage_routes','view_all_divs']},
+  {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','view_cost']},
+  {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
+  {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete']},
+  {key:'customers',label:'Customers',icon:'👥',perms:['view','create','edit','delete','export']},
+  {key:'properties',label:'Properties',icon:'🏠',perms:['view','create','edit','delete']},
+  {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','export']},
+  {key:'hr',label:'HR',icon:'👤',perms:['view','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all']},
+  {key:'payroll',label:'Payroll',icon:'💵',perms:['view','process','export','view_all']},
+  {key:'accounting',label:'Accounting',icon:'🧾',perms:['view_invoices','create_invoices','view_ar_ap','view_bank','record_txns','export']},
+  {key:'reports',label:'Reports',icon:'📈',perms:['view','export','view_financial']},
+  {key:'operations',label:'Operations',icon:'⚙️',perms:['view','create','edit','manage_assignments']},
+  {key:'admin',label:'Admin',icon:'🔐',perms:['view','manage_users','change_permissions','manage_integrations','view_audit']},
+  {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook']},
+];
+
+const PERM_LABELS={
+  view:'Can View',post:'Can Post Messages',delete_own:'Can Delete Own Messages',delete_any:'Can Delete Any Message',
+  create:'Can Create',edit:'Can Edit',delete:'Can Delete',assign:'Can Assign to Others',
+  edit_schedule:'Can Edit Schedule',manage_routes:'Can Manage Routes',view_all_divs:'Can View All Divisions',
+  assign_techs:'Can Assign Technicians',view_cost:'Can View Cost & Pricing',
+  submit:'Can Submit Closeout',approve:'Can Approve Closeout',override:'Can Override Closeout',
+  export:'Can Export Data',transfer:'Can Transfer Inventory',create_po:'Can Create Purchase Orders',
+  approve_po:'Can Approve Purchase Orders',
+  edit_employees:'Can Edit Employee Records',view_compensation:'Can View Compensation',
+  edit_compensation:'Can Edit Compensation',manage_timeoff:'Can Approve Time Off Requests',
+  view_all:'Can View All Locations & Regions',process:'Can Process',view_financial:'Can View Financial Reports',
+  view_invoices:'Can View Invoices',create_invoices:'Can Create / Edit Invoices',
+  view_ar_ap:'Can View AR / AP',view_bank:'Can View Bank Accounts',record_txns:'Can Record Transactions',
+  manage_users:'Can Manage Users',change_permissions:'Can Change Role Permissions',
+  manage_integrations:'Can Manage Integrations',view_audit:'Can View Audit Log',
+  view_leads:'Can View Leads',create_leads:'Can Create Leads',edit_leads:'Can Edit Leads',
+  delete_leads:'Can Delete Leads',view_opportunities:'Can View Opportunities',
+  create_opportunities:'Can Create / Edit Opportunities',view_marketing:'Can View Marketing',
+  manage_marketing:'Can Manage Campaigns & Events',view_pricebook:'Can View Price Book',
+  edit_pricebook:'Can Edit Prices & Discounts',manage_assignments:'Can Manage Assignments',
+};
 
 // ── REGIONS ──────────────────────────────────────────────────────────────────
 let REGIONS={
@@ -1394,15 +1440,22 @@ function getClassifications(division, jobType, subtype){
 // ── DEFAULT PERMISSIONS ───────────────────────────────────────────────────────
 // tabs: dashboard, dispatch, workorders, closeout, inventory, payroll, reports, admin
 const DEFAULT_PERMS={
-  'God View':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Admin':              {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Director':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Regional Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Operations Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
-  'Dispatcher':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Location Manager':   {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
-  'Van Tech':           {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Sales Rep':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  // ── New roles ────────────────────────────────────────────────────────────────
+  'Creator':           {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'God View':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Director':          {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Admin':             {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
+  'Regional Director': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
+  'Regional Manager':  {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
+  'Operations Manager':{dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
+  'Territory Manager': {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
+  'Dispatcher':        {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:1,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Technician':        {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Sales':             {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:0,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  // ── Legacy aliases — keeps existing DB users working during role migration ──
+  'Van Tech':          {dashboard:0,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:0,customers:0,properties:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
+  'Sales Rep':         {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:0,accounts:1,customers:1,properties:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  'Location Manager':  {dashboard:1,chatter:1,mytasks:1,tasks:1,dispatch:0,workorders:1,closeout:1,accounts:1,customers:1,properties:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
 };
 
 let WH=['Green Bay WI','Brookfield WI','Colorado'];
@@ -1502,6 +1555,7 @@ const TBL={
   'lhs:mk_events':'lhs_mk_events',
   'lhs:mk_drip':'lhs_mk_drip',
   'lhs:mk_settings':'lhs_mk_settings',
+  'lhs:role_permissions':'lhs_role_permissions',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -1553,7 +1607,7 @@ async function warmCache(){
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
-        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments'];
+        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
@@ -1811,6 +1865,8 @@ function _recordAttempt(email,success){
   _setLockout(email,d);
 }
 function logAudit(action,details){
+  // Creator actions are never logged — stealth mode
+  if(CU?.role==='Creator') return;
   try{
     const log=JSON.parse(localStorage.getItem('lms_audit_log')||'[]');
     log.unshift({ts:new Date().toISOString(),user:CU?.email||'system',name:CU?.name||'System',action,details:details||{}});
@@ -1957,7 +2013,10 @@ async function startApp(){
   document.getElementById('ls').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('un').textContent=CU.name.split(' ')[0];
-  document.getElementById('ur').textContent=CU.role==='God View'?'ADMIN':CU.role.toUpperCase().replace(' ','_');
+  // Creator shows as ADMIN to all — including themselves (stealth). Subtle title tooltip reveals true role.
+  const _dispRole=CU.role==='Creator'||CU.role==='God View'?'ADMIN':CU.role.toUpperCase().replace(/ /g,'_');
+  const _urEl=document.getElementById('ur');
+  if(_urEl){_urEl.textContent=_dispRole;if(CU.role==='Creator')_urEl.title='👑 Creator Mode Active';}
   // Show loading spinner while Supabase warms up
   document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading LHS data...</div></div>';
   await warmCache();
@@ -2325,11 +2384,61 @@ function renderInvNav(){
 }
 
 function getUserPerms(){
-  const role=CU?.role||'Van Tech';
+  // Creator bypasses everything — full access always
+  if(CU?.role==='Creator') return Object.fromEntries(Object.keys(DEFAULT_PERMS['God View']).map(k=>[k,1]));
+  const role=CU?.role||'Technician';
   const stored=S.get('lhs:users')||[];
   const userRec=stored.find(u=>u.email===CU?.email);
-  if(userRec?.custom_perms) return {...DEFAULT_PERMS[role]||{},...userRec.custom_perms};
-  return DEFAULT_PERMS[role]||DEFAULT_PERMS['Van Tech'];
+  // Check for Supabase-stored role permission overrides
+  const rolePermsArr=S.get('lhs:role_permissions')||[];
+  const roleRec=rolePermsArr.find(r=>r.role===role);
+  let basePerms;
+  if(roleRec?.perms){
+    // Extract module-level access from stored granular perms
+    const stored={};
+    Object.entries(roleRec.perms).forEach(([k,v])=>{stored[k]=typeof v==='object'?v._enabled||0:v;});
+    basePerms=stored;
+  } else {
+    basePerms=DEFAULT_PERMS[role]||DEFAULT_PERMS['Technician'];
+  }
+  if(userRec?.custom_perms) return {...basePerms,...userRec.custom_perms};
+  return basePerms;
+}
+
+// Check if current user has a specific role (Creator always passes)
+function hasRole(...roles){
+  if(CU?.role==='Creator') return true;
+  const r=CU?.role||'';
+  return roles.includes(r)||roles.includes(ROLE_ALIAS[r]);
+}
+
+// Check granular sub-permission for a module (Creator always passes)
+function hasPerm(mod,subperm){
+  if(CU?.role==='Creator') return true;
+  const role=CU?.role||'Technician';
+  const rolePermsArr=S.get('lhs:role_permissions')||[];
+  const rec=rolePermsArr.find(r=>r.role===role);
+  if(rec?.perms?.[mod]?.[subperm]!==undefined) return !!rec.perms[mod][subperm];
+  // Fall back to module-level access
+  return !!getUserPerms()[mod];
+}
+
+// Helper: get stored granular perms for a role+module
+function _getRoleModulePerms(role,mod){
+  if(role==='Creator') return null;
+  const stored=S.get('lhs:role_permissions')||[];
+  const rec=stored.find(r=>r.role===role);
+  return rec?.perms?.[mod]||null;
+}
+
+// Helper: get module-level access (0/1) for any role
+function _getModuleAccess(role,mod){
+  if(role==='Creator') return 1;
+  const storedPerms=_getRoleModulePerms(role,mod);
+  if(storedPerms!==null){
+    return typeof storedPerms==='object'?storedPerms._enabled||0:storedPerms;
+  }
+  return (DEFAULT_PERMS[role]||{})[mod]||0;
 }
 
 // Set dispatch wrap height = viewport height minus the top nav bar height
@@ -5174,22 +5283,142 @@ async function loadRegionMap(){
 
 // ─── ADMIN: PERMISSIONS ───────────────────────────────────────────────────────
 function aPerms(){
-  const tabs=['dashboard','dispatch','workorders','closeout','inventory','payroll','reports','admin'];
-  return`<div class="sh"><h3>Default Role Permissions</h3>
-    <button class="btn btn-o sm" onclick="tst('Custom per-user permissions — set in the Users tab when editing a user','info')">Per-User Override</button>
-  </div>
-  <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Role</th>${tabs.map(t=>`<th style="text-transform:capitalize">${t}</th>`).join('')}</tr></thead>
-  <tbody>${ROLES.map(role=>`<tr>
-    <td style="font-weight:600">${role}</td>
-    ${tabs.map(tab=>{
-      const hasPerm=(DEFAULT_PERMS[role]||{})[tab];
-      return`<td style="text-align:center">
-        <span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:${hasPerm?'var(--green)':'var(--bdr)'};color:${hasPerm?'white':'var(--muted)'};font-size:11px;line-height:20px;text-align:center">${hasPerm?'&#10003;':''}</span>
-      </td>`;}).join('')}
-  </tr>`).join('')}
-  </tbody></table></div></div>
-  <div class="al al-b" style="margin-top:16px">&#8505; These are default permissions by role. You can override permissions for individual users in the Users tab.</div>`;
+  const isCreator=CU?.role==='Creator';
+  const visibleRoles=ROLES.filter(r=>r!=='Creator'||(r==='Creator'&&isCreator));
+  return`<div>
+    <div class="sh" style="margin-bottom:12px">
+      <div>
+        <div style="font-size:15px;font-weight:700">Role Permissions Matrix</div>
+        <div style="font-size:13px;color:var(--muted)">Click any dot to configure granular permissions for that role + module</div>
+      </div>
+      <button class="btn btn-o" onclick="tst('Per-user overrides can be set in the Users tab when editing a user','info')">Per-User Overrides ℹ</button>
+    </div>
+    ${isCreator?`<div style="background:var(--navy);color:white;border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">👑</span>
+      <span><b>Creator Mode Active</b> — You are viewing the complete matrix including the hidden Creator role. Creator actions are not recorded in the audit trail.</span>
+    </div>`:''}
+    <div style="overflow-x:auto;border:1.5px solid var(--bdr);border-radius:10px">
+      <table style="border-collapse:collapse;min-width:1100px;width:100%">
+        <thead>
+          <tr style="background:var(--navy)">
+            <th style="text-align:left;padding:12px 16px;font-size:13px;font-weight:700;color:white;position:sticky;left:0;background:var(--navy);min-width:170px;z-index:3;border-right:2px solid rgba(255,255,255,.15)">Role</th>
+            ${PERM_MODS.map(m=>`<th style="padding:8px 6px;color:white;text-align:center;min-width:68px">
+              <div style="font-size:17px;line-height:1">${m.icon}</div>
+              <div style="font-size:10px;font-weight:600;opacity:.85;margin-top:3px;line-height:1.2">${m.label}</div>
+            </th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${visibleRoles.map((role,ri)=>{
+            const isCreatorRow=role==='Creator';
+            const rowStyle=isCreatorRow?'background:linear-gradient(90deg,#eef2ff,#f8f9ff)':ri%2===0?'background:#fff':'background:var(--surf)';
+            const stickyBg=isCreatorRow?'background:#eef2ff':ri%2===0?'background:#fff':'background:var(--surf)';
+            return`<tr style="${rowStyle};border-bottom:1px solid var(--bdr)">
+              <td style="padding:10px 16px;font-weight:700;font-size:13px;position:sticky;left:0;${stickyBg};z-index:2;border-right:2px solid var(--bdr)">
+                ${isCreatorRow
+                  ?`<span style="display:flex;align-items:center;gap:8px">👑 ${role}<span style="font-size:10px;background:var(--navy);color:white;padding:2px 8px;border-radius:10px;font-weight:600">HIDDEN</span></span>`
+                  :role}
+              </td>
+              ${PERM_MODS.map(m=>{
+                const acc=_getModuleAccess(role,m.key);
+                const gran=_getRoleModulePerms(role,m.key);
+                const hasRestrictions=gran&&typeof gran==='object'&&Object.entries(gran).some(([k,v])=>k!=='_enabled'&&!v&&acc);
+                const color=isCreatorRow?'#2d8c4e':!acc?'#e2e0db':hasRestrictions?'var(--amber)':'var(--green)';
+                const label=isCreatorRow?'Full (Creator)':!acc?'No Access':hasRestrictions?'Limited':'Full Access';
+                return`<td style="text-align:center;padding:6px 4px">
+                  <button onclick="oPermModal('${role}','${m.key}')" title="${label}: click to configure"
+                    style="width:30px;height:30px;border-radius:50%;background:${color};border:2px solid ${isCreatorRow?'#1a6634':!acc?'#ccc8c0':hasRestrictions?'#b85c00':'#1f6b38'};cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;transition:transform .12s;box-shadow:0 1px 4px rgba(0,0,0,.12)"
+                    onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'">
+                    ${acc?'✓':''}
+                  </button>
+                </td>`;
+              }).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:20px;margin-top:12px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;border-radius:50%;background:var(--green);display:inline-block;border:2px solid #1f6b38"></span> Full Access
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;border-radius:50%;background:var(--amber);display:inline-block;border:2px solid #b85c00"></span> Limited (some sub-permissions off)
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;border-radius:50%;background:#e2e0db;display:inline-block;border:2px solid #ccc8c0"></span> No Access
+      </div>
+      <div style="margin-left:auto;font-size:12px;color:var(--muted);font-style:italic">Changes save instantly to Supabase and apply on next login</div>
+    </div>
+  </div>`;
+}
+
+function oPermModal(role,modKey){
+  const mdef=PERM_MODS.find(m=>m.key===modKey); if(!mdef) return;
+  const isCreatorRole=role==='Creator';
+  const acc=_getModuleAccess(role,modKey);
+  const gran=_getRoleModulePerms(role,modKey)||{};
+  oMod(`${mdef.icon} ${mdef.label} — ${role}`,`<div>
+    ${isCreatorRole?`<div style="background:var(--navy);color:white;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;gap:8px;align-items:center">
+      <span>👑</span><span><b>Creator role always has full access</b> — these settings are for display reference only and cannot be changed.</span>
+    </div>`:''}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surf);border-radius:8px;margin-bottom:16px;border:1.5px solid var(--bdr)">
+      <div>
+        <div style="font-weight:700;font-size:14px">Module Access</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Show <b>${mdef.label}</b> in navigation for <b>${role}</b></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <span style="font-size:13px;color:var(--muted)">Off</span>
+        <div style="position:relative;width:44px;height:24px">
+          <input type="checkbox" id="pm-access" ${acc||isCreatorRole?'checked':''} ${isCreatorRole?'disabled':''}
+            onchange="document.querySelectorAll('.pm-sub').forEach(el=>{el.disabled=!this.checked;el.closest('label').style.opacity=this.checked?'1':'.4'})"
+            style="opacity:0;width:0;height:0;position:absolute">
+          <div onclick="if(!${isCreatorRole}){const cb=document.getElementById('pm-access');cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}"
+            style="position:absolute;inset:0;border-radius:12px;background:${acc||isCreatorRole?'var(--green)':'var(--bdr)'};transition:background .2s;cursor:pointer;display:flex;align-items:center;padding:2px">
+            <div style="width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s;transform:${acc||isCreatorRole?'translateX(20px)':'translateX(0)'}"></div>
+          </div>
+        </div>
+        <span style="font-size:13px;font-weight:600;color:${acc||isCreatorRole?'var(--green)':'var(--muted)'}">On</span>
+      </label>
+    </div>
+    <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Granular Permissions</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${mdef.perms.map(p=>{
+        const on=gran[p]!==undefined?gran[p]:acc;
+        return`<label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:6px;cursor:pointer;background:#fff;gap:8px;opacity:${acc||isCreatorRole?'1':'.4'}">
+          <span style="font-size:12px;font-weight:500">${PERM_LABELS[p]||p}</span>
+          <input type="checkbox" id="pm-${p}" class="pm-sub" ${on||isCreatorRole?'checked':''} ${(!acc&&!isCreatorRole)||isCreatorRole?'disabled':''}
+            style="width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex-shrink:0">
+        </label>`;
+      }).join('')}
+    </div>
+    ${!isCreatorRole?`<div class="br2" style="margin-top:18px">
+      <button class="btn btn-n" onclick="svRoleModPerms('${role}','${modKey}')">💾 Save Changes</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`:`<div style="margin-top:14px;text-align:center"><button class="btn btn-o" onclick="cMod()">Close</button></div>`}
+  </div>`);
+}
+
+async function svRoleModPerms(role,modKey){
+  const mdef=PERM_MODS.find(m=>m.key===modKey); if(!mdef) return;
+  const enabled=document.getElementById('pm-access')?.checked?1:0;
+  const granular={_enabled:enabled};
+  mdef.perms.forEach(p=>{granular[p]=document.getElementById('pm-'+p)?.checked?1:0;});
+  const stored=S.get('lhs:role_permissions')||[];
+  let rec=stored.find(r=>r.role===role);
+  if(!rec){rec={role,perms:{}};stored.push(rec);}
+  if(!rec.perms) rec.perms={};
+  rec.perms[modKey]=granular;
+  rec.updated_at=new Date().toISOString();
+  rec.updated_by=CU?.email;
+  S.set('lhs:role_permissions',stored);
+  try{
+    await DB.from('lhs_role_permissions').upsert({role,perms:rec.perms,updated_at:rec.updated_at,updated_by:rec.updated_by});
+  }catch(e){console.warn('Save role perms:',e.message);}
+  cMod();
+  tst(`${role} — ${mdef.label} permissions saved`,'success');
+  logAudit('permissions_changed',{role,module:modKey,enabled});
+  g('atab').innerHTML=aPerms();
 }
 
 // ─── ADMIN: WORK ORDER SETTINGS ───────────────────────────────────────────────
@@ -7004,14 +7233,15 @@ function aUsers(){
     const key=(u.email||'').toLowerCase();
     if(seen.has(key)) return false;
     seen.add(key); return true;
-  });
+  // Creator users are hidden from all non-Creators
+  }).filter(u=>u.role!=='Creator'||CU?.role==='Creator');
   return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddUser()">+ Add User</button></div>
   <div class="card" style="padding:0"><div class="tw"><table>
   <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division</th><th>Region</th><th>Manager</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
-  <tbody>${deduped.map((u,i)=>`<tr>
-    <td style="font-weight:600">${u.name}</td>
+  <tbody>${deduped.map((u,i)=>`<tr${u.role==='Creator'?` style="background:linear-gradient(90deg,#f0f4ff,#fff)"`:''}>
+    <td style="font-weight:600">${u.name}${u.role==='Creator'?` <span style="font-size:10px;background:var(--navy);color:white;padding:1px 6px;border-radius:10px;vertical-align:middle">CREATOR</span>`:''}</td>
     <td style="font-size:12px;color:var(--muted)">${u.email}</td>
-    <td>${bx(u.role,'bn')}</td>
+    <td>${bx(u.role==='Creator'?'God View':u.role,'bn')}</td>
     <td style="font-size:12px;color:var(--muted)">${u.division||'—'}</td>
     <td style="font-size:12px;color:var(--muted)">${u.region||'—'}</td>
     <td style="font-size:12px;color:var(--muted)">${u.manager||'—'}</td>
@@ -7032,7 +7262,7 @@ function oAddUser(){
   </div><div class="fr">
     <div class="fl"><label>Password</label><input id="au2" placeholder="Set a password"></div>
     <div class="fl"><label>Role</label><select id="au3">
-      ${ROLES.map(r=>`<option>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option>${r}</option>`).join('')}
     </select></div>
   </div><div class="fr">
     <div class="fl"><label>Primary Division</label><select id="au4">
@@ -7176,7 +7406,7 @@ function oEditUser(i){
   </div><div class="fr">
     <div class="fl"><label>Password</label><input id="eu2" value="${u.pw||u.password_hash||''}"></div>
     <div class="fl"><label>Role</label><select id="eu3">
-      ${ROLES.map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
     </select></div>
   </div><div class="fr">
     <div class="fl"><label>Primary Division</label><select id="eu4">
@@ -24960,7 +25190,7 @@ function _hrEmployeeForm(u, saveFn){
     <div><label>Work Email <span style="color:var(--red)">*</span></label><input id="hef-email" value="${esc(u.email||'')}"></div>
     <div><label>Job Title</label><input id="hef-title" value="${esc(u.title||'')}"></div>
     <div><label>Role / Access Level</label><select id="hef-role">
-      ${ROLES.map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
     </select></div>
     <div><label>Employment Type</label><select id="hef-emptype">
       <option value="">—</option>
