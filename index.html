@@ -5376,7 +5376,7 @@ function oPermModal(role,modKey){
               document.querySelectorAll('.pm-sub').forEach(el=>{el.disabled=!on;el.closest('label').style.opacity=on?'1':'.4'});
             })(this)"
             style="opacity:0;width:0;height:0;position:absolute">
-          <div id="pm-toggle-track" onclick="if(!${isCreatorRole}){const cb=document.getElementById('pm-access');cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}"
+          <div id="pm-toggle-track" onclick="event.stopPropagation();if(!${isCreatorRole}){const cb=document.getElementById('pm-access');cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}"
             style="position:absolute;inset:0;border-radius:12px;background:${acc||isCreatorRole?'var(--green)':'var(--bdr)'};transition:background .2s;cursor:pointer;display:flex;align-items:center;padding:2px">
             <div id="pm-toggle-knob" style="width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s;transform:${acc||isCreatorRole?'translateX(20px)':'translateX(0)'}"></div>
           </div>
