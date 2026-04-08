@@ -18950,6 +18950,18 @@ async function svCancelWO(woId){
     S.set('lhs:work_orders',wos);
   }
   await dbUpdate('lhs:work_orders',woId,{status:'Cancelled',cancel_reason:reason,cancel_notes:notes,updated_at:new Date().toISOString()});
+
+  // Also cancel all linked appointments so they are fully removed from the dispatch board
+  const apts=S.get('lhs:appointments')||[];
+  const linkedApts=apts.filter(a=>a.wo_id===woId&&a.status!=='Cancelled');
+  if(linkedApts.length){
+    linkedApts.forEach(a=>{a.status='Cancelled';a.updated_at=new Date().toISOString();});
+    S.set('lhs:appointments',apts);
+    try{
+      await DB.from('lhs_appointments').update({status:'Cancelled',updated_at:new Date().toISOString()}).eq('wo_id',woId).neq('status','Cancelled');
+    }catch(e){console.warn('cancel apts failed:',e?.message);}
+  }
+
   await logWOAudit(woId,'Status Changed',`${prev} → Cancelled | Reason: ${reason}${notes?' | Notes: '+notes:''}`);
   cCancelMo();
   tst('Work order cancelled','success');
