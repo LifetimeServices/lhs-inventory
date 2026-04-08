@@ -1498,6 +1498,10 @@ const TBL={
   'lhs:tester_deployments':'lhs_tester_deployments',
   'lhs:audit_log':'lhs_audit_log',
   'lhs:training_assignments':'lhs_training_assignments',
+  'lhs:mk_campaigns':'lhs_mk_campaigns',
+  'lhs:mk_events':'lhs_mk_events',
+  'lhs:mk_drip':'lhs_mk_drip',
+  'lhs:mk_settings':'lhs_mk_settings',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -1537,7 +1541,7 @@ function _normVi(r){
 async function warmCache(){
   try{
     // Tables too large to bulk-load into localStorage — queried on demand instead
-    const ON_DEMAND_TBLS=['lhs_customers','lhs_wo_photos'];
+    const ON_DEMAND_TBLS=['lhs_customers','lhs_wo_photos','lhs_audit_log'];
     const loads=Object.entries(TBL).map(async([k,tbl])=>{
       if(ON_DEMAND_TBLS.includes(tbl)) return; // skip — loaded on demand with pagination
       try{
@@ -1549,7 +1553,7 @@ async function warmCache(){
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
-        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines'];
+        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
@@ -7381,7 +7385,7 @@ function _unlockAccount(email){
 }
 
 function aSecTrainingMgmt(){
-  const assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  const assignments=S.get('lhs:training_assignments')||[];
   const users=S.get('lhs:users')||[];
   const byUser={};
   assignments.forEach(a=>{if(!byUser[a.user_email])byUser[a.user_email]=[];byUser[a.user_email].push(a);});
@@ -7465,34 +7469,38 @@ function svAssignCourse(courseId){
   const c=SECURITY_COURSES.find(x=>x.id===courseId);
   const allUsers=S.get('lhs:users')||[];
   const targets=userEmail==='ALL'?allUsers.filter(u=>u.active!==false):[allUsers.find(u=>u.email===userEmail)].filter(Boolean);
-  const existing=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  const existing=S.get('lhs:training_assignments')||[];
   let added=0;
   targets.forEach(u=>{
     if(existing.find(a=>a.user_email===u.email&&a.course_id===courseId)){return;} // skip if already assigned
-    existing.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
       user_email:u.email,user_name:u.name,course_id:courseId,course_name:c.name,
       provider:c.provider,url:c.url,assigned_by:CU?.email,
-      assigned_date:new Date().toISOString().slice(0,10),due_date:dueDate||'',status:'assigned'});
+      assigned_date:new Date().toISOString().slice(0,10),due_date:dueDate||null,status:'assigned'};
+    existing.push(rec);
+    dbInsert('lhs:training_assignments',rec);
     added++;
   });
-  localStorage.setItem('lms_training',JSON.stringify(existing));
+  S.set('lhs:training_assignments',existing);
   logAudit('training_assigned',{course:c.name,count:added});
   cMod(); tst(`Assigned to ${added} employee${added===1?'':'s'}`,'success');
   g('sec-tab-content').innerHTML=_secTabContent();
 }
 function _markTrainingDone(id){
-  const assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  const assignments=S.get('lhs:training_assignments')||[];
   const a=assignments.find(x=>x.id===id); if(!a) return;
   a.status='completed'; a.completed_date=new Date().toISOString().slice(0,10);
-  localStorage.setItem('lms_training',JSON.stringify(assignments));
+  S.set('lhs:training_assignments',assignments);
+  dbUpdate('lhs:training_assignments',id,{status:'completed',completed_date:a.completed_date});
   logAudit('training_completed',{course:a.course_name,user:a.user_name});
   tst(`${a.user_name} marked complete`,'success');
   g('sec-tab-content').innerHTML=_secTabContent();
 }
 function _removeAssignment(id){
-  let assignments=JSON.parse(localStorage.getItem('lms_training')||'[]');
+  let assignments=S.get('lhs:training_assignments')||[];
   assignments=assignments.filter(x=>x.id!==id);
-  localStorage.setItem('lms_training',JSON.stringify(assignments));
+  S.set('lhs:training_assignments',assignments);
+  dbDelete('lhs:training_assignments',id);
   g('sec-tab-content').innerHTML=_secTabContent();
 }
 
@@ -12413,8 +12421,19 @@ async function delAcctCode(id){
 // MARKETING MODULE — COMPREHENSIVE
 // ══════════════════════════════════════════════════════════════════════════════
 let _mkTab='overview';
-function _getMkSettings(){return S.get('lms:mk_settings')||{company_name:'Lifetime Home Services',physical_address:'',looker_embed:'',gsc_embed:'',ga_property_id:'',social:{facebook:'',instagram:'',google_profile:'',nextdoor:''},unsubscribe_email:''};}
-function _saveMkSettings(s){S.set('lms:mk_settings',s);}
+function _getMkSettings(){
+  const rows=S.get('lhs:mk_settings')||[];
+  return rows[0]||{id:'default',company_name:'Lifetime Home Services',physical_address:'',from_email:'',unsubscribe_email:'',unsubscribe_url:'',looker_embed:'',gsc_embed:'',ga_property_id:'',social:{facebook:'',instagram:'',google_profile:'',nextdoor:'',linkedin:''},manual_kpis:{}};
+}
+function _saveMkSettings(s){
+  const rows=S.get('lhs:mk_settings')||[];
+  const idx=rows.findIndex(r=>r.id==='default');
+  const record={...s,id:'default',updated_at:new Date().toISOString()};
+  if(idx>=0) rows[idx]=record; else rows.push(record);
+  S.set('lhs:mk_settings',rows);
+  // Sync to Supabase (upsert the single settings row)
+  DB.from('lhs_mk_settings').upsert(record).then(()=>{}).catch(e=>console.warn('MK settings sync:',e.message));
+}
 
 function bSalesMarketing(){
   const tabs=[
