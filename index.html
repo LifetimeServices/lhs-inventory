@@ -5836,11 +5836,14 @@ function oAddRMA(){
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Material Item</label>
-      <select id="rma-item">
-        <option value="">— Select Item —</option>
-        ${items.map(i=>`<option value="${i.sku}|${i.name}">${esc(i.name)} (${i.sku})</option>`).join('')}
-      </select>
+    <div class="fl" style="position:relative">
+      <label>Material Item</label>
+      <input id="rma-item-search" placeholder="Search items…" autocomplete="off"
+        oninput="rmaItemSearch(this.value)"
+        onfocus="rmaItemSearch(this.value)"
+        style="padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;width:100%">
+      <input type="hidden" id="rma-item">
+      <div id="rma-item-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:white;border:1px solid var(--bdr);border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;margin-top:2px"></div>
     </div>
     <div class="fl"><label>Issue</label>
       <select id="rma-issue">
@@ -5868,6 +5871,36 @@ function oAddRMA(){
   </div>`);
 }
 
+function rmaItemSearch(q){
+  const dd=document.getElementById('rma-item-dd');
+  if(!dd) return;
+  const items=S.get('lhs:items')||[];
+  const filtered=q.trim()
+    ?items.filter(i=>(i.name||'').toLowerCase().includes(q.toLowerCase())||(i.sku||'').toLowerCase().includes(q.toLowerCase()))
+    :items;
+  if(!filtered.length){dd.style.display='none';return;}
+  dd.innerHTML=filtered.slice(0,60).map(i=>`
+    <div onclick="rmaItemSelect('${esc(i.sku)}','${esc(i.name)}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--surf)"
+      onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background='white'">
+      <span style="font-weight:600;color:var(--navy)">${esc(i.name)}</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(i.sku)}</span>
+    </div>`).join('');
+  dd.style.display='block';
+  // Close dropdown on outside click
+  setTimeout(()=>{
+    const close=e=>{if(!dd.contains(e.target)&&e.target.id!=='rma-item-search'){dd.style.display='none';document.removeEventListener('click',close);}};
+    document.addEventListener('click',close);
+  },0);
+}
+function rmaItemSelect(sku,name){
+  const hidden=document.getElementById('rma-item');
+  const search=document.getElementById('rma-item-search');
+  const dd=document.getElementById('rma-item-dd');
+  if(hidden) hidden.value=sku+'|'+name;
+  if(search) search.value=name+' ('+sku+')';
+  if(dd) dd.style.display='none';
+}
 async function svAddRMA(){
   const locVal=v('rma-loc');
   const toVal=v('rma-to');
