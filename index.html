@@ -1712,6 +1712,15 @@ async function warmCache(){
     }
     // Load material presets from Supabase (stored there, not in localStorage quota)
     await loadPresetsFromSupabase();
+    // Load division display names from Supabase
+    try{
+      const{data:ddnRows}=await DB.from('lhs_div_display_names').select('division,display_name');
+      if(ddnRows&&ddnRows.length){
+        const map={};
+        ddnRows.forEach(r=>{map[r.division]=r.display_name;});
+        S.set('lhs:div_display_names',map);
+      }
+    }catch(e){console.warn('div display names load failed:',e.message);}
     // Free up localStorage space — remove large tables that don't need to persist between sessions
     // lhs_wo_audit and lhs_job_classifications are large and re-loaded from Supabase each login
     try{
@@ -11340,13 +11349,19 @@ function getDivDisplayName(internalName){
   const map=S.get('lhs:div_display_names')||{};
   return map[internalName]||internalName||'';
 }
-function saveDivDisplayNames(){
+async function saveDivDisplayNames(){
   const map={};
   DIVS.forEach(d=>{
     const el=document.getElementById('ddn-'+btoa(d).replace(/=/g,''));
     if(el) map[d]=el.value.trim();
   });
   S.set('lhs:div_display_names',map);
+  // Persist each division display name to Supabase
+  const now=new Date().toISOString();
+  const rows=Object.entries(map).map(([division,display_name])=>({division,display_name,updated_at:now,updated_by:CU?.email||''}));
+  try{
+    await DB.from('lhs_div_display_names').upsert(rows,{onConflict:'division'});
+  }catch(e){console.warn('div display names save failed:',e.message);}
   tst('Division display names saved','success');
   showPage('acct-settings');
 }
@@ -29535,7 +29550,7 @@ function renderEstDocSettingsCard(){
   </div>`;
 }
 
-function saveDivDisplayNamesFromSales(){
+async function saveDivDisplayNamesFromSales(){
   const map=S.get('lhs:div_display_names')||{};
   DIVS.forEach(d=>{
     const safeId='ddn-'+btoa(d).replace(/[^a-zA-Z0-9]/g,'_');
@@ -29543,6 +29558,12 @@ function saveDivDisplayNamesFromSales(){
     if(el) map[d]=el.value.trim();
   });
   S.set('lhs:div_display_names',map);
+  // Persist each division display name to Supabase
+  const now=new Date().toISOString();
+  const rows=Object.entries(map).map(([division,display_name])=>({division,display_name,updated_at:now,updated_by:CU?.email||''}));
+  try{
+    await DB.from('lhs_div_display_names').upsert(rows,{onConflict:'division'});
+  }catch(e){console.warn('div display names save failed:',e.message);}
   tst('Division display names saved','success');
   showPage('sales-settings');
 }
