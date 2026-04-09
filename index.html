@@ -1553,6 +1553,8 @@ const TBL={
   'lhs:items':'lhs_items','lhs:ls':'lhs_location_stock','lhs:vi':'lhs_van_inventory',
   'lhs:pos':'lhs_purchase_orders','lhs:po_lines':'lhs_po_lines','lhs:ts':'lhs_testers','lhs:xfrs':'lhs_transfers',
   'lhs:rmas':'lhs_rmas',
+  'lhs:discounts':'lhs_discounts',
+  'lhs:fees':'lhs_fees',
   'lhs:locs':'lhs_locations','lhs:divs':'lhs_divisions','lhs:vens':'lhs_vendors',
   'lhs:users':'lhs_users','lhs:tools':'lhs_tools','lhs:tool_audit':'lhs_tool_audit',
   'lhs:job_subtypes':'lhs_job_subtypes',
@@ -30030,12 +30032,222 @@ async function pbDeleteCategory(id){
 
 // ── DISCOUNTS & FEES ──────────────────────────────────────────────────────────
 function pbLoadDiscounts(el){
-  el.innerHTML=`<div class="card" style="text-align:center;padding:60px 32px">
-    <div style="font-size:48px;margin-bottom:12px">🏷️</div>
-    <div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:8px">Discounts &amp; Fees</div>
-    <div style="font-size:14px;color:var(--muted);margin-bottom:20px">Create discount codes, membership pricing rules, and service fees.</div>
-    <div style="font-size:13px;color:var(--muted)">Coming soon — configure in your accounting codes for now.</div>
-  </div>`;
+  const subTab=window._discSubTab||'codes';
+  const discounts=S.get('lhs:discounts')||[];
+  const fees=S.get('lhs:fees')||[];
+  const tabBtn=(id,label)=>`<button onclick="window._discSubTab='${id}';pbLoadDiscounts(document.getElementById('pb-content'))"
+    style="padding:8px 18px;border:none;border-bottom:${subTab===id?'3px solid var(--teal)':'3px solid transparent'};background:none;font-size:13px;font-weight:${subTab===id?'700':'500'};color:${subTab===id?'var(--teal)':'var(--muted)'};cursor:pointer">${label}</button>`;
+
+  // ── DISCOUNT CODES ──────────────────────────────────────────────────────
+  const codesHTML=`
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="btn btn-n" onclick="oAddDiscount()">+ Add Discount</button>
+  </div>
+  <div class="card" style="padding:0">
+  <div class="tw"><table>
+    <thead><tr><th>Name</th><th>Code</th><th>Type</th><th>Value</th><th>Division</th><th>Min Order</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+    <tbody>${discounts.length?discounts.map((d,i)=>`<tr style="opacity:${d.active===false?0.5:1}">
+      <td style="font-weight:600;color:var(--navy)">${esc(d.name)}</td>
+      <td><span style="font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;background:#f0f4ff;color:var(--navy);padding:2px 8px;border-radius:5px;letter-spacing:.04em">${esc(d.code||'—')}</span></td>
+      <td>${d.discount_type==='percent'?'% Off':'$ Off'}</td>
+      <td style="font-weight:700;color:var(--teal)">${d.discount_type==='percent'?d.value+'%':'$'+parseFloat(d.value||0).toFixed(2)}</td>
+      <td style="font-size:12px">${esc(d.division||'All')}</td>
+      <td style="font-size:12px">${d.min_order?'$'+d.min_order:'—'}</td>
+      <td style="font-size:12px;color:${d.expires&&new Date(d.expires)<new Date()?'var(--danger,#ef4444)':'var(--muted)'}">${d.expires||'—'}</td>
+      <td>${d.active===false?bx('Inactive','bgr'):bx('Active','bg')}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn sm btn-o" onclick="oEditDiscount(${i})">Edit</button>
+        <button class="btn sm btn-r" onclick="delDiscount(${i})">Del</button>
+      </td>
+    </tr>`).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:28px">No discount codes yet — click + Add Discount</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+
+  // ── SERVICE FEES ────────────────────────────────────────────────────────
+  const feesHTML=`
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="btn btn-n" onclick="oAddFee()">+ Add Fee</button>
+  </div>
+  <div class="card" style="padding:0">
+  <div class="tw"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Amount</th><th>Division</th><th>Taxable</th><th>Description</th><th>Status</th><th></th></tr></thead>
+    <tbody>${fees.length?fees.map((f,i)=>`<tr style="opacity:${f.active===false?0.5:1}">
+      <td style="font-weight:600;color:var(--navy)">${esc(f.name)}</td>
+      <td>${f.fee_type==='percent'?'% Fee':'Flat Fee'}</td>
+      <td style="font-weight:700;color:var(--navy)">${f.fee_type==='percent'?f.amount+'%':'$'+parseFloat(f.amount||0).toFixed(2)}</td>
+      <td style="font-size:12px">${esc(f.division||'All')}</td>
+      <td style="font-size:12px">${f.taxable?'✓ Yes':'No'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.description||'—')}</td>
+      <td>${f.active===false?bx('Inactive','bgr'):bx('Active','bg')}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn sm btn-o" onclick="oEditFee(${i})">Edit</button>
+        <button class="btn sm btn-r" onclick="delFee(${i})">Del</button>
+      </td>
+    </tr>`).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:28px">No service fees yet — click + Add Fee</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+
+  el.innerHTML=`
+  <div style="display:flex;border-bottom:2px solid var(--bdr);margin-bottom:20px">
+    ${tabBtn('codes','🏷️ Discount Codes')}
+    ${tabBtn('fees','💲 Service Fees')}
+  </div>
+  ${subTab==='codes'?codesHTML:feesHTML}`;
+}
+
+// ── DISCOUNT CRUD ─────────────────────────────────────────────────────────────
+function _discountForm(d={}){
+  const divs=(S.get('lhs:divs')||[]).map(x=>x.name||x.division||x).filter(Boolean);
+  return`
+  <div class="fr">
+    <div class="fl"><label>Name</label><input id="df-name" value="${esc(d.name||'')}" placeholder="e.g. Spring Sale"></div>
+    <div class="fl"><label>Code <span style="font-weight:400;color:var(--muted)">(optional — shown on invoices)</span></label><input id="df-code" value="${esc(d.code||'')}" placeholder="e.g. SPRING20" style="text-transform:uppercase"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Discount Type</label>
+      <select id="df-type">
+        <option value="percent"${d.discount_type==='percent'?' selected':''}>Percentage (% Off)</option>
+        <option value="flat"${d.discount_type==='flat'?' selected':''}>Flat Amount ($ Off)</option>
+      </select>
+    </div>
+    <div class="fl"><label>Value</label><input type="number" id="df-value" value="${d.value||''}" min="0" step="0.01" placeholder="e.g. 10"></div>
+    <div class="fl"><label>Min Order Amount ($)</label><input type="number" id="df-min" value="${d.min_order||''}" min="0" step="0.01" placeholder="0 = no minimum"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Applies to Division</label>
+      <select id="df-div">
+        <option value="">All Divisions</option>
+        ${divs.map(dv=>`<option${(d.division||'')===dv?' selected':''}>${esc(dv)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Expiry Date <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="date" id="df-exp" value="${d.expires||''}">
+    </div>
+    <div class="fl"><label>Status</label>
+      <select id="df-active">
+        <option value="true"${d.active!==false?' selected':''}>Active</option>
+        <option value="false"${d.active===false?' selected':''}>Inactive</option>
+      </select>
+    </div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Notes</label><input id="df-notes" value="${esc(d.notes||'')}" placeholder="Internal notes (not customer-facing)"></div>`;
+}
+
+function oAddDiscount(){
+  oMod('Add Discount Code',`${_discountForm()}
+  <div class="br2"><button class="btn btn-n" onclick="svAddDiscount()">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function oEditDiscount(i){
+  const d=(S.get('lhs:discounts')||[])[i];
+  if(!d) return;
+  oMod('Edit Discount',`${_discountForm(d)}
+  <div class="br2"><button class="btn btn-n" onclick="svEditDiscount(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+async function svAddDiscount(){
+  const name=v('df-name').trim();
+  if(!name){tst('Name required','error');return;}
+  const val=parseFloat(v('df-value'));
+  if(!val||val<=0){tst('Enter a valid value','error');return;}
+  const d={name,code:v('df-code').trim().toUpperCase()||null,discount_type:v('df-type'),value:val,
+    min_order:parseFloat(v('df-min'))||null,division:v('df-div')||null,
+    expires:v('df-exp')||null,notes:v('df-notes').trim()||null,
+    active:v('df-active')!=='false',created_by:CU.name,created_at:new Date().toISOString()};
+  try{const{data,error}=await DB.from('lhs_discounts').insert(d).select().single();if(!error&&data)d.id=data.id;}catch(e){console.warn('svAddDiscount:',e.message);}
+  const all=S.get('lhs:discounts')||[];all.push(d);S.set('lhs:discounts',all);
+  cMod();tst('Discount added','success');pbLoadDiscounts(document.getElementById('pb-content'));
+}
+async function svEditDiscount(i){
+  const all=S.get('lhs:discounts')||[];const d=all[i];if(!d)return;
+  const name=v('df-name').trim();if(!name){tst('Name required','error');return;}
+  const val=parseFloat(v('df-value'));if(!val||val<=0){tst('Enter a valid value','error');return;}
+  const upd={name,code:v('df-code').trim().toUpperCase()||null,discount_type:v('df-type'),value:val,
+    min_order:parseFloat(v('df-min'))||null,division:v('df-div')||null,
+    expires:v('df-exp')||null,notes:v('df-notes').trim()||null,active:v('df-active')!=='false'};
+  all[i]={...d,...upd};S.set('lhs:discounts',all);
+  if(d.id) try{await DB.from('lhs_discounts').update(upd).eq('id',d.id);}catch(e){console.warn('svEditDiscount:',e.message);}
+  cMod();tst('Discount updated','success');pbLoadDiscounts(document.getElementById('pb-content'));
+}
+async function delDiscount(i){
+  if(!confirm('Delete this discount?'))return;
+  const all=S.get('lhs:discounts')||[];const d=all[i];
+  if(d?.id) try{await DB.from('lhs_discounts').delete().eq('id',d.id);}catch{}
+  all.splice(i,1);S.set('lhs:discounts',all);
+  tst('Deleted','info');pbLoadDiscounts(document.getElementById('pb-content'));
+}
+
+// ── FEE CRUD ──────────────────────────────────────────────────────────────────
+function _feeForm(f={}){
+  const divs=(S.get('lhs:divs')||[]).map(x=>x.name||x.division||x).filter(Boolean);
+  return`
+  <div class="fr">
+    <div class="fl"><label>Fee Name</label><input id="ff-name" value="${esc(f.name||'')}" placeholder="e.g. Trip Charge"></div>
+    <div class="fl"><label>Fee Type</label>
+      <select id="ff-type">
+        <option value="flat"${f.fee_type!=='percent'?' selected':''}>Flat Amount ($)</option>
+        <option value="percent"${f.fee_type==='percent'?' selected':''}>Percentage (%)</option>
+      </select>
+    </div>
+    <div class="fl"><label>Amount</label><input type="number" id="ff-amount" value="${f.amount||''}" min="0" step="0.01" placeholder="e.g. 75"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Applies to Division</label>
+      <select id="ff-div">
+        <option value="">All Divisions</option>
+        ${divs.map(dv=>`<option${(f.division||'')===dv?' selected':''}>${esc(dv)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Taxable</label>
+      <select id="ff-taxable">
+        <option value="false"${!f.taxable?' selected':''}>No</option>
+        <option value="true"${f.taxable?' selected':''}>Yes</option>
+      </select>
+    </div>
+    <div class="fl"><label>Status</label>
+      <select id="ff-active">
+        <option value="true"${f.active!==false?' selected':''}>Active</option>
+        <option value="false"${f.active===false?' selected':''}>Inactive</option>
+      </select>
+    </div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Description <span style="font-weight:400;color:var(--muted)">(shown on estimates/invoices)</span></label>
+    <input id="ff-desc" value="${esc(f.description||'')}" placeholder="e.g. Standard travel fee for service calls"></div>`;
+}
+
+function oAddFee(){
+  oMod('Add Service Fee',`${_feeForm()}
+  <div class="br2"><button class="btn btn-n" onclick="svAddFee()">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function oEditFee(i){
+  const f=(S.get('lhs:fees')||[])[i];if(!f)return;
+  oMod('Edit Fee',`${_feeForm(f)}
+  <div class="br2"><button class="btn btn-n" onclick="svEditFee(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+async function svAddFee(){
+  const name=v('ff-name').trim();if(!name){tst('Name required','error');return;}
+  const amt=parseFloat(v('ff-amount'));if(!amt||amt<=0){tst('Enter a valid amount','error');return;}
+  const f={name,fee_type:v('ff-type'),amount:amt,division:v('ff-div')||null,
+    taxable:v('ff-taxable')==='true',description:v('ff-desc').trim()||null,
+    active:v('ff-active')!=='false',created_by:CU.name,created_at:new Date().toISOString()};
+  try{const{data,error}=await DB.from('lhs_fees').insert(f).select().single();if(!error&&data)f.id=data.id;}catch(e){console.warn('svAddFee:',e.message);}
+  const all=S.get('lhs:fees')||[];all.push(f);S.set('lhs:fees',all);
+  cMod();tst('Fee added','success');pbLoadDiscounts(document.getElementById('pb-content'));
+}
+async function svEditFee(i){
+  const all=S.get('lhs:fees')||[];const f=all[i];if(!f)return;
+  const name=v('ff-name').trim();if(!name){tst('Name required','error');return;}
+  const amt=parseFloat(v('ff-amount'));if(!amt||amt<=0){tst('Enter a valid amount','error');return;}
+  const upd={name,fee_type:v('ff-type'),amount:amt,division:v('ff-div')||null,
+    taxable:v('ff-taxable')==='true',description:v('ff-desc').trim()||null,active:v('ff-active')!=='false'};
+  all[i]={...f,...upd};S.set('lhs:fees',all);
+  if(f.id) try{await DB.from('lhs_fees').update(upd).eq('id',f.id);}catch(e){console.warn('svEditFee:',e.message);}
+  cMod();tst('Fee updated','success');pbLoadDiscounts(document.getElementById('pb-content'));
+}
+async function delFee(i){
+  if(!confirm('Delete this fee?'))return;
+  const all=S.get('lhs:fees')||[];const f=all[i];
+  if(f?.id) try{await DB.from('lhs_fees').delete().eq('id',f.id);}catch{}
+  all.splice(i,1);S.set('lhs:fees',all);
+  tst('Deleted','info');pbLoadDiscounts(document.getElementById('pb-content'));
 }
 
 // ── ESTIMATES PAGE ─────────────────────────────────────────────────────────────
