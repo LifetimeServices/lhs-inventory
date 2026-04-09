@@ -199,6 +199,7 @@ const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
 const EJS_SERVICE  = 'service_rvkfyrn';
 const EJS_TEMPLATE = 'template_6m9p35d';
 const EJS_KEY      = 'bOr6h57VGXqTJtG50';
+const EJS_MFA_TEMPLATE = 'template_mfa_code'; // TODO: replace with your EmailJS MFA template ID
 (function(){ if(typeof emailjs!=='undefined') emailjs.init({publicKey:EJS_KEY}); })();
 </script>
 </head>
@@ -222,7 +223,31 @@ const EJS_KEY      = 'bOr6h57VGXqTJtG50';
     </div>
     <button class="btnl" onclick="doLogin()">Sign In &rarr;</button>
     <div class="lerr" id="lerr">Incorrect email or password.</div>
-    
+
+    <!-- MFA STEP -->
+    <div id="mfa-step" style="display:none;width:100%">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:36px;margin-bottom:8px">🔐</div>
+        <div style="font-size:18px;font-weight:700;color:var(--fg)">Two-Factor Verification</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:8px">A 6-digit code was sent to</div>
+        <div style="font-size:13px;color:var(--acc);font-weight:600;margin-top:4px" id="mfa-email-hint"></div>
+      </div>
+      <div class="fg">
+        <label>Verification Code</label>
+        <input type="text" id="mfa-code" maxlength="6" placeholder="000000"
+          style="text-align:center;font-size:28px;letter-spacing:10px;font-weight:700;width:100%"
+          oninput="this.value=this.value.replace(/\D/g,'')"
+          onkeydown="if(event.key==='Enter')verifyMFA()">
+      </div>
+      <button class="btnl" id="mfa-verify-btn" onclick="verifyMFA()">Verify &rarr;</button>
+      <div style="text-align:center;margin-top:10px;font-size:13px">
+        <button onclick="resendMFACode()" style="background:none;border:none;color:var(--acc);cursor:pointer;text-decoration:underline">Resend code</button>
+        &nbsp;&nbsp;&middot;&nbsp;&nbsp;
+        <button onclick="cancelMFA()" style="background:none;border:none;color:var(--muted);cursor:pointer">Back to login</button>
+      </div>
+      <div class="lerr" id="mfa-err" style="display:none">Invalid or expired code. Please try again.</div>
+    </div>
+
   </div>
 </div>
 
@@ -1958,6 +1983,39 @@ function locVehPick(obj){
   return r;
 }
 let CU=null;
+let _mfaPendingUser=null;
+
+// ── PASSWORD COMPLEXITY ───────────────────────────────────────────────────────
+function _validatePassword(pw){
+  if(!pw||pw.length<8) return 'Password must be at least 8 characters.';
+  if(!/[a-zA-Z]/.test(pw)) return 'Password must contain at least one letter.';
+  if(!/[0-9]/.test(pw)) return 'Password must contain at least one number.';
+  return null;
+}
+
+// ── SESSION TIMEOUT (30 min inactivity) ───────────────────────────────────────
+let _sessionTimer=null,_sessionWarnTimer=null,_sessionWarnShown=false;
+const _SESSION_MS=30*60*1000,_SESSION_WARN_MS=28*60*1000;
+function _resetSessionTimer(){
+  clearTimeout(_sessionTimer);clearTimeout(_sessionWarnTimer);_sessionWarnShown=false;
+  if(!CU)return;
+  _sessionWarnTimer=setTimeout(()=>{
+    _sessionWarnShown=true;
+    if(confirm('Your session will expire in 2 minutes due to inactivity.\n\nClick OK to stay logged in.')){
+      _resetSessionTimer();
+    } else {
+      tst('Signed out due to inactivity','info');
+      doLogout();
+    }
+  },_SESSION_WARN_MS);
+  _sessionTimer=setTimeout(()=>{
+    tst('Session expired due to inactivity','warning');
+    setTimeout(doLogout,1500);
+  },_SESSION_MS);
+}
+['mousemove','keydown','click','touchstart'].forEach(evt=>{
+  document.addEventListener(evt,()=>{if(CU&&!_sessionWarnShown)_resetSessionTimer();},{passive:true,capture:true});
+});
 
 // ─── SECURITY: HELPERS ────────────────────────────────────────────────────────
 async function sha256(str){
@@ -2122,6 +2180,7 @@ async function doLogin(){
           manager:data.manager||'',
           id:data.id,
           dispatch_pins:data.dispatch_pins||{},
+          mfa_enabled:data.mfa_enabled||false,
         };
       }
     }
@@ -2148,6 +2207,25 @@ async function doLogin(){
 
   _recordAttempt(u,true);
   errEl.style.display='none';
+
+  // MFA check
+  if(user.mfa_enabled){
+    _mfaPendingUser=user;
+    // Hide login form fields
+    const _lf=document.getElementById('ls');
+    _lf.querySelectorAll('.fg').forEach(el=>el.style.display='none');
+    const _sb=_lf.querySelector('.btnl');
+    if(_sb)_sb.style.display='none';
+    // Show MFA step
+    document.getElementById('mfa-step').style.display='block';
+    const _masked=user.email.replace(/(.{2})(.*)(@.*)/,(_,a,b,c)=>a+'*'.repeat(Math.max(2,b.length))+c);
+    document.getElementById('mfa-email-hint').textContent=_masked;
+    document.getElementById('mfa-code').value='';
+    document.getElementById('mfa-code').focus();
+    _sendMFACode(user);
+    return;
+  }
+
   CU=user;
   // SECURITY: Store email + id only — never store password in session
   sessionStorage.setItem('lhs_s',JSON.stringify({e:user.email,id:user.id}));
@@ -2156,16 +2234,102 @@ async function doLogin(){
 }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&document.getElementById('ls').style.display!=='none') doLogin();
+  if(e.key==='Enter'&&document.getElementById('ls').style.display!=='none'){
+    if(document.getElementById('mfa-step').style.display!=='none') verifyMFA();
+    else doLogin();
+  }
 });
 
 function doLogout(){
   logAudit('logout',{email:CU?.email});
-  CU=null; sessionStorage.removeItem('lhs_s');
+  clearTimeout(_sessionTimer);clearTimeout(_sessionWarnTimer);
+  CU=null;_mfaPendingUser=null;sessionStorage.removeItem('lhs_s');
   document.getElementById('app').style.display='none';
   document.getElementById('ls').style.display='flex';
   document.getElementById('lp').value='';
   document.getElementById('lerr').style.display='none';
+  // Reset login form visibility in case MFA step was active
+  const _lf=document.getElementById('ls');
+  _lf.querySelectorAll('.fg').forEach(el=>el.style.display='');
+  const _sb=_lf.querySelector('.btnl');
+  if(_sb)_sb.style.display='';
+  document.getElementById('mfa-step').style.display='none';
+}
+
+// ── MFA FUNCTIONS ─────────────────────────────────────────────────────────────
+async function _sendMFACode(user){
+  const token=String(Math.floor(100000+Math.random()*900000));
+  const expiresAt=new Date(Date.now()+10*60*1000).toISOString();
+  // Invalidate old tokens and store new one
+  try{
+    await DB.from('lhs_mfa_tokens').update({used:true}).eq('user_email',user.email).eq('used',false);
+    await DB.from('lhs_mfa_tokens').insert({user_id:user.id,user_email:user.email,token,expires_at:expiresAt,used:false});
+  }catch(e){console.warn('MFA token store error:',e.message);}
+  // Send via EmailJS
+  try{
+    if(typeof emailjs==='undefined') throw new Error('EmailJS not loaded');
+    const firstName=(user.name||'').split(' ')[0]||'there';
+    await emailjs.send(EJS_SERVICE,EJS_MFA_TEMPLATE,{to_email:user.email,user_name:firstName,mfa_code:token});
+  }catch(e){
+    console.warn('MFA email error:',e.message);
+    // Dev fallback: show code in toast if EmailJS template not set up
+    if(EJS_MFA_TEMPLATE==='template_mfa_code') tst('DEV: MFA code is '+token,'warning');
+  }
+}
+
+async function verifyMFA(){
+  const entered=(document.getElementById('mfa-code')?.value||'').trim();
+  const errEl=document.getElementById('mfa-err');
+  const btn=document.getElementById('mfa-verify-btn');
+  if(!entered||entered.length!==6){
+    errEl.style.display='block';errEl.textContent='Enter the full 6-digit code.';return;
+  }
+  if(btn){btn.textContent='Verifying...';btn.disabled=true;}
+  errEl.style.display='none';
+  try{
+    const{data,error}=await DB.from('lhs_mfa_tokens')
+      .select('*').eq('user_email',_mfaPendingUser?.email).eq('token',entered)
+      .eq('used',false).gte('expires_at',new Date().toISOString())
+      .order('created_at',{ascending:false}).limit(1).single();
+    if(error||!data){
+      errEl.style.display='block';errEl.textContent='Invalid or expired code. Please try again.';
+      if(btn){btn.textContent='Verify →';btn.disabled=false;}
+      return;
+    }
+    await DB.from('lhs_mfa_tokens').update({used:true}).eq('id',data.id);
+    CU=_mfaPendingUser;_mfaPendingUser=null;
+    sessionStorage.setItem('lhs_s',JSON.stringify({e:CU.email,id:CU.id}));
+    logAudit('login_success',{email:CU.email,name:CU.name,role:CU.role,mfa:true});
+    document.getElementById('mfa-step').style.display='none';
+    if(btn){btn.textContent='Verify →';btn.disabled=false;}
+    startApp();
+  }catch(e){
+    errEl.style.display='block';errEl.textContent='Verification error. Please try again.';
+    if(btn){btn.textContent='Verify →';btn.disabled=false;}
+  }
+}
+
+async function resendMFACode(){
+  if(!_mfaPendingUser){return;}
+  const btn=document.querySelector('#mfa-step button');
+  tst('Sending new code...','info');
+  document.getElementById('mfa-code').value='';
+  document.getElementById('mfa-err').style.display='none';
+  await _sendMFACode(_mfaPendingUser);
+  const masked=_mfaPendingUser.email.replace(/(.{2})(.*)(@.*)/,(_,a,b,c)=>a+'*'.repeat(Math.max(2,b.length))+c);
+  tst('New code sent to '+masked,'success');
+}
+
+function cancelMFA(){
+  _mfaPendingUser=null;
+  document.getElementById('mfa-step').style.display='none';
+  document.getElementById('mfa-code').value='';
+  document.getElementById('mfa-err').style.display='none';
+  // Restore login form
+  const _lf=document.getElementById('ls');
+  _lf.querySelectorAll('.fg').forEach(el=>el.style.display='');
+  const _sb=_lf.querySelector('.btnl');
+  if(_sb)_sb.style.display='';
 }
 
 // Restore session on browser refresh
@@ -2203,6 +2367,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
 });
 
 async function startApp(){
+  _resetSessionTimer();
   document.getElementById('ls').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('un').textContent=CU.name.split(' ')[0];
@@ -7558,6 +7723,8 @@ async function svAddUser(){
   const division=v('au4'),region=v('au5'),loc=v('au6'),manager=v('au7');
   if(!name||!email||!pw){tst('Name, email, and password required','error');return}
   if(!email.includes('@')||!email.includes('.')){tst('Enter a valid email address','error');return}
+  const _pwErr=_validatePassword(pw);
+  if(_pwErr){tst(_pwErr,'error');return}
 
   // Check duplicate in Supabase directly
   try{
@@ -7659,6 +7826,14 @@ function oEditUser(i){
       </select>
     </div>
   </div>
+  <div class="fr">
+    <div class="fl"><label>Require Two-Factor Authentication (MFA)</label>
+      <select id="eu-mfa">
+        <option value="false"${!u.mfa_enabled?' selected':''}>Disabled — Standard login</option>
+        <option value="true"${u.mfa_enabled?' selected':''}>Enabled — Require email verification code</option>
+      </select>
+    </div>
+  </div>
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:14px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Availability</div>
   <div class="fr">
     <div class="fl"><label>Work Start Time</label>
@@ -7704,7 +7879,13 @@ async function svEditUser(i){
   const _tsNeeded=document.getElementById('eu-ts')?.value;
   const _rawPw=v('eu2')||'';
   // Only hash if the password field was changed (not already a SHA-256 hash)
-  const _newPwHash=/^[a-f0-9]{64}$/.test(_rawPw)?_rawPw:await sha256(_rawPw);
+  const _isAlreadyHashed=/^[a-f0-9]{64}$/.test(_rawPw);
+  if(!_isAlreadyHashed){
+    const _pwErr=_validatePassword(_rawPw);
+    if(_pwErr){tst(_pwErr,'error');return;}
+  }
+  const _newPwHash=_isAlreadyHashed?_rawPw:await sha256(_rawPw);
+  const _mfaVal=document.getElementById('eu-mfa')?.value;
   const updated={
     ...users[i],
     name:v('eu0'),email:v('eu1'),pw:_newPwHash,password_hash:_newPwHash,
@@ -7712,6 +7893,7 @@ async function svEditUser(i){
     loc:v('eu6'),home_location:v('eu6'),manager:v('eu7'),
     include_dispatch:_incDisp===undefined?true:_incDisp!=='false',
     timesheet_needed:_tsNeeded===undefined?true:_tsNeeded!=='false',
+    mfa_enabled:_mfaVal==='true',
     work_start:v('eu-wstart')||'08:00',
     work_end:v('eu-wend')||'17:00',
     timezone:v('eu-tz')||'America/Chicago',
@@ -7724,7 +7906,7 @@ async function svEditUser(i){
     const dbFields={name:updated.name,role:updated.role,division:updated.division,
       region:updated.region,home_location:updated.home_location,manager:updated.manager,
       include_dispatch:updated.include_dispatch,timesheet_needed:updated.timesheet_needed,
-      password_hash:updated.password_hash,
+      password_hash:updated.password_hash,mfa_enabled:updated.mfa_enabled,
       work_start:updated.work_start,work_end:updated.work_end,
       timezone:updated.timezone,work_days:updated.work_days};
     await dbUpdate('lhs:users',updated.id,dbFields);
