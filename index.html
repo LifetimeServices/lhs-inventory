@@ -5198,8 +5198,9 @@ function _bTestTracker(){
       <div style="font-size:11px;color:var(--muted)">Retired</div>
     </div>`:''}
   </div>
-  <div style="display:flex;gap:8px;align-items:center">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button>
+    <button class="btn btn-o" onclick="oImportTesters()">📥 Import CSV</button>
     ${inactiveCount>0?`<button class="btn btn-o sm" onclick="window._testShowInactive=!window._testShowInactive;showPage('testers')">${showInactive?'Hide Inactive':'Show Inactive ('+inactiveCount+')'}</button>`:''}
   </div></div>
   <div class="card" style="padding:0"><div class="tw"><table>
@@ -5583,6 +5584,150 @@ async function svUpdTest(i){
     if(error) console.warn('svUpdTest Supabase:',error.message);
   }catch(e){console.warn('svUpdTest failed:',e.message);}
   cMod();tst('Updated','success');showPage('testers');
+}
+
+// ─── TESTER CSV IMPORT ───────────────────────────────────────────────────────
+function oImportTesters(){
+  oMod('Import Testers from CSV',`
+  <div style="background:#f0f4ff;border:1px solid #c5d3f7;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+    <div style="font-weight:600;margin-bottom:6px">📋 Required CSV columns (first row must be headers):</div>
+    <div style="font-family:monospace;font-size:12px;color:var(--navy)">tester_id, type, serial, status, active</div>
+    <div style="color:var(--muted);margin-top:6px;font-size:12px">
+      • <b>tester_id</b>: e.g. CRM-0001 (required)<br>
+      • <b>type</b>: Electronic or Charcoal (required)<br>
+      • <b>serial</b>: serial number (optional)<br>
+      • <b>status</b>: At Warehouse, At Customer, In Transit, Lost (default: At Warehouse)<br>
+      • <b>active</b>: true or false (default: true)
+    </div>
+    <button class="btn btn-o sm" style="margin-top:10px" onclick="downloadTesterTemplate()">⬇ Download Template</button>
+  </div>
+  <div class="fl" style="margin-bottom:16px">
+    <label>Select CSV File</label>
+    <input type="file" id="tcsv-file" accept=".csv,text/csv" onchange="previewTesterCSV(this)">
+  </div>
+  <div id="tcsv-preview"></div>
+  <div class="br2" id="tcsv-actions" style="display:none">
+    <button class="btn btn-n" onclick="importTesterCSV()">✅ Import All</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>
+  <div class="br2" style="${`display:flex`}">
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+function downloadTesterTemplate(){
+  const csv='tester_id,type,serial,status,active\nCRM-0001,Electronic,SN-EL-001,At Warehouse,true\nCRM-0002,Charcoal,SN-CH-001,At Warehouse,true';
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='tester_import_template.csv';a.click();
+  URL.revokeObjectURL(url);
+}
+
+function _parseTesterCSV(text){
+  const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+  if(lines.length<2) return{rows:[],errors:['CSV must have a header row and at least one data row.']};
+  const headers=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/[^a-z0-9_]/g,''));
+  const idIdx=headers.indexOf('tester_id');
+  const typeIdx=headers.indexOf('type');
+  const serialIdx=headers.indexOf('serial');
+  const statusIdx=headers.indexOf('status');
+  const activeIdx=headers.indexOf('active');
+  if(idIdx<0||typeIdx<0) return{rows:[],errors:['CSV must have "tester_id" and "type" columns.']};
+  const VALID_TYPES=['Electronic','Charcoal'];
+  const VALID_STATUS=['At Warehouse','At Customer','In Transit','Lost'];
+  const rows=[];const errors=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    const tid=(cols[idIdx]||'').trim();
+    const typ=(cols[typeIdx]||'').trim();
+    if(!tid){errors.push(`Row ${i+1}: missing tester_id`);continue;}
+    if(!VALID_TYPES.includes(typ)&&typ!==''){errors.push(`Row ${i+1}: type must be Electronic or Charcoal (got "${typ}")`);continue;}
+    const rawStatus=statusIdx>=0?(cols[statusIdx]||'').trim():'';
+    const status=VALID_STATUS.includes(rawStatus)?rawStatus:'At Warehouse';
+    const rawActive=activeIdx>=0?(cols[activeIdx]||'').trim().toLowerCase():'true';
+    const active=rawActive!=='false'&&rawActive!=='0'&&rawActive!=='no';
+    rows.push({id:tid,type:typ||'Electronic',serial:serialIdx>=0?(cols[serialIdx]||'').trim()||null:null,status,active});
+  }
+  return{rows,errors};
+}
+
+function previewTesterCSV(input){
+  const file=input.files?.[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const{rows,errors}=_parseTesterCSV(e.target.result);
+    const preview=document.getElementById('tcsv-preview');
+    const actions=document.getElementById('tcsv-actions');
+    if(!preview) return;
+    let html='';
+    if(errors.length){
+      html+=`<div style="background:#fff3e0;border:1px solid #ffe0b2;border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px">
+        <b>⚠️ Errors found:</b><br>${errors.map(e=>`• ${esc(e)}`).join('<br>')}
+      </div>`;
+    }
+    if(rows.length){
+      // Check for duplicates against existing cache
+      const existing=(S.get('lhs:ts')||[]).map(t=>(t.id||'').toLowerCase());
+      const dupes=rows.filter(r=>existing.includes(r.id.toLowerCase()));
+      if(dupes.length){
+        html+=`<div style="background:#fff3e0;border:1px solid #ffe0b2;border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px">
+          <b>⚠️ ${dupes.length} duplicate ID(s) already in system — they will be skipped:</b><br>
+          ${dupes.map(d=>`• ${esc(d.id)}`).join('<br>')}
+        </div>`;
+      }
+      const newRows=rows.filter(r=>!existing.includes(r.id.toLowerCase()));
+      html+=`<div style="font-size:13px;font-weight:600;margin-bottom:8px">Preview — ${newRows.length} tester(s) to import${dupes.length?` (${dupes.length} skipped as duplicates)`:''}:</div>`;
+      html+=`<div style="max-height:280px;overflow-y:auto;border:1px solid var(--bdr);border-radius:7px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="position:sticky;top:0;background:var(--surf)"><tr>
+          <th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--bdr)">Tester ID</th>
+          <th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--bdr)">Type</th>
+          <th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--bdr)">Serial</th>
+          <th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--bdr)">Status</th>
+          <th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--bdr)">Active</th>
+        </tr></thead>
+        <tbody>${newRows.map((r,idx)=>`<tr style="background:${idx%2===0?'var(--white)':'var(--surf)'}">
+          <td style="padding:6px 10px;font-family:'DM Sans',sans-serif;font-weight:600;color:var(--navy)">${esc(r.id)}</td>
+          <td style="padding:6px 10px">${esc(r.type)}</td>
+          <td style="padding:6px 10px;color:var(--muted)">${esc(r.serial||'—')}</td>
+          <td style="padding:6px 10px">${esc(r.status)}</td>
+          <td style="padding:6px 10px">${r.active?'✅':'❌'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+      window._testerImportRows=newRows;
+      if(actions) actions.style.display=newRows.length?'flex':'none';
+    } else {
+      if(actions) actions.style.display='none';
+      window._testerImportRows=[];
+    }
+    preview.innerHTML=html;
+  };
+  reader.readAsText(file);
+}
+
+async function importTesterCSV(){
+  const rows=window._testerImportRows||[];
+  if(!rows.length){tst('No rows to import','error');return;}
+  const btn=document.querySelector('#tcsv-actions .btn-n');
+  if(btn){btn.disabled=true;btn.textContent='Importing…';}
+  const now=new Date().toISOString();
+  let ok=0,fail=0;
+  const localTs=S.get('lhs:ts')||[];
+  for(const r of rows){
+    const dbRow={tester_id:r.id,tester_type:r.type,serial_number:r.serial||null,status:r.status,active:r.active,created_at:now};
+    try{
+      const{data,error}=await DB.from('lhs_testers').insert(dbRow).select().single();
+      if(error) throw new Error(error.message);
+      localTs.push({_supaId:data.id,id:r.id,type:r.type,serial:r.serial||null,status:r.status,active:r.active,created_at:now});
+      ok++;
+    }catch(e){console.warn('Import row failed:',r.id,e.message);fail++;}
+  }
+  S.set('lhs:ts',localTs);
+  window._testerImportRows=[];
+  cMod();
+  tst(`Imported ${ok} tester${ok!==1?'s':''}${fail?` (${fail} failed — check console)`:''}`,'success');
+  showPage('testers');
 }
 
 // ─── INTEGRATIONS ────────────────────────────────────────────────────────────
