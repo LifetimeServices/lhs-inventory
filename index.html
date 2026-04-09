@@ -524,7 +524,7 @@ const PERM_MODS=[
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
   {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete','import','download']},
   {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export'],
-    tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_inv_reports','tab_testers','tab_tools']},
+    tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_rma','tab_inv_reports','tab_testers','tab_tools']},
   {key:'hr',label:'HR',icon:'👤',perms:['view','edit','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all','view_managed_only'],
     tabs:['tab_payroll','tab_employees','tab_hr_state','tab_timeoff','tab_hr_settings']},
   {key:'payroll',label:'Payroll',icon:'💵',perms:['view','edit','process','export','view_all','payroll_managed_only','review_own_timesheet']},
@@ -562,7 +562,7 @@ const PERM_LABELS={
   tab_inv_dash:'Overview',tab_inv_master:'Master Inventory',tab_po:'Purchase Orders',
   tab_receive:'Receive',tab_transfer:'Transfer',tab_vans:'Van Stock',
   tab_locations:'Locations',tab_locstock:'Location Stock',tab_inv_reports:'Reports',
-  tab_testers:'Testers',tab_tools:'Tool Management',
+  tab_rma:'RMA',tab_testers:'Testers',tab_tools:'Tool Management',
   // ── HR sub-tabs ───────────────────────────────────────────────────────────
   tab_payroll:'Payroll',tab_employees:'Employee Info',tab_hr_state:'State Settings',
   tab_timeoff:'Time Off Requests',tab_hr_settings:'HR Settings',
@@ -1552,6 +1552,7 @@ const S={
 const TBL={
   'lhs:items':'lhs_items','lhs:ls':'lhs_location_stock','lhs:vi':'lhs_van_inventory',
   'lhs:pos':'lhs_purchase_orders','lhs:po_lines':'lhs_po_lines','lhs:ts':'lhs_testers','lhs:xfrs':'lhs_transfers',
+  'lhs:rmas':'lhs_rmas',
   'lhs:locs':'lhs_locations','lhs:divs':'lhs_divisions','lhs:vens':'lhs_vendors',
   'lhs:users':'lhs_users','lhs:tools':'lhs_tools','lhs:tool_audit':'lhs_tool_audit',
   'lhs:job_subtypes':'lhs_job_subtypes',
@@ -1662,7 +1663,7 @@ async function warmCache(){
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
-        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions','lhs_testers'];
+        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions','lhs_testers','lhs_rmas'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
@@ -2165,6 +2166,7 @@ const _PAGE_MODULE_MAP={
   vans:{mod:'inventory',tab:'tab_vans'},
   locations:{mod:'inventory',tab:'tab_locations'},
   locstock:{mod:'inventory',tab:'tab_locstock'},
+  rma:{mod:'inventory',tab:'tab_rma'},
   'inv-reports':{mod:'inventory',tab:'tab_inv_reports'},
   testers:{mod:'inventory',tab:'tab_testers'},
   tools:{mod:'inventory',tab:'tab_tools'},
@@ -2538,6 +2540,7 @@ async function startApp(){
     <div class="page" id="p-vans"></div>
     <div class="page" id="p-locations"></div>
     <div class="page" id="p-locstock"></div>
+    <div class="page" id="p-rma"></div>
     <div class="page" id="p-inv-reports"></div>
     <div class="page" id="p-testers"></div>
     <div class="page" id="p-tools"></div>
@@ -2594,7 +2597,7 @@ async function startApp(){
     'accounts','customers','properties','business','commercial',
     'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings',
     'tasks','mytasks',
-    'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools',
+    'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
@@ -2609,7 +2612,7 @@ async function startApp(){
   // Activate the correct sub-nav if restoring to a sub-section page
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
-  const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
+  const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
@@ -2746,6 +2749,7 @@ const INV_NAV=[
   {id:'vans',         l:'Van Stock'},
   {id:'locations',    l:'Locations'},
   {id:'locstock',     l:'Location Stock'},
+  {id:'rma',          l:'RMA'},
   {id:'inv-reports',  l:'Reports'},
   {id:'testers',      l:'Testers'},
   {id:'tools',        l:'Tool Management'},
@@ -3028,7 +3032,7 @@ window.addEventListener('popstate',e=>{
   if(!CU){ window.history.replaceState({lmsPage:'dashboard'},'','#dashboard'); return; }
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
-  const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','inv-reports','testers','tools'];
+  const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
@@ -3076,7 +3080,7 @@ function buildPage(id){
     'acct-receipts':bAcctReceipts,'acct-settings':bAcctSettings,
     closeout:bCloseout, inventory:bInv, 'inv-dashboard':bInvDash,
     po:bPO, receive:bRecv, transfer:bXfr, vans:bVans,
-    locations:bLocs, locstock:bLS, 'inv-reports':bInvReports,
+    locations:bLocs, locstock:bLS, rma:bRMA, 'inv-reports':bInvReports,
     testers:bTest, tools:bTools,
     hr:()=>bPlaceholder('HR'),
     'hr-payroll':bPayroll,
@@ -3784,6 +3788,9 @@ function bXfr(){
   const allLocs=[...WH,...VH];
   const locOpts=allLocs.map(l=>`<option value="${l}">${l}</option>`).join('');
   return`<div class="pt">Vehicle Transfer</div><div class="ps">Move inventory between warehouses and vehicles</div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn btn-o" onclick="oAddRMA()">🔄 New RMA</button>
+  </div>
   <div class="card"><div class="ct">New Transfer</div>
   <div class="fr">
     <div class="fl"><label>From</label><select id="xf" onchange="xUpA()">
@@ -5728,6 +5735,227 @@ async function importTesterCSV(){
   cMod();
   tst(`Imported ${ok} tester${ok!==1?'s':''}${fail?` (${fail} failed — check console)`:''}`,'success');
   showPage('testers');
+}
+
+// ─── RMA ─────────────────────────────────────────────────────────────────────
+const RMA_ISSUES=['Broken','Defective','Warranty','Mother Nature'];
+const RMA_STATUSES=['At Warehouse','Sent to Vendor','Received'];
+
+function bRMA(){
+  const filter=window._rmaFilter||'active';
+  const fUser=window._rmaFUser||'';
+  const fItem=window._rmaFItem||'';
+  const fLoc=window._rmaFLoc||'';
+  const fVendor=window._rmaFVendor||'';
+  const all=S.get('lhs:rmas')||[];
+  const active=all.filter(r=>r.status!=='Received');
+  const completed=all.filter(r=>r.status==='Received');
+  let rows=filter==='completed'?completed:active;
+  if(fUser) rows=rows.filter(r=>(r.submitted_by||'').toLowerCase().includes(fUser.toLowerCase()));
+  if(fItem) rows=rows.filter(r=>(r.item_name||'').toLowerCase().includes(fItem.toLowerCase()));
+  if(fLoc) rows=rows.filter(r=>(r.from_location||'').toLowerCase().includes(fLoc.toLowerCase()));
+  if(fVendor) rows=rows.filter(r=>r.submitted_to_vendor);
+  // Sort newest first
+  rows=[...rows].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+  const statusBadge=s=>s==='At Warehouse'?bx(s,'bg'):s==='Sent to Vendor'?bx(s,'ba'):bx(s,'bb');
+  const issueBadge=i=>i==='Broken'?bx(i,'bgr'):i==='Defective'?bx(i,'ba'):i==='Warranty'?bx(i,'bb'):bx(i,'bn');
+  return`<div class="pt">RMA</div><div class="ps">Return Merchandise Authorization tracking</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <button class="btn${filter==='active'?' btn-n':' btn-o'}" onclick="window._rmaFilter='active';showPage('rma')">Active (${active.length})</button>
+    <button class="btn${filter==='completed'?' btn-n':' btn-o'}" onclick="window._rmaFilter='completed';showPage('rma')">Completed (${completed.length})</button>
+    <button class="btn btn-g" onclick="oAddRMA()" style="margin-left:auto">+ New RMA</button>
+  </div>
+  <div class="card" style="padding:14px 16px;margin-bottom:16px">
+    <div class="fr" style="margin:0;gap:10px;flex-wrap:wrap">
+      <div class="fl" style="min-width:140px;margin:0"><label style="font-size:11px">User</label>
+        <input placeholder="Filter by user…" value="${esc(fUser)}" oninput="window._rmaFUser=this.value;showPage('rma')" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;width:100%"></div>
+      <div class="fl" style="min-width:160px;margin:0"><label style="font-size:11px">Material</label>
+        <input placeholder="Filter by item…" value="${esc(fItem)}" oninput="window._rmaFItem=this.value;showPage('rma')" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;width:100%"></div>
+      <div class="fl" style="min-width:140px;margin:0"><label style="font-size:11px">Location</label>
+        <input placeholder="Filter by location…" value="${esc(fLoc)}" oninput="window._rmaFLoc=this.value;showPage('rma')" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;width:100%"></div>
+      <div class="fl" style="min-width:140px;margin:0;display:flex;align-items:flex-end;gap:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:2px">
+          <input type="checkbox" ${fVendor?'checked':''} onchange="window._rmaFVendor=this.checked?'1':'';showPage('rma')">
+          Submitted to Vendor only
+        </label>
+      </div>
+      ${(fUser||fItem||fLoc||fVendor)?`<button class="btn btn-o sm" onclick="window._rmaFUser='';window._rmaFItem='';window._rmaFLoc='';window._rmaFVendor='';showPage('rma')">Clear Filters</button>`:''}
+    </div>
+  </div>
+  <div class="card" style="padding:0">
+  <div class="tw"><table>
+    <thead><tr>
+      <th>Date</th><th>User</th><th>Location</th><th>Material</th><th>Issue</th>
+      <th style="text-align:center">Qty</th><th>Serial #</th><th>DOM</th>
+      <th>Vendor Submitted</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>${rows.length?rows.map(r=>`<tr>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${(r.created_at||'').slice(0,10)}</td>
+      <td style="font-weight:500">${esc(r.submitted_by||'—')}</td>
+      <td style="font-size:12px">${esc(r.from_location||'—')}</td>
+      <td style="font-weight:600;color:var(--navy)">${esc(r.item_name||'—')}</td>
+      <td>${issueBadge(r.issue)}</td>
+      <td style="text-align:center">${r.quantity||1}</td>
+      <td style="font-family:'DM Sans',sans-serif;font-size:12px;color:var(--muted)">${esc(r.serial_number||'—')}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(r.dom||'—')}</td>
+      <td style="font-size:12px">${r.submitted_to_vendor?`<span style="color:#2e7d32;font-weight:600">✓ ${esc(r.submitted_to_vendor)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${statusBadge(r.status||'At Warehouse')}</td>
+      <td><button class="btn sm btn-o" onclick="oEditRMA('${r.id}')">Edit</button></td>
+    </tr>`).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">No RMAs found${filter==='completed'?' in completed':' — click + New RMA to log one'}</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function oAddRMA(){
+  const items=S.get('lhs:items')||[];
+  const allLocs=[...WH,...VH];
+  oMod('New RMA',`
+  <div class="fr">
+    <div class="fl"><label>From Location</label>
+      <select id="rma-loc">
+        <option value="">— Select —</option>
+        ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+        ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Material Item</label>
+      <select id="rma-item">
+        <option value="">— Select Item —</option>
+        ${items.map(i=>`<option value="${i.sku}|${i.name}">${esc(i.name)} (${i.sku})</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Quantity</label>
+      <input type="number" id="rma-qty" value="1" min="1" style="width:70px">
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Issue</label>
+      <select id="rma-issue">
+        ${RMA_ISSUES.map(i=>`<option>${i}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Serial Number <span style="font-weight:400;color:var(--muted)">(if applicable)</span></label>
+      <input id="rma-serial" placeholder="e.g. SN-12345">
+    </div>
+    <div class="fl"><label>DOM — Date of Manufacture</label>
+      <input type="date" id="rma-dom">
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Submitted to Vendor Date <span style="font-weight:400;color:var(--muted)">(leave blank if not yet)</span></label>
+      <input type="date" id="rma-vendor-date">
+    </div>
+    <div class="fl"><label>Notes</label>
+      <input id="rma-notes" placeholder="Optional">
+    </div>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svAddRMA()">Submit RMA</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svAddRMA(){
+  const locVal=v('rma-loc');
+  const itemVal=v('rma-item');
+  if(!locVal){tst('Select a location','error');return;}
+  if(!itemVal){tst('Select a material item','error');return;}
+  const [sku,itemName]=itemVal.split('|');
+  const now=new Date().toISOString();
+  const rma={
+    id:'rma_'+Date.now(),
+    created_at:now,
+    updated_at:now,
+    submitted_by:CU.name,
+    from_location:locVal,
+    item_sku:sku,
+    item_name:itemName,
+    issue:v('rma-issue'),
+    serial_number:v('rma-serial').trim()||null,
+    dom:v('rma-dom')||null,
+    quantity:parseInt(v('rma-qty'))||1,
+    submitted_to_vendor:v('rma-vendor-date')||null,
+    notes:v('rma-notes').trim()||null,
+    status:'At Warehouse'
+  };
+  const dbRow={
+    submitted_by:rma.submitted_by,from_location:rma.from_location,
+    item_sku:rma.item_sku,item_name:rma.item_name,issue:rma.issue,
+    serial_number:rma.serial_number,dom:rma.dom,quantity:rma.quantity,
+    submitted_to_vendor:rma.submitted_to_vendor,notes:rma.notes,
+    status:rma.status,created_at:now,updated_at:now
+  };
+  try{
+    const{data,error}=await DB.from('lhs_rmas').insert(dbRow).select().single();
+    if(error) throw new Error(error.message);
+    rma.id=data.id;
+  }catch(e){console.warn('svAddRMA:',e.message);tst('Saved locally — Supabase sync failed','error');}
+  const rmas=S.get('lhs:rmas')||[];rmas.push(rma);S.set('lhs:rmas',rmas);
+  cMod();tst('RMA submitted','success');showPage('rma');
+}
+
+function oEditRMA(id){
+  const rmas=S.get('lhs:rmas')||[];
+  const r=rmas.find(x=>x.id===id);
+  if(!r){tst('RMA not found','error');return;}
+  const issueBadge=i=>i==='Broken'?bx(i,'bgr'):i==='Defective'?bx(i,'ba'):i==='Warranty'?bx(i,'bb'):bx(i,'bn');
+  oMod(`RMA — ${esc(r.item_name||'?')}`,`
+  <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px 20px">
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Submitted by</div><div style="font-weight:600">${esc(r.submitted_by||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Date</div><div>${(r.created_at||'').slice(0,10)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Location</div><div>${esc(r.from_location||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Issue</div><div>${issueBadge(r.issue)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Serial #</div><div style="font-family:'DM Sans',sans-serif;font-weight:600">${esc(r.serial_number||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">DOM</div><div>${esc(r.dom||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Qty</div><div>${r.quantity||1}</div></div>
+      ${r.notes?`<div style="grid-column:1/-1"><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Notes</div><div>${esc(r.notes)}</div></div>`:''}
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Status</label>
+      <select id="rma-edit-status">
+        ${RMA_STATUSES.map(s=>`<option${r.status===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Submitted to Vendor Date</label>
+      <input type="date" id="rma-edit-vendor" value="${r.submitted_to_vendor||''}">
+    </div>
+    <div class="fl"><label>Notes</label>
+      <input id="rma-edit-notes" value="${esc(r.notes||'')}">
+    </div>
+  </div>
+  <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:7px;padding:10px 14px;font-size:12px;color:#5d4037;margin-bottom:14px">
+    ⚠️ Setting status to <b>Received</b> will move this RMA to the Completed log and remove it from the active board.
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="svEditRMA('${id}')">Save Changes</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+}
+
+async function svEditRMA(id){
+  const rmas=S.get('lhs:rmas')||[];
+  const idx=rmas.findIndex(x=>x.id===id);
+  if(idx<0){tst('RMA not found','error');return;}
+  const now=new Date().toISOString();
+  const newStatus=v('rma-edit-status');
+  const updates={
+    status:newStatus,
+    submitted_to_vendor:v('rma-edit-vendor')||null,
+    notes:v('rma-edit-notes').trim()||null,
+    updated_at:now
+  };
+  if(newStatus==='Received') updates.completed_at=now;
+  rmas[idx]={...rmas[idx],...updates};
+  S.set('lhs:rmas',rmas);
+  try{
+    const{error}=await DB.from('lhs_rmas').update(updates).eq('id',id);
+    if(error) console.warn('svEditRMA:',error.message);
+  }catch(e){console.warn('svEditRMA failed:',e.message);}
+  cMod();
+  tst(newStatus==='Received'?'RMA marked received — moved to Completed':'RMA updated','success');
+  showPage('rma');
 }
 
 // ─── INTEGRATIONS ────────────────────────────────────────────────────────────
