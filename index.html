@@ -2210,6 +2210,18 @@ async function doLogin(){
 
   // MFA check
   if(user.mfa_enabled){
+    // Check if this device is already trusted (14-day remember)
+    try{
+      const _trust=JSON.parse(localStorage.getItem('lhs_mfa_trust_'+user.id)||'null');
+      if(_trust&&_trust.expires&&new Date(_trust.expires)>new Date()){
+        // Device trusted — skip MFA
+        CU=user;
+        sessionStorage.setItem('lhs_s',JSON.stringify({e:user.email,id:user.id}));
+        logAudit('login_success',{email:user.email,name:user.name,role:user.role,mfa:'device_trusted'});
+        startApp();
+        return;
+      }
+    }catch(e){}
     _mfaPendingUser=user;
     // Hide login form fields
     const _lf=document.getElementById('ls');
@@ -2298,6 +2310,11 @@ async function verifyMFA(){
     }
     await DB.from('lhs_mfa_tokens').update({used:true}).eq('id',data.id);
     CU=_mfaPendingUser;_mfaPendingUser=null;
+    // Store 14-day device trust token
+    try{
+      const _expires=new Date(Date.now()+14*24*60*60*1000).toISOString();
+      localStorage.setItem('lhs_mfa_trust_'+CU.id,JSON.stringify({expires:_expires}));
+    }catch(e){}
     sessionStorage.setItem('lhs_s',JSON.stringify({e:CU.email,id:CU.id}));
     logAudit('login_success',{email:CU.email,name:CU.name,role:CU.role,mfa:true});
     document.getElementById('mfa-step').style.display='none';
