@@ -403,6 +403,11 @@ function getArrivalWindows(){
   const s=S.get('lhs:wo_settings')||{};
   return s.arrival_windows||ARRIVAL_WINDOWS;
 }
+function saveWOSettings(s){
+  S.set('lhs:wo_settings',s);
+  try{DB.from('lhs_wo_settings').upsert({key:'wo_settings',value:s},{onConflict:'key'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('WO settings Supabase sync failed:',e.message);}
+}
 // Returns live tags array [{id,label,abbr,color}]
 function getWOTags(){
   return S.get('lhs:wo_tags')||[
@@ -437,7 +442,15 @@ function getPhotoLabelsFor(div,jobType){
   // Most specific first: Division|JobType, then Division-only, then []
   return map[(div||'')+'|'+(jobType||'')]||map[div||'']||[];
 }
-function savePhotoLabels(map){S.set('lhs:photo_labels',map);}
+function savePhotoLabels(map){
+  S.set('lhs:photo_labels',map);
+  // Sync each key's labels to Supabase
+  try{
+    Object.entries(map).forEach(([div_job_key,labels])=>{
+      DB.from('lhs_photo_labels').upsert({div_job_key,labels},{onConflict:'div_job_key'}).then(()=>{}).catch(()=>{});
+    });
+  }catch(e){console.warn('Photo labels Supabase sync failed:',e.message);}
+}
 function addPhotoLabelRow(key){
   const map=getPhotoLabels();
   if(!map[key]) map[key]=[];
@@ -1721,6 +1734,79 @@ async function warmCache(){
         S.set('lhs:div_display_names',map);
       }
     }catch(e){console.warn('div display names load failed:',e.message);}
+    // Load WO tag assignments from Supabase
+    try{
+      const{data:taRows}=await DB.from('lhs_wo_tag_assignments').select('wo_id,tags');
+      if(taRows&&taRows.length){
+        const taMap={};
+        taRows.forEach(r=>{taMap[r.wo_id]=r.tags;});
+        localStorage.setItem('lms_wo_tag_assignments',JSON.stringify(taMap));
+      }
+    }catch(e){console.warn('WO tag assignments load failed:',e.message);}
+    // Load photo labels from Supabase
+    try{
+      const{data:plRows}=await DB.from('lhs_photo_labels').select('div_job_key,labels');
+      if(plRows&&plRows.length){
+        const plMap={};
+        plRows.forEach(r=>{plMap[r.div_job_key]=r.labels;});
+        S.set('lhs:photo_labels',plMap);
+      }
+    }catch(e){console.warn('Photo labels load failed:',e.message);}
+    // Load WO settings from Supabase
+    try{
+      const{data:wsRows}=await DB.from('lhs_wo_settings').select('value').eq('key','wo_settings').single();
+      if(wsRows&&wsRows.value) S.set('lhs:wo_settings',wsRows.value);
+    }catch(e){console.warn('WO settings load failed:',e.message);}
+    // Load estimate document settings from Supabase
+    try{
+      const{data:edRows}=await DB.from('lhs_est_doc_settings').select('template_id,settings');
+      if(edRows&&edRows.length){
+        const edArr=edRows.map(r=>({...r.settings,id:r.template_id}));
+        S.set('lms:est_doc_settings',edArr);
+      }
+    }catch(e){console.warn('Est doc settings load failed:',e.message);}
+    // Load app settings (API keys) from Supabase
+    try{
+      const{data:asRows}=await DB.from('lhs_app_settings').select('key,value');
+      if(asRows&&asRows.length){
+        // groq/endpoint use S.set (read via S.get); dtc/imx use localStorage directly (read via localStorage.getItem)
+        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint'};
+        const lsKeyMap={dtc_key:'lhs:dtc_key',dtc_sub:'lhs:dtc_sub',imx_acct:'lhs:imx_acct',imx_key:'lhs:imx_key'};
+        asRows.forEach(r=>{
+          if(sKeyMap[r.key]) S.set(sKeyMap[r.key],r.value);
+          else if(lsKeyMap[r.key]) localStorage.setItem(lsKeyMap[r.key],r.value);
+        });
+      }
+    }catch(e){console.warn('App settings load failed:',e.message);}
+    // Load HR config from Supabase
+    try{
+      const{data:hrRow}=await DB.from('lhs_hr_config').select('value').eq('key','hr_config').single();
+      if(hrRow&&hrRow.value) S.set('lhs:hr_config',hrRow.value);
+    }catch(e){console.warn('HR config load failed:',e.message);}
+    // Load sales settings from Supabase
+    try{
+      const{data:ssRow}=await DB.from('lhs_sales_settings').select('value').eq('key','sales_settings').single();
+      if(ssRow&&ssRow.value) S.set('lms:sales_settings',ssRow.value);
+    }catch(e){console.warn('Sales settings load failed:',e.message);}
+    // Load location extras from Supabase
+    try{
+      const{data:leRows}=await DB.from('lhs_location_extras').select('location_id,extras');
+      if(leRows&&leRows.length){
+        const leMap={};
+        leRows.forEach(r=>{leMap[r.location_id]=r.extras;});
+        localStorage.setItem('lms_loc_extras',JSON.stringify(leMap));
+      }
+    }catch(e){console.warn('Location extras load failed:',e.message);}
+    // Load chat groups from Supabase
+    try{
+      const{data:cgRows}=await DB.from('lhs_chat_groups').select('id,name,members,created_by');
+      if(cgRows&&cgRows.length) localStorage.setItem('lms_chat_groups',JSON.stringify(cgRows));
+    }catch(e){console.warn('Chat groups load failed:',e.message);}
+    // Load PO sequence from Supabase
+    try{
+      const{data:psRow}=await DB.from('lhs_po_sequence').select('last_seq').eq('id',1).single();
+      if(psRow&&psRow.last_seq) S.set('lhs:poseq',Math.max(psRow.last_seq||0,S.get('lhs:poseq')||0));
+    }catch(e){console.warn('PO sequence load failed:',e.message);}
     // Free up localStorage space — remove large tables that don't need to persist between sessions
     // lhs_wo_audit and lhs_job_classifications are large and re-loaded from Supabase each login
     try{
@@ -1793,6 +1879,9 @@ async function getNextPOSeq(){
   });
   const n=maxSeq+1;
   S.set('lhs:poseq',n);
+  // Sync new value back to Supabase so other users see the latest sequence
+  try{DB.from('lhs_po_sequence').update({last_seq:n}).eq('id',1).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('PO sequence Supabase sync failed:',e.message);}
   return n;
 }
 
@@ -1833,6 +1922,8 @@ function saveLocExtras(id,extras){
   const map=getLocExtras();
   map[id]={...(map[id]||{}),...extras};
   localStorage.setItem('lms_loc_extras',JSON.stringify(map));
+  try{DB.from('lhs_location_extras').upsert({location_id:id,extras:map[id]},{onConflict:'location_id'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('Location extras Supabase sync failed:',e.message);}
 }
 function mergeLocExtras(locs){
   const map=getLocExtras();
@@ -6148,7 +6239,7 @@ function svAddArrivalWindow(){
   if(wins.includes(val)){tst('Window already exists','error');return}
   wins.push(val);
   s.arrival_windows=wins;
-  S.set('lhs:wo_settings',s);
+  saveWOSettings(s);
   cMod();tst(`"${val}" added`,'success');g('atab').innerHTML=aWOSettings();
 }
 function delArrivalWindow(i){
@@ -6156,7 +6247,7 @@ function delArrivalWindow(i){
   const wins=s.arrival_windows||[...ARRIVAL_WINDOWS];
   wins.splice(i,1);
   s.arrival_windows=wins;
-  S.set('lhs:wo_settings',s);
+  saveWOSettings(s);
   tst('Window removed','info');g('atab').innerHTML=aWOSettings();
 }
 
@@ -6442,6 +6533,10 @@ function cDTC(){
   // Save credentials to localStorage
   localStorage.setItem('lhs:dtc_key',key);
   localStorage.setItem('lhs:dtc_sub',sub);
+  try{
+    DB.from('lhs_app_settings').upsert({key:'dtc_key',value:key},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'dtc_sub',value:sub},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  }catch(e){console.warn('dtc creds Supabase sync failed:',e.message);}
   // Update status badge
   const st=document.getElementById('dtc-status');
   if(st){st.textContent='● Credentials Saved — Verifying...';st.className='is2';}
@@ -6546,6 +6641,10 @@ function cIMX(){
   if(!acct||!key){tst('Enter Account ID and API Key','error');return;}
   localStorage.setItem('lhs:imx_acct',acct);
   localStorage.setItem('lhs:imx_key',key);
+  try{
+    DB.from('lhs_app_settings').upsert({key:'imx_acct',value:acct},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'imx_key',value:key},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  }catch(e){console.warn('imx creds Supabase sync failed:',e.message);}
   const st=document.getElementById('imx-status');
   if(st){st.textContent='● Verifying...';st.className='is2';}
   // Intermedia Extend REST API base: https://api.intermedia.net/voice/v2/
@@ -8846,6 +8945,8 @@ function chatCreateGroup(){
   const grp={id:Date.now().toString(),name,members,created_by:CU?.email,created_at:new Date().toISOString()};
   groups.push(grp);
   localStorage.setItem('lms_chat_groups',JSON.stringify(groups));
+  try{DB.from('lhs_chat_groups').insert({id:grp.id,name:grp.name,members:grp.members,created_by:grp.created_by}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('Chat group Supabase sync failed:',e.message);}
   window._chatChannel='grp-'+grp.id;
   window._chatShowNewGroup=false;
   tst(`Group "${name}" created`,'success');
@@ -8864,11 +8965,19 @@ function chatManageGroup(groupId){
     const idx=groups.findIndex(g=>g.id===groupId);
     groups.splice(idx,1);
     localStorage.setItem('lms_chat_groups',JSON.stringify(groups));
+    try{DB.from('lhs_chat_groups').delete().eq('id',groupId).then(()=>{}).catch(()=>{});}
+    catch(e){console.warn('Chat group delete Supabase sync failed:',e.message);}
     window._chatChannel='all';
     tst('Group deleted','info');
   } else if(action.startsWith('rename:')){
     const newName=action.slice(7).trim();
-    if(newName){grp.name=newName;localStorage.setItem('lms_chat_groups',JSON.stringify(groups));tst('Group renamed','success');}
+    if(newName){
+      grp.name=newName;
+      localStorage.setItem('lms_chat_groups',JSON.stringify(groups));
+      try{DB.from('lhs_chat_groups').update({name:newName}).eq('id',groupId).then(()=>{}).catch(()=>{});}
+      catch(e){console.warn('Chat group rename Supabase sync failed:',e.message);}
+      tst('Group renamed','success');
+    }
   }
   showPage('chatter');
 }
@@ -12652,12 +12761,16 @@ function vaKeydown(e){
 function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
   S.set('lhs:groq_api_key',val);
+  try{DB.from('lhs_app_settings').upsert({key:'groq_api_key',value:val},{onConflict:'key'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('groq_api_key Supabase sync failed:',e.message);}
   tst(val?'Groq API key saved — Assistant is ready!':'Groq key cleared','success');
   showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
 }
 function saveAiEndpoint(){
   const val=(document.getElementById('ai-endpoint-input')?.value||'').trim();
   S.set('lhs:acct_ai_endpoint',val);
+  try{DB.from('lhs_app_settings').upsert({key:'acct_ai_endpoint',value:val},{onConflict:'key'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('acct_ai_endpoint Supabase sync failed:',e.message);}
   tst(val?'AI endpoint saved':'AI endpoint cleared','success');
   showPage('acct-settings');
 }
@@ -18993,7 +19106,7 @@ function getCancelReasons(){
 function saveCancelReasons(arr){
   const s=S.get('lhs:wo_settings')||{};
   s.cancelReasons=arr;
-  S.set('lhs:wo_settings',s);
+  saveWOSettings(s);
 }
 function oAddCancelReason(){
   oMod('Add Cancellation Reason',`
@@ -26374,6 +26487,8 @@ function svHRSettings(){
     i9_reminder_days:parseInt(v('hcfg-i9'))||90,
   };
   S.set('lhs:hr_config',cfg);
+  try{DB.from('lhs_hr_config').upsert({key:'hr_config',value:cfg},{onConflict:'key'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('HR config Supabase sync failed:',e.message);}
   cMod(); tst('HR Settings saved','success'); showPage('hr-settings');
 }
 
@@ -29353,7 +29468,17 @@ async function svLogActivity(){
 function getEstDocSettings(){
   return S.get('lms:est_doc_settings')||[];
 }
-function saveEstDocSettings(arr){S.set('lms:est_doc_settings',arr);}
+function saveEstDocSettings(arr){
+  S.set('lms:est_doc_settings',arr);
+  // Sync each template to Supabase
+  try{
+    if(arr&&arr.length){
+      arr.forEach(t=>{
+        DB.from('lhs_est_doc_settings').upsert({template_id:t.id,settings:t},{onConflict:'template_id'}).then(()=>{}).catch(()=>{});
+      });
+    }
+  }catch(e){console.warn('Est doc settings Supabase sync failed:',e.message);}
+}
 
 // Priority: division+region+state > division+region > division only > global default
 function getEstDocTemplate(division,region,state){
@@ -29782,7 +29907,11 @@ function previewEstDocTemplate(id){
 function getSalesSettings(){
   return S.get('lms:sales_settings')||_defaultSalesSettings();
 }
-function saveSalesSettings(s){S.set('lms:sales_settings',s);}
+function saveSalesSettings(s){
+  S.set('lms:sales_settings',s);
+  try{DB.from('lhs_sales_settings').upsert({key:'sales_settings',value:s},{onConflict:'key'}).then(()=>{}).catch(()=>{});}
+  catch(e){console.warn('Sales settings Supabase sync failed:',e.message);}
+}
 function _defaultSalesSettings(){
   return{
     salutations:['Mr.','Mrs.','Ms.','Dr.','Prof.','Rev.'],
@@ -32768,6 +32897,12 @@ function getWOTagAssignments(){
 }
 function setWOTagAssignments(map){
   try{localStorage.setItem('lms_wo_tag_assignments',JSON.stringify(map));}catch{}
+  // Sync each WO's tags to Supabase
+  try{
+    Object.entries(map).forEach(([wo_id,tags])=>{
+      DB.from('lhs_wo_tag_assignments').upsert({wo_id,tags},{onConflict:'wo_id'}).then(()=>{}).catch(()=>{});
+    });
+  }catch(e){console.warn('WO tag assignments Supabase sync failed:',e.message);}
 }
 function getTagsForWO(woId){
   const map=getWOTagAssignments();
