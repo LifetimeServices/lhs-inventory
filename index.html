@@ -7886,9 +7886,9 @@ function oEditUser(i){
     <div class="fl"><label>Full Name</label><input id="eu0" value="${u.name}"></div>
     <div class="fl"><label>Email</label><input id="eu1" value="${u.email}"></div>
   </div><div class="fr">
-    <div class="fl"><label>Password</label><input id="eu2" value="${u.pw||u.password_hash||''}"></div>
+    <div class="fl"><label>New Password <span style="font-weight:400;color:var(--muted)">(leave blank to keep current)</span></label><input id="eu2" type="password" placeholder="Enter new password to change"></div>
     <div class="fl"><label>Role</label><select id="eu3">
-      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator').map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
     </select></div>
   </div><div class="fr">
     <div class="fl"><label>Primary Division</label><select id="eu4">
@@ -7973,14 +7973,20 @@ async function svEditUser(i){
   const users=S.get('lhs:users')||[...USERS];
   const _incDisp=document.getElementById('eu-disp')?.value;
   const _tsNeeded=document.getElementById('eu-ts')?.value;
-  const _rawPw=v('eu2')||'';
-  // Only hash if the password field was changed (not already a SHA-256 hash)
-  const _isAlreadyHashed=/^[a-f0-9]{64}$/.test(_rawPw);
-  if(!_isAlreadyHashed){
-    const _pwErr=_validatePassword(_rawPw);
-    if(_pwErr){tst(_pwErr,'error');return;}
+  const _rawPw=(v('eu2')||'').trim();
+  // If blank — keep existing password hash unchanged
+  const _existingHash=users[i]?.password_hash||users[i]?.pw||'';
+  let _newPwHash=_existingHash;
+  if(_rawPw){
+    const _isAlreadyHashed=/^[a-f0-9]{64}$/.test(_rawPw);
+    if(!_isAlreadyHashed){
+      const _pwErr=_validatePassword(_rawPw);
+      if(_pwErr){tst(_pwErr,'error');return;}
+      _newPwHash=await sha256(_rawPw);
+    } else {
+      _newPwHash=_rawPw;
+    }
   }
-  const _newPwHash=_isAlreadyHashed?_rawPw:await sha256(_rawPw);
   const _mfaVal=document.getElementById('eu-mfa')?.value;
   const updated={
     ...users[i],
