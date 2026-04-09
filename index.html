@@ -1658,11 +1658,11 @@ async function warmCache(){
         // Only order by created_at for tables that have it
         // Tables that use last_updated instead of created_at, or have neither
         // Tables that use last_updated (van/location stock, PO lines, etc.)
-        const lastUpdTbls=['lhs_wo_sequence','lhs_activities','lhs_accounting_codes','lhs_van_inventory','lhs_location_stock'];
+        const lastUpdTbls=['lhs_wo_sequence','lhs_van_inventory','lhs_location_stock'];
         // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
         // Tables with no ordering column at all — just select *
-        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions'];
+        const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions','lhs_testers'];
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
         else if(noSortTbls.includes(tbl)) { /* no ordering */ }
