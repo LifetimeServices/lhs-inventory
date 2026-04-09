@@ -3441,7 +3441,7 @@ async function sendPO(i){
     </div>
   </body></html>`;
   try{
-    await sendBrevoEmail({to:toEmail,toName:p.vendor,subject:`Purchase Order ${poNumber} — Lifetime Home Services`,html:poHtml,cc:ccEmail||''});
+    await sendBrevoEmail({to:toEmail,toName:p.vendor,subject:`Purchase Order ${poNumber} — Lifetime Home Services`,html:poHtml,cc:ccEmail||'',replyTo:'info@lifetimehomeservices.com'});
 
     // Save token and sent_at to PO (local cache)
     const sentAt=new Date().toISOString();
