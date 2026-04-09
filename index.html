@@ -1685,6 +1685,26 @@ async function warmCache(){
       }catch(e){console.warn('Failed to load',tbl,e.message);}
     });
     await Promise.all(loads);
+    // Normalize lhs_testers rows — Supabase column names differ from local field names
+    try{
+      const rawTs=S.get('lhs:ts')||[];
+      if(rawTs.length&&rawTs[0].tester_id!==undefined){
+        const normTs=rawTs.map(r=>({
+          _supaId:r.id,
+          id:r.tester_id,
+          type:r.tester_type,
+          serial:r.serial_number,
+          status:r.status,
+          vehicle:r.vehicle,
+          customer:r.customer,
+          address:r.address,
+          dropDate:r.drop_date,
+          active:r.active,
+          created_at:r.created_at
+        }));
+        S.set('lhs:ts',normTs);
+      }
+    }catch(e){console.warn('tester normalize:',e.message);}
     // Store live customer count (table too large to cache fully)
     try{
       const{count}=await DB.from('lhs_customers').select('*',{count:'exact',head:true});
@@ -1983,6 +2003,48 @@ let CU=null;
 let _mfaPendingUser=null;
 
 // ── BREVO EMAIL HELPER ────────────────────────────────────────────────────────
+// ── WO FILE ATTACHMENTS ───────────────────────────────────────────────────────
+async function uploadWOAttachment(woId,inputEl){
+  const files=Array.from(inputEl?.files||[]);
+  if(!files.length) return;
+  const btn=document.getElementById('wo-att-upload-'+woId);
+  if(btn){btn.disabled=true;btn.textContent='Uploading...';}
+  let uploaded=0;
+  for(const file of files){
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`wo-attachments/${woId}/${Date.now()}_${safeName}`;
+    let fileUrl='';
+    try{
+      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
+      if(upErr) throw new Error(upErr.message);
+      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
+      fileUrl=urlData?.publicUrl||'';
+    }catch(e){console.warn('WO attachment upload failed:',e.message);continue;}
+    try{
+      await DB.from('lhs_documents').insert({
+        name:file.name,file_name:file.name,file_url:fileUrl,
+        file_type:file.type,type:(file.name.split('.').pop()||'').toLowerCase(),
+        category:'work_order',related_id:woId,related_type:'work_order',
+        storage_path:path,created_by:CU?.name||'',
+      });
+      uploaded++;
+    }catch(e){console.warn('WO attachment record failed:',e.message);}
+  }
+  if(btn){btn.disabled=false;btn.textContent='+ Upload Files';}
+  inputEl.value='';
+  if(uploaded>0){tst(`${uploaded} file${uploaded!==1?'s':''} uploaded`,'success');openWO(woId);}
+  else tst('Upload failed — check connection','error');
+}
+async function deleteWOAttachment(docId,storagePath,woId){
+  if(!confirm('Delete this attachment? This cannot be undone.')) return;
+  try{
+    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await DB.from('lhs_documents').delete().eq('id',docId);
+    tst('Attachment deleted','success');
+    openWO(woId);
+  }catch(e){tst('Delete failed: '+e.message,'error');}
+}
+
 // ── WO CONTACT NOTIFICATION BELL HELPERS ──────────────────────────────────────
 function _toggleNotifyBtn(hiddenId,btnId){
   const hidden=document.getElementById(hiddenId);
@@ -17693,6 +17755,11 @@ async function openWO(woId){
     const{data}=await DB.from('lhs_wo_photos').select('*').eq('wo_id',woId);
     if(data) photos=data;
   }catch(e){photos=(S.get('lhs:wo_photos')||[]).filter(p=>p.wo_id===woId);}
+  let woDocs=[];
+  try{
+    const{data:docsData}=await DB.from('lhs_documents').select('*').eq('related_id',woId).eq('related_type','work_order').order('created_at',{ascending:false});
+    if(docsData) woDocs=docsData;
+  }catch(e){console.warn('WO docs fetch failed:',e.message);}
   const balance=(wo.total_price||0)-(wo.total_paid||0);
   const matTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.unit_cost||0),0);
   const matCustTotal=materials.reduce((s,m)=>s+(m.qty_used||0)*(m.customer_cost||0),0);
@@ -17981,6 +18048,33 @@ async function openWO(woId){
     :`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No payments posted yet</div>`}
   </div>
 
+
+  <!-- Attachments -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:600;color:var(--navy)">Attachments (${woDocs.length})</div>
+      ${canEdit?`<div>
+        <input type="file" id="wo-att-input-${woId}" multiple style="display:none"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.gif,.mp4,.mov,.heic"
+          onchange="uploadWOAttachment('${woId}',this)">
+        <button id="wo-att-upload-${woId}" class="btn btn-n sm" onclick="document.getElementById('wo-att-input-${woId}').click()">+ Upload Files</button>
+      </div>`:''}
+    </div>
+    ${woDocs.length?`<div style="display:flex;flex-direction:column;gap:6px">
+      ${woDocs.map(doc=>{
+        const ext=(doc.file_name||doc.name||'').split('.').pop().toLowerCase();
+        const icon=['pdf'].includes(ext)?'📄':['jpg','jpeg','png','gif','webp','heic'].includes(ext)?'🖼️':['doc','docx'].includes(ext)?'📝':['xls','xlsx','csv'].includes(ext)?'📊':['mp4','mov','avi','hevc'].includes(ext)?'🎥':'📎';
+        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+          <span style="font-size:20px;flex-shrink:0">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <a href="${doc.file_url}" target="_blank" rel="noopener" style="font-size:13px;font-weight:600;color:var(--navy);text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${doc.file_name||doc.name}">${doc.file_name||doc.name}</a>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Uploaded by ${doc.created_by||'Unknown'} &middot; ${new Date(doc.created_at).toLocaleDateString()}</div>
+          </div>
+          ${canEdit?`<button onclick="deleteWOAttachment('${doc.id}','${doc.storage_path||''}','${woId}')" style="background:none;border:none;cursor:pointer;color:var(--danger,#ef4444);font-size:16px;padding:4px 6px;border-radius:4px;flex-shrink:0" title="Delete attachment">🗑️</button>`:''}
+        </div>`;
+      }).join('')}
+    </div>`:`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No attachments yet${canEdit?' — click + Upload Files to add':''}</div>`}
+  </div>
 
   <!-- WO Tags -->
   ${canEdit?`<div style="margin-bottom:16px">
