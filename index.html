@@ -2003,6 +2003,42 @@ function locVehPick(obj){
 let CU=null;
 let _mfaPendingUser=null;
 
+// ── PROPERTY FILE ATTACHMENTS ─────────────────────────────────────────────────
+async function uploadPropertyAttachment(propId,inputEl){
+  const files=Array.from(inputEl?.files||[]);
+  if(!files.length) return;
+  const btn=document.getElementById('prop-att-upload-'+propId);
+  if(btn){btn.disabled=true;btn.textContent='Uploading…';}
+  let uploaded=0;
+  for(const file of files){
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`property-attachments/${propId}/${Date.now()}_${safeName}`;
+    let fileUrl='';
+    try{
+      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
+      if(upErr) throw new Error(upErr.message);
+      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
+      fileUrl=urlData?.publicUrl||'';
+    }catch(e){console.warn('Property upload error:',e.message);tst(`Failed to upload ${file.name}`,'error');continue;}
+    try{
+      const docRow={related_id:propId,related_type:'property',file_name:file.name,file_url:fileUrl,storage_path:path,file_size:file.size,mime_type:file.type,created_by:CU?.name||'',created_at:new Date().toISOString()};
+      await DB.from('lhs_documents').insert(docRow);
+      uploaded++;
+    }catch(e){console.warn('Property doc record error:',e.message);}
+  }
+  if(uploaded>0){tst(`${uploaded} file${uploaded!==1?'s':''} uploaded`,'success');openProperty(propId);}
+  else tst('Upload failed — check connection','error');
+}
+async function deletePropertyAttachment(docId,storagePath,propId){
+  if(!confirm('Delete this attachment? This cannot be undone.')) return;
+  try{
+    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await DB.from('lhs_documents').delete().eq('id',docId);
+    tst('Attachment deleted','info');
+    openProperty(propId);
+  }catch(e){tst('Delete failed: '+e.message,'error');}
+}
+
 // ── BREVO EMAIL HELPER ────────────────────────────────────────────────────────
 // ── WO FILE ATTACHMENTS ───────────────────────────────────────────────────────
 async function uploadWOAttachment(woId,inputEl){
@@ -22450,6 +22486,11 @@ async function openProperty(id){
   const pastCustIds=[...new Set(wos.filter(w=>w.customer_id&&w.customer_id!==p.current_customer_id).map(w=>w.customer_id))];
   const totalRev=wos.reduce((s,w)=>s+(w.total_paid||0),0);
   const lastWO=wos[0];
+  let propDocs=[];
+  try{
+    const{data:docsData}=await DB.from('lhs_documents').select('*').eq('related_id',id).eq('related_type','property').order('created_at',{ascending:false});
+    if(docsData) propDocs=docsData;
+  }catch(e){console.warn('Property docs fetch failed:',e.message);}
 
   // Radon status badge
   const radonStatus=p.radon_system_installed==='yes'
@@ -22559,6 +22600,33 @@ async function openProperty(id){
       <td><button class="btn sm btn-o" onclick="openEstimate('${e.id}')">Open</button></td>
     </tr>`).join('')}
     </tbody></table></div></div>`:''}
+
+  <!-- Property Attachments -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:600;color:var(--navy)">Attachments (${propDocs.length})</div>
+      <div>
+        <input type="file" id="prop-att-input-${id}" multiple style="display:none"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.gif,.mp4,.mov,.heic"
+          onchange="uploadPropertyAttachment('${id}',this)">
+        <button id="prop-att-upload-${id}" class="btn btn-n sm" onclick="document.getElementById('prop-att-input-${id}').click()">+ Upload Files</button>
+      </div>
+    </div>
+    ${propDocs.length?`<div style="display:flex;flex-direction:column;gap:6px">
+      ${propDocs.map(doc=>{
+        const ext=(doc.file_name||doc.name||'').split('.').pop().toLowerCase();
+        const icon=['pdf'].includes(ext)?'📄':['jpg','jpeg','png','gif','webp','heic'].includes(ext)?'🖼️':['doc','docx'].includes(ext)?'📝':['xls','xlsx','csv'].includes(ext)?'📊':['mp4','mov','avi','hevc'].includes(ext)?'🎥':'📎';
+        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+          <span style="font-size:20px;flex-shrink:0">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <a href="${doc.file_url}" target="_blank" rel="noopener" style="font-size:13px;font-weight:600;color:var(--navy);text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${doc.file_name||doc.name}">${doc.file_name||doc.name}</a>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Uploaded by ${doc.created_by||'Unknown'} &middot; ${new Date(doc.created_at).toLocaleDateString()}</div>
+          </div>
+          <button onclick="deletePropertyAttachment('${doc.id}','${doc.storage_path||''}','${id}')" style="background:none;border:none;cursor:pointer;color:var(--danger,#ef4444);font-size:16px;padding:4px 6px;border-radius:4px;flex-shrink:0" title="Delete attachment">🗑️</button>
+        </div>`;
+      }).join('')}
+    </div>`:`<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No attachments yet — click + Upload Files to add</div>`}
+  </div>
 
   <div class="brow" style="margin-top:8px">
     <button class="btn btn-o" onclick="cMod()">Close</button>
