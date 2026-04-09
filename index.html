@@ -496,7 +496,7 @@ const PERM_MODS=[
   {key:'accounting',label:'Accounting',icon:'🧾',perms:['view_invoices','create_invoices','view_ar_ap','view_bank','record_txns','export'],
     tabs:['tab_acct_dash','tab_acct_division','tab_invoices','tab_ar','tab_ap','tab_coa','tab_journal','tab_bank','tab_receipts','tab_acct_settings']},
   {key:'reports',label:'Reports',icon:'📈',perms:['view','export','view_financial','rpt_operations','rpt_accounting','rpt_technician','rpt_inventory','rpt_sales','rpt_custom','rpt_create','rpt_schedule']},
-  {key:'operations',label:'Operations',icon:'⚙️',perms:['view','create','edit','manage_assignments']},
+  {key:'operations',label:'Operations',icon:'⚙️',perms:['view','create','edit','manage_assignments','access_sds','manage_sds','load_training','training_assigned_only','training_direct_reports_only']},
   {key:'admin',label:'Admin',icon:'🔐',perms:['view','manage_users','change_permissions','manage_integrations','view_audit']},
   {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook'],
     tabs:['tab_crm_dash','tab_leads','tab_sales_accounts','tab_opps','tab_estimates','tab_pricebook','tab_followups','tab_activities','tab_email_sync','tab_marketing','tab_discounts','tab_permits','tab_sales_settings']},
@@ -522,7 +522,7 @@ const PERM_LABELS={
   delete_leads:'Can Delete Leads',view_opportunities:'Can View Opportunities',
   create_opportunities:'Can Create / Edit Opportunities',view_marketing:'Can View Marketing',
   manage_marketing:'Can Manage Campaigns & Events',view_pricebook:'Can View Price Book',
-  edit_pricebook:'Can Edit Prices & Discounts',manage_assignments:'Can Manage Assignments',
+  edit_pricebook:'Can Edit Prices & Discounts',manage_assignments:'Can Manage Assignments',access_sds:'Can Access SDS Library',manage_sds:'Can Manage SDS (Add / Edit / Delete)',load_training:'Can Load Training Content',training_assigned_only:'⚠️ Restrict to Assigned Courses Only',training_direct_reports_only:'⚠️ Can Only View Direct Reports\' Courses',
   // ── Inventory sub-tabs ────────────────────────────────────────────────────
   tab_inv_dash:'Overview',tab_inv_master:'Master Inventory',tab_po:'Purchase Orders',
   tab_receive:'Receive',tab_transfer:'Transfer',tab_vans:'Van Stock',
