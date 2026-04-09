@@ -26684,20 +26684,44 @@ const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'
 function bReports(){
   const canSeeReports=['Creator','God View','Admin','Director','Regional Manager','Operations Manager'].includes(CU?.role);
   if(!canSeeReports) return`<div class="pt">Reports</div><div class="card" style="text-align:center;padding:32px;color:var(--muted)">Reports are available to managers and above.</div>`;
+  const canToggleReports=['Creator','God View','Admin','Director'].includes(CU?.role);
 
   const _rptView=window._rptView||'library';
   const _rptCurrent=window._rptCurrent||null;
-  const _rptSearch=window._rptSearch||'';
-  const _rptCat=window._rptCat||'all';
 
+  // Detail run view — no tab bar needed
   if(_rptView==='run'&&_rptCurrent) return bReportRun();
-  if(_rptView==='schedule') return bReportSchedule();
-  if(_rptView==='custom-builder') return bCustomReportBuilder();
 
   const custom=S.get('lhs:custom_reports')||[];
   const scheduled=S.get('lhs:scheduled_reports')||[];
+  const schedActive=scheduled.filter(s=>s.active).length;
+  const _disabled=_rptDisabled();
+  const allDefs=[...REPORT_DEFS,...custom.map(c=>({id:'custom-'+c.id,cat:'Custom',name:c.name,desc:c.description||'Custom report',custom:true,customId:c.id}))]
+    // Non-admins only see enabled reports; admins see all (with disabled shown dimmed)
+    .filter(r=>canToggleReports||_rptIsEnabled(r.id));
+
+  // ── Tab bar ────────────────────────────────────────────────────────────────
+  const tabBar=`<div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:20px">
+    ${[
+      {id:'library',    icon:'📊', label:'Report Library',   badge:allDefs.length,    badgeColor:'var(--navy)'},
+      {id:'custom-builder', icon:'✏️', label:'Create Report', badge:null},
+      {id:'schedule',   icon:'📅', label:'Scheduled Reports', badge:schedActive||null, badgeColor:'var(--teal)'},
+    ].map(t=>`<button onclick="window._rptView='${t.id}';window._rptScheduleFor=null;showPage('reports')"
+      style="display:flex;align-items:center;gap:6px;padding:12px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;
+      border-bottom:3px solid ${_rptView===t.id?'var(--navy)':'transparent'};
+      color:${_rptView===t.id?'var(--navy)':'var(--muted)'};margin-bottom:-2px;transition:color .15s">
+      <span>${t.icon}</span><span>${t.label}</span>
+      ${t.badge?`<span style="background:${t.badgeColor};color:white;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;line-height:1.6">${t.badge}</span>`:''}
+    </button>`).join('')}
+  </div>`;
+
+  if(_rptView==='schedule') return`<div class="pt" style="margin-bottom:8px">Reports</div>${tabBar}${bReportScheduleContent()}`;
+  if(_rptView==='custom-builder') return`<div class="pt" style="margin-bottom:8px">Reports</div>${tabBar}${bCustomReportBuilderContent()}`;
+
+  // ── Library view ──────────────────────────────────────────────────────────
+  const _rptSearch=window._rptSearch||'';
+  const _rptCat=window._rptCat||'all';
   const q=(_rptSearch||'').toLowerCase();
-  const allDefs=[...REPORT_DEFS,...custom.map(c=>({id:'custom-'+c.id,cat:'Custom',name:c.name,desc:c.description||'Custom report',custom:true,customId:c.id}))];
   const filtered=allDefs.filter(r=>{
     if(_rptCat!=='all'&&r.cat!==_rptCat) return false;
     if(q&&!r.name.toLowerCase().includes(q)&&!r.desc.toLowerCase().includes(q)) return false;
@@ -26709,16 +26733,11 @@ function bReports(){
     byCategory[r.cat].push(r);
   });
 
-  return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-    <div>
-      <div class="pt" style="margin:0">Reports</div>
-      <div class="ps" style="margin:0">${allDefs.length} reports available · ${scheduled.filter(s=>s.active).length} scheduled</div>
-    </div>
-    <button class="btn btn-n" onclick="window._rptView='custom-builder';showPage('reports')">+ Build Custom Report</button>
-  </div>
+  return`<div class="pt" style="margin-bottom:8px">Reports</div>
+  ${tabBar}
 
   <!-- Search + Category filter -->
-  <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap;align-items:center">
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
     <input value="${esc(_rptSearch)}" oninput="window._rptSearch=this.value;showPage('reports')"
       placeholder="🔍 Search reports..."
       style="padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;width:220px">
@@ -26729,12 +26748,6 @@ function bReports(){
     </div>
   </div>
 
-  <!-- Scheduled reports banner -->
-  ${scheduled.filter(s=>s.active).length?`<div style="background:rgba(58,191,191,.1);border:1px solid var(--teal);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
-    <div style="font-size:13px;color:var(--navy)">📅 <strong>${scheduled.filter(s=>s.active).length}</strong> scheduled report${scheduled.filter(s=>s.active).length!==1?'s':''} running automatically</div>
-    <button class="btn btn-o sm" onclick="window._rptView='schedule';showPage('reports')">Manage Schedules</button>
-  </div>`:''}
-
   <!-- Report cards by category -->
   ${Object.entries(byCategory).map(([cat,rpts])=>`
     <div style="margin-bottom:24px">
@@ -26742,22 +26755,31 @@ function bReports(){
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
         ${rpts.map(r=>{
           const isSched=scheduled.some(s=>s.report_id===(r.customId||r.id)&&s.active);
-          return`<div style="background:white;border:1px solid var(--bdr);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;
-            transition:box-shadow .15s,border-color .15s;cursor:pointer"
-            onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.08)';this.style.borderColor='var(--teal)'"
-            onmouseout="this.style.boxShadow='';this.style.borderColor='var(--bdr)'">
+          const enabled=_rptIsEnabled(r.id);
+          return`<div style="background:white;border:1px solid ${enabled?'var(--bdr)':'#e8e8e8'};border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;
+            opacity:${enabled?'1':'.55'};transition:box-shadow .15s,border-color .15s,opacity .15s"
+            onmouseover="if(${enabled}){this.style.boxShadow='0 4px 14px rgba(0,0,0,.08)';this.style.borderColor='var(--teal)'}"
+            onmouseout="this.style.boxShadow='';this.style.borderColor='${enabled?'var(--bdr)':'#e8e8e8'}'">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
               <div style="font-size:14px;font-weight:700;color:var(--navy);line-height:1.3">${esc(r.name)}</div>
-              ${isSched?`<span style="background:rgba(58,191,191,.15);color:var(--teal);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;flex-shrink:0">📅 Sched</span>`:''}
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                ${isSched&&enabled?`<span style="background:rgba(58,191,191,.15);color:var(--teal);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap">📅 Sched</span>`:''}
+                ${canToggleReports?`<label title="${enabled?'Disable this report':'Enable this report'}" style="cursor:pointer;display:flex;align-items:center">
+                  <input type="checkbox" style="display:none" ${enabled?'checked':''} onchange="event.stopPropagation();rptToggleEnabled('${r.id}')">
+                  <span style="position:relative;display:inline-block;width:34px;height:18px;border-radius:9px;background:${enabled?'var(--green)':'#ccc'};transition:background .2s;flex-shrink:0">
+                    <span style="position:absolute;top:2px;left:${enabled?'16px':'2px'};width:14px;height:14px;border-radius:50%;background:white;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s"></span>
+                  </span>
+                </label>`:''}
+              </div>
             </div>
             <div style="font-size:12px;color:var(--muted);line-height:1.4;flex:1">${esc(r.desc||'')}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
               <span style="background:var(--surf);color:var(--navy);font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px">${r.cat}</span>
-              <div style="display:flex;gap:6px">
+              ${enabled?`<div style="display:flex;gap:6px">
                 <button class="btn btn-n sm" onclick="event.stopPropagation();rptRun('${r.id}','${esc(r.name)}',${!!r.custom})">▶ Run</button>
-                <button class="btn btn-o sm" onclick="event.stopPropagation();rptOpenSchedule('${r.id}','${esc(r.name)}')">📅</button>
+                <button class="btn btn-o sm" onclick="event.stopPropagation();rptOpenSchedule('${r.id}','${esc(r.name)}')">📅 Schedule</button>
                 ${r.custom?`<button class="btn btn-o sm" onclick="event.stopPropagation();rptDeleteCustom('${r.customId}')">✕</button>`:''}
-              </div>
+              </div>`:`<span style="font-size:11px;color:var(--muted);font-style:italic">Disabled</span>`}
             </div>
           </div>`;
         }).join('')}
@@ -26878,16 +26900,14 @@ function rptExportCSV(){
   a.click();
 }
 
-function bReportSchedule(){
+function bReportScheduleContent(){
   const scheduled=S.get('lhs:scheduled_reports')||[];
   const forReport=window._rptScheduleFor;
   const users=(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name));
 
-  return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-    <button class="btn btn-o sm" onclick="window._rptView='library';window._rptScheduleFor=null;showPage('reports')">← Back</button>
-    <div style="font-size:18px;font-weight:700;color:var(--navy)">Scheduled Reports</div>
-    ${forReport?`<span style="font-size:13px;color:var(--muted)">— Scheduling: <strong>${esc(forReport.name)}</strong></span>`:''}
-  </div>
+  return`${forReport?`<div style="background:rgba(58,191,191,.08);border:1px solid var(--teal);border-radius:8px;padding:8px 14px;margin-bottom:14px;font-size:13px;color:var(--navy)">
+    📅 Scheduling: <strong>${esc(forReport.name)}</strong></div>`:''}
+  <div>
 
   <!-- New schedule form -->
   <div class="card" style="margin-bottom:20px">
@@ -27049,6 +27069,20 @@ function schedRangeToDateRange(range){
   return{dateFrom:fmt(new Date(now.getFullYear(),now.getMonth()-1,1)),dateTo:today};
 }
 
+// ── Report on/off toggles ─────────────────────────────────────────────────────
+// Disabled report IDs stored in localStorage so they persist across sessions
+function _rptDisabled(){
+  try{return JSON.parse(localStorage.getItem('lms_report_disabled')||'[]');}catch{return[];}
+}
+function _rptIsEnabled(id){return!_rptDisabled().includes(id);}
+function rptToggleEnabled(id){
+  const dis=_rptDisabled();
+  const idx=dis.indexOf(id);
+  if(idx>=0) dis.splice(idx,1); else dis.push(id);
+  localStorage.setItem('lms_report_disabled',JSON.stringify(dis));
+  showPage('reports');
+}
+
 function rptDeleteCustom(customId){
   if(!confirm('Delete this custom report?')) return;
   const all=S.get('lhs:custom_reports')||[];
@@ -27063,7 +27097,7 @@ function rptDeleteCustom(customId){
   showPage('reports');
 }
 
-function bCustomReportBuilder(){
+function bCustomReportBuilderContent(){
   const ds=document.getElementById('crb-source')?.value||'work_orders';
   const DATA_SOURCES={
     work_orders:{label:'Work Orders',fields:['wo_number','customer_name','division','job_type','status','total_price','total_paid','created_at','completed_at','customer_city','customer_state']},
@@ -27074,11 +27108,7 @@ function bCustomReportBuilder(){
     users:{label:'Users / Techs',fields:['name','role','division','region','work_start','work_end']},
     purchase_orders:{label:'Purchase Orders',fields:['po_number','vendor','location','status','created','totalValue','receiptValue']},
   };
-  return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-    <button class="btn btn-o sm" onclick="window._rptView='library';showPage('reports')">← Back</button>
-    <div style="font-size:18px;font-weight:700;color:var(--navy)">Custom Report Builder</div>
-  </div>
-  <div class="card">
+  return`<div class="card">
     <div class="fr">
       <div class="fl"><label>Report Name</label><input id="crb-name" placeholder="My Custom Report" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px"></div>
       <div class="fl"><label>Description</label><input id="crb-desc" placeholder="What does this report show?" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px"></div>
