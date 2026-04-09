@@ -1983,6 +1983,27 @@ let CU=null;
 let _mfaPendingUser=null;
 
 // ── BREVO EMAIL HELPER ────────────────────────────────────────────────────────
+// ── WO CONTACT NOTIFICATION BELL HELPERS ──────────────────────────────────────
+function _toggleNotifyBtn(hiddenId,btnId){
+  const hidden=document.getElementById(hiddenId);
+  const btn=document.getElementById(btnId);
+  if(!hidden||!btn) return;
+  const newVal=hidden.value!=='true';
+  hidden.value=newVal?'true':'false';
+  btn.textContent=newVal?'🔔':'🔕';
+  btn.title=newVal?'Notifications on — click to mute':'Notifications off — click to enable';
+}
+async function toggleWONotify(woId,field){
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  if(!wo) return;
+  const current=wo[field]!==false;
+  wo[field]=!current;
+  S.set('lhs:work_orders',wos);
+  try{await DB.from('lhs_work_orders').update({[field]:wo[field]}).eq('id',woId);}catch(e){console.warn('notify toggle failed:',e.message);}
+  openWO(woId);
+}
+
 async function sendBrevoEmail({to,toName='',subject,html,cc='',replyTo=''}){
   const apiKey=(S.get('lhs:brevo_api_key')||'').trim();
   const senderEmail=(S.get('lhs:brevo_sender_email')||'noreply@lifetimehomeservices.com').trim();
@@ -17790,13 +17811,44 @@ async function openWO(woId){
     <div class="card" style="padding:16px">
       <div class="ct">Customer</div>
       <div style="font-size:15px;font-weight:700;margin-bottom:8px">${wo.customer_name}</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.8">
-        ${wo.customer_phone?`&#128222; ${wo.customer_phone}<br>`:''}
-        ${wo.customer_email?`&#9993; ${wo.customer_email}<br>`:''}
-        ${wo.customer_address?`<span style="cursor:${wo.property_id?'pointer':'default'};color:${wo.property_id?'var(--teal)':'var(--muted)'}"
+      <div style="font-size:13px;color:var(--muted);line-height:1.6">
+        ${wo.customer_phone?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span>&#128222; ${wo.customer_phone}</span>
+          <button onclick="toggleWONotify('${wo.id}','primary_notify_phone')" title="${wo.primary_notify_phone!==false?'Notifications on — click to mute':'Notifications off — click to enable'}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">${wo.primary_notify_phone!==false?'🔔':'🔕'}</button>
+        </div>`:''}
+        ${wo.customer_email?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span>&#9993; ${wo.customer_email}</span>
+          <button onclick="toggleWONotify('${wo.id}','primary_notify_email')" title="${wo.primary_notify_email!==false?'Notifications on — click to mute':'Notifications off — click to enable'}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">${wo.primary_notify_email!==false?'🔔':'🔕'}</button>
+        </div>`:''}
+        ${wo.customer_address?`<div style="margin-top:2px"><span style="cursor:${wo.property_id?'pointer':'default'};color:${wo.property_id?'var(--teal)':'var(--muted)'}"
           onclick="${wo.property_id?`openProperty('${wo.property_id}')`:''}"
-          title="${wo.property_id?'Click to view property record':'No property record linked'}">&#128205; ${wo.customer_address}, ${wo.customer_city} ${wo.customer_state} ${wo.customer_zip}${wo.property_id?' 🔗':''}</span>`:''}
+          title="${wo.property_id?'Click to view property record':'No property record linked'}">&#128205; ${wo.customer_address}, ${wo.customer_city} ${wo.customer_state} ${wo.customer_zip}${wo.property_id?' 🔗':''}</span></div>`:''}
       </div>
+      ${wo.secondary_contact_name?`
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Secondary Contact</div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${wo.secondary_contact_name}</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">
+          ${wo.secondary_contact_phone?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+            <span>&#128222; ${wo.secondary_contact_phone}</span>
+            <button onclick="toggleWONotify('${wo.id}','secondary_notify_phone')" title="${wo.secondary_notify_phone!==false?'Notifications on':'Notifications off'}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">${wo.secondary_notify_phone!==false?'🔔':'🔕'}</button>
+          </div>`:''}
+          ${wo.secondary_contact_email?`<div style="display:flex;align-items:center;gap:6px">
+            <span>&#9993; ${wo.secondary_contact_email}</span>
+            <button onclick="toggleWONotify('${wo.id}','secondary_notify_email')" title="${wo.secondary_notify_email!==false?'Notifications on':'Notifications off'}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">${wo.secondary_notify_email!==false?'🔔':'🔕'}</button>
+          </div>`:''}
+        </div>
+      </div>`:''}
+      ${wo.billing_same_as_primary===false?`
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Billing Contact</div>
+        ${wo.billing_contact_name?`<div style="font-weight:600;font-size:13px;margin-bottom:4px">${wo.billing_contact_name}</div>`:''}
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">
+          ${wo.billing_contact_phone?`<div>&#128222; ${wo.billing_contact_phone}</div>`:''}
+          ${wo.billing_contact_email?`<div>&#9993; ${wo.billing_contact_email}</div>`:''}
+          ${wo.billing_contact_address?`<div>&#128205; ${wo.billing_contact_address}, ${wo.billing_contact_city||''} ${wo.billing_contact_state||''} ${wo.billing_contact_zip||''}</div>`:''}
+        </div>
+      </div>`:''}
       ${wo.property_id?`<div style="margin-top:8px"><button class="btn btn-o sm" onclick="openProperty('${wo.property_id}')">📋 View Property Record</button></div>`:''}
     </div>
   </div>
@@ -20363,8 +20415,20 @@ function oEditWODetails(woId){
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Customer Info</div>
   <div class="fr">
     <div class="fl"><label>Customer Name</label><input id="ewo-cname" value="${wo.customer_name||''}"></div>
-    <div class="fl"><label>Phone</label><input id="ewo-cphone" value="${wo.customer_phone||''}"></div>
-    <div class="fl"><label>Email</label><input id="ewo-cemail" value="${wo.customer_email||''}"></div>
+    <div class="fl"><label>Phone</label>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input id="ewo-cphone" value="${wo.customer_phone||''}" style="flex:1">
+        <button type="button" id="ewo-pnp-btn" onclick="_toggleNotifyBtn('ewo-pnp','ewo-pnp-btn')" title="${wo.primary_notify_phone!==false?'Notifications on':'Notifications off'}" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;flex-shrink:0">${wo.primary_notify_phone!==false?'🔔':'🔕'}</button>
+        <input type="hidden" id="ewo-pnp" value="${wo.primary_notify_phone!==false?'true':'false'}">
+      </div>
+    </div>
+    <div class="fl"><label>Email</label>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input id="ewo-cemail" value="${wo.customer_email||''}" style="flex:1">
+        <button type="button" id="ewo-pne-btn" onclick="_toggleNotifyBtn('ewo-pne','ewo-pne-btn')" title="${wo.primary_notify_email!==false?'Notifications on':'Notifications off'}" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;flex-shrink:0">${wo.primary_notify_email!==false?'🔔':'🔕'}</button>
+        <input type="hidden" id="ewo-pne" value="${wo.primary_notify_email!==false?'true':'false'}">
+      </div>
+    </div>
   </div>
   <div class="fr">
     <div class="fl"><label>Address</label><input id="ewo-caddr" value="${wo.customer_address||''}"></div>
@@ -20376,6 +20440,58 @@ function oEditWODetails(woId){
       </select>
     </div>
     <div class="fl"><label>Zip</label><input id="ewo-czip" value="${wo.customer_zip||''}"></div>
+  </div>
+
+  <!-- Secondary Contact -->
+  <div style="margin-top:14px">
+    <button type="button" onclick="const sc=document.getElementById('ewo-sc-fields');sc.style.display=sc.style.display==='none'?'block':'none'" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:13px;font-weight:600;padding:0">
+      ${wo.secondary_contact_name?'▼ Secondary Contact':'＋ Add Secondary Contact'}
+    </button>
+    <div id="ewo-sc-fields" style="display:${wo.secondary_contact_name?'block':'none'};margin-top:10px">
+      <div class="fr">
+        <div class="fl"><label>Secondary Contact Name</label><input id="ewo-sc-name" value="${wo.secondary_contact_name||''}" placeholder="Full name"></div>
+        <div class="fl"><label>Phone</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input id="ewo-sc-phone" value="${wo.secondary_contact_phone||''}" placeholder="(000) 000-0000" style="flex:1">
+            <button type="button" id="ewo-snp-btn" onclick="_toggleNotifyBtn('ewo-snp','ewo-snp-btn')" title="${wo.secondary_notify_phone!==false?'Notifications on':'Notifications off'}" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;flex-shrink:0">${wo.secondary_notify_phone!==false?'🔔':'🔕'}</button>
+            <input type="hidden" id="ewo-snp" value="${wo.secondary_notify_phone!==false?'true':'false'}">
+          </div>
+        </div>
+        <div class="fl"><label>Email</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input id="ewo-sc-email" value="${wo.secondary_contact_email||''}" placeholder="email@domain.com" style="flex:1">
+            <button type="button" id="ewo-sne-btn" onclick="_toggleNotifyBtn('ewo-sne','ewo-sne-btn')" title="${wo.secondary_notify_email!==false?'Notifications on':'Notifications off'}" style="background:none;border:1px solid var(--bdr);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;flex-shrink:0">${wo.secondary_notify_email!==false?'🔔':'🔕'}</button>
+            <input type="hidden" id="ewo-sne" value="${wo.secondary_notify_email!==false?'true':'false'}">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Billing Contact -->
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bdr)">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;margin-bottom:10px">
+      <input type="checkbox" id="ewo-bill-same" ${wo.billing_same_as_primary!==false?'checked':''} onchange="document.getElementById('ewo-bill-fields').style.display=this.checked?'none':'block'">
+      Billing contact same as primary
+    </label>
+    <div id="ewo-bill-fields" style="display:${wo.billing_same_as_primary===false?'block':'none'}">
+      <div class="fr">
+        <div class="fl"><label>Billing Name</label><input id="ewo-bl-name" value="${wo.billing_contact_name||''}" placeholder="Full name or company"></div>
+        <div class="fl"><label>Billing Phone</label><input id="ewo-bl-phone" value="${wo.billing_contact_phone||''}" placeholder="(000) 000-0000"></div>
+        <div class="fl"><label>Billing Email</label><input id="ewo-bl-email" value="${wo.billing_contact_email||''}" placeholder="email@domain.com"></div>
+      </div>
+      <div class="fr">
+        <div class="fl"><label>Billing Address</label><input id="ewo-bl-addr" value="${wo.billing_contact_address||''}"></div>
+        <div class="fl"><label>City</label><input id="ewo-bl-city" value="${wo.billing_contact_city||''}"></div>
+        <div class="fl"><label>State</label>
+          <select id="ewo-bl-state">
+            <option value="">— Select —</option>
+            ${ALL_STATES.map(s=>`<option${s===(wo.billing_contact_state||'')?'  selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fl"><label>Zip</label><input id="ewo-bl-zip" value="${wo.billing_contact_zip||''}"></div>
+      </div>
+    </div>
   </div>
   </div>
   <div class="br2">
@@ -20411,6 +20527,7 @@ async function svEditWODetails(woId){
     job_classification:wo.job_classification,description:wo.description,
     special_instructions:wo.special_instructions,priority:wo.priority,
     is_flexible:wo.is_flexible};
+  const _billSame=document.getElementById('ewo-bill-same')?.checked!==false;
   const updates={
     division:v('ewo-div'),job_type:v('ewo-type'),
     job_subtype:v('ewo-sub')||'',job_classification:v('ewo-cls')||'',
@@ -20419,6 +20536,21 @@ async function svEditWODetails(woId){
     customer_name:v('ewo-cname'),customer_phone:v('ewo-cphone'),
     customer_email:v('ewo-cemail'),customer_address:v('ewo-caddr'),
     customer_city:v('ewo-ccity'),customer_state:state,customer_zip:v('ewo-czip'),
+    primary_notify_phone:document.getElementById('ewo-pnp')?.value!=='false',
+    primary_notify_email:document.getElementById('ewo-pne')?.value!=='false',
+    secondary_contact_name:v('ewo-sc-name')||null,
+    secondary_contact_phone:v('ewo-sc-phone')||null,
+    secondary_contact_email:v('ewo-sc-email')||null,
+    secondary_notify_phone:document.getElementById('ewo-snp')?.value!=='false',
+    secondary_notify_email:document.getElementById('ewo-sne')?.value!=='false',
+    billing_same_as_primary:_billSame,
+    billing_contact_name:_billSame?null:v('ewo-bl-name')||null,
+    billing_contact_phone:_billSame?null:v('ewo-bl-phone')||null,
+    billing_contact_email:_billSame?null:v('ewo-bl-email')||null,
+    billing_contact_address:_billSame?null:v('ewo-bl-addr')||null,
+    billing_contact_city:_billSame?null:v('ewo-bl-city')||null,
+    billing_contact_state:_billSame?null:(v('ewo-bl-state')||'').split(' - ')[0]||null,
+    billing_contact_zip:_billSame?null:v('ewo-bl-zip')||null,
     updated_at:new Date().toISOString(),updated_by:CU.name,
   };
   Object.assign(wo,updates);
