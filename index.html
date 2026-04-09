@@ -5534,11 +5534,14 @@ function oUpdTest(i){
         </div>`}).join('')}
       </div>
     </div>`:`<div style="margin-top:14px;font-size:12px;color:var(--muted);border-top:1px solid var(--bdr);padding-top:12px">No deployment history yet.</div>`;
-  oMod('Tester: '+t.id,`
-  <div style="margin-bottom:4px">
-    <div style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:6px;background:${t.type==='Electronic'?'#e3f2fd':'#e8f5e9'};font-size:12px;font-weight:600;color:var(--navy);margin-bottom:10px">
-      ${t.type||'Unknown'} &nbsp;·&nbsp; ${t.serial||'No serial'} &nbsp;·&nbsp; <span style="color:${t.status==='At Customer'?'#c62828':t.status==='At Warehouse'?'#2e7d32':'#e65100'}">${t.status||'?'}</span>
-    </div>
+  oMod('Update Tester',`
+  <div class="fr">
+    <div class="fl"><label>Tester ID</label><input id="ut-id" value="${esc(t.id||'')}" placeholder="e.g. CRM-0001"></div>
+    <div class="fl"><label>Type</label><select id="ut-type">
+      <option${(!t.type||t.type==='Electronic')?' selected':''}>Electronic</option>
+      <option${t.type==='Charcoal'?' selected':''}>Charcoal</option>
+    </select></div>
+    <div class="fl"><label>Serial #</label><input id="ut-serial" value="${esc(t.serial||'')}" placeholder="SN-XX-000"></div>
   </div>
   <div class="fr">
     <div class="fl"><label>Status</label><select id="ut0">
@@ -5550,14 +5553,14 @@ function oUpdTest(i){
     <div class="fl"><label>Vehicle</label><select id="ut1">
       <option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option${t.vehicle===x?' selected':''}>${x}</option>`).join('')}
     </select></div>
-  </div>
-  <div class="fr">
-    <div class="fl"><label>Customer</label><input id="ut2" value="${esc(t.customer||'')}"></div>
-    <div class="fl"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
     <div class="fl"><label>Active</label><select id="ut-active">
       <option value="Active"${t.active!==false&&t.active!=='Inactive'?' selected':''}>Active</option>
       <option value="Inactive"${t.active===false||t.active==='Inactive'?' selected':''}>Inactive</option>
     </select></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Customer</label><input id="ut2" value="${esc(t.customer||'')}"></div>
+    <div class="fl"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
   ${histHTML}`);
@@ -5566,12 +5569,17 @@ async function svUpdTest(i){
   const ts=S.get('lhs:ts')||[];
   const t=ts[i];
   const activeVal=v('ut-active')||'Active';
+  const newId=v('ut-id').trim()||t.id;
+  t.id=newId;t.type=v('ut-type');t.serial=v('ut-serial').trim()||null;
   t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');t.active=activeVal!=='Inactive';
   S.set('lhs:ts',ts);
-  // Update in Supabase by tester_id (human ID like CRM-0001) since _supaId may not exist for old records
-  const updates={status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,active:t.active,updated_at:new Date().toISOString()};
+  const updates={tester_id:t.id,tester_type:t.type,serial_number:t.serial||null,status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,active:t.active,updated_at:new Date().toISOString()};
   try{
-    const{error}=await DB.from('lhs_testers').update(updates).eq('tester_id',t.id);
+    // Use _supaId (real UUID primary key) if available — handles records where tester_id was wrong
+    let q=DB.from('lhs_testers').update(updates);
+    if(t._supaId) q=q.eq('id',t._supaId);
+    else q=q.eq('tester_id',t.id);
+    const{error}=await q;
     if(error) console.warn('svUpdTest Supabase:',error.message);
   }catch(e){console.warn('svUpdTest failed:',e.message);}
   cMod();tst('Updated','success');showPage('testers');
