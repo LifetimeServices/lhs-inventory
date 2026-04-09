@@ -1797,7 +1797,7 @@ async function warmCache(){
     }catch(e){console.warn('Photo labels load failed:',e.message);}
     // Load WO settings from Supabase
     try{
-      const{data:wsRows}=await DB.from('lhs_wo_settings').select('value').eq('key','wo_settings').single();
+      const{data:wsRows}=await DB.from('lhs_wo_settings').select('value').eq('key','wo_settings').maybeSingle();
       if(wsRows&&wsRows.value) S.set('lhs:wo_settings',wsRows.value);
     }catch(e){console.warn('WO settings load failed:',e.message);}
     // Load estimate document settings from Supabase
@@ -1823,12 +1823,12 @@ async function warmCache(){
     }catch(e){console.warn('App settings load failed:',e.message);}
     // Load HR config from Supabase
     try{
-      const{data:hrRow}=await DB.from('lhs_hr_config').select('value').eq('key','hr_config').single();
+      const{data:hrRow}=await DB.from('lhs_hr_config').select('value').eq('key','hr_config').maybeSingle();
       if(hrRow&&hrRow.value) S.set('lhs:hr_config',hrRow.value);
     }catch(e){console.warn('HR config load failed:',e.message);}
     // Load sales settings from Supabase
     try{
-      const{data:ssRow}=await DB.from('lhs_sales_settings').select('value').eq('key','sales_settings').single();
+      const{data:ssRow}=await DB.from('lhs_sales_settings').select('value').eq('key','sales_settings').maybeSingle();
       if(ssRow&&ssRow.value) S.set('lms:sales_settings',ssRow.value);
     }catch(e){console.warn('Sales settings load failed:',e.message);}
     // Load location extras from Supabase
