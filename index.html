@@ -1883,9 +1883,82 @@ function _recordAttempt(email,success){
   if(d.count>=5) d.until=Date.now()+15*60*1000;
   _setLockout(email,d);
 }
+// Maps page IDs to module key (string) or {mod, tab} for sub-tab granularity
+const _PAGE_MODULE_MAP={
+  // Top-level modules
+  dashboard:'dashboard',
+  dispatch:'dispatch','dispatch-board':'dispatch','dispatch-calendar':'dispatch',
+  workorders:'workorders',closeout:'closeout',
+  accounts:'accounts',customers:'accounts',properties:'accounts',business:'accounts',commercial:'accounts',
+  reports:'reports',operations:'operations',admin:'admin',payroll:'payroll',
+  // Inventory sub-pages
+  'inv-dashboard':{mod:'inventory',tab:'tab_inv_dash'},
+  inventory:{mod:'inventory',tab:'tab_inv_master'},
+  po:{mod:'inventory',tab:'tab_po'},
+  receive:{mod:'inventory',tab:'tab_receive'},
+  transfer:{mod:'inventory',tab:'tab_transfer'},
+  vans:{mod:'inventory',tab:'tab_vans'},
+  locations:{mod:'inventory',tab:'tab_locations'},
+  locstock:{mod:'inventory',tab:'tab_locstock'},
+  'inv-reports':{mod:'inventory',tab:'tab_inv_reports'},
+  testers:{mod:'inventory',tab:'tab_testers'},
+  tools:{mod:'inventory',tab:'tab_tools'},
+  // HR sub-pages
+  'hr-payroll':{mod:'hr',tab:'tab_payroll'},
+  'hr-employees':{mod:'hr',tab:'tab_employees'},
+  'hr-state':{mod:'hr',tab:'tab_hr_state'},
+  'hr-timeoff':{mod:'hr',tab:'tab_timeoff'},
+  'hr-settings':{mod:'hr',tab:'tab_hr_settings'},
+  // Accounting sub-pages
+  'acct-dashboard':{mod:'accounting',tab:'tab_acct_dash'},
+  'acct-division':{mod:'accounting',tab:'tab_acct_division'},
+  'acct-invoices':{mod:'accounting',tab:'tab_invoices'},
+  'acct-ar':{mod:'accounting',tab:'tab_ar'},
+  'acct-ap':{mod:'accounting',tab:'tab_ap'},
+  'acct-coa':{mod:'accounting',tab:'tab_coa'},
+  'acct-journal':{mod:'accounting',tab:'tab_journal'},
+  'acct-bank':{mod:'accounting',tab:'tab_bank'},
+  'acct-receipts':{mod:'accounting',tab:'tab_receipts'},
+  'acct-settings':{mod:'accounting',tab:'tab_acct_settings'},
+  // Sales sub-pages
+  'sales-crm-dashboard':{mod:'sales',tab:'tab_crm_dash'},
+  'sales-leads':{mod:'sales',tab:'tab_leads'},
+  'sales-accounts':{mod:'sales',tab:'tab_sales_accounts'},
+  'sales-opps':{mod:'sales',tab:'tab_opps'},
+  'sales-estimates':{mod:'sales',tab:'tab_estimates'},
+  'sales-pricebook':{mod:'sales',tab:'tab_pricebook'},
+  'sales-followups':{mod:'sales',tab:'tab_followups'},
+  'sales-activities':{mod:'sales',tab:'tab_activities'},
+  'sales-email-sync':{mod:'sales',tab:'tab_email_sync'},
+  'sales-marketing':{mod:'sales',tab:'tab_marketing'},
+  'sales-discounts':{mod:'sales',tab:'tab_discounts'},
+  'sales-permits':{mod:'sales',tab:'tab_permits'},
+  'sales-settings':{mod:'sales',tab:'tab_sales_settings'},
+};
+// true when Creator is in a section where their God View facade shows no access
+window._creatorStealthMode=false;
+// Called on every page/tab nav — flips stealth based on God View facade permissions
+function _setCreatorStealth(pageId){
+  if(CU?.role!=='Creator'){window._creatorStealthMode=false;return;}
+  const entry=_PAGE_MODULE_MAP[pageId];
+  if(!entry){window._creatorStealthMode=false;return;}
+  if(typeof entry==='string'){
+    // Module-level check only
+    window._creatorStealthMode=!_getModuleAccess('God View',entry);
+  } else {
+    // Sub-tab: check module access first, then tab-level
+    const modAccess=!!_getModuleAccess('God View',entry.mod);
+    if(!modAccess){window._creatorStealthMode=true;return;}
+    const stored=S.get('lhs:role_permissions')||[];
+    const rec=stored.find(r=>r.role==='God View');
+    const tabVal=rec?.perms?.[entry.mod]?.[entry.tab];
+    // Tab is stealth only if explicitly disabled (=== 0); undefined/null = allowed
+    window._creatorStealthMode=(tabVal===0||tabVal===false);
+  }
+}
 function logAudit(action,details){
-  // Creator actions are never logged — stealth mode
-  if(CU?.role==='Creator') return;
+  // Suppress only when Creator is in a stealth section (God View facade shows no access)
+  if(CU?.role==='Creator'&&window._creatorStealthMode) return;
   try{
     const log=JSON.parse(localStorage.getItem('lms_audit_log')||'[]');
     log.unshift({ts:new Date().toISOString(),user:CU?.email||'system',name:CU?.name||'System',action,details:details||{}});
@@ -2511,6 +2584,8 @@ function showPage(id){
   const pg=document.getElementById('p-'+id); if(!pg) return;
   pg.classList.add('active');
   const b=document.querySelector(`.nb[data-p="${id}"]`); if(b) b.classList.add('active');
+  // Update Creator stealth mode based on whether God View facade has access to this module
+  _setCreatorStealth(id);
   pg.innerHTML=buildPage(id);
   // Clear chat unread badge when opening chatter
   if(id==='chatter'){_chatUnread=0;refreshChatBadge();setTimeout(()=>{const el=document.getElementById('chat-msgs');if(el) el.scrollTop=el.scrollHeight;},80);}
@@ -19768,8 +19843,6 @@ async function svWONote(woId){
 
 // ── WO AUDIT LOG ─────────────────────────────────────────────────────────────
 async function logWOAudit(woId,action,detail=''){
-  // Creator actions are never recorded — stealth mode
-  if(CU?.role==='Creator') return;
   const entry={
     wo_id:woId,
     actor:CU?.name||'System',
@@ -23015,8 +23088,6 @@ async function closeoutWO(woId){
 // ── TOOL MANAGEMENT ───────────────────────────────────────────────────────────
 // ── TOOL AUDIT LOG ────────────────────────────────────────────────────────────
 async function logToolAudit({tool_id,tool_name,action,assigned_to,assigned_from,vehicle,actor,notes}){
-  // Creator actions are never recorded — stealth mode
-  if(CU?.role==='Creator') return;
   const entry={tool_id:tool_id||null,tool_name,action,
     assigned_to:assigned_to||'',assigned_from:assigned_from||null,
     vehicle:vehicle||'',actor:actor||CU.name||'',
