@@ -5785,7 +5785,7 @@ function bRMA(){
   <div class="card" style="padding:0">
   <div class="tw"><table>
     <thead><tr>
-      <th>Date</th><th>User</th><th>Location</th><th>Material</th><th>Issue</th>
+      <th>Date</th><th>User</th><th>From</th><th>To</th><th>Material</th><th>Issue</th>
       <th style="text-align:center">Qty</th><th>Serial #</th><th>DOM</th>
       <th>Vendor Submitted</th><th>Status</th><th></th>
     </tr></thead>
@@ -5793,6 +5793,7 @@ function bRMA(){
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${(r.created_at||'').slice(0,10)}</td>
       <td style="font-weight:500">${esc(r.submitted_by||'—')}</td>
       <td style="font-size:12px">${esc(r.from_location||'—')}</td>
+      <td style="font-size:12px">${esc(r.to_location||'—')}</td>
       <td style="font-weight:600;color:var(--navy)">${esc(r.item_name||'—')}</td>
       <td>${issueBadge(r.issue)}</td>
       <td style="text-align:center">${r.quantity||1}</td>
@@ -5801,27 +5802,33 @@ function bRMA(){
       <td style="font-size:12px">${r.submitted_to_vendor?`<span style="color:#2e7d32;font-weight:600">✓ ${esc(r.submitted_to_vendor)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td>${statusBadge(r.status||'At Warehouse')}</td>
       <td><button class="btn sm btn-o" onclick="oEditRMA('${r.id}')">Edit</button></td>
-    </tr>`).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">No RMAs found${filter==='completed'?' in completed':' — click + New RMA to log one'}</td></tr>`}
+    </tr>`).join(''):`<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:28px">No RMAs found${filter==='completed'?' in completed':' — click + New RMA to log one'}</td></tr>` }
     </tbody>
   </table></div></div>`;
 }
 
 function oAddRMA(){
   const items=S.get('lhs:items')||[];
-  const allLocs=[...WH,...VH];
+  const _locs=S.get('lhs:locs')||[];
+  const vehOpts=VH.map(vn=>{
+    const loc=_locs.find(l=>l.name===vn);
+    const drv=loc?.driver?` — ${loc.driver}`:'';
+    return`<option value="${vn}">${vn}${drv}</option>`;
+  }).join('');
   oMod('New RMA',`
   <div class="fr">
     <div class="fl"><label>From Location</label>
       <select id="rma-loc">
         <option value="">— Select —</option>
         ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
-        ${VH.map(v=>`<option value="${v}">${v}</option>`).join('')}
+        ${vehOpts}
       </select>
     </div>
-    <div class="fl"><label>Material Item</label>
-      <select id="rma-item">
-        <option value="">— Select Item —</option>
-        ${items.map(i=>`<option value="${i.sku}|${i.name}">${esc(i.name)} (${i.sku})</option>`).join('')}
+    <div class="fl"><label>To Location</label>
+      <select id="rma-to">
+        <option value="">— Select —</option>
+        ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+        <option value="Vendor">Vendor</option>
       </select>
     </div>
     <div class="fl"><label>Quantity</label>
@@ -5829,25 +5836,31 @@ function oAddRMA(){
     </div>
   </div>
   <div class="fr">
+    <div class="fl"><label>Material Item</label>
+      <select id="rma-item">
+        <option value="">— Select Item —</option>
+        ${items.map(i=>`<option value="${i.sku}|${i.name}">${esc(i.name)} (${i.sku})</option>`).join('')}
+      </select>
+    </div>
     <div class="fl"><label>Issue</label>
       <select id="rma-issue">
         ${RMA_ISSUES.map(i=>`<option>${i}</option>`).join('')}
       </select>
     </div>
+  </div>
+  <div class="fr">
     <div class="fl"><label>Serial Number <span style="font-weight:400;color:var(--muted)">(if applicable)</span></label>
       <input id="rma-serial" placeholder="e.g. SN-12345">
     </div>
     <div class="fl"><label>DOM — Date of Manufacture</label>
       <input type="date" id="rma-dom">
     </div>
-  </div>
-  <div class="fr">
-    <div class="fl"><label>Submitted to Vendor Date <span style="font-weight:400;color:var(--muted)">(leave blank if not yet)</span></label>
+    <div class="fl"><label>Submitted to Vendor Date <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
       <input type="date" id="rma-vendor-date">
     </div>
-    <div class="fl"><label>Notes</label>
-      <input id="rma-notes" placeholder="Optional">
-    </div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Notes</label>
+    <input id="rma-notes" placeholder="Optional">
   </div>
   <div class="br2">
     <button class="btn btn-n" onclick="svAddRMA()">Submit RMA</button>
@@ -5857,8 +5870,10 @@ function oAddRMA(){
 
 async function svAddRMA(){
   const locVal=v('rma-loc');
+  const toVal=v('rma-to');
   const itemVal=v('rma-item');
-  if(!locVal){tst('Select a location','error');return;}
+  if(!locVal){tst('Select a From location','error');return;}
+  if(!toVal){tst('Select a To location','error');return;}
   if(!itemVal){tst('Select a material item','error');return;}
   const [sku,itemName]=itemVal.split('|');
   const now=new Date().toISOString();
@@ -5868,6 +5883,7 @@ async function svAddRMA(){
     updated_at:now,
     submitted_by:CU.name,
     from_location:locVal,
+    to_location:toVal,
     item_sku:sku,
     item_name:itemName,
     issue:v('rma-issue'),
@@ -5879,7 +5895,7 @@ async function svAddRMA(){
     status:'At Warehouse'
   };
   const dbRow={
-    submitted_by:rma.submitted_by,from_location:rma.from_location,
+    submitted_by:rma.submitted_by,from_location:rma.from_location,to_location:rma.to_location,
     item_sku:rma.item_sku,item_name:rma.item_name,issue:rma.issue,
     serial_number:rma.serial_number,dom:rma.dom,quantity:rma.quantity,
     submitted_to_vendor:rma.submitted_to_vendor,notes:rma.notes,
@@ -5904,7 +5920,8 @@ function oEditRMA(id){
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px 20px">
       <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Submitted by</div><div style="font-weight:600">${esc(r.submitted_by||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Date</div><div>${(r.created_at||'').slice(0,10)}</div></div>
-      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Location</div><div>${esc(r.from_location||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">From</div><div>${esc(r.from_location||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">To</div><div>${esc(r.to_location||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Issue</div><div>${issueBadge(r.issue)}</div></div>
       <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Serial #</div><div style="font-family:'DM Sans',sans-serif;font-weight:600">${esc(r.serial_number||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">DOM</div><div>${esc(r.dom||'—')}</div></div>
