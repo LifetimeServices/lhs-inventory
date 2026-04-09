@@ -3789,7 +3789,7 @@ function bXfr(){
   const locOpts=allLocs.map(l=>`<option value="${l}">${l}</option>`).join('');
   return`<div class="pt">Vehicle Transfer</div><div class="ps">Move inventory between warehouses and vehicles</div>
   <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <button class="btn btn-o" onclick="oAddRMA()">🔄 New RMA</button>
+    <button onclick="oAddRMA()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:#e65100;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.02em;box-shadow:0 2px 6px rgba(230,81,0,.35)">🔄 New RMA</button>
   </div>
   <div class="card"><div class="ct">New Transfer</div>
   <div class="fr">
