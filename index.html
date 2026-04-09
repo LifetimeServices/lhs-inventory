@@ -187,7 +187,7 @@ tr:hover td{background:#faf9f6}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- EmailJS removed — replaced by Brevo API -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const SUPA_URL = 'https://vuwcnqvrgmdknvbajhtt.supabase.co';
@@ -195,12 +195,9 @@ const SUPA_KEY = 'sb_publishable_Pr4OYz2a2rvhEtRjH_Nqkg_8PHTIeCb';
 const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 
-// ── EMAILJS CONFIG ────────────────────────────────────────────────────────────
-const EJS_SERVICE  = 'service_rvkfyrn';
-const EJS_TEMPLATE = 'template_6m9p35d';
-const EJS_KEY      = 'bOr6h57VGXqTJtG50';
-const EJS_MFA_TEMPLATE = 'template_mfa_code'; // TODO: replace with your EmailJS MFA template ID
-(function(){ if(typeof emailjs!=='undefined') emailjs.init({publicKey:EJS_KEY}); })();
+// ── BREVO (EMAIL) CONFIG ──────────────────────────────────────────────────────
+// API key and sender details stored in lhs_app_settings and loaded via warmCache
+// Brevo dashboard: https://app.brevo.com/settings/keys/api
 </script>
 </head>
 <body>
@@ -1795,7 +1792,7 @@ async function warmCache(){
       const{data:asRows}=await DB.from('lhs_app_settings').select('key,value');
       if(asRows&&asRows.length){
         // groq/endpoint use S.set (read via S.get); dtc/imx use localStorage directly (read via localStorage.getItem)
-        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint'};
+        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint',brevo_api_key:'lhs:brevo_api_key',brevo_sender_email:'lhs:brevo_sender_email',brevo_sender_name:'lhs:brevo_sender_name'};
         const lsKeyMap={dtc_key:'lhs:dtc_key',dtc_sub:'lhs:dtc_sub',imx_acct:'lhs:imx_acct',imx_key:'lhs:imx_key'};
         asRows.forEach(r=>{
           if(sKeyMap[r.key]) S.set(sKeyMap[r.key],r.value);
@@ -1984,6 +1981,32 @@ function locVehPick(obj){
 }
 let CU=null;
 let _mfaPendingUser=null;
+
+// ── BREVO EMAIL HELPER ────────────────────────────────────────────────────────
+async function sendBrevoEmail({to,toName='',subject,html,cc='',replyTo=''}){
+  const apiKey=(S.get('lhs:brevo_api_key')||'').trim();
+  const senderEmail=(S.get('lhs:brevo_sender_email')||'noreply@lifetimehomeservices.com').trim();
+  const senderName=(S.get('lhs:brevo_sender_name')||'Lifetime Home Services').trim();
+  if(!apiKey) throw new Error('Brevo API key not configured — go to Admin → Integrations to set it up.');
+  const body={
+    sender:{name:senderName,email:senderEmail},
+    to:[{email:to,name:toName||to}],
+    subject,
+    htmlContent:html,
+  };
+  if(cc) body.cc=[{email:cc}];
+  if(replyTo) body.replyTo={email:replyTo};
+  const resp=await fetch('https://api.brevo.com/v3/smtp/email',{
+    method:'POST',
+    headers:{'api-key':apiKey,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({}));
+    throw new Error(err.message||`Brevo error ${resp.status}`);
+  }
+  return resp.json();
+}
 
 // ── PASSWORD COMPLEXITY ───────────────────────────────────────────────────────
 function _validatePassword(pw){
@@ -2277,15 +2300,28 @@ async function _sendMFACode(user){
     await DB.from('lhs_mfa_tokens').update({used:true}).eq('user_email',user.email).eq('used',false);
     await DB.from('lhs_mfa_tokens').insert({user_id:user.id,user_email:user.email,token,expires_at:expiresAt,used:false});
   }catch(e){console.warn('MFA token store error:',e.message);}
-  // Send via EmailJS
+  // Send via Brevo
+  const firstName=(user.name||'').split(' ')[0]||'there';
+  const mfaHtml=`<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;color:#333">
+    <div style="background:#1e3a5f;padding:20px 24px;border-radius:8px 8px 0 0">
+      <div style="color:white;font-weight:700;font-size:18px">Safeguard CRM</div>
+      <div style="color:#9ec5fe;font-size:13px;margin-top:2px">Security Verification</div>
+    </div>
+    <div style="background:#f8fafc;padding:28px 24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px">
+      <p style="margin:0 0 16px">Hi ${firstName},</p>
+      <p style="margin:0 0 20px;color:#475569">Your verification code is:</p>
+      <div style="background:white;border:2px solid #1e3a5f;border-radius:8px;text-align:center;padding:20px;margin-bottom:20px">
+        <div style="font-size:36px;font-weight:800;letter-spacing:12px;color:#1e3a5f">${token}</div>
+      </div>
+      <p style="margin:0;color:#64748b;font-size:13px">This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+      <p style="margin:12px 0 0;color:#94a3b8;font-size:12px">If you did not attempt to log in, contact your administrator immediately.</p>
+    </div>
+  </body></html>`;
   try{
-    if(typeof emailjs==='undefined') throw new Error('EmailJS not loaded');
-    const firstName=(user.name||'').split(' ')[0]||'there';
-    await emailjs.send(EJS_SERVICE,EJS_MFA_TEMPLATE,{to_email:user.email,user_name:firstName,mfa_code:token});
+    await sendBrevoEmail({to:user.email,toName:user.name,subject:'Your Safeguard CRM verification code',html:mfaHtml});
   }catch(e){
     console.warn('MFA email error:',e.message);
-    // Dev fallback: show code in toast if EmailJS template not set up
-    if(EJS_MFA_TEMPLATE==='template_mfa_code') tst('DEV: MFA code is '+token,'warning');
+    tst('DEV — MFA code: '+token,'warning');
   }
 }
 
@@ -3379,23 +3415,33 @@ async function sendPO(i){
     :(p.location||p.delivery_location||'');
 
   tst('Sending PO email...','info');
-
+  const poNumber=p.id||p.po_number;
+  const poDate=p.created||p.created_date||new Date().toLocaleDateString();
+  const poHtml=`<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
+    <div style="background:#1e3a5f;padding:20px 24px;border-radius:8px 8px 0 0">
+      <div style="color:white;font-weight:700;font-size:20px">Purchase Order</div>
+      <div style="color:#9ec5fe;font-size:13px;margin-top:2px">Lifetime Home Services</div>
+    </div>
+    <div style="background:#f8fafc;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px">
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;width:130px">PO Number</td><td style="font-weight:700">${poNumber}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Date</td><td>${poDate}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Vendor</td><td>${p.vendor}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Deliver To</td><td>${deliverTo}</td></tr>
+      </table>
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:16px;margin-bottom:16px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#1e3a5f">Items Ordered</div>
+        <pre style="font-family:monospace;font-size:12px;white-space:pre-wrap;margin:0;color:#334155">${itemsTable}</pre>
+      </div>
+      ${p.notes?`<p style="color:#475569;font-size:13px"><strong>Notes:</strong> ${p.notes}</p>`:''}
+      <div style="text-align:center;margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0">
+        <a href="${confirmUrl}" style="background:#1e3a5f;color:white;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Confirm Receipt &#8594;</a>
+        <p style="color:#94a3b8;font-size:11px;margin-top:12px">Click the button above to confirm you received this purchase order.</p>
+      </div>
+    </div>
+  </body></html>`;
   try{
-    if(typeof emailjs==='undefined') throw new Error('EmailJS not loaded');
-
-    const params={
-      to_email:toEmail,
-      cc_email:ccEmail||'',
-      po_number:p.id||p.po_number,
-      po_date:p.created||p.created_date||new Date().toLocaleDateString(),
-      vendor_name:p.vendor,
-      deliver_to:deliverTo,
-      items_table:itemsTable,
-      notes:p.notes||'None',
-      confirm_url:confirmUrl
-    };
-
-    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, params);
+    await sendBrevoEmail({to:toEmail,toName:p.vendor,subject:`Purchase Order ${poNumber} — Lifetime Home Services`,html:poHtml,cc:ccEmail||''});
 
     // Save token and sent_at to PO (local cache)
     const sentAt=new Date().toISOString();
@@ -6669,6 +6715,39 @@ function bInt(){
         <a href="https://www.intermedia.com/extend" target="_blank" style="color:var(--navy)">About Intermedia Extend</a>
         &#8212; API key found in Intermedia Control Panel &#8594; My Services &#8594; Extend &#8594; API Access
       </div>
+    </div>
+    <div class="ic" style="border-color:#0ea5e9">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#0ea5e9;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:18px">&#9993;</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="in2">Brevo — Email (MFA, POs, Reports, Drip)</div>
+          </div>
+          <div class="is2 ${(S.get('lhs:brevo_api_key')||'').trim()?'on':'off'}">${(S.get('lhs:brevo_api_key')||'').trim()?'&#9679; Active':'&#9679; Not Configured'}</div>
+        </div>
+      </div>
+      <div class="id2">Handles all outbound email: MFA verification codes, PO confirmations to vendors, scheduled reports, estimates, invoices, and drip campaigns. Get your free API key at <a href="https://app.brevo.com/settings/keys/api" target="_blank" style="color:var(--teal)">app.brevo.com →</a></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">API Key</div>
+          <input id="brevo-key-input" type="password" value="${esc(S.get('lhs:brevo_api_key')||'')}" placeholder="xkeysib-..."
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Sender Email (verified domain)</div>
+          <input id="brevo-email-input" type="email" value="${esc(S.get('lhs:brevo_sender_email')||'')}" placeholder="noreply@yourdomain.com"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Sender Name</div>
+        <input id="brevo-name-input" type="text" value="${esc(S.get('lhs:brevo_sender_name')||'Lifetime Home Services')}" placeholder="Lifetime Home Services"
+          style="width:240px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
+      </div>
+      <button class="btn btn-n sm" style="margin-top:10px" onclick="saveBrevoSettings()">Save Brevo Settings</button>
+      ${(S.get('lhs:brevo_api_key')||'').trim()
+        ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Brevo configured — all emails will route through Brevo</div>`
+        :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your Brevo API key, verified sender email, and sender name, then click Save</div>`}
     </div>
     <div class="ic" style="border-color:#10b981;grid-column:span 2">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -12955,6 +13034,24 @@ function stopVAListening(){
 function clearVAHistory(){_vaHistory=[];_vaRender();}
 function vaKeydown(e){
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const v=document.getElementById('va-input')?.value||'';if(v.trim())sendVAMessage(v);}
+}
+
+function saveBrevoSettings(){
+  const key=(document.getElementById('brevo-key-input')?.value||'').trim();
+  const email=(document.getElementById('brevo-email-input')?.value||'').trim();
+  const name=(document.getElementById('brevo-name-input')?.value||'').trim();
+  if(!key){tst('Brevo API key is required','error');return;}
+  if(!email||!email.includes('@')){tst('Enter a valid sender email address','error');return;}
+  S.set('lhs:brevo_api_key',key);
+  S.set('lhs:brevo_sender_email',email);
+  S.set('lhs:brevo_sender_name',name||'Lifetime Home Services');
+  try{
+    DB.from('lhs_app_settings').upsert({key:'brevo_api_key',value:key},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'brevo_sender_email',value:email},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'brevo_sender_name',value:name||'Lifetime Home Services'},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  }catch(e){console.warn('Brevo settings Supabase sync failed:',e.message);}
+  tst('Brevo settings saved','success');
+  showPage('integrations');
 }
 
 function saveGroqKey(){
@@ -27374,16 +27471,27 @@ async function sendScheduledReportNow(i){
   const body=`Report: ${s.report_name}\nPeriod: ${dateFrom} to ${dateTo}\nGenerated: ${new Date().toLocaleString()}\nRows: ${rows.length}\n\n${cols.map(c=>c.label).join(' | ')}\n${csvLines}\n${rows.length>50?`\n... and ${rows.length-50} more rows. Export full report from LMS.`:''}`;
   try{
     for(const email of s.recipients){
-      await emailjs.send(EJS_SERVICE,'template_6m9p35d',{
-        to_email:email,
-        po_number:s.report_name,
-        po_date:new Date().toLocaleDateString(),
-        vendor_name:'LHS Reports',
-        deliver_to:`${dateFrom} to ${dateTo}`,
-        items_table:`<pre style="font-family:monospace;font-size:12px;white-space:pre-wrap">${body}</pre>`,
-        notes:`Frequency: ${s.frequency}`,
-        confirm_url:'https://LifetimeServices.github.io/lhs-inventory#dashboard'
-      });
+      const rptHtml=`<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
+        <div style="background:#1e3a5f;padding:20px 24px;border-radius:8px 8px 0 0">
+          <div style="color:white;font-weight:700;font-size:18px">Scheduled Report</div>
+          <div style="color:#9ec5fe;font-size:13px;margin-top:2px">${s.report_name}</div>
+        </div>
+        <div style="background:#f8fafc;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px">
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <tr><td style="padding:5px 0;color:#64748b;font-size:13px;width:100px">Report</td><td style="font-weight:600">${s.report_name}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b;font-size:13px">Period</td><td>${dateFrom} to ${dateTo}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b;font-size:13px">Frequency</td><td>${s.frequency}</td></tr>
+            <tr><td style="padding:5px 0;color:#64748b;font-size:13px">Generated</td><td>${new Date().toLocaleString()}</td></tr>
+          </table>
+          <div style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:16px;overflow-x:auto">
+            <pre style="font-family:monospace;font-size:11px;white-space:pre-wrap;margin:0;color:#334155">${body}</pre>
+          </div>
+          <div style="text-align:center;margin-top:20px">
+            <a href="https://LifetimeServices.github.io/lhs-inventory#dashboard" style="background:#1e3a5f;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:13px;display:inline-block">Open Dashboard &#8594;</a>
+          </div>
+        </div>
+      </body></html>`;
+      await sendBrevoEmail({to:email,subject:`${s.report_name} — ${dateFrom} to ${dateTo}`,html:rptHtml});
     }
     all[i].last_sent_at=new Date().toISOString();
     S.set('lhs:scheduled_reports',all);
