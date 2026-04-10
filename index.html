@@ -29679,13 +29679,9 @@ const REPORT_DEFS=[
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
-  {id:'wo-audit-detail',cat:'Quality + Safety',name:'WO Audit Detail',desc:'Every audit event per work order — filterable by region, state, division, and employee.',run:rpt_woAuditDetail},
-  {id:'status-change-log',cat:'Quality + Safety',name:'Status Change Log',desc:'All WO status transitions with from and to status, who changed it, and when.',run:rpt_statusChangeLog},
-  {id:'photo-completeness',cat:'Quality + Safety',name:'Photo Completeness',desc:'Work orders with photo counts. Flags completed jobs with zero or low photos.',run:rpt_photoCompleteness},
-  {id:'photo-review-by-tech',cat:'Quality + Safety',name:'Photo Review by Technician',desc:'Total photos per technician — jobs photographed, avg photos per job, zero-photo jobs.',run:rpt_photosByTech},
 ];
 
-const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales','Quality + Safety'];
+const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ☢️  RADON OCCUPATIONAL EXPOSURE — WLM TRACKING  (HR Module)
@@ -30310,8 +30306,6 @@ function rptApplyFilters(){
   window._rptFilters={
     dateFrom:document.getElementById('rpt-dfrom')?.value||'',
     dateTo:document.getElementById('rpt-dto')?.value||'',
-    region:document.getElementById('rpt-region')?.value||'',
-    state:document.getElementById('rpt-state')?.value||'',
     division:document.getElementById('rpt-div')?.value||'',
     tech:document.getElementById('rpt-tech')?.value||'',
     status:document.getElementById('rpt-status')?.value||''
@@ -30319,14 +30313,14 @@ function rptApplyFilters(){
   showPage('reports');
 }
 function rptClearFilters(){
-  window._rptFilters={dateFrom:'',dateTo:'',region:'',state:'',division:'',tech:'',status:''};
+  window._rptFilters={dateFrom:'',dateTo:'',division:'',tech:'',status:''};
   showPage('reports');
 }
 
 function rptRun(id,name,isCustom){
   window._rptView='run';
   window._rptCurrent={id,name,isCustom};
-  window._rptFilters={dateFrom:'',dateTo:'',region:'',state:'',division:'',tech:'',status:''};
+  window._rptFilters={dateFrom:'',dateTo:'',division:'',tech:'',status:''};
   showPage('reports');
 }
 function rptOpenSchedule(id,name){
@@ -30346,7 +30340,7 @@ function bReportRun(){
   let rows=[], cols=[];
   try{
     if(def?.run){
-      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'', f.region||'', f.state||'');
+      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'');
       rows=result.rows||[];
       cols=result.cols||[];
     }
@@ -30369,31 +30363,19 @@ function bReportRun(){
       <input type="date" id="rpt-dto" value="${f.dateTo||today}"
         style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     </div>
-    <div class="fl" style="margin:0;min-width:130px"><label>Region</label>
-      <select id="rpt-region" onchange="rptSyncStates()" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <option value="">All Regions</option>
-        ${Object.keys(REGIONS).sort().map(function(rn){return '<option value="'+esc(rn)+'"'+(f.region===rn?' selected':'')+'>'+esc(rn)+'</option>';}).join('')}
-      </select>
-    </div>
-    <div class="fl" style="margin:0;min-width:110px"><label>State</label>
-      <select id="rpt-state" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <option value="">All States</option>
-        ${(f.region&&REGIONS[f.region]?REGIONS[f.region].states:ALL_STATES).map(function(st){return '<option value="'+st+'"'+(f.state===st?' selected':'')+'>'+st+'</option>';}).join('')}
-      </select>
-    </div>
-    <div class="fl" style="margin:0;min-width:140px"><label>Division</label>
+    <div class="fl" style="margin:0;min-width:150px"><label>Division</label>
       <select id="rpt-div" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
         <option value="">All Divisions</option>
         ${DIVS.map(d=>`<option value="${esc(d)}"${f.division===d?' selected':''}>${esc(d)}</option>`).join('')}
       </select>
     </div>
-    <div class="fl" style="margin:0;min-width:140px"><label>Employee</label>
+    <div class="fl" style="margin:0;min-width:150px"><label>Technician</label>
       <select id="rpt-tech" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <option value="">All Employees</option>
-        ${(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}"${f.tech===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+        <option value="">All Techs</option>
+        ${(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}"${f.tech===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
       </select>
     </div>
-    <button class="btn btn-n" onclick="rptApplyFilters()" style="padding:7px 20px;font-size:13px">Run</button>
+    <button class="btn btn-n" onclick="rptApplyFilters()" style="padding:7px 20px;font-size:13px">🔍 Search</button>
     <button class="btn btn-o sm" onclick="rptClearFilters()">Clear</button>
   </div>
 
@@ -30422,7 +30404,7 @@ function rptExportCSV(){
   const today=new Date().toISOString().split('T')[0];
   const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0];
   if(!def?.run) return;
-  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'',f.region||'',f.state||'');
+  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'');
   const header=cols.map(c=>c.label).join(',');
   const body=rows.map(r=>cols.map(c=>`"${String(r[c.key]||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([header+'\n'+body],{type:'text/csv'});
@@ -31155,201 +31137,6 @@ function rpt_territoryPerformance(from,to){
     {key:'avg_job',label:'Avg Job Value',mono:true},
   ];
   return{cols,rows};
-}
-
-// ── QUALITY + SAFETY REPORTS ──────────────────────────────────────────────────
-
-function rptSyncStates(){
-  var reg=document.getElementById('rpt-region');
-  var sta=document.getElementById('rpt-state');
-  if(!reg||!sta) return;
-  var states=reg.value&&REGIONS[reg.value]?REGIONS[reg.value].states:ALL_STATES;
-  var html='<option value="">All States</option>';
-  for(var i=0;i<states.length;i++) html+='<option value="'+states[i]+'">'+states[i]+'</option>';
-  sta.innerHTML=html;
-}
-
-function _rptGetState(wo){
-  return (wo.customer_state||wo.state||'').trim();
-}
-function _rptStateToRegion(st){
-  var keys=Object.keys(REGIONS);
-  for(var i=0;i<keys.length;i++){
-    if((REGIONS[keys[i]].states||[]).indexOf(st)>=0) return keys[i];
-  }
-  return '';
-}
-function _rptFilterRegionState(wos,region,state){
-  if(state) return wos.filter(function(w){return _rptGetState(w)===state;});
-  if(region){
-    var sl=REGIONS[region]?REGIONS[region].states:[];
-    return wos.filter(function(w){return sl.indexOf(_rptGetState(w))>=0;});
-  }
-  return wos;
-}
-function _rptWOTechNames(woId,aptTechs,apts){
-  var woApts=apts.filter(function(a){return a.wo_id===woId;});
-  var names=[];
-  aptTechs.forEach(function(t){
-    if(woApts.some(function(a){return a.id===t.appointment_id;})){
-      var n=t.tech_name||t.tech||'';
-      if(n&&names.indexOf(n)<0) names.push(n);
-    }
-  });
-  return names.length?names.join(', '):'--';
-}
-
-function rpt_woAuditDetail(from,to,div,emp,status,region,state){
-  var audit=S.get('lhs:wo_audit')||[];
-  var wos=S.get('lhs:work_orders')||[];
-  var rows=rptDateFilter(audit,'created_at',from,to);
-  rows=rows.map(function(a){
-    var wo=wos.find(function(w){return w.id===a.wo_id;})||{};
-    var st=_rptGetState(wo);
-    return{
-      date:(a.created_at||'').replace('T',' ').slice(0,16),
-      wo_number:wo.wo_number||a.wo_id||'--',
-      customer:wo.customer_name||'--',
-      division:wo.division||'--',
-      region:_rptStateToRegion(st)||'--',
-      state:st||'--',
-      action:a.action||'--',
-      actor:a.actor||'--',
-      note:(a.note||'').slice(0,100),
-      _st:st, _div:wo.division||''
-    };
-  });
-  if(div) rows=rows.filter(function(r){return r._div===div;});
-  if(emp) rows=rows.filter(function(r){return r.actor===emp;});
-  if(state) rows=rows.filter(function(r){return r._st===state;});
-  else if(region){var sl=REGIONS[region]?REGIONS[region].states:[];rows=rows.filter(function(r){return sl.indexOf(r._st)>=0;});}
-  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var cols=[
-    {key:'date',label:'Date/Time'},{key:'wo_number',label:'WO #',mono:true},
-    {key:'customer',label:'Customer'},{key:'division',label:'Division'},
-    {key:'region',label:'Region'},{key:'state',label:'State'},
-    {key:'action',label:'Action'},{key:'actor',label:'By'},{key:'note',label:'Note'}
-  ];
-  return{cols:cols,rows:rows};
-}
-
-function rpt_statusChangeLog(from,to,div,emp,status,region,state){
-  var audit=S.get('lhs:wo_audit')||[];
-  var wos=S.get('lhs:work_orders')||[];
-  var rows=rptDateFilter(audit,'created_at',from,to).filter(function(a){
-    return (a.action||'').toLowerCase().indexOf('status')>=0||(a.note||'').indexOf(' > ')>=0;
-  });
-  rows=rows.map(function(a){
-    var wo=wos.find(function(w){return w.id===a.wo_id;})||{};
-    var st=_rptGetState(wo);
-    var note=a.note||'';
-    var parts=note.indexOf(' > ')>=0?note.split(' > '):[];
-    return{
-      date:(a.created_at||'').replace('T',' ').slice(0,16),
-      wo_number:wo.wo_number||a.wo_id||'--',
-      customer:wo.customer_name||'--',
-      division:wo.division||'--',
-      region:_rptStateToRegion(st)||'--',
-      state:st||'--',
-      from_status:parts.length>1?parts[0].trim():'--',
-      to_status:parts.length>1?parts[1].trim():(a.action||'--'),
-      changed_by:a.actor||'--',
-      _st:st, _div:wo.division||''
-    };
-  });
-  if(div) rows=rows.filter(function(r){return r._div===div;});
-  if(emp) rows=rows.filter(function(r){return r.changed_by===emp;});
-  if(state) rows=rows.filter(function(r){return r._st===state;});
-  else if(region){var sl=REGIONS[region]?REGIONS[region].states:[];rows=rows.filter(function(r){return sl.indexOf(r._st)>=0;});}
-  rows.sort(function(a,b){return b.date.localeCompare(a.date);});
-  var cols=[
-    {key:'date',label:'Date/Time'},{key:'wo_number',label:'WO #',mono:true},
-    {key:'customer',label:'Customer'},{key:'division',label:'Division'},
-    {key:'region',label:'Region'},{key:'state',label:'State'},
-    {key:'from_status',label:'From'},{key:'to_status',label:'To'},
-    {key:'changed_by',label:'Changed By'}
-  ];
-  return{cols:cols,rows:rows};
-}
-
-function rpt_photoCompleteness(from,to,div,emp,status,region,state){
-  var wos=rptDateFilter(S.get('lhs:work_orders')||[],'created_at',from,to);
-  var photos=S.get('lhs:wo_photos')||[];
-  var apts=S.get('lhs:appointments')||[];
-  var aptTechs=S.get('lhs:apt_techs')||[];
-  if(div) wos=wos.filter(function(w){return w.division===div;});
-  wos=_rptFilterRegionState(wos,region,state);
-  var rows=wos.map(function(w){
-    var cnt=photos.filter(function(p){return p.wo_id===w.id;}).length;
-    var done=['Complete','Closed with Dispatch'].indexOf(w.status)>=0;
-    var flag=done&&cnt===0?'No Photos':done&&cnt<3?'Low Count':'OK';
-    var tech=_rptWOTechNames(w.id,aptTechs,apts);
-    return{
-      wo_number:w.wo_number||'--',
-      customer:w.customer_name||'--',
-      division:w.division||'--',
-      region:_rptStateToRegion(_rptGetState(w))||'--',
-      state:_rptGetState(w)||'--',
-      tech:tech,
-      job_status:w.status||'--',
-      photos:cnt,
-      flag:flag,
-      created:(w.created_at||'').split('T')[0],
-      _tech:tech
-    };
-  });
-  if(emp) rows=rows.filter(function(r){return r._tech.indexOf(emp)>=0;});
-  rows.sort(function(a,b){return a.photos-b.photos;});
-  var cols=[
-    {key:'wo_number',label:'WO #',mono:true},{key:'customer',label:'Customer'},
-    {key:'division',label:'Division'},{key:'region',label:'Region'},{key:'state',label:'State'},
-    {key:'tech',label:'Technician'},{key:'job_status',label:'Status'},
-    {key:'photos',label:'Photos',mono:true},{key:'flag',label:'Flag'},{key:'created',label:'Created'}
-  ];
-  return{cols:cols,rows:rows};
-}
-
-function rpt_photosByTech(from,to,div,emp,status,region,state){
-  var wos=rptDateFilter(S.get('lhs:work_orders')||[],'created_at',from,to);
-  if(div) wos=wos.filter(function(w){return w.division===div;});
-  wos=_rptFilterRegionState(wos,region,state);
-  var photos=S.get('lhs:wo_photos')||[];
-  var apts=S.get('lhs:appointments')||[];
-  var aptTechs=S.get('lhs:apt_techs')||[];
-  var byTech={};
-  wos.forEach(function(w){
-    var techStr=_rptWOTechNames(w.id,aptTechs,apts);
-    var names=techStr==='--'?['Unassigned']:techStr.split(', ');
-    var cnt=photos.filter(function(p){return p.wo_id===w.id;}).length;
-    names.forEach(function(name){
-      if(emp&&name!==emp) return;
-      if(!byTech[name]) byTech[name]={tech:name,jobs:0,with_photos:0,total:0,zero:0};
-      byTech[name].jobs++;
-      byTech[name].total+=cnt;
-      if(cnt>0) byTech[name].with_photos++;
-      else byTech[name].zero++;
-    });
-  });
-  var rows=Object.values(byTech).sort(function(a,b){return b.total-a.total;}).map(function(r){
-    return{
-      tech:r.tech,
-      jobs:r.jobs,
-      with_photos:r.with_photos,
-      total:r.total,
-      avg:r.jobs?Math.round(r.total/r.jobs*10)/10:0,
-      zero:r.zero,
-      flag:r.zero>0?r.zero+' job(s) missing photos':'All documented'
-    };
-  });
-  var cols=[
-    {key:'tech',label:'Technician'},{key:'jobs',label:'Jobs',mono:true},
-    {key:'with_photos',label:'Jobs w/ Photos',mono:true},
-    {key:'total',label:'Total Photos',mono:true},
-    {key:'avg',label:'Avg/Job',mono:true},
-    {key:'zero',label:'Zero-Photo Jobs',mono:true},
-    {key:'flag',label:'Flag'}
-  ];
-  return{cols:cols,rows:rows};
 }
 
 // ── SALES SECTION ─────────────────────────────────────────────────────────────
