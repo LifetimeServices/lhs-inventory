@@ -29679,9 +29679,14 @@ const REPORT_DEFS=[
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
+  // QUALITY & SAFETY
+  {id:'wo-audit-detail',cat:'Quality & Safety',name:'WO Audit Detail',desc:'Every recorded audit event per work order — status changes, notes, edits — filterable by region, state, division, and employee.',run:rpt_woAuditDetail},
+  {id:'status-change-log',cat:'Quality & Safety',name:'Status Change Log',desc:'All WO status transitions with before/after values, who made the change, and when. Filter by region, state, division, or employee.',run:rpt_statusChangeLog},
+  {id:'photo-completeness',cat:'Quality & Safety',name:'Photo Completeness Report',desc:'Work orders showing total photo count per job. Flags completed jobs with missing photos for safety and quality review.',run:rpt_photoCompleteness},
+  {id:'photo-review-by-tech',cat:'Quality & Safety',name:'Photo Review by Technician',desc:'Photo upload counts per technician — jobs photographed, total photos, avg photos per job, and jobs with zero photos.',run:rpt_photosByTech},
 ];
 
-const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'];
+const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales','Quality & Safety'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ☢️  RADON OCCUPATIONAL EXPOSURE — WLM TRACKING  (HR Module)
@@ -30306,6 +30311,8 @@ function rptApplyFilters(){
   window._rptFilters={
     dateFrom:document.getElementById('rpt-dfrom')?.value||'',
     dateTo:document.getElementById('rpt-dto')?.value||'',
+    region:document.getElementById('rpt-region')?.value||'',
+    state:document.getElementById('rpt-state')?.value||'',
     division:document.getElementById('rpt-div')?.value||'',
     tech:document.getElementById('rpt-tech')?.value||'',
     status:document.getElementById('rpt-status')?.value||''
@@ -30313,14 +30320,14 @@ function rptApplyFilters(){
   showPage('reports');
 }
 function rptClearFilters(){
-  window._rptFilters={dateFrom:'',dateTo:'',division:'',tech:'',status:''};
+  window._rptFilters={dateFrom:'',dateTo:'',region:'',state:'',division:'',tech:'',status:''};
   showPage('reports');
 }
 
 function rptRun(id,name,isCustom){
   window._rptView='run';
   window._rptCurrent={id,name,isCustom};
-  window._rptFilters={dateFrom:'',dateTo:'',division:'',tech:'',status:''};
+  window._rptFilters={dateFrom:'',dateTo:'',region:'',state:'',division:'',tech:'',status:''};
   showPage('reports');
 }
 function rptOpenSchedule(id,name){
@@ -30340,7 +30347,7 @@ function bReportRun(){
   let rows=[], cols=[];
   try{
     if(def?.run){
-      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'');
+      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'', f.region||'', f.state||'');
       rows=result.rows||[];
       cols=result.cols||[];
     }
@@ -30363,19 +30370,31 @@ function bReportRun(){
       <input type="date" id="rpt-dto" value="${f.dateTo||today}"
         style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     </div>
+    <div class="fl" style="margin:0;min-width:140px"><label>Region</label>
+      <select id="rpt-region" onchange="rptRegionStateSync()" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <option value="">All Regions</option>
+        ${Object.keys(REGIONS).sort().map(r=>`<option value="${esc(r)}"${f.region===r?' selected':''}>${esc(r)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin:0;min-width:120px"><label>State</label>
+      <select id="rpt-state" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <option value="">All States</option>
+        ${(f.region?REGIONS[f.region]?.states||[]:ALL_STATES).map(s=>`<option value="${esc(s)}"${f.state===s?' selected':''}>${esc(s)}</option>`).join('')}
+      </select>
+    </div>
     <div class="fl" style="margin:0;min-width:150px"><label>Division</label>
       <select id="rpt-div" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
         <option value="">All Divisions</option>
         ${DIVS.map(d=>`<option value="${esc(d)}"${f.division===d?' selected':''}>${esc(d)}</option>`).join('')}
       </select>
     </div>
-    <div class="fl" style="margin:0;min-width:150px"><label>Technician</label>
+    <div class="fl" style="margin:0;min-width:150px"><label>Employee</label>
       <select id="rpt-tech" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <option value="">All Techs</option>
-        ${(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}"${f.tech===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+        <option value="">All Employees</option>
+        ${(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}"${f.tech===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
       </select>
     </div>
-    <button class="btn btn-n" onclick="rptApplyFilters()" style="padding:7px 20px;font-size:13px">🔍 Search</button>
+    <button class="btn btn-n" onclick="rptApplyFilters()" style="padding:7px 20px;font-size:13px">🔍 Run</button>
     <button class="btn btn-o sm" onclick="rptClearFilters()">Clear</button>
   </div>
 
@@ -30404,7 +30423,7 @@ function rptExportCSV(){
   const today=new Date().toISOString().split('T')[0];
   const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0];
   if(!def?.run) return;
-  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'');
+  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'',f.region||'',f.state||'');
   const header=cols.map(c=>c.label).join(',');
   const body=rows.map(r=>cols.map(c=>`"${String(r[c.key]||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([header+'\n'+body],{type:'text/csv'});
@@ -31135,6 +31154,204 @@ function rpt_territoryPerformance(from,to){
     {key:'jobs',label:'Jobs'},
     {key:'revenue',label:'Revenue',mono:true},
     {key:'avg_job',label:'Avg Job Value',mono:true},
+  ];
+  return{cols,rows};
+}
+
+// ── QUALITY & SAFETY REPORTS ──────────────────────────────────────────────────
+
+/* Region→state sync helper for filter bar */
+function rptRegionStateSync(){
+  const sel=document.getElementById('rpt-region');
+  const stateSel=document.getElementById('rpt-state');
+  if(!sel||!stateSel) return;
+  const region=sel.value;
+  const states=region?(REGIONS[region]?.states||[]):ALL_STATES;
+  stateSel.innerHTML=`<option value="">All States</option>${states.map(s=>`<option value="${s}">${s}</option>`).join('')}`;
+}
+
+/* Shared region/state filter for WOs — uses customer_state and REGIONS mapping */
+function _rptRegionStateFilter(wos, region, state){
+  if(state) return wos.filter(w=>(w.customer_state||w.state||'').trim()===state);
+  if(region){
+    const stateList=REGIONS[region]?.states||[];
+    return wos.filter(w=>stateList.includes((w.customer_state||w.state||'').trim()));
+  }
+  return wos;
+}
+
+/* Resolve region name from a state code */
+function _rptStateToRegion(stateCode){
+  return Object.keys(REGIONS).find(r=>REGIONS[r].states?.includes((stateCode||'').trim()))||'';
+}
+
+/* Resolve primary tech name from apt_techs for a WO */
+function _rptWOTechs(woId, aptTechs, apts){
+  const woApts=apts.filter(a=>a.wo_id===woId);
+  const names=[...new Set(aptTechs.filter(t=>woApts.some(a=>a.id===t.appointment_id)).map(t=>t.tech_name||t.tech).filter(Boolean))];
+  return names.join(', ')||'—';
+}
+
+/* ── 1. WO Audit Detail ─────────────────────────────────────────────────────── */
+function rpt_woAuditDetail(from,to,div,emp,status,region,state){
+  const audit=S.get('lhs:wo_audit')||[];
+  const wos=S.get('lhs:work_orders')||[];
+  let rows=rptDateFilter(audit,'created_at',from,to);
+  // Join WO for division/state context
+  rows=rows.map(a=>{
+    const wo=wos.find(w=>w.id===a.wo_id)||{};
+    const wState=(wo.customer_state||wo.state||'').trim();
+    return{
+      date:(a.created_at||'').replace('T',' ').slice(0,16),
+      wo_number:wo.wo_number||a.wo_id||'—',
+      customer:wo.customer_name||'—',
+      division:wo.division||'—',
+      state:wState||'—',
+      region:_rptStateToRegion(wState)||'—',
+      action:a.action||'—',
+      actor:a.actor||'—',
+      note:(a.note||'').slice(0,120),
+      _wState:wState,
+      _division:wo.division||'',
+    };
+  });
+  if(div) rows=rows.filter(r=>r._division===div);
+  if(emp) rows=rows.filter(r=>r.actor===emp);
+  if(state) rows=rows.filter(r=>r._wState===state);
+  else if(region){const sl=REGIONS[region]?.states||[];rows=rows.filter(r=>sl.includes(r._wState));}
+  rows=rows.sort((a,b)=>b.date.localeCompare(a.date));
+  const cols=[
+    {key:'date',label:'Date / Time'},{key:'wo_number',label:'WO #',mono:true},
+    {key:'customer',label:'Customer'},{key:'division',label:'Division'},
+    {key:'region',label:'Region'},{key:'state',label:'State'},
+    {key:'action',label:'Action'},{key:'actor',label:'By'},{key:'note',label:'Note'},
+  ];
+  return{cols,rows};
+}
+
+/* ── 2. Status Change Log ───────────────────────────────────────────────────── */
+function rpt_statusChangeLog(from,to,div,emp,status,region,state){
+  const audit=S.get('lhs:wo_audit')||[];
+  const wos=S.get('lhs:work_orders')||[];
+  // Status-change events: action contains 'Status' or note contains '→'
+  let rows=rptDateFilter(audit,'created_at',from,to)
+    .filter(a=>(a.action||'').toLowerCase().includes('status')||(a.note||'').includes('→'));
+  rows=rows.map(a=>{
+    const wo=wos.find(w=>w.id===a.wo_id)||{};
+    const wState=(wo.customer_state||wo.state||'').trim();
+    // Try to parse from→to from note (e.g. "Scheduled → In Progress")
+    const noteParts=(a.note||'').split('→');
+    const fromStatus=(noteParts.length>1?noteParts[0]:a.note||'').trim().replace(/^Status changed from\s*/i,'').trim();
+    const toStatus=(noteParts.length>1?noteParts[1]:a.action||'').trim();
+    return{
+      date:(a.created_at||'').replace('T',' ').slice(0,16),
+      wo_number:wo.wo_number||a.wo_id||'—',
+      customer:wo.customer_name||'—',
+      division:wo.division||'—',
+      region:_rptStateToRegion(wState)||'—',
+      state:wState||'—',
+      from_status:fromStatus||'—',
+      to_status:toStatus||'—',
+      changed_by:a.actor||'—',
+      _wState:wState,
+      _division:wo.division||'',
+    };
+  });
+  if(div) rows=rows.filter(r=>r._division===div);
+  if(emp) rows=rows.filter(r=>r.changed_by===emp);
+  if(state) rows=rows.filter(r=>r._wState===state);
+  else if(region){const sl=REGIONS[region]?.states||[];rows=rows.filter(r=>sl.includes(r._wState));}
+  rows=rows.sort((a,b)=>b.date.localeCompare(a.date));
+  const cols=[
+    {key:'date',label:'Date / Time'},{key:'wo_number',label:'WO #',mono:true},
+    {key:'customer',label:'Customer'},{key:'division',label:'Division'},
+    {key:'region',label:'Region'},{key:'state',label:'State'},
+    {key:'from_status',label:'From Status'},{key:'to_status',label:'To Status'},
+    {key:'changed_by',label:'Changed By'},
+  ];
+  return{cols,rows};
+}
+
+/* ── 3. Photo Completeness Report ──────────────────────────────────────────── */
+function rpt_photoCompleteness(from,to,div,emp,status,region,state){
+  let wos=rptDateFilter(S.get('lhs:work_orders')||[],'created_at',from,to);
+  const photos=S.get('lhs:wo_photos')||[];
+  const apts=S.get('lhs:appointments')||[];
+  const aptTechs=S.get('lhs:apt_techs')||[];
+  if(div) wos=wos.filter(w=>w.division===div);
+  wos=_rptRegionStateFilter(wos,'customer_state',region,state);
+  const rows=wos.map(w=>{
+    const wPhotos=photos.filter(p=>p.wo_id===w.id);
+    const photoCount=wPhotos.length;
+    const isComplete=['Complete','Closed with Dispatch'].includes(w.status);
+    const flag=isComplete&&photoCount===0?'⚠️ No Photos':isComplete&&photoCount<3?'🔶 Low Count':'✅ OK';
+    const techName=_rptWOTechs(w.id,aptTechs,apts);
+    const wState=(w.customer_state||w.state||'').trim();
+    return{
+      wo_number:w.wo_number||'—',
+      customer:w.customer_name||'—',
+      division:w.division||'—',
+      region:_rptStateToRegion(wState)||'—',
+      state:wState||'—',
+      tech:techName,
+      job_status:w.status||'—',
+      photos:photoCount,
+      flag,
+      created:(w.created_at||'').split('T')[0],
+    };
+  });
+  if(emp) rows.forEach(()=>{});// emp filter via tech string match
+  const filtered=emp?rows.filter(r=>r.tech.includes(emp)):rows;
+  const sorted=filtered.sort((a,b)=>a.photos-b.photos);
+  const cols=[
+    {key:'wo_number',label:'WO #',mono:true},{key:'customer',label:'Customer'},
+    {key:'division',label:'Division'},{key:'region',label:'Region'},{key:'state',label:'State'},
+    {key:'tech',label:'Technician'},{key:'job_status',label:'Status'},
+    {key:'photos',label:'Photo Count',mono:true},{key:'flag',label:'Flag'},
+    {key:'created',label:'Created'},
+  ];
+  return{cols,rows:sorted};
+}
+
+/* ── 4. Photo Review by Technician ─────────────────────────────────────────── */
+function rpt_photosByTech(from,to,div,emp,status,region,state){
+  let wos=rptDateFilter(S.get('lhs:work_orders')||[],'created_at',from,to);
+  if(div) wos=wos.filter(w=>w.division===div);
+  wos=_rptRegionStateFilter(wos,region,state);
+  const photos=S.get('lhs:wo_photos')||[];
+  const apts=S.get('lhs:appointments')||[];
+  const aptTechs=S.get('lhs:apt_techs')||[];
+  const byTech={};
+  wos.forEach(w=>{
+    const techNames=_rptWOTechs(w.id,aptTechs,apts);
+    // Can be multiple techs; credit each one
+    const names=techNames==='—'?['Unassigned']:techNames.split(', ');
+    const wPhotos=photos.filter(p=>p.wo_id===w.id).length;
+    names.forEach(name=>{
+      if(emp&&name!==emp) return;
+      if(!byTech[name]) byTech[name]={tech:name,jobs:0,jobs_with_photos:0,total_photos:0,jobs_zero:0};
+      byTech[name].jobs++;
+      byTech[name].total_photos+=wPhotos;
+      if(wPhotos>0) byTech[name].jobs_with_photos++;
+      else byTech[name].jobs_zero++;
+    });
+  });
+  const rows=Object.values(byTech).sort((a,b)=>b.total_photos-a.total_photos).map(r=>({
+    tech:r.tech,
+    jobs:r.jobs,
+    jobs_with_photos:r.jobs_with_photos,
+    total_photos:r.total_photos,
+    avg_photos:r.jobs?+(r.total_photos/r.jobs).toFixed(1):0,
+    jobs_zero:r.jobs_zero,
+    zero_flag:r.jobs_zero>0?`⚠️ ${r.jobs_zero} job${r.jobs_zero>1?'s':''} with no photos`:'✅ All documented',
+  }));
+  const cols=[
+    {key:'tech',label:'Technician'},{key:'jobs',label:'Total Jobs',mono:true},
+    {key:'jobs_with_photos',label:'Jobs w/ Photos',mono:true},
+    {key:'total_photos',label:'Total Photos',mono:true},
+    {key:'avg_photos',label:'Avg Photos/Job',mono:true},
+    {key:'jobs_zero',label:'Jobs — 0 Photos',mono:true},
+    {key:'zero_flag',label:'Documentation Flag'},
   ];
   return{cols,rows};
 }
