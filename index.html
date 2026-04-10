@@ -669,6 +669,60 @@ const STATE_NAMES={
 };
 const ALL_STATES=Object.keys(STATE_NAMES).sort();
 
+// ── STATE TAX LINKS — official lookup URLs for all 50 states ─────────────────
+const STATE_TAX_LINKS={
+  'AL':{name:'Alabama',url:'https://www.alabamainteractive.org/ador_taxrate_lookup/welcome.action',ratesUrl:'https://www.revenue.alabama.gov/sales-use/tax-rates/',noTax:false,rateType:'variable',baseRate:4.0,notes:'Interactive address-based lookup. County/city rates vary 5%–11%.'},
+  'AK':{name:'Alaska',url:null,ratesUrl:'https://tax.alaska.gov/',noTax:true,rateType:'none',baseRate:0,notes:'No statewide sales tax. Some municipalities have local sales tax.'},
+  'AZ':{name:'Arizona',url:'https://www.aztaxes.gov/Home/Address/',ratesUrl:'https://azdor.gov/business/transaction-privilege-tax/tax-rate-table',noTax:false,rateType:'variable',baseRate:5.6,notes:'Called Transaction Privilege Tax (TPT). Interactive address lookup at aztaxes.gov. Combined rates vary 5.6%–11.2%.'},
+  'AR':{name:'Arkansas',url:'https://www.dfa.arkansas.gov/office/taxes/excise-tax-administration/sales-use-tax/streamlined-tax-lookup/',ratesUrl:'https://www.dfa.arkansas.gov/office/taxes/excise-tax-administration/sales-use-tax/sales-use-tax-rates/city-and-county-sales-use-tax-rates/',noTax:false,rateType:'variable',baseRate:6.5,notes:'Streamlined Sales Tax lookup by address or zip code.'},
+  'CA':{name:'California',url:'https://maps.cdtfa.ca.gov/',ratesUrl:'https://cdtfa.ca.gov/taxes-and-fees/sales-use-tax-rates.htm',noTax:false,rateType:'variable',baseRate:7.25,notes:'CDTFA interactive map-based lookup. Complex local district taxes. Rates vary 7.25%–10.75%.'},
+  'CO':{name:'Colorado',url:'https://salestaxlookup.colorado.gov/',ratesUrl:'https://tax.colorado.gov/how-to-look-up-sales-and-use-tax-rates',noTax:false,rateType:'variable',baseRate:2.9,notes:'State Sales Tax Lookup tool. 2.9% state + local/county/special district rates. Combined up to 11.2%.'},
+  'CT':{name:'Connecticut',url:'https://portal.ct.gov/drs/sales-tax/tax-information',ratesUrl:'https://portal.ct.gov/drs/sales-tax/tax-information',noTax:false,rateType:'flat',baseRate:6.35,notes:'Flat 6.35% statewide, no local variation.'},
+  'DE':{name:'Delaware',url:null,ratesUrl:'https://revenue.delaware.gov/',noTax:true,rateType:'none',baseRate:0,notes:'No sales tax. Uses gross receipts tax on sellers instead.'},
+  'FL':{name:'Florida',url:'https://floridarevenue.com/taxes/pointmatch',ratesUrl:'https://pointmatch.floridarevenue.com/General/DiscretionarySalesSurtaxRates.aspx',noTax:false,rateType:'variable',baseRate:6.0,notes:'PointMatch system — lookup by address or county. Discretionary surtax varies by county (6%–7.5%).'},
+  'GA':{name:'Georgia',url:'https://dor.georgia.gov/taxes/sales-use-tax/sales-tax-rates-current-historical-and-upcoming',ratesUrl:'https://dor.georgia.gov/sales-tax-rates-general',noTax:false,rateType:'variable',baseRate:4.0,notes:'4% state + county LOST/SPLOST rates. Total 6%–8% by county.'},
+  'HI':{name:'Hawaii',url:'https://tax.hawaii.gov/geninfo/get/',ratesUrl:'https://tax.hawaii.gov/geninfo/countysurcharge/',noTax:false,rateType:'variable',baseRate:4.0,notes:'General Excise Tax (GET), not traditional sales tax. 4% state + 0.5% county surcharge in most counties.'},
+  'ID':{name:'Idaho',url:'https://tax.idaho.gov/taxes/sales-use/sales-tax/local-sales-tax/city-sales-tax/',ratesUrl:'https://tax.idaho.gov/taxes/sales-use/',noTax:false,rateType:'variable',baseRate:6.0,notes:'Flat 6% statewide. A few resort cities add additional local option taxes.'},
+  'IL':{name:'Illinois',url:'https://mytax.illinois.gov/_/',ratesUrl:'https://tax.illinois.gov/research/taxrates.html',noTax:false,rateType:'variable',baseRate:6.25,notes:'MyTax Illinois Tax Rate Finder. Very complex local rates. Cook County and Chicago significantly higher. Rates vary 6.25%–11.5%.'},
+  'IN':{name:'Indiana',url:'https://www.in.gov/dor/i-am-a/business-corp/sales-tax/',ratesUrl:'https://www.in.gov/dor/i-am-a/business-corp/sales-tax/',noTax:false,rateType:'flat',baseRate:7.0,notes:'Flat 7% statewide, no local sales tax.'},
+  'IA':{name:'Iowa',url:'https://tax-mapper.iowa.gov/TaxMapper/SalesTaxRate',ratesUrl:'https://tax-mapper.iowa.gov/',noTax:false,rateType:'variable',baseRate:6.0,notes:'Iowa Tax Mapper — search by address. 6% state + 1% local option in most jurisdictions.'},
+  'KS':{name:'Kansas',url:'https://www.ksrevenue.gov/atrladdress.html',ratesUrl:'https://www.ksrevenue.gov/atrl.html',noTax:false,rateType:'variable',baseRate:6.5,notes:'Address-based lookup and full rate locator. Rates vary 6.5%–11.5%.'},
+  'KY':{name:'Kentucky',url:'https://revenue.ky.gov/Business/Sales-Use-Tax/pages/default.aspx',ratesUrl:'https://revenue.ky.gov/Business/Sales-Use-Tax/pages/default.aspx',noTax:false,rateType:'flat',baseRate:6.0,notes:'Flat 6% statewide, no local sales tax.'},
+  'LA':{name:'Louisiana',url:'https://remotesellersfiling.louisiana.gov/lookup/lookup.aspx',ratesUrl:'https://revenue.louisiana.gov/businesses/sales-taxes/general-sales-use-tax/',noTax:false,rateType:'variable',baseRate:4.45,notes:'Address/coordinate-based lookup. Complex parish and local rates. Combined up to 12.95%.'},
+  'ME':{name:'Maine',url:'https://www.maine.gov/revenue/taxes/sales-use-service-provider-tax/rates-due-dates',ratesUrl:'https://www.maine.gov/revenue/taxes/sales-use-service-provider-tax/rates-due-dates',noTax:false,rateType:'flat',baseRate:5.5,notes:'Flat 5.5% statewide, no local sales tax.'},
+  'MD':{name:'Maryland',url:'https://www.marylandtaxes.gov/',ratesUrl:'https://www.marylandtaxes.gov/',noTax:false,rateType:'flat',baseRate:6.0,notes:'Flat 6% statewide, no local sales tax.'},
+  'MA':{name:'Massachusetts',url:'https://www.mass.gov/sales-and-use-tax-for-businesses',ratesUrl:'https://www.mass.gov/guides/sales-and-use-tax',noTax:false,rateType:'flat',baseRate:6.25,notes:'Flat 6.25% statewide. Some municipalities add up to 0.75% local option meals tax.'},
+  'MI':{name:'Michigan',url:'https://www.michigan.gov/taxes/business-taxes/sales-use-tax',ratesUrl:'https://www.michigan.gov/taxes/business-taxes/sales-use-tax/information',noTax:false,rateType:'flat',baseRate:6.0,notes:'Flat 6% statewide, no local sales tax.'},
+  'MN':{name:'Minnesota',url:'https://www.revenue.state.mn.us/sales-tax-rate-calculator',ratesUrl:'https://www.revenue.state.mn.us/local-sales-tax-information',noTax:false,rateType:'variable',baseRate:6.875,notes:'Sales Tax Rate Calculator by address or map. 6.875% state + complex local rates. Twin Cities metro has transit tax.'},
+  'MS':{name:'Mississippi',url:'https://www.dor.ms.gov/node/8',ratesUrl:'https://www.dor.ms.gov/business/sales-use-tax/sales-tax-rates',noTax:false,rateType:'variable',baseRate:7.0,notes:'Sales Tax Rate Lookup tool. 7% general retail. Municipalities may add local taxes.'},
+  'MO':{name:'Missouri',url:'https://mytax.mo.gov/rptp/portal/home/business/customFindSalesUseTaxRates',ratesUrl:'https://dor.mo.gov/taxation/business/tax-types/sales-use/rate-tables/',noTax:false,rateType:'variable',baseRate:4.225,notes:'MyTax Missouri portal address lookup. 4.225% state + very complex local rates. Combined up to 11.988%.'},
+  'MT':{name:'Montana',url:null,ratesUrl:'https://revenue.mt.gov/',noTax:true,rateType:'none',baseRate:0,notes:'No general sales tax. Some resort communities have local resort tax.'},
+  'NE':{name:'Nebraska',url:'https://revenue.nebraska.gov/businesses/sales-and-use-tax/sales-tax-rate-finder',ratesUrl:'https://revenue.nebraska.gov/businesses/local-sales-and-use-tax-rates',noTax:false,rateType:'variable',baseRate:5.5,notes:'Sales Tax Rate Finder by street address. 5.5% state + local city rates.'},
+  'NV':{name:'Nevada',url:'https://tax.nv.gov/tax-types/sales-tax-use-tax/',ratesUrl:'https://tax.nv.gov/Publications/Sales_and_Use_Tax_Publications/',noTax:false,rateType:'variable',baseRate:6.85,notes:'Rate varies by county (6.85%–8.375%). Use county rate chart at Nevada DOR.'},
+  'NH':{name:'New Hampshire',url:null,ratesUrl:'https://www.revenue.nh.gov/faq/does-new-hampshire-have-sales-tax',noTax:true,rateType:'none',baseRate:0,notes:'No general sales tax.'},
+  'NJ':{name:'New Jersey',url:'https://www.nj.gov/treasury/taxation/businesses/salestax/index.shtml',ratesUrl:'https://www.nj.gov/treasury/taxation/salestax.shtml',noTax:false,rateType:'flat',baseRate:6.625,notes:'Flat 6.625% statewide, no local sales tax.'},
+  'NM':{name:'New Mexico',url:'https://www.tax.newmexico.gov/grt-rate-finder-tools/',ratesUrl:'https://www.tax.newmexico.gov/governments/gross-receipts-location-code-and-tax-rate-map/',noTax:false,rateType:'variable',baseRate:5.125,notes:'Gross Receipts Tax (GRT), not traditional sales tax. Address-based GRT rate finder. Rates 5.125%–8.6875%.'},
+  'NY':{name:'New York',url:'https://www8.tax.ny.gov/JRLA/jrlaStart',ratesUrl:'https://www.tax.ny.gov/bus/st/rates.htm',noTax:false,rateType:'variable',baseRate:4.0,notes:'Jurisdiction/Rate Lookup by Address. 4% state + county/city/MTA district rates. NYC combined is 8.875%.'},
+  'NC':{name:'North Carolina',url:'https://www.ncdor.gov/taxes-forms/sales-and-use-tax/streamlined-sales-tax-information/sales-tax-rate-database',ratesUrl:'https://www.ncdor.gov/taxes-forms/sales-and-use-tax/sales-and-use-tax-rates/current-sales-and-use-tax-rates',noTax:false,rateType:'variable',baseRate:4.75,notes:'Streamlined Sales Tax rate database. 4.75% state + county rates. Total 6.75%–7.5%.'},
+  'ND':{name:'North Dakota',url:'https://www.tax.nd.gov/business/sales-and-use-tax/local-taxes-city-and-county-taxes',ratesUrl:'https://www.tax.nd.gov/business/sales-and-use-tax',noTax:false,rateType:'variable',baseRate:5.0,notes:'5% state + local city/county rates.'},
+  'OH':{name:'Ohio',url:'https://thefinder.tax.ohio.gov/StreamlineSalesTaxWeb/',ratesUrl:'https://tax.ohio.gov/business/ohio-business-taxes/sales-and-use/sales-use-tax',noTax:false,rateType:'variable',baseRate:5.75,notes:'The Finder — address-based lookup. 5.75% state + county/transit rates. Total 6.5%–8%.'},
+  'OK':{name:'Oklahoma',url:'https://www.ok.gov/tax/Online_Services/Online_Filing_-_Individuals/Sales_&_Use_Rate_Locator/',ratesUrl:'https://oklahoma.gov/tax/businesses/sales-use-tax.html',noTax:false,rateType:'variable',baseRate:4.5,notes:'Sales & Use Rate Locator. 4.5% state + complex city/county rates. Combined up to 11.5%.'},
+  'OR':{name:'Oregon',url:null,ratesUrl:'https://www.oregon.gov/dor/programs/businesses/pages/sales-tax.aspx',noTax:true,rateType:'none',baseRate:0,notes:'No general sales or use/transaction tax.'},
+  'PA':{name:'Pennsylvania',url:'https://www.pa.gov/agencies/revenue/resources/tax-types-and-information/sales-use-and-hotel-occupancy-tax',ratesUrl:'https://www.pa.gov/agencies/revenue/resources/tax-rates',noTax:false,rateType:'variable',baseRate:6.0,notes:'6% state. Allegheny County adds 1%, Philadelphia adds 2%. Rates fixed by county.'},
+  'RI':{name:'Rhode Island',url:'https://tax.ri.gov/tax-sections/sales-excise-taxes/sales-use-tax',ratesUrl:'https://tax.ri.gov/tax-sections/sales-excise-taxes/sales-use-tax',noTax:false,rateType:'flat',baseRate:7.0,notes:'Flat 7% statewide, no local sales tax.'},
+  'SC':{name:'South Carolina',url:'https://dor.sc.gov/sales-use-tax-index/local-sales-taxes',ratesUrl:'https://dor.sc.gov/sales-use-tax-index',noTax:false,rateType:'variable',baseRate:6.0,notes:'6% state + county local taxes (Capital Projects, Education, etc.). Total 6%–9%.'},
+  'SD':{name:'South Dakota',url:'https://apps.sd.gov/rv25taxmatch/main.aspx',ratesUrl:'https://dor.sd.gov/businesses/taxes/sales-use-tax/',noTax:false,rateType:'variable',baseRate:4.2,notes:'Address-based TaxMatch tool. 4.2% state + local taxes.'},
+  'TN':{name:'Tennessee',url:'https://tnmap.tn.gov/revenue/',ratesUrl:'https://www.tn.gov/revenue/taxes/sales-and-use-tax/local-sales-tax.html',noTax:false,rateType:'variable',baseRate:7.0,notes:'TNMap tax rates map — enter address for rate. 7% state + local up to 2.75%. Combined up to 9.75%.'},
+  'TX':{name:'Texas',url:'https://gis.cpa.texas.gov/',ratesUrl:'https://comptroller.texas.gov/taxes/sales/',noTax:false,rateType:'variable',baseRate:6.25,notes:'Texas Comptroller GIS-based address lookup. 6.25% state + local up to 8.25% combined.'},
+  'UT':{name:'Utah',url:'https://tax.utah.gov/business/sales-tax/sales/rates/',ratesUrl:'https://tax.utah.gov/sales/city-county-list',noTax:false,rateType:'variable',baseRate:4.85,notes:'4.85% state + city/county rates. Total varies by location.'},
+  'VT':{name:'Vermont',url:'https://tax.vermont.gov/business/sales-and-use-tax',ratesUrl:'https://tax.vermont.gov/research-and-reports/tax-rates-and-charts',noTax:false,rateType:'variable',baseRate:6.0,notes:'6% state. Some municipalities have 1% local option. Rate charts at Dept of Taxes.'},
+  'VA':{name:'Virginia',url:'https://www.tax.virginia.gov/sales-tax-rate-and-locality-code-lookup',ratesUrl:'https://www.tax.virginia.gov/retail-sales-and-use-tax',noTax:false,rateType:'variable',baseRate:4.3,notes:'Interactive map-based lookup. 4.3% state + 1% local + regional transportation. Total 5.3%–7% by region.'},
+  'WA':{name:'Washington',url:'https://dor.wa.gov/taxes-rates/sales-use-tax-rates/tax-rate-lookup-tool',ratesUrl:'https://dor.wa.gov/taxes-rates/sales-use-tax-rates',noTax:false,rateType:'variable',baseRate:6.5,notes:'DOR Tax Rate Lookup Tool by address, ZIP+4, or map. Very complex local rates. Total 7.5%–10.4%.'},
+  'WV':{name:'West Virginia',url:'https://tax.wv.gov/business/salesandusetax/pages/salesandusetax.aspx',ratesUrl:'https://tax.wv.gov/business/salesandusetax/municipalsalesandusetax/pages/municipalsalesandusetax.aspx',noTax:false,rateType:'variable',baseRate:6.0,notes:'6% state. Some municipalities add 1%. Municipal rates at Tax Division site.'},
+  'WI':{name:'Wisconsin',url:'https://www.revenue.wi.gov/Pages/Apps/strb.aspx',ratesUrl:'https://www.revenue.wi.gov/Pages/Apps/strb.aspx',noTax:false,rateType:'variable',baseRate:5.0,notes:'Sales Tax Rate Lookup by address. 5% state + county/stadium/premier resort taxes. Total varies by county.'},
+  'WY':{name:'Wyoming',url:'https://ratelookup.wyo.gov/',ratesUrl:'https://excise-tax-div.wyo.gov/sales-use-tax-rate-charts',noTax:false,rateType:'variable',baseRate:4.0,notes:'4% state + local up to 2%. Rate lookup at ratelookup.wyo.gov.'},
+};
+
 // Counties by state — used for territory assignment
 const COUNTIES_BY_STATE={
   'WI':['Adams','Ashland','Barron','Bayfield','Brown','Buffalo','Burnett','Calumet','Chippewa','Clark','Columbia','Crawford','Dane','Dodge','Door','Douglas','Dunn','Eau Claire','Florence','Fond du Lac','Forest','Grant','Green','Green Lake','Iowa','Iron','Jackson','Jefferson','Juneau','Kenosha','Kewaunee','La Crosse','Lafayette','Langlade','Lincoln','Manitowoc','Marathon','Marinette','Marquette','Menominee','Milwaukee','Monroe','Oconto','Oneida','Outagamie','Ozaukee','Pepin','Pierce','Polk','Portage','Price','Racine','Richland','Rock','Rusk','St. Croix','Sauk','Sawyer','Shawano','Sheboygan','Taylor','Trempealeau','Vernon','Vilas','Walworth','Washburn','Washington','Waukesha','Waupaca','Waushara','Winnebago','Wood'],
@@ -1555,6 +1609,7 @@ const TBL={
   'lhs:rmas':'lhs_rmas',
   'lhs:discounts':'lhs_discounts',
   'lhs:fees':'lhs_fees',
+  'lhs:tax_settings':'lhs_tax_settings',
   'lhs:locs':'lhs_locations','lhs:divs':'lhs_divisions','lhs:vens':'lhs_vendors',
   'lhs:users':'lhs_users','lhs:tools':'lhs_tools','lhs:tool_audit':'lhs_tool_audit',
   'lhs:job_subtypes':'lhs_job_subtypes',
@@ -2591,6 +2646,7 @@ async function startApp(){
     <div class="page" id="p-sales-tasks"></div>
     <div class="page" id="p-sales-activities"></div>
     <div class="page" id="p-sales-settings"></div>
+    <div class="page" id="p-sales-tax-settings"></div>
     <div class="page" id="p-tasks"></div>
     <div class="page" id="p-chatter"></div>
     <div class="page" id="p-payroll"></div>
@@ -2633,7 +2689,7 @@ async function startApp(){
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
   const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
     'accounts','customers','properties','business','commercial',
-    'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings',
+    'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools',
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings',
@@ -2651,7 +2707,7 @@ async function startApp(){
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
-  const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
+  const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -2813,6 +2869,7 @@ const SALES_NAV=[
   {id:'sales-discounts',     l:'Discounts &amp; Promotions'},
   {id:'sales-permits',       l:'Permits &amp; Licensing'},
   {id:'sales-settings',      l:'Sales Settings'},
+  {id:'sales-tax-settings',  l:'Tax Settings'},
 ];
 
 const HR_NAV=[
@@ -3071,7 +3128,7 @@ window.addEventListener('popstate',e=>{
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
-  const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings'];
+  const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -3106,7 +3163,7 @@ function buildPage(id){
     'sales-tasks':bSalesTasks,'sales-followups':bSalesFollowupQueue,
     'sales-activities':bSalesActivities,
     'sales-email-sync':bEmailSync,
-    'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,
+    'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,'sales-tax-settings':bStateTaxSettings,
     'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
     'sales-permits':bSalesPermits,
     tasks:bTasks, mytasks:bMyTasks,
@@ -4810,9 +4867,19 @@ async function svLoc(){
   else tst(`${name} added as ${type}`,'success');
   showPage('locations');
 }
-function oEditLoc(i){
+async function oEditLoc(i){
   const locs=S.get('lhs:locs')||[];const l=locs[i];
   const isVeh=l.type==='Service Van'||l.type==='Sales Vehicle';
+  let vehicleDocs=[];
+  if(isVeh&&l.id&&!String(l.id).startsWith('local_')){
+    try{
+      const{data:vdData}=await DB.from('lhs_documents').select('*').eq('related_id',l.id).eq('related_type','vehicle').order('created_at',{ascending:false});
+      if(vdData) vehicleDocs=vdData;
+    }catch(e){console.warn('Vehicle docs fetch:',e.message);}
+  }
+  const _insDoc=vehicleDocs.filter(d=>d.category==='vehicle_insurance');
+  const _regDoc=vehicleDocs.filter(d=>d.category==='vehicle_registration');
+  const _locId=l.id||('local_'+i);
   oMod(`Edit: ${l.name}`,`
   <input type="hidden" id="el-idx" value="${i}">
   <div class="fr">
@@ -4927,12 +4994,88 @@ function oEditLoc(i){
       <div class="fl"><label>GPS Camera Serial #</label><input id="el-gpscam" value="${l.gps_camera_serial||''}" placeholder="Camera serial number"></div>
       <div class="fl"><label>Notes</label><input id="el-vnotes" value="${l.notes||''}" placeholder="Additional notes"></div>
     </div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:14px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Vehicle Documents</div>
+    ${!l.id||String(l.id).startsWith('local_')?`<div style="font-size:12px;color:var(--amber);padding:8px 10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px">Save this vehicle to Supabase first before uploading documents.</div>`:`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">🛡️ Insurance</div>
+        <div id="vdoc-insurance-${_locId}">${_renderVehicleDocs(_insDoc,_locId,i,'vehicle_insurance')}</div>
+        <label style="display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:var(--teal);padding:7px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;margin-top:8px">
+          + Upload Insurance
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadVehicleDoc('${_locId}',${i},'vehicle_insurance',this)">
+        </label>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">📋 Registration</div>
+        <div id="vdoc-registration-${_locId}">${_renderVehicleDocs(_regDoc,_locId,i,'vehicle_registration')}</div>
+        <label style="display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:var(--teal);padding:7px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;margin-top:8px">
+          + Upload Registration
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="uploadVehicleDoc('${_locId}',${i},'vehicle_registration',this)">
+        </label>
+      </div>
+    </div>`}
   </div>
 
   <div class="br2" style="margin-top:16px">
     <button class="btn btn-n" onclick="svEditLoc(${i})">Save</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
+}
+
+function _renderVehicleDocs(docs,locId,locIdx,docType){
+  if(!docs||!docs.length) return'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:4px 0">No files uploaded</div>';
+  return docs.map(d=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surf);border:1px solid var(--bdr);border-radius:6px;margin-bottom:4px">
+      <a href="${d.file_url||'#'}" target="_blank" style="flex:1;font-size:12px;color:var(--navy);font-weight:500;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.file_name||d.name||'')}">📄 ${esc(d.file_name||d.name||'File')}</a>
+      <button style="padding:2px 8px;font-size:11px;background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;cursor:pointer;font-family:inherit" onclick="deleteVehicleDoc('${d.id}','${d.storage_path||''}','${locId}',${locIdx})">✕</button>
+    </div>`).join('');
+}
+async function uploadVehicleDoc(locId,locIdx,docType,inputEl){
+  const files=Array.from(inputEl?.files||[]);
+  if(!files.length) return;
+  let uploaded=0;
+  for(const file of files){
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`vehicle-docs/${locId}/${docType}/${Date.now()}_${safeName}`;
+    let fileUrl='';
+    try{
+      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
+      if(upErr) throw new Error(upErr.message);
+      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
+      fileUrl=urlData?.publicUrl||'';
+    }catch(e){console.warn('Vehicle doc upload:',e.message);tst(`Failed to upload ${file.name}`,'error');continue;}
+    try{
+      await DB.from('lhs_documents').insert({
+        name:file.name,file_name:file.name,file_url:fileUrl,
+        file_type:file.type,type:(file.name.split('.').pop()||'').toLowerCase(),
+        category:docType,related_id:locId,related_type:'vehicle',
+        storage_path:path,created_by:CU?.name||''
+      });
+      uploaded++;
+    }catch(e){console.warn('Vehicle doc record:',e.message);}
+  }
+  inputEl.value='';
+  if(uploaded>0){tst(`${uploaded} file${uploaded!==1?'s':''} uploaded`,'success');await refreshVehicleDocSections(locId,locIdx);}
+  else tst('Upload failed — check connection','error');
+}
+async function deleteVehicleDoc(docId,storagePath,locId,locIdx){
+  if(!confirm('Delete this document? This cannot be undone.')) return;
+  try{
+    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await DB.from('lhs_documents').delete().eq('id',docId);
+    tst('Document deleted','info');
+    await refreshVehicleDocSections(locId,locIdx);
+  }catch(e){tst('Delete failed: '+e.message,'error');}
+}
+async function refreshVehicleDocSections(locId,locIdx){
+  try{
+    const{data:docs}=await DB.from('lhs_documents').select('*').eq('related_id',locId).eq('related_type','vehicle').order('created_at',{ascending:false});
+    const allDocs=docs||[];
+    const insEl=document.getElementById(`vdoc-insurance-${locId}`);
+    const regEl=document.getElementById(`vdoc-registration-${locId}`);
+    if(insEl) insEl.innerHTML=_renderVehicleDocs(allDocs.filter(d=>d.category==='vehicle_insurance'),locId,locIdx,'vehicle_insurance');
+    if(regEl) regEl.innerHTML=_renderVehicleDocs(allDocs.filter(d=>d.category==='vehicle_registration'),locId,locIdx,'vehicle_registration');
+  }catch(e){console.warn('refreshVehicleDocSections:',e.message);}
 }
 
 function locTypeChangeEdit(type){
@@ -31538,6 +31681,368 @@ async function svEditLead(){
   S.set('lhs:leads',leads);
   await dbUpdate('lhs:leads',id,updates);
   tst('Lead updated','success');openLead(id);
+}
+
+// ── STATE TAX SETTINGS ────────────────────────────────────────────────────────
+// Helpers
+function getTaxSettingsAll(){
+  // Returns map of state_code → config object (merged from cache, defaults from STATE_TAX_LINKS)
+  const saved=S.get('lhs:tax_settings')||[];
+  const byCode={};
+  saved.forEach(r=>{if(r.state_code) byCode[r.state_code]=r;});
+  const result={};
+  Object.entries(STATE_TAX_LINKS).forEach(([code,def])=>{
+    const override=byCode[code]||{};
+    result[code]={
+      state_code:code,
+      enabled:override.enabled??false,
+      rate_type:override.rate_type??def.rateType,
+      base_rate:override.base_rate!=null?override.base_rate:def.baseRate,
+      lookup_url:override.lookup_url??def.url,
+      county_overrides:override.county_overrides||[],
+      notes:override.notes??def.notes,
+      no_tax:def.noTax,
+      _id:override.id||override._id||null,
+      _dirty:false,
+    };
+  });
+  return result;
+}
+async function saveTaxSetting(code,updates){
+  const all=S.get('lhs:tax_settings')||[];
+  const idx=all.findIndex(r=>r.state_code===code);
+  if(idx>=0){
+    all[idx]={...all[idx],...updates,state_code:code,updated_at:new Date().toISOString(),updated_by:CU?.name||''};
+    S.set('lhs:tax_settings',all);
+    if(all[idx]._id||all[idx].id){
+      const id=all[idx]._id||all[idx].id;
+      const{error}=await DB.from('lhs_tax_settings').update({...updates,updated_at:new Date().toISOString(),updated_by:CU?.name||''}).eq('id',id);
+      if(error) console.warn('Tax setting update:',error.message);
+    } else {
+      const{data,error}=await DB.from('lhs_tax_settings').insert({...all[idx],state_code:code}).select().single();
+      if(!error&&data){all[idx]._id=data.id;S.set('lhs:tax_settings',all);}
+    }
+  } else {
+    const newRow={state_code:code,...updates,updated_at:new Date().toISOString(),updated_by:CU?.name||''};
+    const{data,error}=await DB.from('lhs_tax_settings').insert(newRow).select().single();
+    const withId=error?newRow:{...newRow,_id:data?.id};
+    all.push(withId);S.set('lhs:tax_settings',all);
+    if(error) console.warn('Tax setting insert:',error.message);
+  }
+}
+async function togStateTax(code){
+  const all=getTaxSettingsAll();
+  const cur=all[code];
+  if(!cur||cur.no_tax){tst('This state has no sales tax','info');return;}
+  const nowEnabled=!cur.enabled;
+  await saveTaxSetting(code,{enabled:nowEnabled});
+  tst(`${STATE_NAMES[code]} tax ${nowEnabled?'enabled':'disabled'}`,nowEnabled?'success':'info');
+  showPage('sales-tax-settings');
+}
+async function autoEnableAssignedStates(){
+  const all=getTaxSettingsAll();
+  const assignedCodes=new Set(Object.values(REGIONS).flatMap(r=>r.states||[]));
+  let count=0;
+  for(const code of assignedCodes){
+    if(all[code]&&!all[code].enabled&&!all[code].no_tax){
+      await saveTaxSetting(code,{enabled:true});
+      count++;
+    }
+  }
+  if(count>0) tst(`${count} state${count!==1?'s':''} auto-enabled`,'success');
+  else tst('All assigned states already enabled','info');
+  showPage('sales-tax-settings');
+}
+
+function bStateTaxSettings(){
+  const allTax=getTaxSettingsAll();
+  const allRegions=REGIONS;
+  // Build state→region map
+  const stateRegion={};
+  Object.entries(allRegions).forEach(([rname,r])=>(r.states||[]).forEach(s=>{stateRegion[s]=rname;}));
+
+  const _filter=window._taxFilter||'all';
+  const _rfil=window._taxRegion||'';
+  const _search=(window._taxSearch||'').toLowerCase();
+
+  // Sort + filter states
+  let states=Object.entries(allTax).filter(([code,t])=>{
+    if(_filter==='active'&&!t.enabled) return false;
+    if(_filter==='inactive'&&(t.enabled||t.no_tax)) return false;
+    if(_filter==='notax'&&!t.no_tax) return false;
+    if(_rfil&&stateRegion[code]!==_rfil) return false;
+    if(_search&&!(STATE_NAMES[code]||'').toLowerCase().includes(_search)&&!code.toLowerCase().includes(_search)) return false;
+    return true;
+  });
+
+  const noTaxStates=states.filter(([c,t])=>t.no_tax);
+  const activeStates=states.filter(([c,t])=>!t.no_tax&&t.enabled);
+  const inactiveStates=states.filter(([c,t])=>!t.no_tax&&!t.enabled);
+  const assignedCount=Object.values(allRegions).flatMap(r=>r.states||[]).filter(s=>allTax[s]&&!allTax[s].no_tax&&allTax[s].enabled).length;
+  const totalAssigned=Object.values(allRegions).flatMap(r=>r.states||[]).filter(s=>allTax[s]&&!allTax[s].no_tax).length;
+
+  const rateTypeBadge=(t)=>{
+    if(t.no_tax) return`<span style="background:#f3f4f6;color:#9ca3af;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">No Tax</span>`;
+    if(t.rate_type==='flat') return`<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">Flat Rate</span>`;
+    return`<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">Variable by County</span>`;
+  };
+
+  const stateRow=([code,t])=>{
+    const reg=stateRegion[code];
+    const regStyle=reg&&REGIONS[reg]?`background:${REGIONS[reg].light};color:${REGIONS[reg].color}`:'background:#f3f4f6;color:#6b7280';
+    const regionTag=reg?`<span style="${regStyle};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">${reg}</span>`:`<span style="font-size:11px;color:var(--muted)">Unassigned</span>`;
+    const rateDisplay=t.no_tax?'—':t.rate_type==='variable'?`${t.base_rate}% + local`:`${t.base_rate}%`;
+    const lookupUrl=t.lookup_url||(STATE_TAX_LINKS[code]?.url)||null;
+    const countyCount=(t.county_overrides||[]).length;
+    return`<tr style="border-bottom:1px solid var(--bdr)${t.no_tax?';opacity:.55':''}">
+      <td style="padding:10px 12px;white-space:nowrap">
+        <span style="font-size:13px;font-weight:700;font-family:monospace;background:var(--navy);color:var(--teal);padding:3px 8px;border-radius:5px">${code}</span>
+      </td>
+      <td style="padding:10px 8px;font-weight:600;font-size:13px">${STATE_NAMES[code]||code}</td>
+      <td style="padding:10px 8px">${regionTag}</td>
+      <td style="padding:10px 8px">${rateTypeBadge(t)}</td>
+      <td style="padding:10px 8px;font-size:13px;font-weight:600;color:var(--navy)">${rateDisplay}</td>
+      <td style="padding:10px 8px">
+        ${countyCount>0?`<span style="font-size:11px;background:#f0fdf4;color:#166534;padding:2px 7px;border-radius:5px;font-weight:600">${countyCount} override${countyCount!==1?'s':''}</span>`:`<span style="font-size:11px;color:var(--muted)">—</span>`}
+      </td>
+      <td style="padding:10px 8px">
+        ${lookupUrl?`<a href="${lookupUrl}" target="_blank" style="font-size:12px;color:var(--teal);font-weight:600;text-decoration:none;background:#f0fafa;padding:3px 9px;border-radius:5px;border:1px solid var(--teal)" title="Open official state tax lookup">🔗 Lookup</a>`:`<span style="font-size:11px;color:var(--muted)">No tool</span>`}
+      </td>
+      <td style="padding:10px 8px;text-align:center">
+        ${t.no_tax?'<span style="font-size:11px;color:var(--muted)">N/A</span>':`
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+          <div onclick="togStateTax('${code}')" style="width:36px;height:20px;border-radius:10px;background:${t.enabled?'var(--green)':'#d1d5db'};position:relative;cursor:pointer;transition:background .2s">
+            <div style="position:absolute;top:2px;left:${t.enabled?'18':'2'}px;width:16px;height:16px;border-radius:8px;background:white;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>
+          </div>
+        </label>`}
+      </td>
+      <td style="padding:10px 8px">
+        ${!t.no_tax?`<button class="btn sm btn-o" onclick="oConfigStateTax('${code}')">Configure</button>`:''}
+      </td>
+    </tr>`;
+  };
+
+  const stateTable=(rows,emptyMsg)=>{
+    if(!rows.length) return`<div style="font-size:13px;color:var(--muted);font-style:italic;padding:16px 0">${emptyMsg}</div>`;
+    return`<div class="tw" style="margin:0"><table style="width:100%">
+      <thead><tr style="background:var(--surf)">
+        <th style="padding:8px 12px;font-size:11px">State</th>
+        <th style="padding:8px">Name</th>
+        <th style="padding:8px">Region</th>
+        <th style="padding:8px">Rate Type</th>
+        <th style="padding:8px">Base Rate</th>
+        <th style="padding:8px">County Overrides</th>
+        <th style="padding:8px">Official Lookup</th>
+        <th style="padding:8px;text-align:center">Active</th>
+        <th style="padding:8px"></th>
+      </tr></thead>
+      <tbody>${rows.map(stateRow).join('')}</tbody>
+    </table></div>`;
+  };
+
+  return`
+  <div class="pt">State Tax Settings</div>
+  <div class="ps">Configure sales tax rates by state. Many states have rates that vary significantly by county — use county overrides to set exact rates for the areas you operate in.</div>
+
+  <!-- Info Banner -->
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;gap:14px;align-items:flex-start">
+    <div style="font-size:20px;margin-top:2px">⚠️</div>
+    <div>
+      <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:4px">County-Level Rates Matter</div>
+      <div style="font-size:12px;color:#78350f;line-height:1.6">
+        <strong>Variable states</strong> (shown in amber) have rates that change by county, city, or special district — sometimes by several percentage points.
+        The <em>Base Rate</em> shown is the statewide rate only. Use <strong>County Overrides</strong> to store the exact combined rate for counties you actively work in.
+        Click the 🔗 Lookup button to open the official state tool and look up rates for specific addresses.
+        Estimate integration (auto-applying tax to coded services/materials) will be built in a separate phase.
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;gap:0;border:1px solid var(--bdr);border-radius:8px;overflow:hidden">
+      ${['all','active','inactive','notax'].map((f,i)=>{
+        const labels={all:'All States',active:'Active',inactive:'Inactive',notax:'No Tax'};
+        return`<button onclick="window._taxFilter='${f}';showPage('sales-tax-settings')"
+          style="padding:7px 14px;font-size:12px;font-weight:600;border:none;cursor:pointer;font-family:inherit;
+          background:${_filter===f?'var(--navy)':'white'};color:${_filter===f?'var(--teal)':'var(--muted)'}${i?';border-left:1px solid var(--bdr)':''}">${labels[f]}</button>`;
+      }).join('')}
+    </div>
+    <select onchange="window._taxRegion=this.value;showPage('sales-tax-settings')"
+      style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="">All Regions</option>
+      ${Object.keys(REGIONS).map(r=>`<option value="${r}"${_rfil===r?' selected':''}>${r}</option>`).join('')}
+    </select>
+    <input placeholder="🔍 Search state..." value="${_search}"
+      oninput="window._taxSearch=this.value;clearTimeout(window._taxST);window._taxST=setTimeout(()=>showPage('sales-tax-settings'),300)"
+      style="padding:7px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:12px;font-family:inherit;width:180px">
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <span style="font-size:12px;color:var(--muted);align-self:center">${assignedCount}/${totalAssigned} assigned states active</span>
+      <button class="btn btn-n" onclick="autoEnableAssignedStates()">⚡ Enable All Assigned</button>
+    </div>
+  </div>
+
+  <!-- Active States -->
+  ${activeStates.length>0?`
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin-bottom:6px">✓ Active (${activeStates.length})</div>
+  <div class="card" style="padding:0;margin-bottom:16px;overflow:hidden">${stateTable(activeStates,'')}</div>`:''}
+
+  <!-- Inactive States -->
+  ${_filter!=='active'&&inactiveStates.length>0?`
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">○ Inactive (${inactiveStates.length})</div>
+  <div class="card" style="padding:0;margin-bottom:16px;overflow:hidden">${stateTable(inactiveStates,'')}</div>`:''}
+
+  <!-- No Tax States -->
+  ${_filter!=='active'&&_filter!=='inactive'&&noTaxStates.length>0?`
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">— No Sales Tax (${noTaxStates.length})</div>
+  <div class="card" style="padding:0;overflow:hidden">${stateTable(noTaxStates,'')}</div>`:''}
+
+  ${!activeStates.length&&!inactiveStates.length&&!noTaxStates.length?`<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No states match your filters.</div>`:''}
+  `;
+}
+
+function oConfigStateTax(code){
+  const allTax=getTaxSettingsAll();
+  const t=allTax[code]; if(!t||t.no_tax) return;
+  const stDef=STATE_TAX_LINKS[code]||{};
+  const counties=(COUNTIES_BY_STATE[code]||[]);
+  const overrides=t.county_overrides||[];
+  oMod(`Configure Tax — ${code}: ${STATE_NAMES[code]||code}`,`
+  <input type="hidden" id="ctx-code" value="${code}">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div class="fl" style="margin:0">
+      <label>Rate Type</label>
+      <select id="ctx-rtype">
+        <option value="flat"${t.rate_type==='flat'?' selected':''}>Flat Rate (uniform statewide)</option>
+        <option value="variable"${t.rate_type==='variable'?' selected':''}>Variable by County / City</option>
+      </select>
+    </div>
+    <div class="fl" style="margin:0">
+      <label>State Base Rate (%)</label>
+      <input type="number" id="ctx-rate" value="${t.base_rate||stDef.baseRate||0}" step="0.001" min="0" max="20" placeholder="e.g. 5.0">
+    </div>
+  </div>
+  <div class="fl" style="margin-bottom:12px">
+    <label>Official Lookup URL</label>
+    <div style="display:flex;gap:8px">
+      <input id="ctx-url" value="${esc(t.lookup_url||stDef.url||stDef.ratesUrl||'')}" placeholder="https://..." style="flex:1">
+      ${(t.lookup_url||stDef.url)?`<a href="${t.lookup_url||stDef.url}" target="_blank" class="btn btn-o sm" style="white-space:nowrap">🔗 Open</a>`:''}
+    </div>
+  </div>
+  <div class="fl" style="margin-bottom:16px">
+    <label>Notes</label>
+    <input id="ctx-notes" value="${esc(t.notes||stDef.notes||'')}" placeholder="Rate details, exceptions, source…">
+  </div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;padding-bottom:6px;border-top:2px solid var(--bdr);padding-top:12px">
+    County / City Rate Overrides
+    <span style="font-size:11px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:6px">Store the exact combined rate for counties you operate in</span>
+  </div>
+
+  ${overrides.length?`
+  <div class="tw" style="margin-bottom:12px"><table style="width:100%">
+    <thead><tr><th>County / City</th><th>Combined Rate (%)</th><th>Notes</th><th></th></tr></thead>
+    <tbody id="ctx-ovr-list">${overrides.map((o,i)=>`
+      <tr>
+        <td style="padding:6px 8px;font-size:13px;font-weight:600">${esc(o.county)}</td>
+        <td style="padding:6px 8px;font-size:13px">${o.rate}%</td>
+        <td style="padding:6px 8px;font-size:12px;color:var(--muted)">${esc(o.notes||'')}</td>
+        <td style="padding:6px 8px"><button class="btn sm btn-r" onclick="_delCountyOverride(${i})">Remove</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table></div>`:`<div id="ctx-ovr-list" style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:12px">No county overrides set — all locations in this state will use the base rate.</div>`}
+
+  <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">+ Add County / City Override</div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end">
+      <div class="fl" style="margin:0">
+        <label>County / City</label>
+        ${counties.length?`
+        <select id="ctx-new-county" style="width:100%">
+          <option value="">— Select County —</option>
+          ${counties.map(c=>`<option>${c}</option>`).join('')}
+          <option value="__custom__">Other (type below)</option>
+        </select>
+        <input id="ctx-new-county-custom" placeholder="Or type custom name" style="margin-top:4px;display:none">`
+        :`<input id="ctx-new-county" placeholder="e.g. Brown County">`}
+      </div>
+      <div class="fl" style="margin:0">
+        <label>Rate (%)</label>
+        <input type="number" id="ctx-new-rate" step="0.001" min="0" max="20" placeholder="e.g. 5.5" style="width:90px">
+      </div>
+      <button class="btn btn-n" onclick="_addCountyOverride('${code}')" style="margin-bottom:0">Add</button>
+    </div>
+    <div class="fl" style="margin:8px 0 0">
+      <label>Notes (optional)</label>
+      <input id="ctx-new-notes" placeholder="e.g. Includes stadium district tax">
+    </div>
+  </div>
+
+  <div class="br2">
+    <button class="btn btn-n" onclick="svStateTax('${code}')">Save Settings</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  // Wire up custom county toggle
+  const sel=document.getElementById('ctx-new-county');
+  if(sel&&sel.tagName==='SELECT'){
+    sel.onchange=()=>{
+      const custom=document.getElementById('ctx-new-county-custom');
+      if(custom) custom.style.display=sel.value==='__custom__'?'block':'none';
+    };
+  }
+}
+
+function _addCountyOverride(code){
+  let county='';
+  const sel=document.getElementById('ctx-new-county');
+  if(sel){
+    if(sel.tagName==='SELECT'){
+      county=sel.value==='__custom__'?(document.getElementById('ctx-new-county-custom')?.value||'').trim():sel.value;
+    } else county=sel.value.trim();
+  }
+  const rate=parseFloat(document.getElementById('ctx-new-rate')?.value);
+  const notes=(document.getElementById('ctx-new-notes')?.value||'').trim();
+  if(!county){tst('Enter a county or city name','error');return;}
+  if(isNaN(rate)||rate<0){tst('Enter a valid rate','error');return;}
+  // Read existing overrides from the modal state
+  const allTax=getTaxSettingsAll();
+  const overrides=[...(allTax[code]?.county_overrides||[])];
+  if(overrides.find(o=>o.county.toLowerCase()===county.toLowerCase())){tst(`${county} already has an override — remove it first`,'error');return;}
+  overrides.push({county,rate,notes});
+  // Write back to cache immediately so modal re-renders current state
+  const cached=S.get('lhs:tax_settings')||[];
+  const idx=cached.findIndex(r=>r.state_code===code);
+  if(idx>=0) cached[idx].county_overrides=overrides;
+  else cached.push({state_code:code,county_overrides:overrides});
+  S.set('lhs:tax_settings',cached);
+  // Re-open modal to reflect new list
+  oConfigStateTax(code);
+}
+function _delCountyOverride(i){
+  // Get code from hidden field in modal
+  const code=document.getElementById('ctx-code')?.value; if(!code) return;
+  const allTax=getTaxSettingsAll();
+  const overrides=[...(allTax[code]?.county_overrides||[])];
+  overrides.splice(i,1);
+  const cached=S.get('lhs:tax_settings')||[];
+  const idx=cached.findIndex(r=>r.state_code===code);
+  if(idx>=0) cached[idx].county_overrides=overrides;
+  else cached.push({state_code:code,county_overrides:overrides});
+  S.set('lhs:tax_settings',cached);
+  oConfigStateTax(code);
+}
+
+async function svStateTax(code){
+  const rtype=v('ctx-rtype');
+  const base=parseFloat(document.getElementById('ctx-rate')?.value)||0;
+  const url=v('ctx-url').trim();
+  const notes=v('ctx-notes').trim();
+  // county_overrides already written to cache by _addCountyOverride / _delCountyOverride
+  const allTax=getTaxSettingsAll();
+  const county_overrides=allTax[code]?.county_overrides||[];
+  await saveTaxSetting(code,{rate_type:rtype,base_rate:base,lookup_url:url,notes,county_overrides});
+  cMod();tst(`${STATE_NAMES[code]} tax settings saved`,'success');
+  showPage('sales-tax-settings');
 }
 
 // ── SALES SETTINGS PAGE ────────────────────────────────────────────────────────
