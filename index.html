@@ -5848,15 +5848,19 @@ function _ccPctBadge(result){
   return`<span style="font-size:13px;font-weight:700;color:${result.color}">${result.formula}: ${sign}${result.pct.toFixed(2)}%</span>`;
 }
 
-async function bCrossChecks(){
+function bCrossChecks(){
   const checks=S.get('lhs:cross_checks')||[];
-  const ts=S.get('lhs:ts')||[];
-  // Load from Supabase if cache empty
+  // If cache empty, load from Supabase in background and re-render when done
   if(!checks.length){
-    try{
-      const{data}=await DB.from('lhs_cross_checks').select('*').order('test_date',{ascending:false}).limit(200);
-      if(data&&data.length){S.set('lhs:cross_checks',data);return bCrossChecks();}
-    }catch(e){console.warn('Cross checks load:',e.message);}
+    setTimeout(async()=>{
+      try{
+        const{data}=await DB.from('lhs_cross_checks').select('*').order('test_date',{ascending:false}).limit(200);
+        if(data&&data.length){
+          S.set('lhs:cross_checks',data);
+          if(window._testerTab==='crosscheck') showPage('testers');
+        }
+      }catch(e){console.warn('Cross checks load:',e.message);}
+    },0);
   }
 
   const _fType=window._ccFType||'';
