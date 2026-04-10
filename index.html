@@ -29679,14 +29679,14 @@ const REPORT_DEFS=[
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
-  // QUALITY & SAFETY
-  {id:'wo-audit-detail',cat:'Quality & Safety',name:'WO Audit Detail',desc:'Every recorded audit event per work order — status changes, notes, edits — filterable by region, state, division, and employee.',run:rpt_woAuditDetail},
-  {id:'status-change-log',cat:'Quality & Safety',name:'Status Change Log',desc:'All WO status transitions with before/after values, who made the change, and when. Filter by region, state, division, or employee.',run:rpt_statusChangeLog},
-  {id:'photo-completeness',cat:'Quality & Safety',name:'Photo Completeness Report',desc:'Work orders showing total photo count per job. Flags completed jobs with missing photos for safety and quality review.',run:rpt_photoCompleteness},
-  {id:'photo-review-by-tech',cat:'Quality & Safety',name:'Photo Review by Technician',desc:'Photo upload counts per technician — jobs photographed, total photos, avg photos per job, and jobs with zero photos.',run:rpt_photosByTech},
+  // QUALITY + SAFETY
+  {id:'wo-audit-detail',cat:'Quality + Safety',name:'WO Audit Detail',desc:'Every recorded audit event per work order — status changes, notes, edits — filterable by region, state, division, and employee.',run:rpt_woAuditDetail},
+  {id:'status-change-log',cat:'Quality + Safety',name:'Status Change Log',desc:'All WO status transitions with before/after values, who made the change, and when. Filter by region, state, division, or employee.',run:rpt_statusChangeLog},
+  {id:'photo-completeness',cat:'Quality + Safety',name:'Photo Completeness Report',desc:'Work orders showing total photo count per job. Flags completed jobs with missing photos for safety and quality review.',run:rpt_photoCompleteness},
+  {id:'photo-review-by-tech',cat:'Quality + Safety',name:'Photo Review by Technician',desc:'Photo upload counts per technician — jobs photographed, total photos, avg photos per job, and jobs with zero photos.',run:rpt_photosByTech},
 ];
 
-const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales','Quality & Safety'];
+const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales','Quality + Safety'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ☢️  RADON OCCUPATIONAL EXPOSURE — WLM TRACKING  (HR Module)
@@ -31170,12 +31170,13 @@ function rptRegionStateSync(){
   stateSel.innerHTML=`<option value="">All States</option>${states.map(s=>`<option value="${s}">${s}</option>`).join('')}`;
 }
 
-/* Shared region/state filter for WOs — uses customer_state and REGIONS mapping */
+/* Shared region/state filter for WOs — reads customer_state or state field */
 function _rptRegionStateFilter(wos, region, state){
-  if(state) return wos.filter(w=>(w.customer_state||w.state||'').trim()===state);
+  const getState=w=>(w.customer_state||w.state||'').trim();
+  if(state) return wos.filter(w=>getState(w)===state);
   if(region){
     const stateList=REGIONS[region]?.states||[];
-    return wos.filter(w=>stateList.includes((w.customer_state||w.state||'').trim()));
+    return wos.filter(w=>stateList.includes(getState(w)));
   }
   return wos;
 }
@@ -31279,7 +31280,7 @@ function rpt_photoCompleteness(from,to,div,emp,status,region,state){
   const apts=S.get('lhs:appointments')||[];
   const aptTechs=S.get('lhs:apt_techs')||[];
   if(div) wos=wos.filter(w=>w.division===div);
-  wos=_rptRegionStateFilter(wos,'customer_state',region,state);
+  wos=_rptRegionStateFilter(wos,region,state);
   const rows=wos.map(w=>{
     const wPhotos=photos.filter(p=>p.wo_id===w.id);
     const photoCount=wPhotos.length;
@@ -31317,7 +31318,7 @@ function rpt_photoCompleteness(from,to,div,emp,status,region,state){
 function rpt_photosByTech(from,to,div,emp,status,region,state){
   let wos=rptDateFilter(S.get('lhs:work_orders')||[],'created_at',from,to);
   if(div) wos=wos.filter(w=>w.division===div);
-  wos=_rptRegionStateFilter(wos,region,state);
+  wos=_rptRegionStateFilter(wos,region,state); // _rptRegionStateFilter(wos, region, state) — 3-arg form
   const photos=S.get('lhs:wo_photos')||[];
   const apts=S.get('lhs:appointments')||[];
   const aptTechs=S.get('lhs:apt_techs')||[];
