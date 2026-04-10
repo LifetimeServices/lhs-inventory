@@ -1663,6 +1663,7 @@ const TBL={
   'lhs:cal_devices':'lhs_calibration_devices',
   'lhs:cross_checks':'lhs_cross_checks',
   'lhs:crm_xc':'lhs_crm_cross_checks',
+  'lhs:alpha_results':'lhs_alpha_results',
   'lhs:tester_deployments':'lhs_tester_deployments',
   'lhs:audit_log':'lhs_audit_log',
   'lhs:training_assignments':'lhs_training_assignments',
@@ -5363,9 +5364,10 @@ function bTest(){
     ${tabBtn('tracker','📡 Tester Tracker')}
     ${tabBtn('cal','📋 Calibration Log')}
     ${tabBtn('crosscheck','✅ Cross Checks')}
+    ${tabBtn('labresults','🧪 Lab Results')}
     ${tabBtn('radqa','📐 Radon Testing - Project Mgmt')}
   </div>
-  ${tab==='tracker'?_bTestTracker():tab==='cal'?bCalLog():tab==='crosscheck'?bCrossChecks():bRadonProjMgmt()}`;
+  ${tab==='tracker'?_bTestTracker():tab==='cal'?bCalLog():tab==='crosscheck'?bCrossChecks():tab==='labresults'?bAlphaResults():bRadonProjMgmt()}`;
 }
 function _bTestTracker(){
   const allTs=S.get('lhs:ts')||[];
@@ -5851,6 +5853,608 @@ function _rqaPctBadge(result){
   if(!result||result.pct==null) return'—';
   const sign=result.pct>=0?'+':'';
   return`<span style="font-size:13px;font-weight:700;color:${result.color}">${result.formula}: ${sign}${result.pct.toFixed(2)}%</span>`;
+}
+
+// ─── ALPHA ENERGY LABS — LAB RESULTS ─────────────────────────────────────────
+// Tracks radon test results returned from Alpha Energy Labs (aelabs.com).
+// Fields mirror the actual Alpha Energy Labs RADON TEST REPORT format.
+// EPA action level: ≥ 4.0 pCi/L  |  Approaching: 2.0–3.9 pCi/L  |  Low: < 2.0
+// Results are linked to properties in lhs_properties by address matching.
+// On save, a record is created in lhs_documents for the property (warranty ref).
+
+function _arResultColor(pciL, belowMDC){
+  if(belowMDC) return{color:'#1d4ed8',bg:'#eff6ff',label:'Below MDC'};
+  if(pciL==null) return{color:'var(--muted)',bg:'var(--surf)',label:'—'};
+  if(pciL>=4.0) return{color:'#991b1b',bg:'#fef2f2',label:'⚠️ ACTION LEVEL'};
+  if(pciL>=2.7) return{color:'#c2410c',bg:'#fff7ed',label:'Elevated'};
+  if(pciL>=2.0) return{color:'#92400e',bg:'#fffbeb',label:'Moderate'};
+  return{color:'#166534',bg:'#f0fdf4',label:'Low'};
+}
+
+function _arPciBadge(r){
+  if(!r) return'—';
+  const s=_arResultColor(r.radon_pci_l,r.below_mdc);
+  const display=r.below_mdc?`&lt; ${r.radon_display||r.radon_pci_l}`:r.radon_display||r.radon_pci_l;
+  return`<span style="background:${s.bg};color:${s.color};padding:4px 10px;border-radius:6px;font-size:13px;font-weight:700">${display} pCi/L</span>`;
+}
+
+// Fuzzy-match a test address against cached lhs_properties
+function _arMatchProperties(address, city, zip){
+  const props=S.get('lhs:props')||[];
+  if(!address&&!zip) return[];
+  const addrL=(address||'').toLowerCase().replace(/[,\.]/g,'').trim();
+  const cityL=(city||'').toLowerCase().trim();
+  const zipS=(zip||'').trim();
+  const houseNum=(addrL.match(/^\d+/)||[''])[0];
+  return props.filter(p=>{
+    const pAddr=(p.address||'').toLowerCase().replace(/[,\.]/g,'').trim();
+    const pCity=(p.city||'').toLowerCase().trim();
+    const pZip=(p.zip||'').trim();
+    if(zipS&&pZip===zipS&&houseNum&&pAddr.startsWith(houseNum)) return true;
+    if(zipS&&pZip===zipS&&addrL.length>4&&pAddr.includes(addrL.slice(0,Math.min(addrL.length,12)))) return true;
+    if(addrL.length>5&&pAddr.includes(addrL.slice(0,Math.min(addrL.length,15)))) return true;
+    if(addrL.length>5&&(pAddr.includes(addrL)||addrL.includes(pAddr))) return true;
+    return false;
+  }).slice(0,6);
+}
+
+// When result saved/linked to property — creates a lhs_documents record for warranty
+async function _arSaveToProperty(propId, rec){
+  if(!propId||!rec) return;
+  const label=rec.below_mdc?`< ${rec.radon_display||''}`:rec.radon_pci_l;
+  const docName=`Radon Test Result — ${label} pCi/L — ${rec.report_date||rec.test_stop_date||''}`;
+  try{
+    // Check if a record for this lab ID already exists
+    const{data:existing}=await DB.from('lhs_documents')
+      .select('id').eq('related_id',propId).eq('related_type','property')
+      .eq('category','radon_result').eq('name',docName).maybeSingle();
+    if(existing) return; // already saved
+    await DB.from('lhs_documents').insert({
+      name:docName,
+      file_name:docName,
+      file_url:'',
+      file_type:'radon_result',
+      type:'radon_result',
+      category:'radon_result',
+      related_id:propId,
+      related_type:'property',
+      storage_path:'',
+      created_by:CU?.name||'',
+      notes:`Kit: ${rec.kit_serial||'—'} · Lab ID: ${rec.lab_id||'—'} · Floor: ${rec.test_floor||'—'} · Location: ${rec.test_location||'—'} · Method: ${rec.test_method||'—'}`,
+    });
+  }catch(e){console.warn('arSaveToProperty:',e.message);}
+}
+
+function bAlphaResults(){
+  const all=S.get('lhs:alpha_results')||[];
+  if(!all.length){
+    setTimeout(async()=>{
+      try{
+        const{data}=await DB.from('lhs_alpha_results').select('*').order('report_date',{ascending:false}).limit(500);
+        if(data&&data.length){S.set('lhs:alpha_results',data);if(window._testerTab==='labresults') showPage('testers');}
+      }catch(e){console.warn('Alpha results load:',e.message);}
+    },0);
+  }
+
+  const _fResult=window._arFResult||'';
+  const _fYear=window._arFYear||new Date().getFullYear().toString();
+  const _fLinked=window._arFLinked||'';
+  const _fSearch=(window._arFSearch||'').toLowerCase();
+
+  const thisYear=new Date().getFullYear().toString();
+  const yrAll=all.filter(r=>(r.report_date||r.test_stop_date||'').startsWith(thisYear));
+  const actionCount=all.filter(r=>!r.below_mdc&&(r.radon_pci_l||0)>=4.0).length;
+  const linkedCount=all.filter(r=>r.property_id).length;
+  const numericResults=all.filter(r=>!r.below_mdc&&r.radon_pci_l!=null).map(r=>r.radon_pci_l);
+  const avgResult=numericResults.length?(numericResults.reduce((a,b)=>a+b,0)/numericResults.length).toFixed(2):null;
+
+  const years=[...new Set(all.map(r=>(r.report_date||r.test_stop_date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  if(!years.includes(thisYear)) years.unshift(thisYear);
+
+  let filtered=all;
+  if(_fResult==='action') filtered=filtered.filter(r=>!r.below_mdc&&(r.radon_pci_l||0)>=4.0);
+  else if(_fResult==='elevated') filtered=filtered.filter(r=>!r.below_mdc&&(r.radon_pci_l||0)>=2.0&&(r.radon_pci_l||0)<4.0);
+  else if(_fResult==='low') filtered=filtered.filter(r=>r.below_mdc||(r.radon_pci_l||0)<2.0);
+  if(_fLinked==='yes') filtered=filtered.filter(r=>r.property_id);
+  else if(_fLinked==='no') filtered=filtered.filter(r=>!r.property_id);
+  if(_fYear) filtered=filtered.filter(r=>(r.report_date||r.test_stop_date||'').startsWith(_fYear));
+  if(_fSearch) filtered=filtered.filter(r=>
+    (r.kit_serial||'').toLowerCase().includes(_fSearch)||
+    (r.lab_id||'').toLowerCase().includes(_fSearch)||
+    (r.test_address||'').toLowerCase().includes(_fSearch)||
+    (r.customer_name||'').toLowerCase().includes(_fSearch)||
+    (r.technician||'').toLowerCase().includes(_fSearch));
+
+  return`
+  <!-- Action Level Alert -->
+  ${actionCount>0?`<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center">
+    <div style="font-size:20px">☢️</div>
+    <div style="font-size:13px;font-weight:700;color:#991b1b">${actionCount} result${actionCount>1?'s':''} at or above EPA action level (≥ 4.0 pCi/L) — mitigation recommended</div>
+  </div>`:''}
+
+  <!-- Summary Cards -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:100px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">Total</div>
+      <div style="font-size:28px;font-weight:700;color:var(--navy);line-height:1.2">${all.length}</div>
+    </div>
+    <div style="background:#fef2f2;border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:130px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.05em">≥ 4.0 pCi/L</div>
+      <div style="font-size:28px;font-weight:700;color:#991b1b;line-height:1.2">${actionCount}</div>
+      <div style="font-size:10px;color:var(--muted)">Action Level</div>
+    </div>
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:110px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">Avg Result</div>
+      <div style="font-size:28px;font-weight:700;color:${avgResult>=4.0?'#991b1b':avgResult>=2.0?'#92400e':'#166534'};line-height:1.2">${avgResult??'—'}</div>
+      <div style="font-size:10px;color:var(--muted)">pCi/L</div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:120px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.05em">Linked</div>
+      <div style="font-size:28px;font-weight:700;color:#166534;line-height:1.2">${linkedCount}</div>
+      <div style="font-size:10px;color:var(--muted)">to properties</div>
+    </div>
+    <div style="background:${(all.length-linkedCount)>0?'#fffbeb':'var(--surf)'};border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:110px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:${(all.length-linkedCount)>0?'#92400e':'var(--muted)'};text-transform:uppercase;letter-spacing:.05em">Unlinked</div>
+      <div style="font-size:28px;font-weight:700;color:${(all.length-linkedCount)>0?'#92400e':'var(--muted)'};line-height:1.2">${all.length-linkedCount}</div>
+      <div style="font-size:10px;color:var(--muted)">no property match</div>
+    </div>
+  </div>
+
+  <!-- Info Bar -->
+  <div style="background:#f0f4ff;border:1px solid #c5d3f7;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1e3a8a">
+    <strong>Alpha Energy Labs (aelabs.com)</strong> · Check results: <a href="https://results.aelabs.com" target="_blank" style="color:var(--teal)">results.aelabs.com</a> · Register kits: <a href="https://register.aelabs.com" target="_blank" style="color:var(--teal)">register.aelabs.com</a> · NRPP ID: 101132 AL · EPA action level: <strong>≥ 4.0 pCi/L</strong>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <input placeholder="🔍 Kit serial, lab ID, address…" value="${_fSearch}"
+      oninput="window._arFSearch=this.value;clearTimeout(window._arST);window._arST=setTimeout(()=>showPage('testers'),300)"
+      style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;min-width:200px">
+    <select onchange="window._arFResult=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Results</option>
+      <option value="action"${_fResult==='action'?' selected':''}>⚠️ Action Level (≥4.0)</option>
+      <option value="elevated"${_fResult==='elevated'?' selected':''}>🟡 Elevated (2.0–3.9)</option>
+      <option value="low"${_fResult==='low'?' selected':''}>🟢 Low / Below MDC</option>
+    </select>
+    <select onchange="window._arFLinked=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Property Links</option>
+      <option value="yes"${_fLinked==='yes'?' selected':''}>🔗 Linked to Property</option>
+      <option value="no"${_fLinked==='no'?' selected':''}>⚠️ Unlinked</option>
+    </select>
+    <select onchange="window._arFYear=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      ${years.map(y=>`<option value="${y}"${_fYear===y?' selected':''}>${y}</option>`).join('')}
+    </select>
+    <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} record${filtered.length!==1?'s':''}</span>
+    <button class="btn btn-n" onclick="oAddAlphaResult()">+ Enter Lab Result</button>
+  </div>
+
+  <!-- Results Table -->
+  <div class="card" style="padding:0">
+  <div class="tw" style="margin:0"><table>
+    <thead><tr style="background:var(--surf)">
+      <th>Report Date</th><th>Kit Serial #</th><th>Lab ID</th><th>Result</th>
+      <th>Test Address</th><th>Floor / Location</th><th>Property</th>
+      <th>Method</th><th>Technician</th><th></th>
+    </tr></thead>
+    <tbody>
+    ${filtered.length?filtered.map(r=>{
+      const s=_arResultColor(r.radon_pci_l,r.below_mdc);
+      const display=r.below_mdc?`&lt; ${r.radon_display||r.radon_pci_l||''}`:r.radon_display||r.radon_pci_l||'—';
+      const expHours=r.exposure_hours||(r.test_start_datetime&&r.test_stop_datetime?Math.round((new Date(r.test_stop_datetime)-new Date(r.test_start_datetime))/3600000):null);
+      return`<tr style="border-bottom:1px solid var(--bdr)">
+        <td style="padding:10px 8px;font-size:12px;white-space:nowrap">
+          ${r.report_date||'—'}
+          ${r.date_received?`<br><span style="font-size:10px;color:var(--muted)">Recv: ${r.date_received}</span>`:''}
+        </td>
+        <td style="padding:10px 8px;font-weight:700;color:var(--navy);font-size:13px;font-family:monospace">${esc(r.kit_serial||'—')}</td>
+        <td style="padding:10px 8px;font-size:12px;color:var(--muted);font-family:monospace">${esc(r.lab_id||'—')}</td>
+        <td style="padding:10px 8px">
+          <span style="background:${s.bg};color:${s.color};padding:4px 10px;border-radius:6px;font-size:14px;font-weight:800;display:inline-block">${display}</span>
+          <div style="font-size:10px;color:${s.color};font-weight:600;margin-top:2px">${s.label}</div>
+          ${expHours?`<div style="font-size:10px;color:var(--muted)">${expHours}hr exposure</div>`:''}
+        </td>
+        <td style="padding:10px 8px;font-size:12px">
+          ${esc(r.test_address||'—')}
+          ${r.test_city?`<br><span style="color:var(--muted);font-size:11px">${esc(r.test_city)} ${esc(r.test_state||'')} ${esc(r.test_zip||'')}</span>`:''}
+          ${r.closed_house?`<br><span style="font-size:10px;color:#6b21a8;background:#f5f3ff;padding:1px 5px;border-radius:3px">Closed House</span>`:''}
+        </td>
+        <td style="padding:10px 8px;font-size:12px">${esc(r.test_floor||'—')}<br><span style="color:var(--muted);font-size:11px">${esc(r.test_location||'')}</span></td>
+        <td style="padding:10px 8px">
+          ${r.property_id
+            ?`<button class="btn sm btn-o" onclick="openProperty('${r.property_id}')" style="font-size:11px">🔗 View Property</button>`
+            :`<button class="btn sm" onclick="oLinkAlphaResult('${r.id||''}')" style="font-size:11px;background:#fffbeb;color:#92400e;border:1px solid #fcd34d">Link Property</button>`}
+        </td>
+        <td style="padding:10px 8px;font-size:11px;color:var(--muted)">${esc((r.test_method||'').replace('Activated Charcoal EPA-402-R-92-004','Charcoal')||r.sample_type||'—')}</td>
+        <td style="padding:10px 8px;font-size:12px">${esc(r.technician||'—')}</td>
+        <td style="padding:10px 8px;white-space:nowrap">
+          <button class="btn sm btn-o" onclick="oEditAlphaResult('${r.id||''}')">Edit</button>
+          <button class="btn sm btn-r" onclick="delAlphaResult('${r.id||''}')">Del</button>
+        </td>
+      </tr>`;
+    }).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:40px">
+      <div style="font-size:32px;margin-bottom:8px">🧪</div>
+      No lab results entered yet.<br>
+      <span style="font-size:12px">Click <strong>+ Enter Lab Result</strong> to record results from Alpha Energy Labs.</span>
+    </td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function _arForm(r={}){
+  const empOpts=(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(u=>`<option value="${esc(u.name)}"${u.name===(r.technician||'')?'  selected':''}>${esc(u.name)}</option>`).join('');
+  const propId=r.property_id||'';
+  const propAddr=r.property_address||'';
+  return`
+  <!-- Lab Report Info -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">📋 Alpha Energy Labs — Report Info</div>
+  <div class="fr">
+    <div class="fl"><label>Test Kit Serial # <span style="font-size:10px;font-weight:400;color:var(--muted)">(from kit label)</span></label>
+      <input id="ar-kit" value="${esc(r.kit_serial||'')}" placeholder="e.g. TX12178" style="font-family:monospace;font-size:14px;font-weight:700">
+    </div>
+    <div class="fl"><label>Lab ID # <span style="font-size:10px;font-weight:400;color:var(--muted)">(from report)</span></label>
+      <input id="ar-labid" value="${esc(r.lab_id||'')}" placeholder="e.g. 1162353" style="font-family:monospace">
+    </div>
+    <div class="fl"><label>Report Date</label>
+      <input type="date" id="ar-rdate" value="${r.report_date||''}">
+    </div>
+    <div class="fl"><label>Date Received by Lab</label>
+      <input type="date" id="ar-drecv" value="${r.date_received||''}">
+    </div>
+  </div>
+
+  <!-- Radon Result -->
+  <div style="background:var(--surf);border:2px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">☢️ Radon Measurement Result</div>
+    <div class="fr" style="align-items:flex-end">
+      <div class="fl" style="margin:0">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="checkbox" id="ar-belowmdc" onchange="arToggleMDC(this.checked)" ${r.below_mdc?'checked':''}>
+          Below MDC (result shown as &lt; value)
+        </label>
+        <label>Radon Level (pCi/L)</label>
+        <input type="number" id="ar-pci" value="${r.radon_pci_l??''}" step="0.01" min="0"
+          placeholder="e.g. 4.4" oninput="arLiveResult()" style="font-size:22px;font-weight:800;width:130px">
+      </div>
+      <div id="ar-live-result" style="padding:10px 16px;border-radius:8px;font-size:14px;font-weight:700;color:var(--muted);min-width:140px;text-align:center">
+        Enter result →
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">
+      EPA action level: <strong>≥ 4.0 pCi/L</strong> &nbsp;·&nbsp; Approaching action: 2.7–3.9 &nbsp;·&nbsp; ±5% lab accuracy per Alpha Energy Labs
+    </div>
+  </div>
+
+  <!-- Dates & Exposure -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">📅 Test Dates &amp; Exposure</div>
+  <div class="fr">
+    <div class="fl"><label>Start Date</label><input type="date" id="ar-sdate" value="${r.test_start_date||''}" oninput="arCalcExposure()"></div>
+    <div class="fl"><label>Start Time</label><input type="time" id="ar-stime" value="${r.test_start_time||''}" oninput="arCalcExposure()"></div>
+    <div class="fl"><label>Stop Date</label><input type="date" id="ar-edate" value="${r.test_stop_date||''}" oninput="arCalcExposure()"></div>
+    <div class="fl"><label>Stop Time</label><input type="time" id="ar-etime" value="${r.test_stop_time||''}" oninput="arCalcExposure()"></div>
+    <div class="fl"><label>Exposure Hours</label>
+      <input type="number" id="ar-hours" value="${r.exposure_hours||''}" step="0.1" min="0" placeholder="Auto-calc" style="background:#f8faff">
+    </div>
+  </div>
+
+  <!-- Test Details -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">🏠 Test Details</div>
+  <div class="fr">
+    <div class="fl"><label>Test Method</label>
+      <select id="ar-method">
+        <option value="Activated Charcoal EPA-402-R-92-004"${(r.test_method||'').includes('Charcoal')?' selected':''}>Activated Charcoal (Short-Term)</option>
+        <option value="Alpha Track Detector"${(r.test_method||'').includes('Alpha Track')?' selected':''}>Alpha Track Detector (Long-Term)</option>
+        <option value="Electret Ion Chamber (E-PERM)"${(r.test_method||'').includes('Electret')?' selected':''}>Electret Ion Chamber (E-PERM)</option>
+        <option value="Other"${r.test_method&&!['Charcoal','Alpha Track','Electret'].some(k=>(r.test_method).includes(k))?' selected':''}>Other</option>
+      </select>
+    </div>
+    <div class="fl"><label>Sample Type</label>
+      <select id="ar-stype">
+        <option value="Short Term"${(r.sample_type||'Short Term')==='Short Term'?' selected':''}>Short Term</option>
+        <option value="Long Term"${r.sample_type==='Long Term'?' selected':''}>Long Term</option>
+      </select>
+    </div>
+    <div class="fl"><label>Testing Reason</label>
+      <select id="ar-reason">
+        <option value="Real-Estate Transaction"${(r.testing_reason||'')==='Real-Estate Transaction'?' selected':''}>Real-Estate Transaction</option>
+        <option value="Post Mitigation"${r.testing_reason==='Post Mitigation'?' selected':''}>Post Mitigation</option>
+        <option value="Personal Knowledge"${r.testing_reason==='Personal Knowledge'?' selected':''}>Personal Knowledge</option>
+        <option value="Initial Test"${r.testing_reason==='Initial Test'?' selected':''}>Initial Test</option>
+        <option value="Other"${r.testing_reason==='Other'?' selected':''}>Other</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Test Floor</label>
+      <select id="ar-floor">
+        ${['Basement','1st Floor','2nd Floor','3rd Floor+','Crawl Space','Other'].map(f=>`<option${(r.test_floor||'Basement')===f?' selected':''}>${f}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Room / Location</label>
+      <input id="ar-loc" value="${esc(r.test_location||'')}" placeholder="e.g. Family Room, Utility Room">
+    </div>
+    <div class="fl"><label>Structure Type</label>
+      <select id="ar-struct">
+        ${['Basement','Slab / No Basement','Crawl Space','Multi-Story / No Basement','Other'].map(f=>`<option${(r.structure_type||'')=== f?' selected':''}>${f}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="justify-content:flex-end;align-self:flex-end;padding-bottom:8px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="ar-closed" ${r.closed_house?'checked':''}>
+        Closed House Conditions
+      </label>
+    </div>
+  </div>
+
+  <!-- Test Address + Property Link -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">📍 Test Address &amp; Property Link</div>
+  <div class="fr">
+    <div class="fl" style="flex:2"><label>Street Address</label>
+      <input id="ar-addr" value="${esc(r.test_address||'')}" placeholder="123 Main St"
+        oninput="arAddressInput()" autocomplete="off">
+    </div>
+    <div class="fl"><label>City</label><input id="ar-city" value="${esc(r.test_city||'')}" placeholder="Green Bay" oninput="arAddressInput()"></div>
+    <div class="fl" style="max-width:80px"><label>State</label><input id="ar-state" value="${esc(r.test_state||'')}" placeholder="WI" maxlength="2"></div>
+    <div class="fl" style="max-width:100px"><label>ZIP</label><input id="ar-zip" value="${esc(r.test_zip||'')}" placeholder="54304" oninput="arAddressInput()"></div>
+  </div>
+  <!-- Property match area -->
+  <div id="ar-prop-match" style="margin-bottom:12px;min-height:30px">
+    ${propId?`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:13px;font-weight:600;color:#166534">🔗 Linked: ${esc(propAddr)}</span>
+      <button type="button" onclick="arClearProperty()" style="font-size:11px;padding:2px 8px;border:1px solid #86efac;border-radius:4px;background:white;cursor:pointer;color:#991b1b">✕ Unlink</button>
+      <input type="hidden" id="ar-propid" value="${propId}">
+      <input type="hidden" id="ar-propaddr" value="${esc(propAddr)}">
+    </div>`:`<input type="hidden" id="ar-propid" value=""><input type="hidden" id="ar-propaddr" value="">
+    <div style="font-size:12px;color:var(--muted)">Enter address above — matching properties will appear here</div>`}
+  </div>
+
+  <!-- Internal -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)">👤 Internal Info</div>
+  <div class="fr">
+    <div class="fl"><label>Technician / Submitted By</label>
+      <select id="ar-tech"><option value="">— Select —</option>${empOpts}</select>
+    </div>
+    <div class="fl"><label>Client / Customer Name</label>
+      <input id="ar-cust" value="${esc(r.customer_name||'')}" placeholder="Homeowner name">
+    </div>
+    <div class="fl"><label>Linked Work Order</label>
+      <input id="ar-wo" value="${esc(r.work_order_id||'')}" placeholder="WO # if applicable">
+    </div>
+  </div>
+  <div class="fl"><label>Notes</label>
+    <input id="ar-notes" value="${esc(r.notes||'')}" placeholder="Any observations, anomalies, re-test instructions…">
+  </div>`;
+}
+
+function arLiveResult(){
+  const pci=parseFloat(document.getElementById('ar-pci')?.value);
+  const mdc=document.getElementById('ar-belowmdc')?.checked;
+  const el=document.getElementById('ar-live-result');
+  if(!el) return;
+  if(isNaN(pci)){el.innerHTML='<span style="color:var(--muted)">Enter result →</span>';el.style.background='var(--surf)';return;}
+  const s=_arResultColor(mdc?null:pci,mdc);
+  const display=mdc?`&lt; ${pci}`:pci;
+  el.innerHTML=`<div style="font-size:20px;font-weight:800;color:${s.color}">${display} pCi/L</div><div style="font-size:12px;font-weight:600;color:${s.color};margin-top:2px">${s.label}</div>`;
+  el.style.background=s.bg;
+  el.style.border=`2px solid ${s.color}`;
+  el.style.borderRadius='8px';
+}
+function arToggleMDC(checked){
+  const label=document.getElementById('ar-pci')?.previousElementSibling||document.querySelector('label[for="ar-pci"]');
+  arLiveResult();
+}
+function arCalcExposure(){
+  const sd=document.getElementById('ar-sdate')?.value;
+  const st=document.getElementById('ar-stime')?.value||'00:00';
+  const ed=document.getElementById('ar-edate')?.value;
+  const et=document.getElementById('ar-etime')?.value||'00:00';
+  if(!sd||!ed) return;
+  const start=new Date(`${sd}T${st}`);
+  const end=new Date(`${ed}T${et}`);
+  const hours=Math.round((end-start)/3600000*10)/10;
+  if(hours>0){
+    const hEl=document.getElementById('ar-hours');
+    if(hEl) hEl.value=hours;
+  }
+}
+let _arAddrTimer=null;
+function arAddressInput(){
+  clearTimeout(_arAddrTimer);
+  _arAddrTimer=setTimeout(()=>{
+    const addr=document.getElementById('ar-addr')?.value||'';
+    const city=document.getElementById('ar-city')?.value||'';
+    const zip=document.getElementById('ar-zip')?.value||'';
+    const propId=document.getElementById('ar-propid')?.value;
+    if(propId) return; // already linked, don't override
+    const matches=_arMatchProperties(addr,city,zip);
+    const box=document.getElementById('ar-prop-match');
+    if(!box) return;
+    if(!matches.length){
+      box.innerHTML=`<input type="hidden" id="ar-propid" value=""><input type="hidden" id="ar-propaddr" value=""><div style="font-size:12px;color:var(--muted)">No matching properties found for this address</div>`;
+      return;
+    }
+    box.innerHTML=`<input type="hidden" id="ar-propid" value=""><input type="hidden" id="ar-propaddr" value="">
+      <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px">🔍 Matching Properties — click to link:</div>
+      ${matches.map(p=>`<div onclick="arLinkProperty('${p.id}','${esc(p.address+', '+p.city+' '+p.state+' '+p.zip)}')"
+        style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:4px;background:white;display:flex;justify-content:space-between;align-items:center"
+        onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--bdr)'">
+        <span><strong>${esc(p.address)}</strong> <span style="color:var(--muted)">${esc(p.city)} ${esc(p.state)} ${esc(p.zip)}</span></span>
+        <span style="font-size:11px;color:var(--teal);font-weight:600">Link →</span>
+      </div>`).join('')}`;
+  },400);
+}
+function arLinkProperty(propId, propAddr){
+  const box=document.getElementById('ar-prop-match');
+  if(!box) return;
+  box.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:13px;font-weight:600;color:#166534">🔗 Linked: ${esc(propAddr)}</span>
+    <button type="button" onclick="arClearProperty()" style="font-size:11px;padding:2px 8px;border:1px solid #86efac;border-radius:4px;background:white;cursor:pointer;color:#991b1b">✕ Unlink</button>
+    <input type="hidden" id="ar-propid" value="${propId}">
+    <input type="hidden" id="ar-propaddr" value="${esc(propAddr)}">
+  </div>`;
+}
+function arClearProperty(){
+  const box=document.getElementById('ar-prop-match');
+  if(!box) return;
+  box.innerHTML=`<input type="hidden" id="ar-propid" value=""><input type="hidden" id="ar-propaddr" value=""><div style="font-size:12px;color:var(--muted)">Property unlinked</div>`;
+}
+
+function _arCollect(){
+  const belowMDC=document.getElementById('ar-belowmdc')?.checked||false;
+  const pciRaw=parseFloat(document.getElementById('ar-pci')?.value);
+  const propId=document.getElementById('ar-propid')?.value||'';
+  const propAddr=document.getElementById('ar-propaddr')?.value||'';
+  const sDate=document.getElementById('ar-sdate')?.value||'';
+  const sTime=document.getElementById('ar-stime')?.value||'';
+  const eDate=document.getElementById('ar-edate')?.value||'';
+  const eTime=document.getElementById('ar-etime')?.value||'';
+  const expHours=parseFloat(document.getElementById('ar-hours')?.value)||null;
+  const s=_arResultColor(belowMDC?null:pciRaw,belowMDC);
+  return{
+    kit_serial:v('ar-kit').trim(),
+    lab_id:v('ar-labid').trim(),
+    report_date:v('ar-rdate')||null,
+    date_received:v('ar-drecv')||null,
+    radon_pci_l:isNaN(pciRaw)?null:pciRaw,
+    radon_display:isNaN(pciRaw)?null:String(pciRaw),
+    below_mdc:belowMDC,
+    action_level_exceeded:!belowMDC&&!isNaN(pciRaw)&&pciRaw>=4.0,
+    test_start_date:sDate||null,
+    test_start_time:sTime||null,
+    test_stop_date:eDate||null,
+    test_stop_time:eTime||null,
+    test_start_datetime:sDate&&sTime?`${sDate}T${sTime}`:sDate||null,
+    test_stop_datetime:eDate&&eTime?`${eDate}T${eTime}`:eDate||null,
+    exposure_hours:expHours,
+    test_method:v('ar-method'),
+    sample_type:v('ar-stype'),
+    testing_reason:v('ar-reason'),
+    test_floor:v('ar-floor'),
+    test_location:v('ar-loc').trim(),
+    structure_type:v('ar-struct'),
+    closed_house:document.getElementById('ar-closed')?.checked||false,
+    test_address:v('ar-addr').trim(),
+    test_city:v('ar-city').trim(),
+    test_state:v('ar-state').trim().toUpperCase(),
+    test_zip:v('ar-zip').trim(),
+    property_id:propId||null,
+    property_address:propAddr||null,
+    technician:v('ar-tech'),
+    customer_name:v('ar-cust').trim(),
+    work_order_id:v('ar-wo').trim()||null,
+    notes:v('ar-notes').trim(),
+    submitted_by:CU?.name||'',
+    updated_at:new Date().toISOString(),
+  };
+}
+
+function oAddAlphaResult(){
+  oMod('Enter Lab Result — Alpha Energy Labs',`${_arForm()}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svAddAlphaResult()">Save Result</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  setTimeout(()=>{arLiveResult();},50);
+}
+
+async function oEditAlphaResult(id){
+  const all=S.get('lhs:alpha_results')||[];
+  const r=all.find(x=>x.id===id);
+  if(!r){tst('Record not found','error');return;}
+  oMod('Edit Lab Result',`<input type="hidden" id="ar-edit-id" value="${id}">${_arForm(r)}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svEditAlphaResult('${id}')">Save Changes</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  setTimeout(()=>{arLiveResult();},50);
+}
+
+async function oLinkAlphaResult(id){
+  const all=S.get('lhs:alpha_results')||[];
+  const r=all.find(x=>x.id===id);
+  if(!r) return;
+  oMod('Link Result to Property',`
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Test address: <strong>${esc(r.test_address||'')} ${esc(r.test_city||'')} ${esc(r.test_state||'')} ${esc(r.test_zip||'')}</strong></div>
+  <div class="fl"><label>Search Properties</label>
+    <input id="link-prop-search" placeholder="Type address…" oninput="arLinkSearch(this.value,'${id}')"
+      style="padding:8px;border:1px solid var(--bdr);border-radius:7px;width:100%;font-family:inherit">
+  </div>
+  <div id="link-prop-results" style="margin-top:8px"></div>
+  <div class="br2" style="margin-top:16px"><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+  // Trigger auto-search with existing address
+  setTimeout(()=>{
+    const el=document.getElementById('link-prop-search');
+    if(el&&r.test_address){el.value=r.test_address;arLinkSearch(r.test_address,id);}
+  },100);
+}
+function arLinkSearch(q, resultId){
+  const props=S.get('lhs:props')||[];
+  const ql=q.toLowerCase();
+  const matches=props.filter(p=>
+    (p.address||'').toLowerCase().includes(ql)||
+    (p.city||'').toLowerCase().includes(ql)||
+    (p.zip||'').includes(q)
+  ).slice(0,8);
+  const box=document.getElementById('link-prop-results');
+  if(!box) return;
+  if(!matches.length){box.innerHTML='<div style="font-size:12px;color:var(--muted)">No matching properties</div>';return;}
+  box.innerHTML=matches.map(p=>`
+    <div onclick="arConfirmLink('${resultId}','${p.id}','${esc(p.address+', '+p.city+' '+p.state+' '+p.zip)}')"
+      style="padding:9px 12px;border:1px solid var(--bdr);border-radius:7px;cursor:pointer;font-size:13px;margin-bottom:5px;background:white;display:flex;justify-content:space-between"
+      onmouseover="this.style.background='#f0fafa'" onmouseout="this.style.background='white'">
+      <span><strong>${esc(p.address)}</strong> · <span style="color:var(--muted)">${esc(p.city)} ${esc(p.state)} ${esc(p.zip)}</span></span>
+      <span style="color:var(--teal);font-weight:600">Link →</span>
+    </div>`).join('');
+}
+async function arConfirmLink(resultId, propId, propAddr){
+  const all=S.get('lhs:alpha_results')||[];
+  const idx=all.findIndex(x=>x.id===resultId);
+  if(idx>=0){all[idx]={...all[idx],property_id:propId,property_address:propAddr,updated_at:new Date().toISOString()};S.set('lhs:alpha_results',all);}
+  try{await DB.from('lhs_alpha_results').update({property_id:propId,property_address:propAddr,updated_at:new Date().toISOString()}).eq('id',resultId);}
+  catch(e){console.warn('arConfirmLink:',e.message);}
+  if(idx>=0) await _arSaveToProperty(propId,all[idx]);
+  cMod();tst('Linked to property — record saved to property page','success');showPage('testers');
+}
+
+async function svAddAlphaResult(){
+  const rec=_arCollect();
+  if(!rec.kit_serial&&!rec.lab_id){tst('Enter at least the Kit Serial # or Lab ID','error');return;}
+  rec.created_at=new Date().toISOString();
+  let saved=null;
+  try{
+    const{data,error}=await DB.from('lhs_alpha_results').insert(rec).select().single();
+    if(!error) saved=data;
+    else console.warn('Alpha result insert:',error.message);
+  }catch(e){console.warn('Alpha result save:',e.message);}
+  const final=saved||{...rec,id:'local_'+Date.now()};
+  const all=S.get('lhs:alpha_results')||[];all.unshift(final);S.set('lhs:alpha_results',all);
+  // Save to property record if linked
+  if(rec.property_id) await _arSaveToProperty(rec.property_id,final);
+  cMod();
+  const pci=rec.radon_pci_l;
+  const s=_arResultColor(pci,rec.below_mdc);
+  if(!rec.below_mdc&&pci>=4.0) tst(`⚠️ Result saved — ${pci} pCi/L is at or above EPA action level`,'error');
+  else tst(`Lab result saved${rec.property_id?' and linked to property':''}`,rec.below_mdc||pci<2.0?'success':'warning');
+  showPage('testers');
+}
+
+async function svEditAlphaResult(id){
+  const rec=_arCollect();
+  const all=S.get('lhs:alpha_results')||[];
+  const idx=all.findIndex(x=>x.id===id);
+  if(idx>=0){all[idx]={...all[idx],...rec};S.set('lhs:alpha_results',all);}
+  try{const{error}=await DB.from('lhs_alpha_results').update(rec).eq('id',id);if(error) console.warn('Alpha result update:',error.message);}
+  catch(e){console.warn('Alpha result update:',e.message);}
+  if(rec.property_id) await _arSaveToProperty(rec.property_id,{...rec,id});
+  cMod();tst('Lab result updated','success');showPage('testers');
+}
+
+async function delAlphaResult(id){
+  if(!confirm('Delete this lab result record?')) return;
+  const all=S.get('lhs:alpha_results')||[];
+  S.set('lhs:alpha_results',all.filter(x=>x.id!==id));
+  try{await DB.from('lhs_alpha_results').delete().eq('id',id);}catch(e){console.warn('Alpha result delete:',e.message);}
+  tst('Result deleted','info');showPage('testers');
 }
 
 // ─── CROSS CHECKS (Calibrated Reference CRM vs Field-Deployed CRM) ───────────
