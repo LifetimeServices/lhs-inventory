@@ -1662,6 +1662,7 @@ const TBL={
   'lhs:pb_categories':'lhs_pb_categories',
   'lhs:cal_devices':'lhs_calibration_devices',
   'lhs:cross_checks':'lhs_cross_checks',
+  'lhs:crm_xc':'lhs_crm_cross_checks',
   'lhs:tester_deployments':'lhs_tester_deployments',
   'lhs:audit_log':'lhs_audit_log',
   'lhs:training_assignments':'lhs_training_assignments',
@@ -5358,12 +5359,13 @@ function bTest(){
   const tab=window._testerTab||'tracker';
   const tabBtn=(id,label)=>`<button onclick="window._testerTab='${id}';showPage('testers')" style="padding:9px 20px;border:none;border-bottom:${tab===id?'3px solid var(--teal)':'3px solid transparent'};background:none;font-size:13px;font-weight:${tab===id?'700':'500'};color:${tab===id?'var(--teal)':'var(--muted)'};cursor:pointer;white-space:nowrap">${label}</button>`;
   return`<div class="pt">Testers</div><div class="ps">Radon test kit inventory &amp; calibration tracking</div>
-  <div style="display:flex;border-bottom:1px solid var(--bdr);margin-bottom:18px;gap:0">
+  <div style="display:flex;border-bottom:1px solid var(--bdr);margin-bottom:18px;gap:0;flex-wrap:wrap">
     ${tabBtn('tracker','📡 Tester Tracker')}
     ${tabBtn('cal','📋 Calibration Log')}
     ${tabBtn('crosscheck','✅ Cross Checks')}
+    ${tabBtn('radqa','📐 Radon Testing - Project Mgmt')}
   </div>
-  ${tab==='tracker'?_bTestTracker():tab==='cal'?bCalLog():bCrossChecks()}`;
+  ${tab==='tracker'?_bTestTracker():tab==='cal'?bCalLog():tab==='crosscheck'?bCrossChecks():bRadonProjMgmt()}`;
 }
 function _bTestTracker(){
   const allTs=S.get('lhs:ts')||[];
@@ -5394,18 +5396,21 @@ function _bTestTracker(){
     ${inactiveCount>0?`<button class="btn btn-o sm" onclick="window._testShowInactive=!window._testShowInactive;showPage('testers')">${showInactive?'Hide Inactive':'Show Inactive ('+inactiveCount+')'}</button>`:''}
   </div></div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>Active</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
-  <tbody>${ts.length?ts.map((t,i)=>{const realI=allTs.indexOf(t);return`<tr style="opacity:${t.active===false||t.active==='Inactive'?0.55:1}">
+  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>QA</th><th>Active</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
+  <tbody>${ts.length?ts.map((t,i)=>{const realI=allTs.indexOf(t);
+    const qaFlag=t.type==='Electronic'?_xcGetDeviceFlag(t.id):null;
+    return`<tr style="opacity:${t.active===false||t.active==='Inactive'?0.55:1}${qaFlag&&qaFlag.flag==='needs_cal'?';background:#fff5f5':''}">
     <td style="font-family:'DM Sans',sans-serif;font-weight:700;color:var(--navy)">${t.id}</td>
     <td>${bx(t.type,t.type==='Electronic'?'bb':'bn')}</td>
     <td style="font-family:'DM Sans',sans-serif;font-size:12px">${t.serial||'—'}</td>
     <td>${bx(t.status,tc(t.status))}</td>
+    <td style="white-space:nowrap">${qaFlag?`<span onclick="window._testerTab='crosscheck';window._xcFField='${t.id}';showPage('testers')" style="cursor:pointer">${qaFlag.badge}</span>`:'<span style="color:var(--muted);font-size:11px">—</span>'}</td>
     <td>${t.active===false||t.active==='Inactive'?bx('Inactive','bgr'):bx('Active','bg')}</td>
     <td>${t.vehicle||'&#8212;'}</td>
     <td style="font-weight:500">${t.customer||'&#8212;'}</td>
     <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
     <td><button class="btn sm btn-o" onclick="oUpdTest(${realI})">Update</button></td>
-  </tr>`}).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">No testers found</td></tr>`}
+  </tr>`;}).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">No testers found</td></tr>`}
   </tbody></table></div></div>`;
 }
 
@@ -5790,7 +5795,7 @@ async function svUpdTest(i){
 //                Formula: RPE = (MV - TV) / TV × 100%
 //                In control: |RPE| ≤ 20%  |  Warning: 20%–30%  |  Out: |RPE| > 30%
 
-function _ccResult(checkType, mv, tv, d2){
+function _rqaResult(checkType, mv, tv, d2){
   // Returns {pct, result, label, color, bg}
   try{
     mv=parseFloat(mv); tv=parseFloat(tv); d2=parseFloat(d2||0);
@@ -5837,29 +5842,588 @@ function _ccResult(checkType, mv, tv, d2){
   return null;
 }
 
-function _ccBadge(result){
+function _rqaBadge(result){
   if(!result) return'<span style="color:var(--muted);font-size:12px">—</span>';
   return`<span style="background:${result.bg};color:${result.color};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700">${result.label}</span>`;
 }
 
-function _ccPctBadge(result){
+function _rqaPctBadge(result){
   if(!result||result.pct==null) return'—';
   const sign=result.pct>=0?'+':'';
   return`<span style="font-size:13px;font-weight:700;color:${result.color}">${result.formula}: ${sign}${result.pct.toFixed(2)}%</span>`;
 }
 
+// ─── CROSS CHECKS (Calibrated Reference CRM vs Field-Deployed CRM) ───────────
+// Purpose: Verify a recently calibrated CRM reads accurately AND confirm a
+// field-deployed unit (5-7 months) hasn't drifted. Run side-by-side 48 hours.
+// Formula: RPD = |Ref - Field| / avg(Ref, Field) × 100%  (ANSI/AARST MS-QA)
+// ≥4 pCi/L  : Goal ≤14% | Warning ≥28% | Fail ≥36%
+// 2–4 pCi/L : Goal ≤25% | Warning ≥50% | Fail ≥67%
+// <2 pCi/L  : Pass if |Ref−Field| ≤ 1.0 pCi/L
+
+function _xcRPD(ref, field){
+  ref=parseFloat(ref); field=parseFloat(field);
+  if(isNaN(ref)||isNaN(field)) return null;
+  const avg=(ref+field)/2;
+  if(avg<0) return null;
+  // Low concentration zone — absolute difference rule
+  if(avg<2){
+    const diff=Math.abs(ref-field);
+    let result,label;
+    if(diff<=1.0){result='pass';label='✅ PASS';}
+    else if(diff<=1.5){result='warning';label='⚠️ WARNING';}
+    else{result='fail';label='❌ FAIL';}
+    const color=result==='pass'?'#166534':result==='warning'?'#92400e':'#991b1b';
+    const bg=result==='pass'?'#f0fdf4':result==='warning'?'#fffbeb':'#fef2f2';
+    return{rpd:null,diff,avg,zone:'< 2 pCi/L',result,label,color,bg,lowConc:true};
+  }
+  const rpd=Math.abs(ref-field)/avg*100;
+  let passLim,warnLim,failLim,zone;
+  if(avg>=4){passLim=14;warnLim=28;failLim=36;zone:'≥ 4 pCi/L';}
+  else{passLim=25;warnLim=50;failLim=67;zone='2–4 pCi/L';}
+  zone=avg>=4?'≥ 4 pCi/L':'2–4 pCi/L';
+  let result,label;
+  if(rpd<warnLim){result='pass';label='✅ PASS';}
+  else if(rpd<failLim){result='warning';label='⚠️ WARNING';}
+  else{result='fail';label='❌ FAIL';}
+  const color=result==='pass'?'#166534':result==='warning'?'#92400e':'#991b1b';
+  const bg=result==='pass'?'#f0fdf4':result==='warning'?'#fffbeb':'#fef2f2';
+  return{rpd,avg,zone,result,label,color,bg,passLim,warnLim,failLim};
+}
+
+function _xcBadge(r){
+  if(!r) return'<span style="color:var(--muted);font-size:12px">—</span>';
+  return`<span style="background:${r.bg};color:${r.color};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700">${r.label}</span>`;
+}
+
+// Check if a field device has consecutive failures — returns 0, 1, or 2+
+function _xcConsecutiveFails(fieldDeviceId){
+  const all=(S.get('lhs:crm_xc')||[])
+    .filter(x=>x.field_device_id===fieldDeviceId)
+    .sort((a,b)=>new Date(b.check_date)-new Date(a.check_date));
+  let count=0;
+  for(const x of all){
+    if(x.result==='fail') count++;
+    else break;
+  }
+  return count;
+}
+
+async function _xcFlagDevice(fieldDeviceId, consecutiveFails){
+  const ts=S.get('lhs:ts')||[];
+  const idx=ts.findIndex(t=>t.id===fieldDeviceId);
+  if(idx<0) return;
+  let qa_flag='';
+  let newStatus=ts[idx].status;
+  if(consecutiveFails>=2){
+    qa_flag='needs_cal';
+    tst(`❌ ${fieldDeviceId} has failed 2 consecutive cross checks — send to lab for calibration`,'error');
+  } else if(consecutiveFails===1){
+    qa_flag='retest';
+    tst(`⚠️ ${fieldDeviceId} failed cross check — re-test required before next use`,'warning');
+  } else {
+    qa_flag='';
+  }
+  ts[idx]={...ts[idx],qa_flag};
+  S.set('lhs:ts',ts);
+  // Persist qa_flag to Supabase
+  if(ts[idx]._supaId||ts[idx].id){
+    const supId=ts[idx]._supaId||ts[idx].id;
+    try{await DB.from('lhs_testers').update({qa_flag,updated_at:new Date().toISOString()}).eq('id',supId);}
+    catch(e){console.warn('qa_flag update:',e.message);}
+  }
+}
+
 function bCrossChecks(){
+  const all=S.get('lhs:crm_xc')||[];
+  if(!all.length){
+    setTimeout(async()=>{
+      try{
+        const{data}=await DB.from('lhs_crm_cross_checks').select('*').order('check_date',{ascending:false}).limit(500);
+        if(data&&data.length){
+          S.set('lhs:crm_xc',data);
+          if(window._testerTab==='crosscheck') showPage('testers');
+        }
+      }catch(e){console.warn('CRM cross checks load:',e.message);}
+    },0);
+  }
+
+  const ts=(S.get('lhs:ts')||[]).filter(t=>t.type==='Electronic');
+  const _fField=window._xcFField||'';
+  const _fResult=window._xcFResult||'';
+  const _fYear=window._xcFYear||new Date().getFullYear().toString();
+  const _fFlag=window._xcFFlag||'';
+
+  let filtered=all;
+  if(_fField) filtered=filtered.filter(x=>x.field_device_id===_fField);
+  if(_fResult) filtered=filtered.filter(x=>x.result===_fResult);
+  if(_fYear) filtered=filtered.filter(x=>(x.check_date||'').startsWith(_fYear));
+
+  const thisYear=new Date().getFullYear().toString();
+  const yrChecks=all.filter(x=>(x.check_date||'').startsWith(thisYear));
+  const passN=yrChecks.filter(x=>x.result==='pass').length;
+  const warnN=yrChecks.filter(x=>x.result==='warning').length;
+  const failN=yrChecks.filter(x=>x.result==='fail').length;
+  const passRate=yrChecks.length?Math.round(passN/yrChecks.length*100):0;
+
+  // Count devices with active flags
+  const flagged=ts.filter(t=>t.qa_flag==='needs_cal'||t.qa_flag==='retest');
+  const needsCal=ts.filter(t=>t.qa_flag==='needs_cal').length;
+  const needsRetest=ts.filter(t=>t.qa_flag==='retest').length;
+
+  const years=[...new Set(all.map(x=>(x.check_date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  if(!years.includes(thisYear)) years.unshift(thisYear);
+
+  if(_fFlag) filtered=filtered.filter(x=>{
+    const fails=_xcConsecutiveFails(x.field_device_id);
+    if(_fFlag==='retest') return fails===1;
+    if(_fFlag==='needs_cal') return fails>=2;
+    return true;
+  });
+
+  return`
+  <!-- QA Status Alert Banner -->
+  ${(needsCal>0||needsRetest>0)?`
+  <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center">
+    <div style="font-size:22px">🚨</div>
+    <div>
+      ${needsCal>0?`<div style="font-size:13px;font-weight:700;color:#991b1b">⛔ ${needsCal} device${needsCal>1?'s':''} need${needsCal===1?'s':''} to be sent to the lab — 2 consecutive cross check failures</div>`:''}
+      ${needsRetest>0?`<div style="font-size:13px;font-weight:600;color:#92400e;margin-top:3px">⚠️ ${needsRetest} device${needsRetest>1?'s':''} require${needsRetest===1?'s':''} re-test — cross check failure</div>`:''}
+    </div>
+    <button class="btn sm btn-o" style="margin-left:auto;white-space:nowrap" onclick="window._testerTab='tracker';showPage('testers')">View in Tracker →</button>
+  </div>`:''}
+
+  <!-- Summary Cards -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    ${[[yrChecks.length,'Checks ('+thisYear+')','var(--navy)','var(--surf)'],[passN,'Passed','#166534','#f0fdf4'],[warnN,'Warnings','#92400e','#fffbeb'],[failN,'Failed','#991b1b','#fef2f2']].map(([n,l,c,bg])=>`
+    <div style="background:${bg};border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:110px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:${c};text-transform:uppercase;letter-spacing:.05em">${l}</div>
+      <div style="font-size:28px;font-weight:700;color:${c};line-height:1.2">${n}</div>
+    </div>`).join('')}
+    <div style="background:${needsCal>0?'#fef2f2':needsRetest>0?'#fffbeb':'var(--surf)'};border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:120px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:${needsCal>0?'#991b1b':needsRetest>0?'#92400e':'var(--muted)'};text-transform:uppercase;letter-spacing:.05em">Flagged Devices</div>
+      <div style="font-size:28px;font-weight:700;color:${needsCal>0?'#991b1b':needsRetest>0?'#92400e':'var(--muted)'};line-height:1.2">${flagged.length}</div>
+      <div style="font-size:10px;color:var(--muted)">${needsCal} lab · ${needsRetest} retest</div>
+    </div>
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:100px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">Pass Rate</div>
+      <div style="font-size:28px;font-weight:700;color:${passRate>=80?'#166534':passRate>=60?'#92400e':'#991b1b'};line-height:1.2">${yrChecks.length?passRate+'%':'—'}</div>
+    </div>
+  </div>
+
+  <!-- Formula Reference -->
+  <div style="background:#f0f4ff;border:1px solid #c5d3f7;border-radius:10px;padding:12px 16px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">📐 ANSI/AARST MS-QA Cross Check Formula — Reference vs. Field CRM (48-hour collocated)</div>
+    <div style="font-family:monospace;font-size:12px;background:white;padding:6px 10px;border-radius:6px;margin-bottom:8px;color:var(--navy)">
+      RPD = |Reference Reading − Field Reading| / avg(Reference, Field) × 100%
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px">
+      <div style="background:white;border-radius:6px;padding:8px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:3px">≥ 4 pCi/L</div>
+        <div style="color:#166534">✅ Goal: RPD ≤ 14%</div>
+        <div style="color:#92400e">⚠️ Warning: RPD ≥ 28%</div>
+        <div style="color:#991b1b">❌ Fail: RPD ≥ 36%</div>
+      </div>
+      <div style="background:white;border-radius:6px;padding:8px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:3px">2–4 pCi/L</div>
+        <div style="color:#166534">✅ Goal: RPD ≤ 25%</div>
+        <div style="color:#92400e">⚠️ Warning: RPD ≥ 50%</div>
+        <div style="color:#991b1b">❌ Fail: RPD ≥ 67%</div>
+      </div>
+      <div style="background:white;border-radius:6px;padding:8px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:3px">&lt; 2 pCi/L</div>
+        <div style="color:#166534">✅ Pass: |Diff| ≤ 1.0 pCi/L</div>
+        <div style="color:#92400e">⚠️ Warning: |Diff| ≤ 1.5 pCi/L</div>
+        <div style="color:#991b1b">❌ Fail: |Diff| &gt; 1.5 pCi/L</div>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">1st failure → Re-test required before next deployment · 2nd consecutive failure → Return to lab for calibration/inspection</div>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <select onchange="window._xcFField=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Devices</option>
+      ${ts.map(t=>`<option value="${esc(t.id)}"${_fField===t.id?' selected':''}>${esc(t.id)}${t.serial?' · '+t.serial:''}${t.qa_flag?(' ⚠️'):''}</option>`).join('')}
+    </select>
+    <select onchange="window._xcFResult=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Results</option>
+      <option value="pass"${_fResult==='pass'?' selected':''}>✅ Pass</option>
+      <option value="warning"${_fResult==='warning'?' selected':''}>⚠️ Warning</option>
+      <option value="fail"${_fResult==='fail'?' selected':''}>❌ Fail</option>
+    </select>
+    <select onchange="window._xcFYear=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      ${years.map(y=>`<option value="${y}"${_fYear===y?' selected':''}>${y}</option>`).join('')}
+    </select>
+    ${flagged.length?`<select onchange="window._xcFFlag=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Flags</option>
+      <option value="retest"${_fFlag==='retest'?' selected':''}>⚠️ Re-test Required</option>
+      <option value="needs_cal"${_fFlag==='needs_cal'?' selected':''}>🔴 Needs Calibration</option>
+    </select>`:''}
+    <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} record${filtered.length!==1?'s':''}</span>
+    <button class="btn btn-n" onclick="oAddCrossCheck()">+ Log Cross Check</button>
+  </div>
+
+  <!-- Records Table -->
+  <div class="card" style="padding:0">
+  <div class="tw" style="margin:0"><table>
+    <thead><tr style="background:var(--surf)">
+      <th>Date</th>
+      <th>Reference CRM <span style="font-weight:400;font-size:10px">(fresh cal)</span></th>
+      <th>Ref Reading</th>
+      <th>Field CRM <span style="font-weight:400;font-size:10px">(deployed)</span></th>
+      <th>Field Reading</th>
+      <th>Avg pCi/L</th>
+      <th>RPD %</th>
+      <th>Result</th>
+      <th>Location / By</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+    ${filtered.length?filtered.map(x=>{
+      const r=_xcRPD(x.ref_reading,x.field_reading);
+      const consec=_xcConsecutiveFails(x.field_device_id);
+      const flagBadge=x.result==='fail'?
+        (consec>=2?`<span style="background:#fef2f2;color:#991b1b;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;display:block;margin-top:3px">⛔ SEND TO LAB</span>`:
+        `<span style="background:#fffbeb;color:#92400e;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;display:block;margin-top:3px">⚠️ RE-TEST</span>`):'';
+      const monthsLabel=x.field_months_deployed?`<br><span style="font-size:10px;color:var(--muted)">${x.field_months_deployed} mo. deployed</span>`:'';
+      const calLabel=x.field_last_cal?`<br><span style="font-size:10px;color:var(--muted)">Cal: ${x.field_last_cal}</span>`:'';
+      const refCalLabel=x.ref_cal_date?`<br><span style="font-size:10px;color:#166534">Cal: ${x.ref_cal_date}</span>`:'';
+      const rpdDisplay=r?r.lowConc?`|Diff|=${r.diff?.toFixed(2)} pCi/L`:`${r.rpd?.toFixed(1)}%`:'—';
+      const avgDisplay=r?`${r.avg?.toFixed(2)} <span style="font-size:10px;color:var(--muted)">(${r.zone})</span>`:'—';
+      return`<tr style="border-bottom:1px solid var(--bdr)">
+        <td style="padding:10px 8px;font-size:13px;white-space:nowrap">${x.check_date||'—'}<br><span style="font-size:10px;color:var(--muted)">${x.duration_hours||48}hr</span></td>
+        <td style="padding:10px 8px;font-weight:700;color:var(--navy);font-size:13px">${esc(x.ref_device_id||'—')}${refCalLabel}</td>
+        <td style="padding:10px 8px;font-size:14px;font-weight:700;color:var(--navy)">${x.ref_reading??'—'}<span style="font-size:11px;font-weight:400"> pCi/L</span></td>
+        <td style="padding:10px 8px;font-weight:700;color:var(--navy);font-size:13px">${esc(x.field_device_id||'—')}${monthsLabel}${calLabel}${flagBadge}</td>
+        <td style="padding:10px 8px;font-size:14px;font-weight:700;color:var(--navy)">${x.field_reading??'—'}<span style="font-size:11px;font-weight:400"> pCi/L</span></td>
+        <td style="padding:10px 8px;font-size:12px">${avgDisplay}</td>
+        <td style="padding:10px 8px;font-size:13px;font-weight:700;color:${r?.color||'var(--muted)'}">${rpdDisplay}</td>
+        <td style="padding:10px 8px">${_xcBadge(r)}</td>
+        <td style="padding:10px 8px;font-size:12px;color:var(--muted)">${esc(x.location||'')}${x.conducted_by?`<br>${esc(x.conducted_by)}`:''}</td>
+        <td style="padding:10px 8px;white-space:nowrap">
+          <button class="btn sm btn-o" onclick="oEditCrossCheck('${x.id||''}')">Edit</button>
+          <button class="btn sm btn-r" onclick="delCrossCheck('${x.id||''}')">Del</button>
+        </td>
+      </tr>`;
+    }).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:40px">
+      <div style="font-size:32px;margin-bottom:8px">📋</div>
+      No cross check records yet.<br>
+      <span style="font-size:12px">Click <strong>+ Log Cross Check</strong> to record your first side-by-side comparison.</span>
+    </td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function _xcForm(xc={}){
+  const ts=(S.get('lhs:ts')||[]).filter(t=>t.type==='Electronic');
+  const calDevs=S.get('lhs:cal_devices')||[];
+  const empOpts=(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}"${u.name===(xc.conducted_by||'')?'  selected':''}>${esc(u.name)}</option>`).join('');
+
+  const tsOpts=(selected)=>ts.map(t=>{
+    // Try to find last cal date from cal_devices
+    const cal=calDevs.find(d=>d.serial_number===t.serial||d.crm_id===t.id);
+    const calInfo=cal&&cal.calibration_dates?Object.values(cal.calibration_dates).flat().sort().reverse()[0]:'';
+    return`<option value="${esc(t.id)}" data-serial="${esc(t.serial||'')}" data-cal="${calInfo}"${t.id===selected?' selected':''}>${esc(t.id)}${t.serial?' · '+t.serial:''}${calInfo?' (cal: '+calInfo+')':''}</option>`;
+  }).join('');
+
+  return`
+  <div class="fr">
+    <div class="fl"><label>Check Date</label>
+      <input type="date" id="xc-date" value="${xc.check_date||new Date().toISOString().slice(0,10)}">
+    </div>
+    <div class="fl"><label>Duration (hours)</label>
+      <input type="number" id="xc-hours" value="${xc.duration_hours||48}" min="24" step="1">
+    </div>
+    <div class="fl"><label>Conducted By</label>
+      <select id="xc-by"><option value="">— Select —</option>${empOpts}</select>
+    </div>
+  </div>
+  <div class="fl"><label>Location <span style="font-weight:400;color:var(--muted)">(office, employee home, etc.)</span></label>
+    <input id="xc-location" value="${esc(xc.location||'')}" placeholder="e.g. Green Bay Office, Tech home – J. Smith">
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+    <!-- Reference CRM -->
+    <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">📡 Reference CRM — Recently Calibrated</div>
+      <div class="fl" style="margin-bottom:10px"><label>CRM Device</label>
+        <select id="xc-ref" onchange="xcRefChange(this)">
+          <option value="">— Select —</option>
+          ${tsOpts(xc.ref_device_id||'')}
+          <option value="__manual__"${!ts.find(t=>t.id===xc.ref_device_id)&&xc.ref_device_id?'  selected':''}>✏️ Enter manually…</option>
+        </select>
+      </div>
+      <div id="xc-ref-manual" style="display:${!ts.find(t=>t.id===xc.ref_device_id)&&xc.ref_device_id?'block':'none'}">
+        <div class="fl" style="margin-bottom:8px"><label>CRM ID (manual)</label>
+          <input id="xc-ref-id-m" value="${esc(xc.ref_device_id||'')}">
+        </div>
+      </div>
+      <div class="fl" style="margin-bottom:10px"><label>Calibration Date <span style="font-size:10px;color:#166534">(confirm this unit is fresh from lab)</span></label>
+        <input type="date" id="xc-ref-cal" value="${xc.ref_cal_date||''}">
+      </div>
+      <div class="fl" style="margin:0"><label>Reference Reading (pCi/L)</label>
+        <input type="number" id="xc-ref-reading" value="${xc.ref_reading??''}" step="0.01" min="0"
+          placeholder="e.g. 4.20" oninput="xcCalc()" style="font-size:16px;font-weight:700">
+      </div>
+    </div>
+
+    <!-- Field CRM -->
+    <div style="background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;color:#c2410c;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">🏗️ Field CRM — Deployed Unit</div>
+      <div class="fl" style="margin-bottom:10px"><label>CRM Device</label>
+        <select id="xc-field" onchange="xcFieldChange(this)">
+          <option value="">— Select —</option>
+          ${tsOpts(xc.field_device_id||'')}
+          <option value="__manual__"${!ts.find(t=>t.id===xc.field_device_id)&&xc.field_device_id?'  selected':''}>✏️ Enter manually…</option>
+        </select>
+      </div>
+      <div id="xc-field-manual" style="display:${!ts.find(t=>t.id===xc.field_device_id)&&xc.field_device_id?'block':'none'}">
+        <div class="fl" style="margin-bottom:8px"><label>CRM ID (manual)</label>
+          <input id="xc-field-id-m" value="${esc(xc.field_device_id||'')}">
+        </div>
+      </div>
+      <div class="fr" style="gap:8px;margin-bottom:10px">
+        <div class="fl" style="margin:0"><label>Last Cal Date</label>
+          <input type="date" id="xc-field-cal" value="${xc.field_last_cal||''}" oninput="xcCalcMonths()">
+        </div>
+        <div class="fl" style="margin:0"><label>Months Deployed</label>
+          <input type="number" id="xc-field-months" value="${xc.field_months_deployed||''}" step="1" min="0" placeholder="Auto-calc or enter" style="width:80px">
+        </div>
+      </div>
+      <div class="fl" style="margin:0"><label>Field Reading (pCi/L)</label>
+        <input type="number" id="xc-field-reading" value="${xc.field_reading??''}" step="0.01" min="0"
+          placeholder="e.g. 4.38" oninput="xcCalc()" style="font-size:16px;font-weight:700">
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Result -->
+  <div id="xc-result-box" style="background:var(--surf);border:2px solid var(--bdr);border-radius:10px;padding:14px 16px;margin-top:14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Live Result Preview</div>
+    <div id="xc-result-display" style="font-size:15px;font-weight:600;color:var(--muted)">Enter both readings above…</div>
+    <div id="xc-formula-display" style="font-size:11px;color:var(--muted);margin-top:5px;font-family:monospace"></div>
+  </div>
+
+  <!-- Environmental Conditions -->
+  <div style="margin-top:12px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Environmental Conditions (optional)</div>
+    <div class="fr">
+      <div class="fl" style="margin:0"><label>Temp (°F)</label>
+        <input type="number" id="xc-temp" value="${xc.temp_f||''}" step="0.1" placeholder="e.g. 68">
+      </div>
+      <div class="fl" style="margin:0"><label>Humidity (%)</label>
+        <input type="number" id="xc-humidity" value="${xc.humidity_pct||''}" step="0.1" min="0" max="100">
+      </div>
+      <div class="fl" style="margin:0"><label>Baro. Pressure (inHg)</label>
+        <input type="number" id="xc-baro" value="${xc.baro_pressure||''}" step="0.01" placeholder="e.g. 29.92">
+      </div>
+    </div>
+  </div>
+
+  <div class="fl" style="margin-top:10px"><label>Notes / Corrective Actions</label>
+    <input id="xc-notes" value="${esc(xc.notes||'')}" placeholder="Observations, any anomalies noted…">
+  </div>`;
+}
+
+function xcRefChange(sel){
+  const manRow=document.getElementById('xc-ref-manual');
+  if(manRow) manRow.style.display=sel.value==='__manual__'?'block':'none';
+  if(sel.value&&sel.value!=='__manual__'){
+    const opt=sel.options[sel.selectedIndex];
+    const cal=opt?.getAttribute('data-cal')||'';
+    const calEl=document.getElementById('xc-ref-cal');
+    if(calEl&&cal) calEl.value=cal;
+  }
+}
+function xcFieldChange(sel){
+  const manRow=document.getElementById('xc-field-manual');
+  if(manRow) manRow.style.display=sel.value==='__manual__'?'block':'none';
+  if(sel.value&&sel.value!=='__manual__'){
+    const opt=sel.options[sel.selectedIndex];
+    const cal=opt?.getAttribute('data-cal')||'';
+    const calEl=document.getElementById('xc-field-cal');
+    if(calEl&&cal){calEl.value=cal;xcCalcMonths();}
+  }
+}
+function xcCalcMonths(){
+  const calEl=document.getElementById('xc-field-cal');
+  const mEl=document.getElementById('xc-field-months');
+  if(!calEl||!mEl||!calEl.value) return;
+  const cal=new Date(calEl.value);
+  const now=new Date();
+  const months=Math.round((now-cal)/(1000*60*60*24*30.4));
+  if(months>=0) mEl.value=months;
+}
+function xcCalc(){
+  const ref=parseFloat(document.getElementById('xc-ref-reading')?.value);
+  const field=parseFloat(document.getElementById('xc-field-reading')?.value);
+  const box=document.getElementById('xc-result-box');
+  const disp=document.getElementById('xc-result-display');
+  const fdisp=document.getElementById('xc-formula-display');
+  if(!disp||!fdisp||!box) return;
+  if(isNaN(ref)||isNaN(field)){
+    disp.innerHTML='<span style="color:var(--muted)">Enter both readings to calculate…</span>';
+    fdisp.textContent='';
+    box.style.borderColor='var(--bdr)';
+    box.style.background='var(--surf)';
+    return;
+  }
+  const r=_xcRPD(ref,field);
+  if(!r){
+    disp.innerHTML='<span style="color:var(--muted)">Cannot calculate — check values</span>';
+    return;
+  }
+  if(r.lowConc){
+    disp.innerHTML=`<span style="font-size:22px;font-weight:800;color:${r.color}">${r.label}</span> &nbsp; <span style="font-size:14px;color:${r.color}">|Diff| = ${r.diff.toFixed(2)} pCi/L</span>`;
+    fdisp.textContent=`Zone: ${r.zone} — absolute difference rule applies (≤1.0 = Pass, ≤1.5 = Warning, >1.5 = Fail)`;
+  } else {
+    disp.innerHTML=`<span style="font-size:22px;font-weight:800;color:${r.color}">${r.label}</span> &nbsp; <span style="font-size:14px;color:${r.color}">RPD = ${r.rpd.toFixed(2)}%</span>`;
+    fdisp.textContent=`|${ref} − ${field}| / avg(${ref}, ${field}) × 100% = ${r.rpd.toFixed(2)}%   Zone: ${r.zone} — Goal <${r.passLim}% · Warn ≥${r.warnLim}% · Fail ≥${r.failLim}%`;
+  }
+  box.style.borderColor=r.color;
+  box.style.background=r.bg;
+}
+
+function oAddCrossCheck(){
+  oMod('Log Cross Check — Reference vs. Field CRM',`${_xcForm()}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svAddCrossCheck()">Save Record</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  setTimeout(()=>{xcCalc();xcCalcMonths();},50);
+}
+
+async function oEditCrossCheck(id){
+  const all=S.get('lhs:crm_xc')||[];
+  const xc=all.find(x=>x.id===id);
+  if(!xc){tst('Record not found','error');return;}
+  oMod('Edit Cross Check Record',`<input type="hidden" id="xc-edit-id" value="${id}">${_xcForm(xc)}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svEditCrossCheck('${id}')">Save Changes</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  setTimeout(()=>{xcCalc();xcCalcMonths();},50);
+}
+
+function _xcCollect(){
+  const refSel=document.getElementById('xc-ref')?.value;
+  const fieldSel=document.getElementById('xc-field')?.value;
+  const refId=refSel==='__manual__'?v('xc-ref-id-m').trim():refSel;
+  const fieldId=fieldSel==='__manual__'?v('xc-field-id-m').trim():fieldSel;
+  const ref=parseFloat(document.getElementById('xc-ref-reading')?.value)||null;
+  const field=parseFloat(document.getElementById('xc-field-reading')?.value)||null;
+  const r=_xcRPD(ref,field);
+  return{
+    check_date:v('xc-date'),
+    duration_hours:parseInt(document.getElementById('xc-hours')?.value)||48,
+    conducted_by:v('xc-by'),
+    location:v('xc-location').trim(),
+    ref_device_id:refId,
+    ref_cal_date:v('xc-ref-cal')||null,
+    ref_reading:ref,
+    field_device_id:fieldId,
+    field_last_cal:v('xc-field-cal')||null,
+    field_months_deployed:parseInt(document.getElementById('xc-field-months')?.value)||null,
+    field_reading:field,
+    avg_conc:r?.avg??null,
+    concentration_zone:r?.zone??null,
+    rpd:r?.rpd??null,
+    result:r?.result??null,
+    temp_f:parseFloat(document.getElementById('xc-temp')?.value)||null,
+    humidity_pct:parseFloat(document.getElementById('xc-humidity')?.value)||null,
+    baro_pressure:parseFloat(document.getElementById('xc-baro')?.value)||null,
+    notes:v('xc-notes').trim(),
+    submitted_by:CU?.name||'',
+    updated_at:new Date().toISOString(),
+  };
+}
+
+async function svAddCrossCheck(){
+  const rec=_xcCollect();
+  if(!rec.ref_device_id){tst('Select the reference CRM','error');return;}
+  if(!rec.field_device_id){tst('Select the field CRM','error');return;}
+  if(rec.ref_device_id===rec.field_device_id){tst('Reference and field devices cannot be the same unit','error');return;}
+  if(rec.ref_reading==null){tst('Enter the reference CRM reading','error');return;}
+  if(rec.field_reading==null){tst('Enter the field CRM reading','error');return;}
+  if(!rec.check_date){tst('Enter the check date','error');return;}
+  rec.created_at=new Date().toISOString();
+  let saved=null;
+  try{
+    const{data,error}=await DB.from('lhs_crm_cross_checks').insert(rec).select().single();
+    if(!error) saved=data;
+    else console.warn('Cross check insert:',error.message);
+  }catch(e){console.warn('Cross check save:',e.message);}
+  const final=saved||{...rec,id:'local_'+Date.now()};
+  const all=S.get('lhs:crm_xc')||[];all.unshift(final);S.set('lhs:crm_xc',all);
+  cMod();
+  // Check consecutive failures and flag device if needed
+  if(rec.result==='fail'||rec.result==='warning'){
+    const consec=_xcConsecutiveFails(rec.field_device_id);
+    if(rec.result==='fail') await _xcFlagDevice(rec.field_device_id, consec);
+    else if(rec.result==='warning') tst(`⚠️ Cross check warning for ${rec.field_device_id} — monitor closely`,'warning');
+  } else {
+    // Clear any flag if this was a pass
+    await _xcFlagDevice(rec.field_device_id, 0);
+    tst(`✅ Cross check passed — ${rec.field_device_id} is within control limits`,'success');
+  }
+  showPage('testers');
+}
+
+async function svEditCrossCheck(id){
+  const rec=_xcCollect();
+  if(!rec.ref_device_id||!rec.field_device_id){tst('Both devices required','error');return;}
+  if(rec.ref_reading==null||rec.field_reading==null){tst('Enter both readings','error');return;}
+  const all=S.get('lhs:crm_xc')||[];
+  const idx=all.findIndex(x=>x.id===id);
+  if(idx>=0){all[idx]={...all[idx],...rec};S.set('lhs:crm_xc',all);}
+  try{
+    const{error}=await DB.from('lhs_crm_cross_checks').update(rec).eq('id',id);
+    if(error) console.warn('Cross check update:',error.message);
+  }catch(e){console.warn('Cross check update:',e.message);}
+  cMod();tst('Cross check updated','success');showPage('testers');
+}
+
+async function delCrossCheck(id){
+  if(!confirm('Delete this cross check record?')) return;
+  const all=S.get('lhs:crm_xc')||[];
+  S.set('lhs:crm_xc',all.filter(x=>x.id!==id));
+  try{await DB.from('lhs_crm_cross_checks').delete().eq('id',id);}
+  catch(e){console.warn('Cross check delete:',e.message);}
+  tst('Record deleted','info');showPage('testers');
+}
+
+// ─── QA FLAG INDICATORS IN TESTER TRACKER ─────────────────────────────────
+// Called from _bTestTracker to show flag badges next to Electronic testers
+function _xcGetDeviceFlag(deviceId){
+  const all=S.get('lhs:crm_xc')||[];
+  const deviceChecks=all
+    .filter(x=>x.field_device_id===deviceId)
+    .sort((a,b)=>new Date(b.check_date)-new Date(a.check_date));
+  if(!deviceChecks.length) return null;
+  let consecutive=0;
+  for(const x of deviceChecks){
+    if(x.result==='fail') consecutive++;
+    else break;
+  }
+  if(consecutive>=2) return{flag:'needs_cal',badge:`<span style="background:#fef2f2;color:#991b1b;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap">⛔ SEND TO LAB</span>`};
+  if(consecutive===1) return{flag:'retest',badge:`<span style="background:#fffbeb;color:#92400e;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap">⚠️ RE-TEST</span>`};
+  if(deviceChecks[0]?.result==='warning') return{flag:'warning',badge:`<span style="background:#fffbeb;color:#92400e;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap">⚠️ WARN</span>`};
+  return null;
+}
+
+// ─── RADON TESTING — PROJECT MANAGEMENT (formerly Cross Checks) ───────────
+function bRadonProjMgmt(){
   const checks=S.get('lhs:cross_checks')||[];
-  // If cache empty, load from Supabase in background and re-render when done
   if(!checks.length){
     setTimeout(async()=>{
       try{
         const{data}=await DB.from('lhs_cross_checks').select('*').order('test_date',{ascending:false}).limit(200);
         if(data&&data.length){
           S.set('lhs:cross_checks',data);
-          if(window._testerTab==='crosscheck') showPage('testers');
+          if(window._testerTab==='radqa') showPage('testers');
         }
-      }catch(e){console.warn('Cross checks load:',e.message);}
+      }catch(e){console.warn('Radon QA load:',e.message);}
     },0);
   }
 
@@ -5961,7 +6525,7 @@ function bCrossChecks(){
       ${years.map(y=>`<option value="${y}"${_fYear===y?' selected':''}>${y}</option>`).join('')}
     </select>
     <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} record${filtered.length!==1?'s':''}</span>
-    <button class="btn btn-n" onclick="oAddCrossCheck()">+ Add Cross Check</button>
+    <button class="btn btn-n" onclick="oAddRadonQA()">+ Add Cross Check</button>
   </div>
 
   <!-- Records Table -->
@@ -5972,7 +6536,7 @@ function bCrossChecks(){
     </tr></thead>
     <tbody>
     ${filtered.length?filtered.map(c=>{
-      const r=_ccResult(c.check_type,c.mv,c.tv,c.d2);
+      const r=_rqaResult(c.check_type,c.mv,c.tv,c.d2);
       const typeDisplay=c.check_type==='comparison'?`⚖️ Field Comparison`:`${typeIcon[c.check_type]||'📋'} ${typeLabel[c.check_type]||c.check_type}`;
       const d2Display=c.check_type==='comparison'?`${c.d2??'—'}`:`${c.tv??'—'}`;
       return`<tr style="border-bottom:1px solid var(--bdr)">
@@ -5981,12 +6545,12 @@ function bCrossChecks(){
         <td style="padding:10px 8px;font-size:12px">${typeDisplay}</td>
         <td style="padding:10px 8px;font-size:13px;font-weight:600">${c.mv??'—'}</td>
         <td style="padding:10px 8px;font-size:13px">${d2Display}</td>
-        <td style="padding:10px 8px">${_ccPctBadge(r)}</td>
-        <td style="padding:10px 8px">${_ccBadge(r)}</td>
+        <td style="padding:10px 8px">${_rqaPctBadge(r)}</td>
+        <td style="padding:10px 8px">${_rqaBadge(r)}</td>
         <td style="padding:10px 8px;font-size:12px;color:var(--muted)">${esc(c.facility||'')}${c.notes?`${c.facility?'<br>':''}${esc(c.notes)}`:''}${!c.facility&&!c.notes?'—':''}</td>
         <td style="padding:10px 8px;white-space:nowrap">
-          <button class="btn sm btn-o" onclick="oEditCrossCheck('${c.id||''}')">Edit</button>
-          <button class="btn sm btn-r" onclick="delCrossCheck('${c.id||''}')">Del</button>
+          <button class="btn sm btn-o" onclick="oEditRadonQA('${c.id||''}')">Edit</button>
+          <button class="btn sm btn-r" onclick="delRadonQA('${c.id||''}')">Del</button>
         </td>
       </tr>`;
     }).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No cross check records found. Click <strong>+ Add Cross Check</strong> to record your first check.</td></tr>`}
@@ -5994,12 +6558,12 @@ function bCrossChecks(){
   </table></div></div>`;
 }
 
-function _ccForm(cc={}){
+function _rqaForm(cc={}){
   const ts=(S.get('lhs:ts')||[]).filter(t=>t.type==='Electronic');
   const checkType=cc.check_type||'dpt';
   return`
   <div class="fl"><label>Check Type</label>
-    <select id="cc-type" onchange="ccTypeChange(this.value)">
+    <select id="cc-type" onchange="rqaTypeChange(this.value)">
       <option value="dpt"${checkType==='dpt'?' selected':''}>🔬 Chamber DPT — Device Performance Test (NRPP/KSU blind proficiency)</option>
       <option value="comparison"${checkType==='comparison'?' selected':''}>⚖️ Field Comparison — Collocated side-by-side measurement (≥48 hr)</option>
       <option value="spike"${checkType==='spike'?' selected':''}>💉 Spike / Ongoing QA — Chamber spike quality control check</option>
@@ -6007,7 +6571,7 @@ function _ccForm(cc={}){
   </div>
   <div class="fr">
     <div class="fl"><label>Device (CRM)</label>
-      <select id="cc-device" onchange="ccDeviceChange(this.value)">
+      <select id="cc-device" onchange="rqaDeviceChange(this.value)">
         <option value="">— Select Device —</option>
         ${ts.map(t=>`<option value="${esc(t.id)}" data-serial="${esc(t.serial||'')}"${t.id===(cc.device_id||'')?'  selected':''}>${esc(t.id)}${t.serial?' · '+t.serial:''}</option>`).join('')}
         <option value="__manual__"${!ts.find(t=>t.id===cc.device_id)&&cc.device_id?'  selected':''}>✏️ Enter manually…</option>
@@ -6111,7 +6675,7 @@ function _ccForm(cc={}){
   </div>`;
 }
 
-function ccTypeChange(type){
+function rqaTypeChange(type){
   const dptRow=document.getElementById('cc-dpt-row');
   const cmpRow=document.getElementById('cc-compare-row');
   const facRow=document.getElementById('cc-facility-row');
@@ -6133,7 +6697,7 @@ function ccTypeChange(type){
   const fsel=document.getElementById('cc-facility');
   if(fsel) fsel.onchange();
 }
-function ccDeviceChange(val){
+function rqaDeviceChange(val){
   const manRow=document.getElementById('cc-manual-row');
   if(manRow) manRow.style.display=val==='__manual__'?'block':'none';
   if(val&&val!=='__manual__'){
@@ -6142,7 +6706,7 @@ function ccDeviceChange(val){
     if(sel){const opt=sel.options[sel.selectedIndex];if(opt){const serial=opt.getAttribute('data-serial');const sField=document.getElementById('cc-serial-manual');if(sField) sField.value=serial||'';}}
   }
 }
-function ccCalc(){
+function rqaCalc(){
   const type=document.getElementById('cc-type')?.value||'dpt';
   const box=document.getElementById('cc-result-box');
   const disp=document.getElementById('cc-result-display');
@@ -6164,7 +6728,7 @@ function ccCalc(){
     box.style.borderColor='var(--bdr)';
     return;
   }
-  const r=_ccResult(type,mv,tv,d2);
+  const r=_rqaResult(type,mv,tv,d2);
   if(!r){
     disp.innerHTML='<span style="color:var(--muted)">Cannot calculate — check inputs</span>';
     fdisp.textContent='';
@@ -6185,10 +6749,10 @@ function ccCalc(){
   box.style.background=r.bg;
 }
 
-function oAddCrossCheck(){
-  oMod('Add Cross Check Record',`${_ccForm()}
+function oAddRadonQA(){
+  oMod('Add Cross Check Record',`${_rqaForm()}
   <div class="br2" style="margin-top:16px">
-    <button class="btn btn-n" onclick="svAddCrossCheck()">Save Record</button>
+    <button class="btn btn-n" onclick="svAddRadonQA()">Save Record</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
   // Wire facility select
@@ -6200,13 +6764,13 @@ function oAddCrossCheck(){
   ccCalc();
 }
 
-async function oEditCrossCheck(id){
+async function oEditRadonQA(id){
   const all=S.get('lhs:cross_checks')||[];
   const cc=all.find(c=>c.id===id||(c._id&&c._id===id));
   if(!cc){tst('Record not found','error');return;}
-  oMod('Edit Cross Check Record',`<input type="hidden" id="cc-edit-id" value="${id}">${_ccForm(cc)}
+  oMod('Edit Cross Check Record',`<input type="hidden" id="cc-edit-id" value="${id}">${_rqaForm(cc)}
   <div class="br2" style="margin-top:16px">
-    <button class="btn btn-n" onclick="svEditCrossCheck('${id}')">Save Changes</button>
+    <button class="btn btn-n" onclick="svEditRadonQA('${id}')">Save Changes</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
   const fsel=document.getElementById('cc-facility');
@@ -6214,11 +6778,11 @@ async function oEditCrossCheck(id){
     const col=document.getElementById('cc-facility-custom-col');
     if(col) col.style.display=fsel.value==='Other'?'block':'none';
   });
-  ccTypeChange(cc.check_type||'dpt');
+  rqaTypeChange(cc.check_type||'dpt');
   ccCalc();
 }
 
-function _ccCollect(){
+function _rqaCollect(){
   const type=document.getElementById('cc-type')?.value||'dpt';
   const deviceSel=document.getElementById('cc-device')?.value;
   const isManual=deviceSel==='__manual__'||!deviceSel;
@@ -6235,7 +6799,7 @@ function _ccCollect(){
     mv=parseFloat(document.getElementById('cc-mv')?.value)||null;
     tv=parseFloat(document.getElementById('cc-tv')?.value)||null;
   }
-  const r=_ccResult(type,mv,tv,d2);
+  const r=_rqaResult(type,mv,tv,d2);
   return{
     check_type:type,device_id:deviceId,device_serial:deviceSerial,
     test_date:v('cc-date'),exposure_hours:parseInt(document.getElementById('cc-hours')?.value)||48,
@@ -6255,8 +6819,8 @@ function _ccCollect(){
   };
 }
 
-async function svAddCrossCheck(){
-  const rec=_ccCollect();
+async function svAddRadonQA(){
+  const rec=_rqaCollect();
   if(!rec.device_id){tst('Select or enter a device','error');return;}
   if(!rec.test_date){tst('Enter a test date','error');return;}
   if(rec.mv==null){tst('Enter the device measured value','error');return;}
@@ -6277,8 +6841,8 @@ async function svAddCrossCheck(){
   showPage('testers');
 }
 
-async function svEditCrossCheck(id){
-  const rec=_ccCollect();
+async function svEditRadonQA(id){
+  const rec=_rqaCollect();
   if(!rec.device_id){tst('Select or enter a device','error');return;}
   const all=S.get('lhs:cross_checks')||[];
   const idx=all.findIndex(c=>c.id===id||(c._id&&c._id===id));
@@ -6290,7 +6854,7 @@ async function svEditCrossCheck(id){
   cMod();tst('Cross check updated','success');showPage('testers');
 }
 
-async function delCrossCheck(id){
+async function delRadonQA(id){
   if(!confirm('Delete this cross check record? This cannot be undone.')) return;
   const all=S.get('lhs:cross_checks')||[];
   const filtered=all.filter(c=>c.id!==id&&c._id!==id);
