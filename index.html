@@ -29679,8 +29679,9 @@ const REPORT_DEFS=[
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
-  // QUALITY + SAFETY
-  {id:'wo-audit-detail',cat:'Report Cards',name:'WO Audit Detail',desc:'Full audit view of work orders with status, technician, region, and state. Filter by region, state, division, or employee.',run:rpt_woAuditDetail},
+  // REPORT CARDS
+  {id:'est-price-adjustments',cat:'Report Cards',name:'Estimate Price Adjustments',desc:'Flags every estimate line item where the charged price differs from the pricebook price. Identifies reps editing prices instead of applying discounts.',run:rpt_estPriceAdjustments},
+  {id:'wo-audit-detail',cat:'Report Cards',name:'WO Audit Detail',desc:'Full audit view of work orders with status, technician, region, and state.',run:rpt_woAuditDetail},
   {id:'status-change-log',cat:'Report Cards',name:'Status Change Log',desc:'Work orders filtered by last-updated date showing current status and who last changed it.',run:rpt_statusChangeLog},
   {id:'photo-completeness',cat:'Report Cards',name:'Photo Completeness',desc:'Work orders flagged for missing before or after photos. Incomplete jobs sort to the top.',run:rpt_photoCompleteness},
   {id:'photo-review-by-tech',cat:'Report Cards',name:'Photo Review by Technician',desc:'Photo submission counts and completion rate per technician for the selected period.',run:rpt_photosByTech},
@@ -31145,6 +31146,71 @@ function rpt_territoryPerformance(from,to){
     {key:'avg_job',label:'Avg Job Value',mono:true},
   ];
   return{cols,rows};
+}
+
+// ── ESTIMATE PRICE ADJUSTMENT REPORT ─────────────────────────────────────────
+
+function rpt_estPriceAdjustments(from,to,div,emp,status,region,state){
+  var ests=S.get('lhs:estimates')||[];
+  ests=rptDateFilter(ests,'estimate_date',from,to);
+  if(div) ests=ests.filter(function(e){return (e.division||'')==div;});
+  if(emp) ests=ests.filter(function(e){return (e.assigned_to||'')==emp;});
+  if(status) ests=ests.filter(function(e){return (e.status||'')==status;});
+  var pbItems=S.get('lhs:pb_services')||[];
+  var pbMap={};
+  pbItems.forEach(function(s){pbMap[s.id]=s;});
+  var rows=[];
+  ests.forEach(function(est){
+    var lines=[];
+    try{lines=typeof est.line_items==='string'?JSON.parse(est.line_items):(est.line_items||[]);}catch(e){lines=[];}
+    lines.forEach(function(li){
+      if(!li.pricebook_id) return;
+      var pb=pbMap[li.pricebook_id];
+      if(!pb) return;
+      var pbPrice=parseFloat(pb.price)||0;
+      var liPrice=parseFloat(li.price)||0;
+      var qty=parseFloat(li.qty)||1;
+      if(pbPrice===0) return;
+      var diff=liPrice-pbPrice;
+      if(Math.abs(diff)<0.005) return;
+      var pct=pbPrice!==0?Math.round((diff/pbPrice)*1000)/10:0;
+      rows.push({
+        estimate_number:est.estimate_number||est.id||'',
+        estimate_date:est.estimate_date||'',
+        customer:est.customer_name||'',
+        division:est.division||'--',
+        assigned_to:est.assigned_to||'--',
+        est_status:est.status||'--',
+        item:li.label||li.code||'',
+        item_code:li.code||'--',
+        item_type:li.type||'--',
+        qty:qty,
+        pricebook_price:rptFmt(pbPrice),
+        charged_price:rptFmt(liPrice),
+        difference:rptFmt(diff),
+        pct_change:(pct>0?'+':'')+pct+'%',
+        line_total:rptFmt(liPrice*qty)
+      });
+    });
+  });
+  rows.sort(function(a,b){return (b.estimate_date>a.estimate_date)?1:-1;});
+  var cols=[
+    {key:'estimate_number',label:'Estimate #'},
+    {key:'estimate_date',label:'Date'},
+    {key:'customer',label:'Customer'},
+    {key:'division',label:'Division'},
+    {key:'assigned_to',label:'Rep'},
+    {key:'est_status',label:'Status'},
+    {key:'item',label:'Item'},
+    {key:'item_type',label:'Type'},
+    {key:'qty',label:'Qty'},
+    {key:'pricebook_price',label:'Book Price',mono:true},
+    {key:'charged_price',label:'Charged Price',mono:true},
+    {key:'difference',label:'Difference',mono:true},
+    {key:'pct_change',label:'% Change',mono:true},
+    {key:'line_total',label:'Line Total',mono:true}
+  ];
+  return {cols:cols,rows:rows};
 }
 
 // ── QUALITY + SAFETY REPORT HELPERS ──────────────────────────────────────────
