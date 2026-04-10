@@ -29775,7 +29775,7 @@ function bHRRadonExposure(){
 
   setTimeout(async()=>{
     const{data}=await DB.from('lhs_wlm_exposures').select('*').order('exposure_date',{ascending:false});
-    if(data){S.set('lhs:wlm_exposures',data);showPage('hr-radon');}
+    if(data){S.set('lhs:wlm_exposures',data);const _pg=document.getElementById('p-hr-radon');if(_pg&&_pg.classList.contains('active'))showPage('hr-radon');}
   },0);
 
   return`
