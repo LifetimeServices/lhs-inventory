@@ -1661,6 +1661,7 @@ const TBL={
   'lhs:pb_services':'lhs_pb_services',
   'lhs:pb_categories':'lhs_pb_categories',
   'lhs:cal_devices':'lhs_calibration_devices',
+  'lhs:cross_checks':'lhs_cross_checks',
   'lhs:tester_deployments':'lhs_tester_deployments',
   'lhs:audit_log':'lhs_audit_log',
   'lhs:training_assignments':'lhs_training_assignments',
@@ -5360,8 +5361,9 @@ function bTest(){
   <div style="display:flex;border-bottom:1px solid var(--bdr);margin-bottom:18px;gap:0">
     ${tabBtn('tracker','📡 Tester Tracker')}
     ${tabBtn('cal','📋 Calibration Log')}
+    ${tabBtn('crosscheck','✅ Cross Checks')}
   </div>
-  ${tab==='tracker'?_bTestTracker():bCalLog()}`;
+  ${tab==='tracker'?_bTestTracker():tab==='cal'?bCalLog():bCrossChecks()}`;
 }
 function _bTestTracker(){
   const allTs=S.get('lhs:ts')||[];
@@ -5772,6 +5774,525 @@ async function svUpdTest(i){
     if(error) console.warn('svUpdTest Supabase:',error.message);
   }catch(e){console.warn('svUpdTest failed:',e.message);}
   cMod();tst('Updated','success');showPage('testers');
+}
+
+// ─── CROSS CHECKS ────────────────────────────────────────────────────────────
+// Cross check types:
+//   dpt        → Chamber / Device Performance Test (NRPP/KSU blind proficiency)
+//                Formula: IRE = (MV - TV) / TV × 100%
+//                Pass: |IRE| ≤ 25%  |  Warning: 25% < |IRE| ≤ 50%  |  Fail: |IRE| > 50%
+//   comparison → Field Comparison Check (collocated, ≥48hr)
+//                Formula: RPD = |D1 - D2| / ((D1+D2)/2) × 100%
+//                ≥4 pCi/L: Goal ≤14%, Warning ≥28%, Fail ≥36%
+//                2–4 pCi/L: Goal ≤25%, Warning ≥50%, Fail ≥67%
+//                <2 pCi/L: Pass if |D1-D2| ≤ 1.0 pCi/L
+//   spike      → Spike / Ongoing QA Check (chamber spiking)
+//                Formula: RPE = (MV - TV) / TV × 100%
+//                In control: |RPE| ≤ 20%  |  Warning: 20%–30%  |  Out: |RPE| > 30%
+
+function _ccResult(checkType, mv, tv, d2){
+  // Returns {pct, result, label, color, bg}
+  try{
+    mv=parseFloat(mv); tv=parseFloat(tv); d2=parseFloat(d2||0);
+    if(isNaN(mv)) return null;
+    let pct=null; let result=''; let label=''; let color=''; let bg='';
+    if(checkType==='dpt'||checkType==='spike'){
+      if(isNaN(tv)||tv===0) return null;
+      const formula=checkType==='dpt'?'IRE':'RPE';
+      pct=((mv-tv)/tv)*100;
+      const absPct=Math.abs(pct);
+      if(checkType==='dpt'){
+        if(absPct<=25){result='pass';label='✅ PASS';color='#166534';bg='#f0fdf4';}
+        else if(absPct<=50){result='warning';label='⚠️ WARNING';color='#92400e';bg='#fffbeb';}
+        else{result='fail';label='❌ FAIL';color='#991b1b';bg='#fef2f2';}
+      } else { // spike
+        if(absPct<=20){result='pass';label='✅ IN CONTROL';color='#166534';bg='#f0fdf4';}
+        else if(absPct<=30){result='warning';label='⚠️ WARNING';color='#92400e';bg='#fffbeb';}
+        else{result='fail';label='❌ OUT OF CONTROL';color='#991b1b';bg='#fef2f2';}
+      }
+      return{pct,absPct,result,label,color,bg,formula};
+    } else if(checkType==='comparison'){
+      if(isNaN(d2)) return null;
+      const avg=(mv+d2)/2;
+      if(avg===0) return null;
+      pct=Math.abs(mv-d2)/avg*100;
+      const diff=Math.abs(mv-d2);
+      // Determine thresholds by average concentration
+      let passLimit, warnLimit, failLimit;
+      if(avg>=4){passLimit=14;warnLimit=28;failLimit=36;}
+      else if(avg>=2){passLimit=25;warnLimit=50;failLimit=67;}
+      else{// <2 pCi/L — use absolute difference ≤1.0
+        if(diff<=1.0){result='pass';label='✅ PASS';color='#166534';bg='#f0fdf4';}
+        else if(diff<=1.5){result='warning';label='⚠️ WARNING';color='#92400e';bg='#fffbeb';}
+        else{result='fail';label='❌ FAIL';color='#991b1b';bg='#fef2f2';}
+        return{pct,absPct:pct,diff,result,label,color,bg,formula:'RPD',lowConc:true};
+      }
+      if(pct<=passLimit){result='pass';label='✅ PASS';color='#166534';bg='#f0fdf4';}
+      else if(pct<warnLimit){result='pass';label='✅ PASS';color='#166534';bg='#f0fdf4';}
+      else if(pct<failLimit){result='warning';label='⚠️ WARNING';color='#92400e';bg='#fffbeb';}
+      else{result='fail';label='❌ FAIL';color='#991b1b';bg='#fef2f2';}
+      return{pct,absPct:pct,result,label,color,bg,formula:'RPD',avg,passLimit,warnLimit,failLimit};
+    }
+  }catch(e){return null;}
+  return null;
+}
+
+function _ccBadge(result){
+  if(!result) return'<span style="color:var(--muted);font-size:12px">—</span>';
+  return`<span style="background:${result.bg};color:${result.color};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700">${result.label}</span>`;
+}
+
+function _ccPctBadge(result){
+  if(!result||result.pct==null) return'—';
+  const sign=result.pct>=0?'+':'';
+  return`<span style="font-size:13px;font-weight:700;color:${result.color}">${result.formula}: ${sign}${result.pct.toFixed(2)}%</span>`;
+}
+
+async function bCrossChecks(){
+  const checks=S.get('lhs:cross_checks')||[];
+  const ts=S.get('lhs:ts')||[];
+  // Load from Supabase if cache empty
+  if(!checks.length){
+    try{
+      const{data}=await DB.from('lhs_cross_checks').select('*').order('test_date',{ascending:false}).limit(200);
+      if(data&&data.length){S.set('lhs:cross_checks',data);return bCrossChecks();}
+    }catch(e){console.warn('Cross checks load:',e.message);}
+  }
+
+  const _fType=window._ccFType||'';
+  const _fResult=window._ccFResult||'';
+  const _fDevice=window._ccFDevice||'';
+  const _fYear=window._ccFYear||new Date().getFullYear().toString();
+
+  let filtered=checks;
+  if(_fType) filtered=filtered.filter(c=>c.check_type===_fType);
+  if(_fResult) filtered=filtered.filter(c=>c.result===_fResult);
+  if(_fDevice) filtered=filtered.filter(c=>(c.device_id||'').includes(_fDevice));
+  if(_fYear) filtered=filtered.filter(c=>(c.test_date||'').startsWith(_fYear));
+
+  // Stats for current year
+  const thisYear=new Date().getFullYear().toString();
+  const yearChecks=checks.filter(c=>(c.test_date||'').startsWith(thisYear));
+  const passCount=yearChecks.filter(c=>c.result==='pass').length;
+  const warnCount=yearChecks.filter(c=>c.result==='warning').length;
+  const failCount=yearChecks.filter(c=>c.result==='fail').length;
+  const passRate=yearChecks.length?Math.round(passCount/yearChecks.length*100):0;
+
+  const typeLabel={dpt:'Chamber DPT',comparison:'Field Comparison',spike:'Spike / QA'};
+  const typeIcon={dpt:'🔬',comparison:'⚖️',spike:'💉'};
+
+  // Available years for filter
+  const years=[...new Set(checks.map(c=>(c.test_date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const curY=new Date().getFullYear().toString();
+  if(!years.includes(curY)) years.unshift(curY);
+
+  return`
+  <!-- Summary Cards -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    ${[[yearChecks.length,'Total ('+curY+')','var(--navy)','var(--surf)'],[passCount,'Passed','#166534','#f0fdf4'],[warnCount,'Warnings','#92400e','#fffbeb'],[failCount,'Failed','#991b1b','#fef2f2']].map(([n,l,c,bg])=>`
+    <div style="background:${bg};border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:110px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:${c};text-transform:uppercase;letter-spacing:.05em">${l}</div>
+      <div style="font-size:28px;font-weight:700;color:${c};line-height:1.2">${n}</div>
+    </div>`).join('')}
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px 18px;min-width:110px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">Pass Rate</div>
+      <div style="font-size:28px;font-weight:700;color:${passRate>=80?'#166534':passRate>=60?'#92400e':'#991b1b'};line-height:1.2">${yearChecks.length?passRate+'%':'—'}</div>
+    </div>
+  </div>
+
+  <!-- Formula Reference -->
+  <div style="background:#f0f4ff;border:1px solid #c5d3f7;border-radius:10px;padding:12px 16px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📐 Cross Check Formulas (ANSI/AARST MS-QA / NRPP Standards)</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:11px">
+      <div style="background:white;border-radius:7px;padding:10px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:4px">🔬 Chamber DPT (NRPP/KSU)</div>
+        <div style="font-family:monospace;font-size:11px;background:#f8faff;padding:4px 6px;border-radius:4px;margin-bottom:4px">IRE = (MV − TV) / TV × 100%</div>
+        <div style="color:var(--muted);line-height:1.5">
+          ✅ Pass: |IRE| ≤ <strong>25%</strong><br>
+          ⚠️ Warning: 25% &lt; |IRE| ≤ <strong>50%</strong><br>
+          ❌ Fail: |IRE| &gt; <strong>50%</strong>
+        </div>
+      </div>
+      <div style="background:white;border-radius:7px;padding:10px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:4px">⚖️ Field Comparison (≥48hr collocated)</div>
+        <div style="font-family:monospace;font-size:11px;background:#f8faff;padding:4px 6px;border-radius:4px;margin-bottom:4px">RPD = |D1−D2| / avg(D1,D2) × 100%</div>
+        <div style="color:var(--muted);line-height:1.5">
+          ≥4 pCi/L: Goal ≤14% / Warn ≥28% / Fail ≥36%<br>
+          2–4 pCi/L: Goal ≤25% / Warn ≥50% / Fail ≥67%<br>
+          &lt;2 pCi/L: Pass if |D1−D2| ≤ 1.0 pCi/L
+        </div>
+      </div>
+      <div style="background:white;border-radius:7px;padding:10px">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:4px">💉 Spike / Ongoing QA</div>
+        <div style="font-family:monospace;font-size:11px;background:#f8faff;padding:4px 6px;border-radius:4px;margin-bottom:4px">RPE = (MV − TV) / TV × 100%</div>
+        <div style="color:var(--muted);line-height:1.5">
+          ✅ In Control: |RPE| ≤ <strong>20%</strong><br>
+          ⚠️ Warning: 20% &lt; |RPE| ≤ <strong>30%</strong><br>
+          ❌ Out of Control: |RPE| &gt; <strong>30%</strong>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">MV = Measured Value (device reading) · TV = Target/Reference Value (chamber) · D1/D2 = two device readings</div>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <select onchange="window._ccFType=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Types</option>
+      <option value="dpt"${_fType==='dpt'?' selected':''}>🔬 Chamber DPT</option>
+      <option value="comparison"${_fType==='comparison'?' selected':''}>⚖️ Field Comparison</option>
+      <option value="spike"${_fType==='spike'?' selected':''}>💉 Spike / QA</option>
+    </select>
+    <select onchange="window._ccFResult=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Results</option>
+      <option value="pass"${_fResult==='pass'?' selected':''}>✅ Pass</option>
+      <option value="warning"${_fResult==='warning'?' selected':''}>⚠️ Warning</option>
+      <option value="fail"${_fResult==='fail'?' selected':''}>❌ Fail</option>
+    </select>
+    <select onchange="window._ccFDevice=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Devices</option>
+      ${(S.get('lhs:ts')||[]).filter(t=>t.type==='Electronic').map(t=>`<option value="${esc(t.id)}"${_fDevice===t.id?' selected':''}>${esc(t.id)}${t.serial?' ('+t.serial+')':''}</option>`).join('')}
+    </select>
+    <select onchange="window._ccFYear=this.value;showPage('testers')" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      ${years.map(y=>`<option value="${y}"${_fYear===y?' selected':''}>${y}</option>`).join('')}
+    </select>
+    <span style="font-size:12px;color:var(--muted);margin-left:auto">${filtered.length} record${filtered.length!==1?'s':''}</span>
+    <button class="btn btn-n" onclick="oAddCrossCheck()">+ Add Cross Check</button>
+  </div>
+
+  <!-- Records Table -->
+  <div class="card" style="padding:0">
+  <div class="tw" style="margin:0"><table>
+    <thead><tr style="background:var(--surf)">
+      <th>Date</th><th>Device</th><th>Check Type</th><th>MV (pCi/L)</th><th>TV / D2 (pCi/L)</th><th>Calculated</th><th>Result</th><th>Facility / Notes</th><th></th>
+    </tr></thead>
+    <tbody>
+    ${filtered.length?filtered.map(c=>{
+      const r=_ccResult(c.check_type,c.mv,c.tv,c.d2);
+      const typeDisplay=c.check_type==='comparison'?`⚖️ Field Comparison`:`${typeIcon[c.check_type]||'📋'} ${typeLabel[c.check_type]||c.check_type}`;
+      const d2Display=c.check_type==='comparison'?`${c.d2??'—'}`:`${c.tv??'—'}`;
+      return`<tr style="border-bottom:1px solid var(--bdr)">
+        <td style="padding:10px 8px;font-size:13px;white-space:nowrap">${c.test_date||'—'}</td>
+        <td style="padding:10px 8px;font-weight:700;color:var(--navy);font-size:13px">${esc(c.device_id||'—')}${c.device_serial?`<br><span style="font-size:11px;color:var(--muted);font-weight:400">${esc(c.device_serial)}</span>`:''}</td>
+        <td style="padding:10px 8px;font-size:12px">${typeDisplay}</td>
+        <td style="padding:10px 8px;font-size:13px;font-weight:600">${c.mv??'—'}</td>
+        <td style="padding:10px 8px;font-size:13px">${d2Display}</td>
+        <td style="padding:10px 8px">${_ccPctBadge(r)}</td>
+        <td style="padding:10px 8px">${_ccBadge(r)}</td>
+        <td style="padding:10px 8px;font-size:12px;color:var(--muted)">${esc(c.facility||'')}${c.notes?`${c.facility?'<br>':''}${esc(c.notes)}`:''}${!c.facility&&!c.notes?'—':''}</td>
+        <td style="padding:10px 8px;white-space:nowrap">
+          <button class="btn sm btn-o" onclick="oEditCrossCheck('${c.id||''}')">Edit</button>
+          <button class="btn sm btn-r" onclick="delCrossCheck('${c.id||''}')">Del</button>
+        </td>
+      </tr>`;
+    }).join(''):`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px">No cross check records found. Click <strong>+ Add Cross Check</strong> to record your first check.</td></tr>`}
+    </tbody>
+  </table></div></div>`;
+}
+
+function _ccForm(cc={}){
+  const ts=(S.get('lhs:ts')||[]).filter(t=>t.type==='Electronic');
+  const checkType=cc.check_type||'dpt';
+  return`
+  <div class="fl"><label>Check Type</label>
+    <select id="cc-type" onchange="ccTypeChange(this.value)">
+      <option value="dpt"${checkType==='dpt'?' selected':''}>🔬 Chamber DPT — Device Performance Test (NRPP/KSU blind proficiency)</option>
+      <option value="comparison"${checkType==='comparison'?' selected':''}>⚖️ Field Comparison — Collocated side-by-side measurement (≥48 hr)</option>
+      <option value="spike"${checkType==='spike'?' selected':''}>💉 Spike / Ongoing QA — Chamber spike quality control check</option>
+    </select>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Device (CRM)</label>
+      <select id="cc-device" onchange="ccDeviceChange(this.value)">
+        <option value="">— Select Device —</option>
+        ${ts.map(t=>`<option value="${esc(t.id)}" data-serial="${esc(t.serial||'')}"${t.id===(cc.device_id||'')?'  selected':''}>${esc(t.id)}${t.serial?' · '+t.serial:''}</option>`).join('')}
+        <option value="__manual__"${!ts.find(t=>t.id===cc.device_id)&&cc.device_id?'  selected':''}>✏️ Enter manually…</option>
+      </select>
+    </div>
+    <div class="fl"><label>Test Date</label>
+      <input type="date" id="cc-date" value="${cc.test_date||new Date().toISOString().slice(0,10)}">
+    </div>
+  </div>
+  <!-- Manual device entry (hidden by default) -->
+  <div id="cc-manual-row" style="display:${!ts.find(t=>t.id===cc.device_id)&&cc.device_id?'block':'none'}">
+    <div class="fr">
+      <div class="fl"><label>CRM ID (manual)</label><input id="cc-device-manual" value="${esc(cc.device_id||'')}"></div>
+      <div class="fl"><label>Serial # (manual)</label><input id="cc-serial-manual" value="${esc(cc.device_serial||'')}"></div>
+    </div>
+  </div>
+  <div class="fl"><label>Exposure Duration (hours)</label>
+    <input type="number" id="cc-hours" value="${cc.exposure_hours||48}" min="1" placeholder="e.g. 48">
+  </div>
+
+  <!-- DPT / Spike fields -->
+  <div id="cc-dpt-row">
+    <div class="fr">
+      <div class="fl">
+        <label id="cc-mv-label">MV — Device Measured Value (pCi/L)</label>
+        <input type="number" id="cc-mv" value="${cc.mv??''}" step="0.01" min="0" placeholder="e.g. 4.2 — what your device reported" oninput="ccCalc()">
+      </div>
+      <div class="fl">
+        <label id="cc-tv-label">TV — Chamber Reference Value (pCi/L)</label>
+        <input type="number" id="cc-tv" value="${cc.tv??''}" step="0.01" min="0" placeholder="e.g. 4.0 — from chamber report" oninput="ccCalc()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison-only fields -->
+  <div id="cc-compare-row" style="display:none">
+    <div class="fr">
+      <div class="fl">
+        <label>D1 — Device 1 Reading (pCi/L) <span style="font-size:11px;color:var(--muted)">(this device)</span></label>
+        <input type="number" id="cc-d1" value="${cc.mv??''}" step="0.01" min="0" placeholder="e.g. 3.8" oninput="ccCalc()">
+      </div>
+      <div class="fl">
+        <label>D2 — Device 2 Reading (pCi/L) <span style="font-size:11px;color:var(--muted)">(comparison device)</span></label>
+        <input type="number" id="cc-d2" value="${cc.d2??''}" step="0.01" min="0" placeholder="e.g. 4.1" oninput="ccCalc()">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Comparison Device ID</label>
+        <input id="cc-d2-device" value="${esc(cc.d2_device_id||'')}" placeholder="e.g. CRM-0002">
+      </div>
+      <div class="fl"><label>Comparison Device Serial</label>
+        <input id="cc-d2-serial" value="${esc(cc.d2_device_serial||'')}" placeholder="Serial #">
+      </div>
+    </div>
+  </div>
+
+  <!-- Facility / Submission -->
+  <div id="cc-facility-row">
+    <div class="fr">
+      <div class="fl"><label>Chamber / Facility</label>
+        <select id="cc-facility">
+          <option value="">— Select or type below —</option>
+          <option value="KSU Radon Chamber"${(cc.facility||'')==='KSU Radon Chamber'?' selected':''}>KSU Radon Chamber (Manhattan, KS)</option>
+          <option value="Bowser-Morner"${(cc.facility||'')==='Bowser-Morner'?' selected':''}>Bowser-Morner, Inc. (Dayton, OH)</option>
+          <option value="Other"${(cc.facility||'')&&!['KSU Radon Chamber','Bowser-Morner'].includes(cc.facility)?' selected':''}>Other…</option>
+        </select>
+      </div>
+      <div class="fl" id="cc-facility-custom-col" style="display:${(cc.facility||'')&&!['KSU Radon Chamber','Bowser-Morner',''].includes(cc.facility)?'block':'none'}">
+        <label>Facility Name</label>
+        <input id="cc-facility-custom" value="${esc(!['KSU Radon Chamber','Bowser-Morner'].includes(cc.facility)?cc.facility||'':'')}" placeholder="Facility name">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Temp at Chamber (°F)</label>
+        <input type="number" id="cc-temp" value="${cc.chamber_temp??''}" placeholder="e.g. 72" step="0.1">
+      </div>
+      <div class="fl"><label>Humidity at Chamber (%)</label>
+        <input type="number" id="cc-humidity" value="${cc.chamber_humidity??''}" placeholder="e.g. 35" step="0.1" min="0" max="100">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="cc-nrpp" ${cc.nrpp_submitted?'checked':''}>
+        Submitted to NRPP for renewal credit
+      </label></div>
+      <div class="fl"><label>NRPP Cert / Reference #</label>
+        <input id="cc-nrpp-cert" value="${esc(cc.nrpp_cert||'')}" placeholder="Optional NRPP reference">
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Result Box -->
+  <div id="cc-result-box" style="background:var(--surf);border:2px solid var(--bdr);border-radius:10px;padding:14px 16px;margin:12px 0">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Live Result Preview</div>
+    <div id="cc-result-display" style="font-size:14px;font-weight:600;color:var(--muted)">Enter values above to calculate…</div>
+    <div id="cc-formula-display" style="font-size:11px;color:var(--muted);margin-top:6px;font-family:monospace"></div>
+  </div>
+
+  <div class="fl"><label>Notes / Corrective Actions</label>
+    <input id="cc-notes" value="${esc(cc.notes||'')}" placeholder="Observations, corrective actions taken, etc.">
+  </div>`;
+}
+
+function ccTypeChange(type){
+  const dptRow=document.getElementById('cc-dpt-row');
+  const cmpRow=document.getElementById('cc-compare-row');
+  const facRow=document.getElementById('cc-facility-row');
+  const mvLabel=document.getElementById('cc-mv-label');
+  const tvLabel=document.getElementById('cc-tv-label');
+  if(type==='comparison'){
+    if(dptRow) dptRow.style.display='none';
+    if(cmpRow) cmpRow.style.display='block';
+    if(facRow) facRow.style.display='none';
+  } else {
+    if(dptRow) dptRow.style.display='block';
+    if(cmpRow) cmpRow.style.display='none';
+    if(facRow) facRow.style.display=type==='dpt'?'block':'block';
+    if(mvLabel) mvLabel.textContent='MV — Device Measured Value (pCi/L)';
+    if(tvLabel) tvLabel.textContent=type==='dpt'?'TV — Chamber Reference Value (pCi/L)':'TV — Chamber Spike Value (pCi/L)';
+  }
+  ccCalc();
+  // Show/hide facility custom
+  const fsel=document.getElementById('cc-facility');
+  if(fsel) fsel.onchange();
+}
+function ccDeviceChange(val){
+  const manRow=document.getElementById('cc-manual-row');
+  if(manRow) manRow.style.display=val==='__manual__'?'block':'none';
+  if(val&&val!=='__manual__'){
+    // Auto-fill serial from tester data
+    const sel=document.getElementById('cc-device');
+    if(sel){const opt=sel.options[sel.selectedIndex];if(opt){const serial=opt.getAttribute('data-serial');const sField=document.getElementById('cc-serial-manual');if(sField) sField.value=serial||'';}}
+  }
+}
+function ccCalc(){
+  const type=document.getElementById('cc-type')?.value||'dpt';
+  const box=document.getElementById('cc-result-box');
+  const disp=document.getElementById('cc-result-display');
+  const fdisp=document.getElementById('cc-formula-display');
+  if(!disp||!fdisp||!box) return;
+  let mv,tv,d2;
+  if(type==='comparison'){
+    mv=parseFloat(document.getElementById('cc-d1')?.value);
+    d2=parseFloat(document.getElementById('cc-d2')?.value);
+    tv=null;
+  } else {
+    mv=parseFloat(document.getElementById('cc-mv')?.value);
+    tv=parseFloat(document.getElementById('cc-tv')?.value);
+    d2=null;
+  }
+  if(isNaN(mv)||(type!=='comparison'&&isNaN(tv))||(type==='comparison'&&isNaN(d2))){
+    disp.innerHTML='<span style="color:var(--muted)">Enter values above to calculate…</span>';
+    fdisp.textContent='';
+    box.style.borderColor='var(--bdr)';
+    return;
+  }
+  const r=_ccResult(type,mv,tv,d2);
+  if(!r){
+    disp.innerHTML='<span style="color:var(--muted)">Cannot calculate — check inputs</span>';
+    fdisp.textContent='';
+    return;
+  }
+  const sign=r.pct>=0?'+':'';
+  disp.innerHTML=`<span style="font-size:20px;font-weight:800;color:${r.color}">${r.label}</span> &nbsp; <span style="font-size:15px;color:${r.color}">${r.formula} = ${sign}${r.pct.toFixed(3)}%</span>`;
+  if(type==='comparison'&&r.lowConc){
+    fdisp.textContent=`|${mv} − ${d2}| = ${Math.abs(mv-d2).toFixed(2)} pCi/L (< 2 pCi/L zone — pass if diff ≤ 1.0 pCi/L)`;
+  } else if(type==='comparison'){
+    const avg=((mv+d2)/2).toFixed(2);
+    fdisp.textContent=`RPD = |${mv} − ${d2}| / avg(${mv}, ${d2}) × 100% = ${r.pct.toFixed(3)}%   avg=${avg} pCi/L → limits: Goal ≤${r.passLimit}% / Warn ≥${r.warnLimit}% / Fail ≥${r.failLimit}%`;
+  } else {
+    const formula=type==='dpt'?'IRE':'RPE';
+    fdisp.textContent=`${formula} = (${mv} − ${tv}) / ${tv} × 100% = ${sign}${r.pct.toFixed(3)}%`;
+  }
+  box.style.borderColor=r.color;
+  box.style.background=r.bg;
+}
+
+function oAddCrossCheck(){
+  oMod('Add Cross Check Record',`${_ccForm()}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svAddCrossCheck()">Save Record</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  // Wire facility select
+  const fsel=document.getElementById('cc-facility');
+  if(fsel) fsel.addEventListener('change',()=>{
+    const col=document.getElementById('cc-facility-custom-col');
+    if(col) col.style.display=fsel.value==='Other'?'block':'none';
+  });
+  ccCalc();
+}
+
+async function oEditCrossCheck(id){
+  const all=S.get('lhs:cross_checks')||[];
+  const cc=all.find(c=>c.id===id||(c._id&&c._id===id));
+  if(!cc){tst('Record not found','error');return;}
+  oMod('Edit Cross Check Record',`<input type="hidden" id="cc-edit-id" value="${id}">${_ccForm(cc)}
+  <div class="br2" style="margin-top:16px">
+    <button class="btn btn-n" onclick="svEditCrossCheck('${id}')">Save Changes</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+  </div>`);
+  const fsel=document.getElementById('cc-facility');
+  if(fsel) fsel.addEventListener('change',()=>{
+    const col=document.getElementById('cc-facility-custom-col');
+    if(col) col.style.display=fsel.value==='Other'?'block':'none';
+  });
+  ccTypeChange(cc.check_type||'dpt');
+  ccCalc();
+}
+
+function _ccCollect(){
+  const type=document.getElementById('cc-type')?.value||'dpt';
+  const deviceSel=document.getElementById('cc-device')?.value;
+  const isManual=deviceSel==='__manual__'||!deviceSel;
+  const deviceId=isManual?(v('cc-device-manual').trim()||deviceSel):(deviceSel||'');
+  const deviceSerial=isManual?v('cc-serial-manual').trim():(document.getElementById('cc-device')?.options[document.getElementById('cc-device')?.selectedIndex]?.getAttribute('data-serial')||'');
+  const facilityRaw=document.getElementById('cc-facility')?.value||'';
+  const facility=facilityRaw==='Other'?v('cc-facility-custom').trim():facilityRaw;
+  let mv=null,tv=null,d2=null;
+  if(type==='comparison'){
+    mv=parseFloat(document.getElementById('cc-d1')?.value)||null;
+    d2=parseFloat(document.getElementById('cc-d2')?.value)||null;
+    tv=null;
+  } else {
+    mv=parseFloat(document.getElementById('cc-mv')?.value)||null;
+    tv=parseFloat(document.getElementById('cc-tv')?.value)||null;
+  }
+  const r=_ccResult(type,mv,tv,d2);
+  return{
+    check_type:type,device_id:deviceId,device_serial:deviceSerial,
+    test_date:v('cc-date'),exposure_hours:parseInt(document.getElementById('cc-hours')?.value)||48,
+    mv,tv,d2,
+    d2_device_id:type==='comparison'?v('cc-d2-device').trim():null,
+    d2_device_serial:type==='comparison'?v('cc-d2-serial').trim():null,
+    facility,
+    chamber_temp:parseFloat(document.getElementById('cc-temp')?.value)||null,
+    chamber_humidity:parseFloat(document.getElementById('cc-humidity')?.value)||null,
+    calculated_pct:r?parseFloat(r.pct.toFixed(4)):null,
+    result:r?.result||null,
+    nrpp_submitted:document.getElementById('cc-nrpp')?.checked||false,
+    nrpp_cert:v('cc-nrpp-cert').trim(),
+    notes:v('cc-notes').trim(),
+    submitted_by:CU?.name||'',
+    updated_at:new Date().toISOString(),
+  };
+}
+
+async function svAddCrossCheck(){
+  const rec=_ccCollect();
+  if(!rec.device_id){tst('Select or enter a device','error');return;}
+  if(!rec.test_date){tst('Enter a test date','error');return;}
+  if(rec.mv==null){tst('Enter the device measured value','error');return;}
+  if(rec.check_type!=='comparison'&&rec.tv==null){tst('Enter the reference/target value','error');return;}
+  if(rec.check_type==='comparison'&&rec.d2==null){tst('Enter the second device reading (D2)','error');return;}
+  rec.created_at=new Date().toISOString();
+  let saved=null;
+  try{
+    const{data,error}=await DB.from('lhs_cross_checks').insert(rec).select().single();
+    if(error) console.warn('Cross check insert:',error.message);
+    else saved=data;
+  }catch(e){console.warn('Cross check save:',e.message);}
+  const final=saved||{...rec,id:'local_'+Date.now()};
+  const all=S.get('lhs:cross_checks')||[];all.unshift(final);S.set('lhs:cross_checks',all);
+  cMod();
+  const resultLabel={pass:'✅ Passed',warning:'⚠️ Warning',fail:'❌ Failed'}[rec.result]||'Saved';
+  tst(`Cross check recorded — ${resultLabel}`,rec.result==='pass'?'success':rec.result==='fail'?'error':'warning');
+  showPage('testers');
+}
+
+async function svEditCrossCheck(id){
+  const rec=_ccCollect();
+  if(!rec.device_id){tst('Select or enter a device','error');return;}
+  const all=S.get('lhs:cross_checks')||[];
+  const idx=all.findIndex(c=>c.id===id||(c._id&&c._id===id));
+  if(idx>=0){all[idx]={...all[idx],...rec};S.set('lhs:cross_checks',all);}
+  try{
+    const{error}=await DB.from('lhs_cross_checks').update(rec).eq('id',id);
+    if(error) console.warn('Cross check update:',error.message);
+  }catch(e){console.warn('Cross check update:',e.message);}
+  cMod();tst('Cross check updated','success');showPage('testers');
+}
+
+async function delCrossCheck(id){
+  if(!confirm('Delete this cross check record? This cannot be undone.')) return;
+  const all=S.get('lhs:cross_checks')||[];
+  const filtered=all.filter(c=>c.id!==id&&c._id!==id);
+  S.set('lhs:cross_checks',filtered);
+  try{await DB.from('lhs_cross_checks').delete().eq('id',id);}catch(e){console.warn('Cross check delete:',e.message);}
+  tst('Record deleted','info');showPage('testers');
 }
 
 // ─── TESTER CSV IMPORT ───────────────────────────────────────────────────────
