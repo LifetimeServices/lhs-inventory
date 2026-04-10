@@ -29679,9 +29679,14 @@ const REPORT_DEFS=[
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
+  // QUALITY + SAFETY
+  {id:'wo-audit-detail',cat:'Quality + Safety',name:'WO Audit Detail',desc:'Full audit view of work orders with status, technician, region, and state. Filter by region, state, division, or employee.',run:rpt_woAuditDetail},
+  {id:'status-change-log',cat:'Quality + Safety',name:'Status Change Log',desc:'Work orders filtered by last-updated date showing current status and who last changed it.',run:rpt_statusChangeLog},
+  {id:'photo-completeness',cat:'Quality + Safety',name:'Photo Completeness',desc:'Work orders flagged for missing before or after photos. Incomplete jobs sort to the top.',run:rpt_photoCompleteness},
+  {id:'photo-review-by-tech',cat:'Quality + Safety',name:'Photo Review by Technician',desc:'Photo submission counts and completion rate per technician for the selected period.',run:rpt_photosByTech},
 ];
 
-const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales'];
+const RPT_CATS=['all','Operations','Accounting','Technician','Inventory','Sales','Quality + Safety'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ☢️  RADON OCCUPATIONAL EXPOSURE — WLM TRACKING  (HR Module)
@@ -30306,6 +30311,8 @@ function rptApplyFilters(){
   window._rptFilters={
     dateFrom:document.getElementById('rpt-dfrom')?.value||'',
     dateTo:document.getElementById('rpt-dto')?.value||'',
+    region:document.getElementById('rpt-region')?.value||'',
+    state:document.getElementById('rpt-state')?.value||'',
     division:document.getElementById('rpt-div')?.value||'',
     tech:document.getElementById('rpt-tech')?.value||'',
     status:document.getElementById('rpt-status')?.value||''
@@ -30313,7 +30320,7 @@ function rptApplyFilters(){
   showPage('reports');
 }
 function rptClearFilters(){
-  window._rptFilters={dateFrom:'',dateTo:'',division:'',tech:'',status:''};
+  window._rptFilters={dateFrom:'',dateTo:'',region:'',state:'',division:'',tech:'',status:''};
   showPage('reports');
 }
 
@@ -30340,7 +30347,7 @@ function bReportRun(){
   let rows=[], cols=[];
   try{
     if(def?.run){
-      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'');
+      const result=def.run(f.dateFrom||monthAgo, f.dateTo||today, f.division||'', f.tech||'', f.status||'', f.region||'', f.state||'');
       rows=result.rows||[];
       cols=result.cols||[];
     }
@@ -30363,6 +30370,7 @@ function bReportRun(){
       <input type="date" id="rpt-dto" value="${f.dateTo||today}"
         style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     </div>
+    ${_rptRegionStateHTML(f)}
     <div class="fl" style="margin:0;min-width:150px"><label>Division</label>
       <select id="rpt-div" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
         <option value="">All Divisions</option>
@@ -30404,7 +30412,7 @@ function rptExportCSV(){
   const today=new Date().toISOString().split('T')[0];
   const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0];
   if(!def?.run) return;
-  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'');
+  const {rows,cols}=def.run(f.dateFrom||monthAgo,f.dateTo||today,f.division||'',f.tech||'',f.status||'',f.region||'',f.state||'');
   const header=cols.map(c=>c.label).join(',');
   const body=rows.map(r=>cols.map(c=>`"${String(r[c.key]||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([header+'\n'+body],{type:'text/csv'});
@@ -31137,6 +31145,234 @@ function rpt_territoryPerformance(from,to){
     {key:'avg_job',label:'Avg Job Value',mono:true},
   ];
   return{cols,rows};
+}
+
+// ── QUALITY + SAFETY REPORT HELPERS ──────────────────────────────────────────
+
+function rptSyncStates(){
+  var rn=document.getElementById('rpt-region')?document.getElementById('rpt-region').value:'';
+  var sel=document.getElementById('rpt-state');
+  if(!sel) return;
+  var allStates=[];
+  var rks=Object.keys(REGIONS).sort();
+  for(var j=0;j<rks.length;j++){var sts=REGIONS[rks[j]].states||[];for(var k=0;k<sts.length;k++){if(allStates.indexOf(sts[k])<0)allStates.push(sts[k]);}}
+  allStates.sort();
+  var stateList=(rn&&REGIONS[rn])?REGIONS[rn].states:allStates;
+  var html='<option value="">All States</option>';
+  for(var i=0;i<stateList.length;i++){html+='<option value="'+stateList[i]+'">'+stateList[i]+'</option>';}
+  sel.innerHTML=html;
+}
+
+function _rptRegionStateHTML(f){
+  var rf=f||{};
+  var regionOpts='<option value="">All Regions</option>';
+  var regionKeys=Object.keys(REGIONS).sort();
+  for(var i=0;i<regionKeys.length;i++){
+    var rn=regionKeys[i];
+    regionOpts+='<option value="'+esc(rn)+'"'+(rf.region===rn?' selected':'')+'>'+esc(rn)+'</option>';
+  }
+  var allStates=[];
+  for(var j=0;j<regionKeys.length;j++){var sts=REGIONS[regionKeys[j]].states||[];for(var k=0;k<sts.length;k++){if(allStates.indexOf(sts[k])<0)allStates.push(sts[k]);}}
+  allStates.sort();
+  var stateList=(rf.region&&REGIONS[rf.region])?REGIONS[rf.region].states:allStates;
+  var stateOpts='<option value="">All States</option>';
+  for(var m=0;m<stateList.length;m++){
+    var st=stateList[m];
+    stateOpts+='<option value="'+st+'"'+(rf.state===st?' selected':'')+'>'+st+'</option>';
+  }
+  return '<div class="fl" style="margin:0;min-width:130px"><label>Region</label>'+
+    '<select id="rpt-region" onchange="rptSyncStates()" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">'+
+    regionOpts+'</select></div>'+
+    '<div class="fl" style="margin:0;min-width:110px"><label>State</label>'+
+    '<select id="rpt-state" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">'+
+    stateOpts+'</select></div>';
+}
+
+function _rptGetState(wo){return (wo.customer_state||wo.state||'').trim();}
+
+function _rptStateToRegion(st){
+  var rks=Object.keys(REGIONS);
+  for(var i=0;i<rks.length;i++){if((REGIONS[rks[i]].states||[]).indexOf(st)>=0)return rks[i];}
+  return '';
+}
+
+function _rptFilterRegionState(wos,region,state){
+  if(!region&&!state) return wos;
+  return wos.filter(function(wo){
+    var st=_rptGetState(wo);
+    if(state&&st!==state) return false;
+    if(region&&!state){var r=_rptStateToRegion(st);if(r!==region)return false;}
+    return true;
+  });
+}
+
+function rpt_woAuditDetail(from,to,div,emp,status,region,state){
+  var wos=S.get('lhs:work_orders')||[];
+  wos=rptDateFilter(wos,'created_at',from,to);
+  wos=_rptFilterRegionState(wos,region,state);
+  if(div) wos=wos.filter(function(w){return (w.division||'')==div;});
+  if(status) wos=wos.filter(function(w){return (w.status||'')==status;});
+  var apts=S.get('lhs:appointments')||[];
+  var rows=wos.map(function(w){
+    var woApts=apts.filter(function(a){return a.work_order_id==w.id;});
+    var techs=woApts.map(function(a){return a.technician_name||a.tech_name||'';}).filter(Boolean).filter(function(v,i,arr){return arr.indexOf(v)===i;}).join(', ');
+    if(emp&&techs.indexOf(emp)<0) return null;
+    return {
+      wo_number:w.wo_number||w.id||'',
+      created:w.created_at?w.created_at.substring(0,10):'',
+      customer:w.customer_name||'',
+      address:(w.property_address||w.customer_address||''),
+      state:_rptGetState(w)||'--',
+      region:_rptStateToRegion(_rptGetState(w))||'--',
+      division:w.division||'--',
+      status:w.status||'--',
+      technician:techs||'--',
+      total:rptFmt(w.total_price||0)
+    };
+  }).filter(Boolean);
+  rows.sort(function(a,b){return (b.created>a.created)?1:-1;});
+  var cols=[
+    {key:'wo_number',label:'WO #'},
+    {key:'created',label:'Date'},
+    {key:'customer',label:'Customer'},
+    {key:'address',label:'Address'},
+    {key:'state',label:'State'},
+    {key:'region',label:'Region'},
+    {key:'division',label:'Division'},
+    {key:'status',label:'Status'},
+    {key:'technician',label:'Technician(s)'},
+    {key:'total',label:'Total',mono:true}
+  ];
+  return {cols:cols,rows:rows};
+}
+
+function rpt_statusChangeLog(from,to,div,emp,status,region,state){
+  var wos=S.get('lhs:work_orders')||[];
+  wos=rptDateFilter(wos,'updated_at',from,to);
+  wos=_rptFilterRegionState(wos,region,state);
+  if(div) wos=wos.filter(function(w){return (w.division||'')==div;});
+  if(status) wos=wos.filter(function(w){return (w.status||'')==status;});
+  var rows=wos.map(function(w){
+    return {
+      wo_number:w.wo_number||w.id||'',
+      customer:w.customer_name||'',
+      address:(w.property_address||w.customer_address||''),
+      state:_rptGetState(w)||'--',
+      division:w.division||'--',
+      current_status:w.status||'--',
+      changed_date:w.updated_at?w.updated_at.substring(0,10):'',
+      changed_by:w.updated_by||w.created_by||'--'
+    };
+  });
+  rows.sort(function(a,b){return (b.changed_date>a.changed_date)?1:-1;});
+  var cols=[
+    {key:'wo_number',label:'WO #'},
+    {key:'customer',label:'Customer'},
+    {key:'address',label:'Address'},
+    {key:'state',label:'State'},
+    {key:'division',label:'Division'},
+    {key:'current_status',label:'Current Status'},
+    {key:'changed_date',label:'Date Changed'},
+    {key:'changed_by',label:'Changed By'}
+  ];
+  return {cols:cols,rows:rows};
+}
+
+function rpt_photoCompleteness(from,to,div,emp,status,region,state){
+  var wos=S.get('lhs:work_orders')||[];
+  wos=rptDateFilter(wos,'created_at',from,to);
+  wos=_rptFilterRegionState(wos,region,state);
+  if(div) wos=wos.filter(function(w){return (w.division||'')==div;});
+  if(status) wos=wos.filter(function(w){return (w.status||'')==status;});
+  var apts=S.get('lhs:appointments')||[];
+  var rows=wos.map(function(w){
+    var woApts=apts.filter(function(a){return a.work_order_id==w.id;});
+    var techs=woApts.map(function(a){return a.technician_name||a.tech_name||'';}).filter(Boolean).filter(function(v,i,arr){return arr.indexOf(v)===i;}).join(', ');
+    if(emp&&techs.indexOf(emp)<0) return null;
+    var photos=w.photos||[];
+    var beforeCt=photos.filter(function(p){return (p.type||p.photo_type||'').toLowerCase().indexOf('before')>=0;}).length;
+    var afterCt=photos.filter(function(p){return (p.type||p.photo_type||'').toLowerCase().indexOf('after')>=0;}).length;
+    return {
+      wo_number:w.wo_number||w.id||'',
+      created:w.created_at?w.created_at.substring(0,10):'',
+      customer:w.customer_name||'',
+      state:_rptGetState(w)||'--',
+      division:w.division||'--',
+      technician:techs||'--',
+      status:w.status||'--',
+      before_photos:beforeCt,
+      after_photos:afterCt,
+      total_photos:photos.length,
+      complete:(beforeCt>0&&afterCt>0)?'Yes':'No'
+    };
+  }).filter(Boolean);
+  rows.sort(function(a,b){
+    if(a.complete==='No'&&b.complete!=='No') return -1;
+    if(a.complete!=='No'&&b.complete==='No') return 1;
+    return (b.created>a.created)?1:-1;
+  });
+  var cols=[
+    {key:'wo_number',label:'WO #'},
+    {key:'created',label:'Date'},
+    {key:'customer',label:'Customer'},
+    {key:'state',label:'State'},
+    {key:'division',label:'Division'},
+    {key:'technician',label:'Technician'},
+    {key:'status',label:'Status'},
+    {key:'before_photos',label:'Before'},
+    {key:'after_photos',label:'After'},
+    {key:'total_photos',label:'Total Photos'},
+    {key:'complete',label:'Complete?'}
+  ];
+  return {cols:cols,rows:rows};
+}
+
+function rpt_photosByTech(from,to,div,emp,status,region,state){
+  var wos=S.get('lhs:work_orders')||[];
+  wos=rptDateFilter(wos,'created_at',from,to);
+  wos=_rptFilterRegionState(wos,region,state);
+  if(div) wos=wos.filter(function(w){return (w.division||'')==div;});
+  if(status) wos=wos.filter(function(w){return (w.status||'')==status;});
+  var apts=S.get('lhs:appointments')||[];
+  var map={};
+  wos.forEach(function(w){
+    var woApts=apts.filter(function(a){return a.work_order_id==w.id;});
+    var techs=woApts.map(function(a){return a.technician_name||a.tech_name||'';}).filter(Boolean).filter(function(v,i,arr){return arr.indexOf(v)===i;});
+    if(!techs.length) techs=['Unassigned'];
+    techs.forEach(function(tech){
+      if(emp&&tech!==emp) return;
+      if(!map[tech]) map[tech]={technician:tech,jobs:0,total_photos:0,before_photos:0,after_photos:0,complete_jobs:0};
+      map[tech].jobs++;
+      var photos=w.photos||[];
+      var beforeCt=photos.filter(function(p){return (p.type||p.photo_type||'').toLowerCase().indexOf('before')>=0;}).length;
+      var afterCt=photos.filter(function(p){return (p.type||p.photo_type||'').toLowerCase().indexOf('after')>=0;}).length;
+      map[tech].total_photos+=photos.length;
+      map[tech].before_photos+=beforeCt;
+      map[tech].after_photos+=afterCt;
+      if(beforeCt>0&&afterCt>0) map[tech].complete_jobs++;
+    });
+  });
+  var rows=Object.values(map).sort(function(a,b){return b.jobs-a.jobs;}).map(function(r){
+    return {
+      technician:r.technician,
+      jobs:r.jobs,
+      total_photos:r.total_photos,
+      before_photos:r.before_photos,
+      after_photos:r.after_photos,
+      complete_jobs:r.complete_jobs,
+      completion_pct:(r.jobs>0?Math.round(100*r.complete_jobs/r.jobs):0)+'%'
+    };
+  });
+  var cols=[
+    {key:'technician',label:'Technician'},
+    {key:'jobs',label:'Jobs'},
+    {key:'total_photos',label:'Total Photos'},
+    {key:'before_photos',label:'Before Photos'},
+    {key:'after_photos',label:'After Photos'},
+    {key:'complete_jobs',label:'Complete Jobs'},
+    {key:'completion_pct',label:'Completion %'}
+  ];
+  return {cols:cols,rows:rows};
 }
 
 // ── SALES SECTION ─────────────────────────────────────────────────────────────
