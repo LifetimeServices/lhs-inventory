@@ -24945,9 +24945,13 @@ async function svAddProperty(){
   if(!state){tst('State is required','error');return}
   if(!(v('pf-zip')||'').trim()){tst('Zip code is required','error');return}
   if(!(v('pf-county')||'').trim()){tst('County is required','error');return}
-  if(!(v('pf-year')||'').trim()){tst('Year Built is required','error');return}
-  if(!v('pf-found')){tst('Foundation Type is required','error');return}
-  if(!v('pf-stories')){tst('Stories is required','error');return}
+  // Year Built / Foundation / Stories only required when NOT coming from Account Hub
+  const fromAcctHub=!!window._propFromAcctHub;
+  if(!fromAcctHub){
+    if(!(v('pf-year')||'').trim()){tst('Year Built is required','error');return}
+    if(!v('pf-found')){tst('Foundation Type is required','error');return}
+    if(!v('pf-stories')){tst('Stories is required','error');return}
+  }
   const region=v('pf-region')||Object.keys(REGIONS).find(r=>REGIONS[r].states.includes(state))||'';
   const prop={
     address:addr,city,state,zip:v('pf-zip')||null,county:v('pf-county')||null,
@@ -24992,9 +24996,13 @@ async function svAddProperty(){
     S.set('lhs:customers',custs);
   }
   cMod();
-  if(!saved) tst(`${addr} saved locally — create lhs_properties table in Supabase`,'warning');
+  if(!saved) tst(`${addr} saved locally`,'warning');
   else tst(`${addr} added`,'success');
-  showPage('properties');
+  // If opened from Account Hub, go back there; otherwise go to properties list
+  const returnAcct=window._propFromAcctHub;
+  window._propFromAcctHub=null;
+  if(returnAcct){showPage('account-hub');}
+  else{showPage('properties');}
 }
 
 function oEditProperty(id){
@@ -33756,7 +33764,7 @@ function bAccountHub(){
       return`<div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div style="font-size:14px;font-weight:700;color:var(--navy)">Service Locations</div>
-          <button class="btn btn-n sm" onclick="oAddProperty({current_customer_id:'${id}'})">+ Add Location</button>
+          <button class="btn btn-n sm" onclick="window._propFromAcctHub=true;oAddProperty({current_customer_id:'${id}'})">+ Add Location</button>
         </div>
         ${props.length?props.map(p=>`<div style="padding:14px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;cursor:pointer" onclick="cMod();openProperty('${p.id}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -33770,7 +33778,7 @@ function bAccountHub(){
             </div>
           </div>
           ${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length?`<div style="margin-top:8px;font-size:11px;color:var(--muted)">${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length} work order(s)</div>`:''}
-        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No service locations on file.<br><button class="btn btn-o sm" style="margin-top:10px" onclick="oAddProperty({current_customer_id:'${id}'})">Add First Location</button></div>`}
+        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No service locations on file.<br><button class="btn btn-o sm" style="margin-top:10px" onclick="window._propFromAcctHub=true;oAddProperty({current_customer_id:'${id}'})">Add First Location</button></div>`}
       </div>`;
     }
 
@@ -36156,17 +36164,22 @@ async function svAddLead(){
   if(f.address&&f.city){
     const newProp={
       address:f.address,city:f.city,state:f.state||null,
-      zip:f.zip||null,region:f.region||null,
+      zip:f.zip||null,county:f.county||null,
+      region:f.region||null,
       current_customer_id:isRealCustId?finalCust.id:null,
       created_by:CU?.name||'',created_at:now,
     };
     let savedProp=null;
-    try{savedProp=await dbInsert('lhs:props',newProp);}catch{}
+    try{
+      // Direct insert to bypass the propForm required-field validations
+      const{data,error}=await DB.from('lhs_properties').insert(newProp).select().single();
+      if(!error&&data) savedProp=data;
+      else console.warn('Property auto-create:',error?.message,newProp);
+    }catch(e){console.warn('Property auto-create exception:',e.message);}
     finalProp=savedProp||{...newProp,id:'prop_'+Date.now()};
     const props=S.get('lhs:props')||[];
     props.unshift(finalProp);
     S.set('lhs:props',props);
-    // Link customer → property
     finalCust.property_ids=[...(finalCust.property_ids||[]),finalProp.id];
     _C['lhs:customers']=custs;
   }
