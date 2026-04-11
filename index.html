@@ -25366,11 +25366,12 @@ function _invDivBadges(item){
 }
 function _invDivCheckboxes(sel,pfx){
   var selArr=typeof sel==='string'?sel.split(',').map(function(x){return x.trim();}).filter(Boolean):(sel||[]);
-  var html='<div style="display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:4px">';
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px">';
   DIVS.forEach(function(d){
     var cbId=pfx+'__'+d.replace(/[\s\/]+/g,'_');
     var chk=selArr.indexOf(d)>=0?' checked':'';
-    html+='<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap">';
+    var bg=selArr.indexOf(d)>=0?'background:#eff6ff;border-color:#93c5fd;':'';
+    html+='<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;'+bg+'">';
     html+='<input type="checkbox" id="'+cbId+'" value="'+esc(d)+'"'+chk+'>';
     html+=esc(d)+'</label>';
   });
