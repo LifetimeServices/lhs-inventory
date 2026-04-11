@@ -5415,7 +5415,10 @@ function _bTestTracker(){
     <td>${t.vehicle||'&#8212;'}</td>
     <td style="font-weight:500">${t.customer||'&#8212;'}</td>
     <td style="font-size:12px;color:var(--muted)">${t.dropDate||'&#8212;'}</td>
-    <td><button class="btn sm btn-o" onclick="oUpdTest(${realI})">Update</button></td>
+    <td style="white-space:nowrap;display:flex;gap:6px;padding:8px 6px">
+      <button class="btn sm btn-o" onclick="oUpdTest(${realI})">Update</button>
+      <button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="delTest(${realI})">Delete</button>
+    </td>
   </tr>`;}).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">No testers found</td></tr>`}
   </tbody></table></div></div>`;
 }
@@ -5701,6 +5704,20 @@ async function svTest(){
   else tst('Saved locally — Supabase sync failed','error');
   const ts=S.get('lhs:ts')||[];ts.push(t);S.set('lhs:ts',ts);
   cMod();if(saved) tst(`${t.id} added`,'success');showPage('testers');
+}
+async function delTest(i){
+  const ts=S.get('lhs:ts')||[];
+  const t=ts[i];
+  if(!t) return;
+  if(!confirm(`Delete tester "${t.id}"?\n\nThis cannot be undone.`)) return;
+  ts.splice(i,1);
+  S.set('lhs:ts',ts);
+  try{
+    if(t._supaId) await DB.from('lhs_testers').delete().eq('id',t._supaId);
+    else await DB.from('lhs_testers').delete().eq('tester_id',t.id);
+    tst(`${t.id} deleted`,'success');
+  }catch(e){tst('Deleted locally — Supabase sync failed','warning');console.warn('delTest:',e?.message);}
+  showPage('testers');
 }
 function oUpdTest(i){
   const ts=S.get('lhs:ts')||[];const t=ts[i];
