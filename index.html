@@ -20720,6 +20720,11 @@ async function svCreateWO(){
   };
   // Only include property_id if it has a value (column may not exist yet in all deployments)
   if(window._wocPropertyId) wo.property_id=window._wocPropertyId;
+  // Link to job group (multi-division job)
+  if(window._woJobGroupId) wo.job_group_id=window._woJobGroupId;
+  // Link to estimate and opportunity
+  if(window._woEstId) wo.estimate_id=window._woEstId;
+  if(window._woOppId) wo.opp_id=window._woOppId;
 
   const savedWO=await dbInsert('lhs:work_orders',wo);
   if(!savedWO){tst('Failed to save work order','error');return}
@@ -20792,11 +20797,18 @@ async function svCreateWO(){
   const techNames=(window._wocTechs||[]).map(t=>t.name).join(', ')||'None';
   logWOAudit(savedWO.id,'WO Created',`${woNum} | ${wo.division} | ${wo.job_type}${wo.job_subtype?' > '+wo.job_subtype:''} | Customer:${wo.customer_name} | ${wo.customer_city||''}${wo.customer_state?', '+wo.customer_state:''} | $${wo.total_price} | Techs:${techNames}`);
   if((window._wocTechs||[]).length) logWOAudit(savedWO.id,'Initial Appointment',`${wo.status} for ${v('woc-adate')} ${v('woc-awin')} | Techs:${techNames}`);
+  const _inJobGroup=!!window._woJobGroupId;
+  const _savedJobGroupId=window._woJobGroupId||null;
   window._wocSelectedCust=null; window._wocTechs=[]; window._wocPropertyId=null;
-  cMod();
+  window._woJobGroupId=null; window._woEstId=null; window._woOppId=null;
   tst(`${woNum} created successfully`,'success');
   refreshDispBoard();
-  showPage('workorders');
+  if(_inJobGroup){
+    await _afterJobGroupWOSaved(savedWO,_savedJobGroupId);
+  } else {
+    cMod();
+    showPage('workorders');
+  }
 }
 
 
@@ -33358,12 +33370,47 @@ function _crmDashLoad(){
   const maxVal=Math.max(1,...stageData.map(s=>s.val));
   const stageColors={'Prospect':'var(--teal)','Site Visit':'#2980b9','Estimate Sent':'var(--amber)','Negotiation':'#e67e22','Won':'var(--green)'};
 
+  // Jobs Needing Attention — multi-WO jobs with unscheduled siblings
+  const allWOs=S.get('lhs:work_orders')||[];
+  const allApts=S.get('lhs:appointments')||[];
+  const scheduledWoIds=new Set(allApts.map(a=>a.wo_id).filter(Boolean));
+  const jobGroups={};
+  allWOs.filter(w=>w.job_group_id).forEach(w=>{if(!jobGroups[w.job_group_id])jobGroups[w.job_group_id]=[];jobGroups[w.job_group_id].push(w);});
+  const attentionGroups=Object.values(jobGroups).filter(grp=>grp.some(w=>scheduledWoIds.has(w.id))&&grp.some(w=>!scheduledWoIds.has(w.id)));
+
   // Recent activities
   const recentActs=(acts||[]).slice(0,5);
   const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'?'🏠':t==='Demo'?'🖥️':'📋';
   const typeColor=t=>t==='Call'?'#dbeafe':t==='Email'?'#f3e5f5':t==='Text'?'#fef3c7':t==='Visit'?'#dcfce7':'#f3f4f6';
 
   el.innerHTML=`
+  ${attentionGroups.length?`
+  <div class="card" style="margin-bottom:20px;border:2px solid var(--amber);background:#fffbeb">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:22px">⚠️</span>
+      <div>
+        <div style="font-size:14px;font-weight:800;color:#92400e">Jobs Needing Attention</div>
+        <div style="font-size:12px;color:#92400e;opacity:.8">${attentionGroups.length} multi-division job${attentionGroups.length!==1?'s':''} with unscheduled work orders</div>
+      </div>
+    </div>
+    ${attentionGroups.map(grp=>{
+      const scheduled=grp.filter(w=>scheduledWoIds.has(w.id));
+      const unscheduled=grp.filter(w=>!scheduledWoIds.has(w.id));
+      const custName=grp[0]?.customer_name||'Customer';
+      return`<div style="background:white;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--navy)">${esc(custName)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            ✅ Scheduled: ${scheduled.map(w=>esc(w.division)).join(', ')||'—'} &nbsp;·&nbsp;
+            <span style="color:#b45309;font-weight:600">⏳ Needs scheduling: ${unscheduled.map(w=>esc(w.division)).join(', ')}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${unscheduled.map(w=>`<button class="btn btn-o sm" onclick="openWO('${w.id}')">Open ${esc(w.division)} WO</button>`).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`:''}
   <div class="sg">
     <div class="sc n"><div class="sl">Active Leads</div><div class="sv">${activeLeads}</div><div class="ss">Total open leads</div></div>
     <div class="sc g"><div class="sl">Pipeline Value</div><div class="sv">$${Math.round(pipeline/1000)}K</div><div class="ss">Open opportunities</div></div>
@@ -39587,19 +39634,194 @@ async function updateEstStatus(id,status){
 }
 
 // ── ESTIMATE → WORK ORDER ─────────────────────────────────────────────────────
+// ── MULTI-DIVISION JOB GROUP ──────────────────────────────────────────────────
+// Tracks state when creating multiple WOs from one estimate
+let _woJobGroup=null;
+
 function estToWO(estId){
   const e=(S.get('lhs:estimates')||[]).find(x=>x.id===estId);
   if(!e) return;
-  cMod();
-  window._woDiv=e.division||DIVS[0];
-  window._woType=e.job_type||'Installation';
-  window._woEstId=estId;
-  // Pre-fill customer
-  if(e.customer_id){
-    window._wocSelectedCust=(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id)||null;
+  oMod('Create Work Order(s)',_buildEstWOModal(e));
+}
+
+function _buildEstWOModal(e){
+  const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+  const total=e.total_price||0;
+  window._estWOSplitCount=1;
+  return`<div style="max-height:72vh;overflow-y:auto;padding-right:4px">
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Estimate</div>
+        <div style="font-weight:700;color:var(--navy)">${esc(e.estimate_number||'')} — ${esc(e.customer_name||'No customer')}</div>
+      </div>
+      <div style="font-size:18px;font-weight:800;color:var(--teal)">${f$(total)}</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Each division becomes a separate work order on the dispatch board. Prices should add up to the estimate total.</div>
+    <div id="wo-split-rows">
+      ${_woSplitRowHtml(0,e.division||divs[0],e.job_type||'Installation',total)}
+    </div>
+    <button class="btn btn-o sm" style="margin-bottom:14px" onclick="_addWOSplitRow()">+ Add Another Division / WO</button>
+    <div id="wo-split-check" style="font-size:12px;margin-bottom:14px"></div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="_startJobGroup('${esc(e.id)}')">Create Work Order(s)</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function _woSplitRowHtml(idx,div,jobType,price){
+  const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+  const divOpts=divs.map(d=>`<option${d===div?' selected':''}>${esc(d)}</option>`).join('');
+  const typeOpts=JOB_TYPES_FIXED.map(t=>`<option${t===jobType?' selected':''}>${t}</option>`).join('');
+  return`<div id="wo-split-row-${idx}" style="border:1px solid var(--bdr);border-radius:8px;padding:14px;margin-bottom:10px;background:white">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy)">Work Order ${idx+1}</span>
+      ${idx>0?`<button onclick="document.getElementById('wo-split-row-${idx}').remove();_updateWOSplitCheck()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0">×</button>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 130px;gap:8px">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Division</label>
+        <select class="wo-split-div" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">${divOpts}</select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Job Type</label>
+        <select class="wo-split-type" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">${typeOpts}</select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Price $</label>
+        <input class="wo-split-price" type="number" value="${Number(price).toFixed(2)}" step="0.01" oninput="_updateWOSplitCheck()"
+          style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+      </div>
+    </div>
+  </div>`;
+}
+
+function _addWOSplitRow(){
+  if(!window._estWOSplitCount) window._estWOSplitCount=1;
+  const idx=window._estWOSplitCount++;
+  const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+  const container=document.getElementById('wo-split-rows');
+  if(!container) return;
+  const tmp=document.createElement('div');
+  tmp.innerHTML=_woSplitRowHtml(idx,divs[0]||'','Installation',0);
+  container.appendChild(tmp.firstElementChild);
+  _updateWOSplitCheck();
+}
+
+function _updateWOSplitCheck(){
+  const rows=[...document.querySelectorAll('#wo-split-rows [id^="wo-split-row-"]')];
+  const total=rows.reduce((s,r)=>s+(parseFloat(r.querySelector('.wo-split-price')?.value)||0),0);
+  const el=document.getElementById('wo-split-check');
+  if(!el) return;
+  el.textContent=`Total across all WOs: $${total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+  el.style.color=total>0?'var(--teal)':'var(--muted)';
+}
+
+function _startJobGroup(estId){
+  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===estId);
+  if(!e){tst('Estimate not found','error');return;}
+  const rows=[...document.querySelectorAll('#wo-split-rows [id^="wo-split-row-"]')];
+  const wos=rows.map(row=>({
+    division:row.querySelector('.wo-split-div')?.value||'',
+    jobType:row.querySelector('.wo-split-type')?.value||'Installation',
+    price:parseFloat(row.querySelector('.wo-split-price')?.value)||0,
+    done:false,
+  })).filter(w=>w.division);
+  if(!wos.length){tst('Define at least one work order','error');return;}
+  const groupId='jg_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+  _woJobGroup={groupId,estimateId:estId,customerId:e.customer_id||null,customerName:e.customer_name||'Customer',wos};
+  _openNextJobGroupWO();
+}
+
+function _openNextJobGroupWO(){
+  const jg=_woJobGroup;
+  if(!jg) return;
+  const pendingIdx=jg.wos.findIndex(w=>!w.done);
+  if(pendingIdx===-1){_woJobGroup=null;cMod();showPage('workorders');return;}
+  const wo=jg.wos[pendingIdx];
+  const est=(S.get('lhs:estimates')||[]).find(e=>e.id===jg.estimateId);
+  const totalWOs=jg.wos.length;
+  // Set globals for woCreateForm
+  window._woDiv=wo.division;
+  window._woType=wo.jobType;
+  window._woSub='';
+  window._woEstId=jg.estimateId;
+  window._woJobGroupId=jg.groupId;
+  window._woJobGroupIdx=pendingIdx;
+  window._wocSelectedCust=jg.customerId?(S.get('lhs:customers')||[]).find(c=>c.id===jg.customerId)||null:null;
+  const props=jg.customerId?(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===jg.customerId||p.customer_id===jg.customerId):[];
+  window._wocPropertyId=props.length===1?props[0].id:null;
+  oMod(totalWOs>1?`Work Order ${pendingIdx+1} of ${totalWOs} — ${wo.division}`:`Create Work Order — ${wo.division}`,woCreateForm());
+  setTimeout(()=>{
+    if(window._wocSelectedCust) wocSelectCust(window._wocSelectedCust.id);
+    if(window._wocPropertyId) propSelectInline(window._wocPropertyId);
+    const priceEl=document.getElementById('woc-price');
+    if(priceEl) priceEl.value=wo.price.toFixed(2);
+    const descEl=document.getElementById('woc-desc');
+    if(descEl&&!descEl.value){
+      descEl.value=[wo.division,jg.customerName,est?.estimate_number?'Est. '+est.estimate_number:''].filter(Boolean).join(' — ');
+    }
+  },100);
+}
+
+async function _afterJobGroupWOSaved(savedWO,groupId){
+  const jg=_woJobGroup;
+  if(!jg||jg.groupId!==groupId){cMod();showPage('workorders');return;}
+  // Mark current WO done
+  const idx=window._woJobGroupIdx||0;
+  if(jg.wos[idx]) jg.wos[idx].done=true;
+  const pending=jg.wos.filter(w=>!w.done);
+  if(!pending.length){_woJobGroup=null;cMod();showPage('workorders');return;}
+  const next=pending[0];
+  // Show prompt
+  oMod('⚠️ Schedule Next Work Order',`
+    <div style="text-align:center;padding:24px 16px">
+      <div style="font-size:52px;margin-bottom:14px">⚠️</div>
+      <div style="font-size:18px;font-weight:800;color:var(--navy);margin-bottom:10px">Don't forget!</div>
+      <div style="font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:24px">
+        This job also requires a <strong style="color:var(--navy)">${esc(next.division)}</strong> work order<br>
+        for <strong style="color:var(--navy)">${esc(jg.customerName)}</strong> &nbsp;·&nbsp; <strong style="color:var(--teal)">$${Number(next.price).toLocaleString()}</strong><br>
+        <span style="font-size:12px">Schedule it now so nothing falls through the cracks.</span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-n" onclick="cMod();_openNextJobGroupWO()">▶ Schedule ${esc(next.division)} Now</button>
+        <button class="btn btn-o" onclick="_remindJobGroup()">📋 Remind Me — Create Task</button>
+        <button onclick="_dismissJobGroup()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;margin-top:8px;display:block;width:100%">Dismiss (not recommended)</button>
+      </div>
+    </div>`);
+}
+
+function _remindJobGroup(){
+  const jg=_woJobGroup;
+  if(!jg) return;
+  const pending=jg.wos.filter(w=>!w.done);
+  const est=(S.get('lhs:estimates')||[]).find(e=>e.id===jg.estimateId);
+  const estNum=est?.estimate_number||'';
+  const due=new Date(Date.now()+24*60*60*1000).toISOString().slice(0,10);
+  for(const wo of pending){
+    const task={
+      assigned_to_name:CU?.name||'',assigned_to_email:CU?.email||'',assigned_by:CU?.name||'System',
+      title:`📋 Schedule ${wo.division} WO — ${jg.customerName}`,
+      description:`Multi-division job${estNum?' ('+estNum+')':''}: ${wo.division} work order ($${Number(wo.price).toLocaleString()}) needs to be scheduled. Job Group: ${jg.groupId}`,
+      due_date:due,priority:'High',status:'Open',
+      job_group_id:jg.groupId,
+      created_at:new Date().toISOString(),updated_at:new Date().toISOString(),
+    };
+    dbInsert('lhs:tasks',task).then(saved=>{
+      const tasks=S.get('lhs:tasks')||[];tasks.unshift(saved||{...task,id:'task_'+Date.now()});S.set('lhs:tasks',tasks);
+    }).catch(()=>{});
   }
-  oCreateWO();
-  tst('WO pre-filled from estimate — review and save','info');
+  tst(`Reminder task created — check Follow Ups to schedule the remaining ${pending.length} work order${pending.length!==1?'s':''}`, 'info');
+  _woJobGroup=null;
+  cMod();
+  showPage('workorders');
+}
+
+function _dismissJobGroup(){
+  _woJobGroup=null;
+  cMod();
+  showPage('workorders');
+  tst('⚠️ Reminder: other work orders from this job still need to be scheduled','error');
 }
 
 // ── PRINT / PDF PROPOSAL ──────────────────────────────────────────────────────
