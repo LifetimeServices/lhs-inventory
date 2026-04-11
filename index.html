@@ -36769,18 +36769,26 @@ function leadToOpportunity(leadId){
 function oAddOpportunity(prefill={}){
   const custs=S.get('lhs:customers')||[];
   const reps=(S.get('lhs:users')||[]).filter(u=>['Sales Rep','Regional Manager','God View','Admin'].includes(u.role));
+  // Pre-fill customer if coming from a lead
+  const preCustId=prefill.customer_id||'';
+  const preCust=preCustId?custs.find(c=>c.id===preCustId):null;
+  const preCustName=preCust?((preCust.first_name+' '+preCust.last_name).trim()+(preCust.company?' ('+preCust.company+')':'')):''
   oMod('New Opportunity',`
   <div class="fr">
     <div class="fl" style="grid-column:span 2"><label>Opportunity Name</label>
-      <input id="op-name" value="${prefill.first_name?prefill.first_name+' '+prefill.last_name+' — '+( prefill.division||''):''}">
+      <input id="op-name" value="${prefill.first_name?prefill.first_name+' '+prefill.last_name+' — '+(prefill.division||''):''}">
     </div>
   </div>
   <div class="fr">
     <div class="fl"><label>Customer</label>
-      <select id="op-cust">
-        <option value="">— Select or leave blank —</option>
-        ${custs.map(c=>`<option value="${c.id}">${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}</option>`).join('')}
-      </select>
+      <div style="position:relative">
+        <input id="op-cust-search" value="${esc(preCustName)}" placeholder="Search by name, phone, email..." autocomplete="off"
+          oninput="oppCustSearch(this.value)"
+          onblur="setTimeout(function(){var d=document.getElementById('op-cust-drop');if(d)d.style.display='none';},150)"
+          style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box">
+        <input type="hidden" id="op-cust" value="${esc(preCustId)}">
+        <div id="op-cust-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.18);z-index:9999;max-height:200px;overflow-y:auto"></div>
+      </div>
     </div>
     <div class="fl"><label>Division</label><select id="op-div"><option value="">—</option>${DIVS.map(d=>`<option${d===prefill.division?' selected':''}>${d}</option>`).join('')}</select></div>
   </div>
@@ -36807,6 +36815,36 @@ function oAddOpportunity(prefill={}){
     <button class="btn btn-n" onclick="svAddOpportunity('${prefill.id||''}')">Save Opportunity</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
+}
+
+function oppCustSearch(query){
+  var custs=S.get('lhs:customers')||[];
+  var drop=document.getElementById('op-cust-drop');
+  if(!drop) return;
+  var q=(query||'').toLowerCase();
+  if(!q){drop.style.display='none';return;}
+  var matches=custs.filter(function(c){
+    var txt=((c.first_name||'')+' '+(c.last_name||'')+' '+(c.company||'')+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase();
+    return txt.includes(q);
+  }).slice(0,15);
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=matches.map(function(c){
+    var name=((c.first_name||'')+' '+(c.last_name||'')).trim()+(c.company?' ('+c.company+')':'');
+    return '<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"'+
+      ' onmouseenter="this.style.background=\'#f0fafa\'" onmouseleave="this.style.background=\'\'"'+
+      ' onmousedown="oppCustPick(\''+c.id+'\',\''+name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'+
+      esc(name)+(c.phone?'<span style="font-size:11px;color:var(--muted);margin-left:8px">'+esc(c.phone)+'</span>':'')+
+      '</div>';
+  }).join('');
+}
+function oppCustPick(id,name){
+  var si=document.getElementById('op-cust-search');
+  var hi=document.getElementById('op-cust');
+  var dr=document.getElementById('op-cust-drop');
+  if(si) si.value=name;
+  if(hi) hi.value=id;
+  if(dr) dr.style.display='none';
 }
 
 async function svAddOpportunity(leadId){
