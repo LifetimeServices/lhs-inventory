@@ -37689,7 +37689,7 @@ function openOpportunity(id){
   <!-- Action Buttons -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--bdr);margin-bottom:14px">
     ${!won?`<button class="btn btn-o sm" onclick="buildEstimateFromOpp('${id}')">📋 Build Estimate</button>`:''}
-    ${!won&&!lost?`<button class="btn btn-g sm" onclick="oppToWO('${id}')">→ Create Work Order</button>`:''}
+    ${!lost?`<button class="btn btn-g sm" onclick="oppToWO('${id}')">→ Create Work Order</button>`:''}
     ${won?`<span style="font-size:13px;color:#10b981;font-weight:700">🏆 Won — $${Number(o.estimated_value||0).toLocaleString()}</span>`:''}
     ${lost?`<span style="font-size:13px;color:var(--red);font-weight:700">❌ Lost</span>`:''}
   </div>
