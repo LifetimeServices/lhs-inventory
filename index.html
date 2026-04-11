@@ -39146,8 +39146,12 @@ var ST_JOB_TYPE_MAP = [
   { match: /closet/i,                   div:'Closet Organization',type:'',             sub:'',                 cls:''  },
   // ── Air Solutions ──
   { match: /air\s*solution/i,           div:'Air Solutions',    type:'',               sub:'',                 cls:''  },
+  { match: /^hvac$/i,                   div:'Air Solutions',    type:'HVAC',           sub:'',                 cls:''  },
+  { match: /^duct/i,                    div:'Air Solutions',    type:'Duct',           sub:'',                 cls:''  },
+  { match: /^fan/i,                     div:'Air Solutions',    type:'Fan',            sub:'',                 cls:''  },
   // ── Window Treatments ──
   { match: /window/i,                   div:'Window Treatments',type:'',               sub:'',                 cls:''  },
+  { match: /^measure/i,                 div:'Window Treatments',type:'Measure',        sub:'',                 cls:''  },
   // ── Struxure ──
   { match: /struxure/i,                 div:'Struxure',         type:'',               sub:'',                 cls:''  },
   // ── AIH Security ──
@@ -39156,6 +39160,10 @@ var ST_JOB_TYPE_MAP = [
   { match: /handyman/i,                 div:'Handyman',         type:'',               sub:'',                 cls:''  },
   // ── Commercial ──
   { match: /commercial/i,               div:'Commercial',       type:'',               sub:'',                 cls:''  },
+  // ── Outside Sales/Designers ──
+  { match: /^network/i,                 div:'Outside Sales/Designers', type:'Networking', sub:'',              cls:''  },
+  { match: /^estimate/i,                div:'Outside Sales/Designers', type:'Estimate',   sub:'',              cls:''  },
+  { match: /^consultation/i,            div:'Outside Sales/Designers', type:'Consultation',sub:'',             cls:''  },
 ];
 
 function stParseJobFields(rawJobType) {
