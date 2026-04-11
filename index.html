@@ -2694,6 +2694,7 @@ async function startApp(){
     <div class="page" id="p-business"></div>
     <div class="page" id="p-commercial"></div>
     <div class="page" id="p-sales-accounts"></div>
+    <div class="page" id="p-account-hub"></div>
     <div class="page" id="p-sales-discounts"></div>
     <div class="page" id="p-sales-permits"></div>
     <div class="page" id="p-sales-pricebook"></div>
@@ -3186,7 +3187,7 @@ function buildPage(id){
     business:bBusiness,
     commercial:bCommercial,
     sales:bSales,'sales-crm-dashboard':bCRMDashboard,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
-    'sales-accounts':bSalesAccountsPage,
+    'sales-accounts':bSalesAccountsPage,'account-hub':bAccountHub,
     'sales-estimates':bSalesEstimates,
     'sales-pricebook':bPricebook,
     'sales-tasks':bSalesTasks,'sales-followups':bSalesFollowupQueue,
@@ -3229,6 +3230,9 @@ const fN=n=>{const v=Number(n||0);return v%1===0?Math.round(v).toLocaleString('e
 const fBal=(b,html=true)=>{const v=Math.max(0,Number(b||0));return v>0?(html?`<span style="color:var(--red);font-weight:600">${f$(v)}</span>`:`${f$(v)}`):(html?`<span style="color:var(--green);font-weight:600">Paid</span>`:'Paid');};
 const bx=(s,c='bn')=>`<span class="bx ${c}">${s}</span>`;
 const ps=s=>s==='Received in Full'?'bg':s==='Pending'?'bb':s.includes('Partial')?'ba':'bgr';
+const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
+const woStatusColor=s=>!s?'bn':s==='Completed'||s==='Complete'?'bg':s==='Invoiced'?'bb':s==='Scheduled'?'ba':s==='Cancelled'||s==='Canceled'?'br':'bn';
+const actIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':'📋';
 
 // ─── ITEM PICKER ─────────────────────────────────────────────────────────────
 window._pickerCb={};
@@ -33554,9 +33558,10 @@ async function _acctLoad(){
     const totalRev=opps.filter(o=>o.customer_id===c.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0);
     const health=healthFor(c);
     const type=typeFor(c);
-    return`<tr style="cursor:pointer" onclick="_openAcctDetail('${c.id}')">
+    const custName=((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||'';
+    return`<tr style="cursor:pointer" onclick="openAccountHub('${c.id}')">
       <td>
-        <div style="font-weight:700">${esc(c.name||'')}</div>
+        <div style="font-weight:700">${esc(custName)}</div>
         ${c.company?`<div style="font-size:11px;color:var(--muted)">${esc(c.company)}</div>`:''}
       </td>
       <td>${bx(type,typeColor(type))}</td>
@@ -33567,7 +33572,7 @@ async function _acctLoad(){
       <td style="font-weight:700">${totalRev?'$'+Number(totalRev).toLocaleString():'<span style="color:var(--muted)">$0</span>'}</td>
       <td style="color:var(--muted);font-size:12px">${lastActLabel(c)}</td>
       <td>${bx(health,healthColor(health))}</td>
-      <td><button class="btn sm btn-n" onclick="event.stopPropagation();_openAcctDetail('${c.id}')">Open</button></td>
+      <td><button class="btn sm btn-n" onclick="event.stopPropagation();openAccountHub('${c.id}')">Open</button></td>
     </tr>`;
   }).join('');
 
@@ -33658,6 +33663,252 @@ function _renderAcctDetail(id,opps,activities,leads){
           </div>`;
         }).join(''):'<div style="color:var(--muted);font-size:13px">No activity logged.</div>'}
       </div>
+    </div>
+  </div>`;
+}
+
+// ── ACCOUNT HUB ──────────────────────────────────────────────────────────────
+var _acctHubTab='details';
+function openAccountHub(id){
+  window._acctHubId=id;
+  _acctHubTab='details';
+  showPage('account-hub');
+}
+function bAccountHub(){
+  const id=window._acctHubId;
+  const custs=S.get('lhs:customers')||[];
+  const c=custs.find(x=>x.id===id)||{};
+  if(!c.id) return`<div class="card" style="padding:40px;text-align:center;color:var(--muted)">Account not found. <a href="#" onclick="showPage('sales-accounts');return false">← Back to Accounts</a></div>`;
+
+  const props=(S.get('lhs:properties')||[]).filter(p=>p.customer_id===id);
+  const opps=(S.get('lhs:opportunities')||[]).filter(o=>o.customer_id===id);
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.customer_id===id);
+  const leads=(S.get('lhs:leads')||[]).filter(l=>l.customer_id===id);
+  const acts=(S.get('lhs:activity')||[]).filter(a=>a.customer_id===id).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+
+  const totalRev=wos.reduce((s,w)=>s+Number(w.invoice_amount||w.total||0),0);
+  const openOpps=opps.filter(o=>!['Won','Lost','Closed'].includes(o.stage));
+  const wonOpps=opps.filter(o=>o.stage==='Won');
+  const name=c.name||c.company||'Unnamed Account';
+  const cityState=[c.city,c.state].filter(Boolean).join(', ');
+
+  const tabs=['details','locations','opportunities','work_orders','estimates','activity'];
+  const tabLabels={'details':'Details','locations':`Locations (${props.length})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'estimates':'Estimates','activity':`Activity (${acts.length})`};
+
+  function tabContent(){
+    if(_acctHubTab==='details'){
+      return`<div class="card" style="padding:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Full Name</div><div style="font-size:14px">${esc(c.name||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Company</div><div style="font-size:14px">${esc(c.company||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Email</div><div style="font-size:14px">${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:'—'}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Phone</div><div style="font-size:14px">${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'—'}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Address</div><div style="font-size:14px">${esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Territory</div><div style="font-size:14px">${esc(c.territory||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">County</div><div style="font-size:14px">${esc(c.county||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Source</div><div style="font-size:14px">${esc(c.lead_source||c.source||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Customer Since</div><div style="font-size:14px">${c.created_at?new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Account Rep</div><div style="font-size:14px">${esc(c.assigned_to||c.rep||'—')}</div></div>
+        </div>
+        ${c.notes?`<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bdr)"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Notes</div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(c.notes)}</div></div>`:''}
+      </div>`;
+    }
+    if(_acctHubTab==='locations'){
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700">Service Locations</div>
+          <button class="btn btn-n sm" onclick="openCustomer('${id}')">+ Add Location</button>
+        </div>
+        ${props.length?props.map(p=>`<div style="padding:12px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;font-weight:600">${esc(p.address||'Unknown Address')}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc([p.city,p.state,p.zip].filter(Boolean).join(', '))}</div>
+            ${p.county?`<div style="font-size:12px;color:var(--muted)">${esc(p.county)}</div>`:''}
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${p.territory?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--surf);color:var(--teal)">${esc(p.territory)}</span>`:''}
+          </div>
+        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No locations on file. <button class="btn btn-o sm" onclick="openCustomer('${id}')">Add one</button></div>`}
+      </div>`;
+    }
+    if(_acctHubTab==='opportunities'){
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700">Opportunities</div>
+          <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New Opportunity</button>
+        </div>
+        ${opps.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:2px solid var(--bdr)">
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Name</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Division</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Stage</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700">Value</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Rep</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Date</th>
+          </tr></thead>
+          <tbody>${opps.map(o=>`<tr style="border-bottom:1px solid var(--bdr);cursor:pointer" onclick="openOpportunity('${o.id}')">
+            <td style="padding:8px">${esc(o.name||'—')}</td>
+            <td style="padding:8px">${esc(o.division||'—')}</td>
+            <td style="padding:8px">${bx(o.stage,stageColor(o.stage))}</td>
+            <td style="padding:8px;text-align:right;font-weight:600">$${Number(o.estimated_value||0).toLocaleString()}</td>
+            <td style="padding:8px">${esc(o.rep||o.assigned_to||'—')}</td>
+            <td style="padding:8px;color:var(--muted)">${o.created_at?new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>`:`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No opportunities yet. <button class="btn btn-o sm" onclick="oAddOpportunity()">Create one</button></div>`}
+      </div>`;
+    }
+    if(_acctHubTab==='work_orders'){
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700">Work Orders</div>
+          <button class="btn btn-n sm" onclick="showPage('work-orders')">View All WOs</button>
+        </div>
+        ${wos.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:2px solid var(--bdr)">
+            <th style="padding:6px 8px;text-align:left;font-weight:700">WO #</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Division</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Type</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Status</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700">Amount</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Completed</th>
+          </tr></thead>
+          <tbody>${wos.slice(0,50).map(w=>`<tr style="border-bottom:1px solid var(--bdr)">
+            <td style="padding:8px;font-family:monospace;font-size:12px">${esc(w.wo_number||w.id||'—')}</td>
+            <td style="padding:8px">${esc(w.division||'—')}</td>
+            <td style="padding:8px">${esc(w.job_type||'—')}</td>
+            <td style="padding:8px">${bx(w.status,woStatusColor(w.status))}</td>
+            <td style="padding:8px;text-align:right;font-weight:600">$${Number(w.invoice_amount||w.total||0).toLocaleString()}</td>
+            <td style="padding:8px;color:var(--muted)">${(w.completed_at||'').substring(0,10)||'—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>${wos.length>50?`<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">Showing 50 of ${wos.length} work orders</div>`:''}`:`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No work orders on file.</div>`}
+      </div>`;
+    }
+    if(_acctHubTab==='estimates'){
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700">Estimates</div>
+          <button class="btn btn-n sm">+ New Estimate</button>
+        </div>
+        <div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">Estimates integration coming soon.</div>
+      </div>`;
+    }
+    if(_acctHubTab==='activity'){
+      return`<div class="card" style="padding:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">Activity Log</div>
+        ${acts.length?acts.map(a=>{
+          const d=a.created_at?new Date(a.created_at):null;
+          const label=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+          return`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--bdr);align-items:flex-start">
+            <div style="font-size:18px;flex-shrink:0">${actIcon(a.type)}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${esc(a.type||'Activity')}</div>
+              <div style="font-size:13px;color:var(--text);margin-top:2px">${esc(a.notes||a.description||'—')}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">${label}${a.rep?' · '+esc(a.rep):''}</div>
+            </div>
+          </div>`;
+        }).join(''):`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No activity logged yet.</div>`}
+      </div>`;
+    }
+    return'';
+  }
+
+  return`
+  <div style="margin-bottom:14px">
+    <a href="#" onclick="showPage('sales-accounts');return false" style="font-size:13px;color:var(--teal);text-decoration:none;font-weight:600">← Accounts</a>
+  </div>
+
+  <!-- Header Card -->
+  <div class="card" style="padding:20px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:22px;font-weight:800;color:var(--navy)">${esc(name)}</div>
+        ${c.company&&c.name!==c.company?`<div style="font-size:14px;color:var(--muted);margin-top:2px">${esc(c.company)}</div>`:''}
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">${cityState||'No address on file'}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+        ${c.phone?`<a href="tel:${esc(c.phone)}" class="btn btn-o sm">📞 Call</a>`:''}
+        ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
+        <button class="btn btn-n sm" onclick="oAddOpportunity()">+ Opportunity</button>
+        <button class="btn btn-o sm" onclick="openCustomer('${id}')">✏️ Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Two-Column Layout -->
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">
+
+    <!-- Left: Tabs + Content -->
+    <div>
+      <!-- Tab Bar -->
+      <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:4px;margin-bottom:14px;flex-wrap:wrap">
+        ${tabs.map(t=>`<button onclick="_acctHubTab='${t}';showPage('account-hub')" style="flex:1;min-width:80px;padding:6px 10px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;background:${_acctHubTab===t?'var(--navy)':'transparent'};color:${_acctHubTab===t?'var(--teal)':'var(--muted)'}">${tabLabels[t]}</button>`).join('')}
+      </div>
+      <!-- Tab Content -->
+      ${tabContent()}
+    </div>
+
+    <!-- Right: Stats + Recent -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <!-- Account Summary -->
+      <div class="card" style="padding:18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px">Account Summary</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:var(--teal)">$${totalRev>=1000?(totalRev/1000).toFixed(1)+'K':totalRev.toLocaleString()}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Total Revenue</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:var(--navy)">${wos.length}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Work Orders</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:#f59e0b">${openOpps.length}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Open Opps</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:#10b981">${wonOpps.length}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Won</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:var(--navy)">${props.length}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Locations</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
+            <div style="font-size:20px;font-weight:800;color:var(--navy)">${leads.length}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Leads</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="card" style="padding:18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Recent Activity</div>
+        ${acts.length?acts.slice(0,5).map(a=>{
+          const d=a.created_at?new Date(a.created_at):null;
+          const label=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+          return`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--bdr);display:flex;gap:8px;align-items:flex-start">
+            <span style="flex-shrink:0">${actIcon(a.type)}</span>
+            <div><span style="font-weight:600">${esc(a.type||'Activity')}</span> — ${esc((a.notes||a.description||'').substring(0,60))} <span style="color:var(--muted)">(${label})</span></div>
+          </div>`;
+        }).join(''):`<div style="color:var(--muted);font-size:12px">No activity yet.</div>`}
+        ${acts.length>5?`<button class="btn btn-o sm" style="margin-top:10px;width:100%" onclick="_acctHubTab='activity';showPage('account-hub')">View All Activity</button>`:''}
+      </div>
+
+      <!-- Recent Work Orders (mini) -->
+      ${wos.length?`<div class="card" style="padding:18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Recent Work Orders</div>
+        ${wos.slice(0,4).map(w=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:600">${esc(w.division||'—')}</div>
+            <div style="color:var(--muted)">${(w.completed_at||'').substring(0,10)||'—'}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700;color:var(--teal)">$${Number(w.invoice_amount||w.total||0).toLocaleString()}</div>
+            ${bx(w.status,woStatusColor(w.status))}
+          </div>
+        </div>`).join('')}
+        ${wos.length>4?`<button class="btn btn-o sm" style="margin-top:10px;width:100%" onclick="_acctHubTab='work_orders';showPage('account-hub')">View All (${wos.length})</button>`:''}
+      </div>`:''}
     </div>
   </div>`;
 }
