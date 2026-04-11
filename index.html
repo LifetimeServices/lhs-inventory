@@ -33896,7 +33896,10 @@ function bAccountHub(){
   const cityState=[c.city,c.state].filter(Boolean).join(', ');
 
   const tabs=['details','locations','opportunities','work_orders','activity'];
-  const tabLabels={'details':'Details','locations':`Locations (${props.length})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`};
+  // Count includes customer's own address if not yet saved as a property
+  const custAddrUnsaved=!!(c.address||'').trim()&&!props.some(p=>(p.address||'').trim().toLowerCase()===(c.address||'').trim().toLowerCase());
+  const locCount=props.length+(custAddrUnsaved?1:0);
+  const tabLabels={'details':'Details','locations':`Locations (${locCount})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`};
 
   const fld=(label,val)=>`<div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">${label}</div>
@@ -33955,11 +33958,30 @@ function bAccountHub(){
     }
 
     if(_acctHubTab==='locations'){
+      // Check if customer's own address is already saved as a property
+      const custAddrStr=(c.address||'').trim().toLowerCase();
+      const custAddrAlreadySaved=custAddrStr&&props.some(p=>(p.address||'').trim().toLowerCase()===custAddrStr);
+      const hasCustAddr=!!(c.address||'').trim();
+
       return`<div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div style="font-size:14px;font-weight:700;color:var(--navy)">Service Locations</div>
           <button class="btn btn-n sm" onclick="window._propFromAcctHub=true;oAddProperty({current_customer_id:'${id}'})">+ Add Location</button>
         </div>
+
+        ${hasCustAddr&&!custAddrAlreadySaved?`
+        <div style="padding:14px;border:1.5px dashed var(--teal);border-radius:8px;margin-bottom:10px;background:rgba(58,191,191,.04)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);margin-bottom:4px">Account Address</div>
+              <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(c.address||'')}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc([c.city,c.state,c.zip].filter(Boolean).join(', '))}</div>
+            </div>
+            <button class="btn btn-o sm" style="white-space:nowrap;flex-shrink:0" onclick="acctHubSaveAddrAsProp('${id}')">💾 Save as Property</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px">This address is from the account record. Click "Save as Property" to add it as a tracked service location.</div>
+        </div>`:''}
+
         ${props.length?props.map(p=>`<div style="padding:14px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;cursor:pointer" onclick="cMod();openProperty('${p.id}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start">
             <div>
@@ -33972,7 +33994,8 @@ function bAccountHub(){
             </div>
           </div>
           ${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length?`<div style="margin-top:8px;font-size:11px;color:var(--muted)">${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length} work order(s)</div>`:''}
-        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No service locations on file.<br><button class="btn btn-o sm" style="margin-top:10px" onclick="window._propFromAcctHub=true;oAddProperty({current_customer_id:'${id}'})">Add First Location</button></div>`}
+        </div>`).join(''):(!hasCustAddr?`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No service locations on file.<br><button class="btn btn-o sm" style="margin-top:10px" onclick="window._propFromAcctHub=true;oAddProperty({current_customer_id:'${id}'})">Add First Location</button></div>`:'')
+        }
       </div>`;
     }
 
@@ -34129,7 +34152,7 @@ function bAccountHub(){
             <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Won</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:18px;font-weight:800;color:var(--navy)">${props.length}</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)">${locCount}</div>
             <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Locations</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
@@ -34177,6 +34200,30 @@ function bAccountHub(){
       </div>`:''}
     </div>
   </div>`;
+}
+
+async function acctHubSaveAddrAsProp(id){
+  const custs=S.get('lhs:customers')||[];
+  const c=custs.find(x=>x.id===id)||{};
+  if(!(c.address||'').trim()){tst('No address on file','error');return;}
+  const now=new Date().toISOString();
+  const newProp={
+    address:c.address,city:c.city||null,state:c.state||null,
+    zip:c.zip||null,county:c.county||null,
+    current_customer_id:id,
+    created_by:CU?.name||'',created_at:now,
+  };
+  let saved=null;
+  try{
+    const{data,error}=await DB.from('lhs_properties').insert(newProp).select().single();
+    if(!error&&data) saved=data;
+    else{console.warn('acctHubSaveAddrAsProp:',error?.message);tst('Error saving property','error');return;}
+  }catch(e){console.warn('acctHubSaveAddrAsProp:',e.message);tst('Error saving property','error');return;}
+  const props=S.get('lhs:props')||[];
+  props.unshift(saved||{...newProp,id:'prop_'+Date.now()});
+  S.set('lhs:props',props);
+  tst('Address saved as service location','success');
+  showPage('account-hub');
 }
 
 async function acctHubSave(id){
