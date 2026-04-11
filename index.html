@@ -39109,23 +39109,71 @@ function stParseCsv(text) {
   return result;
 }
 
-function stParseDivision(jobType) {
-  if (!jobType) return '';
-  var parts = jobType.split(' | ');
-  if (parts.length < 2) return jobType;
-  var seg = parts[1].trim();
+// Map ST "LHS | Radon New Construction" → { division, job_type, job_subtype, job_classification }
+var ST_JOB_TYPE_MAP = [
+  // ── Radon Mitigation ──
+  { match: /radon.*standard\s*call/i,   div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
+  { match: /radon.*service\s*call/i,    div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
+  { match: /radon.*service/i,           div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
+  { match: /radon.*new\s*const/i,       div:'Radon Mitigation', type:'Installation',   sub:'New Construction', cls:''  },
+  { match: /radon.*install/i,           div:'Radon Mitigation', type:'Installation',   sub:'',                 cls:''  },
+  { match: /radon.*re.?test/i,          div:'Radon Mitigation', type:'Re-Test',        sub:'',                 cls:''  },
+  { match: /radon.*test/i,              div:'Radon Mitigation', type:'Test',           sub:'',                 cls:''  },
+  { match: /radon.*repair/i,            div:'Radon Mitigation', type:'Repair',         sub:'',                 cls:''  },
+  { match: /radon/i,                    div:'Radon Mitigation', type:'',               sub:'',                 cls:''  },
+  // ── Electric ──
+  { match: /electric/i,                 div:'Electric',         type:'',               sub:'',                 cls:''  },
+  // ── Concrete Coatings ──
+  { match: /concrete/i,                 div:'Concrete Coatings',type:'',               sub:'',                 cls:''  },
+  // ── Closet Organization ──
+  { match: /closet/i,                   div:'Closet Organization',type:'',             sub:'',                 cls:''  },
+  // ── Air Solutions ──
+  { match: /air\s*solution/i,           div:'Air Solutions',    type:'',               sub:'',                 cls:''  },
+  // ── Window Treatments ──
+  { match: /window/i,                   div:'Window Treatments',type:'',               sub:'',                 cls:''  },
+  // ── Struxure ──
+  { match: /struxure/i,                 div:'Struxure',         type:'',               sub:'',                 cls:''  },
+  // ── AIH Security ──
+  { match: /security|wiring|aih/i,      div:'AIH Security & Wiring',type:'',           sub:'',                 cls:''  },
+  // ── Handyman ──
+  { match: /handyman/i,                 div:'Handyman',         type:'',               sub:'',                 cls:''  },
+  // ── Commercial ──
+  { match: /commercial/i,               div:'Commercial',       type:'',               sub:'',                 cls:''  },
+];
+
+function stParseJobFields(rawJobType) {
+  if (!rawJobType) return { division:'', job_type:'', job_subtype:'', job_classification:'' };
+  var parts = rawJobType.split(' | ');
+  var seg = parts.length >= 2 ? parts[1].trim() : rawJobType.trim();
+  for (var i = 0; i < ST_JOB_TYPE_MAP.length; i++) {
+    if (ST_JOB_TYPE_MAP[i].match.test(seg)) {
+      var m = ST_JOB_TYPE_MAP[i];
+      return { division: m.div, job_type: m.type, job_subtype: m.sub, job_classification: m.cls };
+    }
+  }
+  // Fallback: first word = division, rest = job_type
   var words = seg.split(/\s+/);
-  return words[0] || jobType;
+  return { division: words[0] || '', job_type: words.slice(1).join(' '), job_subtype:'', job_classification:'' };
 }
 
-function stParseJobType(jobType) {
-  if (!jobType) return '';
-  var parts = jobType.split(' | ');
-  if (parts.length < 2) return jobType;
-  var seg = parts[1].trim();
-  var idx = seg.indexOf(' ');
-  if (idx === -1) return seg;
-  return seg.substring(idx + 1).trim();
+// Kept for backward compat with preview render
+function stParseDivision(jobType) { return stParseJobFields(jobType).division; }
+function stParseJobType(jobType) { return stParseJobFields(jobType).job_type; }
+
+// Parse a date string (M/D/YYYY or YYYY-MM-DD) to ISO timestamp for DB
+function stParseDate(raw) {
+  if (!raw) return null;
+  raw = ('' + raw).trim();
+  // Already ISO-ish
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.length === 10 ? raw + 'T00:00:00' : raw;
+  // M/D/YYYY or MM/DD/YYYY
+  var mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mdy) {
+    var mo = mdy[1].padStart(2,'0');
+    var dy = mdy[2].padStart(2,'0');
+    return mdy[3] + '-' + mo + '-' + dy + 'T00:00:00';
+  }
+  return raw;
 }
 
 function bAdminImport() {
@@ -39224,21 +39272,48 @@ function _stStep2() {
   }
   html += '</tbody></table></div></div>';
 
-  // Preview rows
+  // Preview rows — show mapped values so user can verify before importing
   html += '<div style="margin-bottom:20px">';
-  html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">First ' + Math.min(5, n) + ' Rows</div>';
+  html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">First ' + Math.min(5, n) + ' Rows (Mapped)</div>';
   html += '<div class="tw" style="overflow-x:auto"><table><thead><tr>';
-  var previewCols = ['Job #','Invoice #','Customer Name','Job Type','Total','Completion Date','Assigned Technicians'];
-  for (var c = 0; c < previewCols.length; c++) {
-    html += '<th>' + esc(previewCols[c]) + '</th>';
+  var previewHeaders = ['WO Number','ST Job #','Invoice #','Customer','Division','Job Type','Total','Completed','Tech'];
+  for (var c = 0; c < previewHeaders.length; c++) {
+    html += '<th style="font-size:11px">' + esc(previewHeaders[c]) + '</th>';
   }
   html += '</tr></thead><tbody>';
-  for (var r = 0; r < preview.length; r++) {
-    html += '<tr>';
-    for (var pc = 0; pc < previewCols.length; pc++) {
-      var val = preview[r][previewCols[pc]] || '';
-      html += '<td style="font-size:12px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">' + esc(val) + '</td>';
+  // Build seq counters for preview (same logic as import)
+  var pvSeq = {};
+  var existingWOs = S.get('lhs:work_orders') || [];
+  for (var ex3 = 0; ex3 < existingWOs.length; ex3++) {
+    var xn = existingWOs[ex3].wo_number || '';
+    var xp = xn.split('-');
+    if (xp.length === 4 && /^\d{4}$/.test(xp[0])) {
+      var xk = xp[0]+'-'+xp[1]+'-'+xp[2];
+      var xs = parseInt(xp[3])||0;
+      if (!pvSeq[xk]||xs>pvSeq[xk]) pvSeq[xk]=xs;
     }
+  }
+  for (var r = 0; r < preview.length; r++) {
+    var prow = preview[r];
+    var pjf = stParseJobFields(prow['Job Type'] || '');
+    var pdc = DIV_CODES[pjf.division] || 'ST';
+    var pst = ((prow['Location State']||'').trim().toUpperCase().replace(/[^A-Z]/g,'')||'XX').slice(0,2);
+    var pdt = stParseDate(prow['Completion Date']||'');
+    var pyr = pdt ? parseInt((pdt+'').substring(0,4))||new Date().getFullYear() : new Date().getFullYear();
+    var psk = pyr+'-'+pdc+'-'+pst;
+    pvSeq[psk] = (pvSeq[psk]||0) + 1;
+    var pWoNum = pyr+'-'+pdc+'-'+pst+'-'+String(pvSeq[psk]).padStart(5,'0');
+    var pTotal = parseFloat((prow['Total']||'0').replace(/[$,]/g,''))||0;
+    html += '<tr>';
+    html += '<td style="font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap">' + esc(pWoNum) + '</td>';
+    html += '<td style="font-size:11px;color:var(--muted)">' + esc(prow['Job #']||'') + '</td>';
+    html += '<td style="font-size:11px;color:var(--muted)">' + esc(prow['Invoice #']||'') + '</td>';
+    html += '<td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(prow['Customer Name']||'') + '</td>';
+    html += '<td style="font-size:11px;white-space:nowrap">' + esc(pjf.division) + '</td>';
+    html += '<td style="font-size:11px;white-space:nowrap">' + esc(pjf.job_type||'—') + '</td>';
+    html += '<td style="font-size:11px;white-space:nowrap">$' + pTotal.toFixed(2) + '</td>';
+    html += '<td style="font-size:11px;white-space:nowrap">' + esc((pdt||'').substring(0,10)) + '</td>';
+    html += '<td style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((prow['Assigned Technicians']||'').split(',')[0].trim()) + '</td>';
     html += '</tr>';
   }
   html += '</tbody></table></div></div>';
@@ -39307,6 +39382,19 @@ async function stImportRows(rows) {
     el.innerHTML = existing_html + '<div style="font-size:12px;color:var(--red);padding:4px 0;border-bottom:1px solid #fde">' + esc(msg) + '</div>';
   }
 
+  // Build WO number sequences per year+divCode+state (to match LHS format YEAR-CODE-STATE-NNNNN)
+  var seqCounters = {};
+  // Seed from existing WOs so we don't collide
+  for (var ex2 = 0; ex2 < existing.length; ex2++) {
+    var exNum = existing[ex2].wo_number || '';
+    var exParts = exNum.split('-');
+    if (exParts.length === 4 && /^\d{4}$/.test(exParts[0])) {
+      var exKey = exParts[0] + '-' + exParts[1] + '-' + exParts[2];
+      var exSeq = parseInt(exParts[3]) || 0;
+      if (!seqCounters[exKey] || exSeq > seqCounters[exKey]) seqCounters[exKey] = exSeq;
+    }
+  }
+
   // Build batches, skipping duplicates
   var batches = [];
   var currentBatch = [];
@@ -39323,11 +39411,24 @@ async function stImportRows(rows) {
     var subtotalVal = parseFloat((row['Subtotal'] || '0').replace(/[$,]/g, '')) || 0;
     var taxVal = parseFloat((row['Tax'] || '0').replace(/[$,]/g, '')) || 0;
 
+    var completedISO = stParseDate(row['Completion Date'] || '');
+    var invoiceDateISO = stParseDate(row['Invoice Date'] || '');
+
+    var jf = stParseJobFields(row['Job Type'] || '');
+    var divCode = DIV_CODES[jf.division] || 'ST';
+    var woState = ((row['Location State'] || '').trim().toUpperCase().replace(/[^A-Z]/g,'') || 'XX').slice(0,2);
+    var woYear = completedISO ? parseInt((completedISO+'').substring(0,4)) || new Date().getFullYear() : new Date().getFullYear();
+    var seqKey = woYear + '-' + divCode + '-' + woState;
+    seqCounters[seqKey] = (seqCounters[seqKey] || 0) + 1;
+    var seq = seqCounters[seqKey];
+    var woNum = woYear + '-' + divCode + '-' + woState + '-' + String(seq).padStart(5,'0');
+
     var wo = {
-      wo_number: jobId,
+      wo_number: woNum,
       st_job_id: jobId,
       st_invoice_id: row['Invoice #'] || '',
       status: 'Completed',
+      payment_status: 'Paid',
       source: 'ServiceTitan Import',
       tech_name: firstTech,
       all_techs: techFull,
@@ -39337,14 +39438,16 @@ async function stImportRows(rows) {
       state: row['Location State'] || '',
       zip: row['Location Zip'] || '',
       property_name: row['Location Name'] || '',
-      division: stParseDivision(row['Job Type'] || ''),
-      job_type: stParseJobType(row['Job Type'] || ''),
+      division: jf.division,
+      job_type: jf.job_type,
+      job_subtype: jf.job_subtype,
+      job_classification: jf.job_classification,
       total: totalVal,
       subtotal: subtotalVal,
       tax: taxVal,
       payment_type: row['Payment Types'] || '',
-      completed_at: row['Completion Date'] || '',
-      invoice_date: row['Invoice Date'] || '',
+      completed_at: completedISO,
+      invoice_date: invoiceDateISO,
       notes: '',
       imported_at: new Date().toISOString()
     };
