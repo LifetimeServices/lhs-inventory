@@ -33689,7 +33689,8 @@ function bAccountHub(){
   const totalRev=wos.reduce((s,w)=>s+Number(w.invoice_amount||w.total||0),0);
   const openOpps=opps.filter(o=>!['Won','Lost','Closed'].includes(o.stage));
   const wonOpps=opps.filter(o=>o.stage==='Won');
-  const name=c.name||c.company||'Unnamed Account';
+  // Build display name the same way the accounts list does
+  const name=((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||c.company||'Unnamed Account';
   const cityState=[c.city,c.state].filter(Boolean).join(', ');
 
   const tabs=['details','locations','opportunities','work_orders','estimates','activity'];
@@ -33699,10 +33700,10 @@ function bAccountHub(){
     if(_acctHubTab==='details'){
       return`<div class="card" style="padding:20px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Full Name</div><div style="font-size:14px">${esc(c.name||'—')}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Full Name</div><div style="font-size:14px">${esc(((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||'—')}</div></div>
           <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Company</div><div style="font-size:14px">${esc(c.company||'—')}</div></div>
           <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Email</div><div style="font-size:14px">${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:'—'}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Phone</div><div style="font-size:14px">${c.phone?`<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>`:'—'}</div></div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Phone</div><div style="font-size:14px">${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}">${esc(c.phone||c.primary_phone)}</a>`:'—'}</div></div>
           <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Address</div><div style="font-size:14px">${esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||'—')}</div></div>
           <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Territory</div><div style="font-size:14px">${esc(c.territory||'—')}</div></div>
           <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">County</div><div style="font-size:14px">${esc(c.county||'—')}</div></div>
@@ -33826,7 +33827,7 @@ function bAccountHub(){
         <div style="font-size:13px;color:var(--muted);margin-top:4px">${cityState||'No address on file'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-        ${c.phone?`<a href="tel:${esc(c.phone)}" class="btn btn-o sm">📞 Call</a>`:''}
+        ${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" class="btn btn-o sm">📞 Call</a>`:''}
         ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
         <button class="btn btn-n sm" onclick="oAddOpportunity()">+ Opportunity</button>
         <button class="btn btn-o sm" onclick="openCustomer('${id}')">✏️ Edit</button>
