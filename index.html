@@ -526,7 +526,7 @@ const PERM_MODS=[
   {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export'],
     tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_rma','tab_inv_reports','tab_testers','tab_tools']},
   {key:'hr',label:'HR',icon:'👤',perms:['view','edit','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all','view_managed_only'],
-    tabs:['tab_payroll','tab_employees','tab_hr_state','tab_timeoff','tab_hr_settings']},
+    tabs:['tab_payroll','tab_employees','tab_hr_state','tab_timeoff','tab_onboarding','tab_hr_settings']},
   {key:'payroll',label:'Payroll',icon:'💵',perms:['view','edit','process','export','view_all','payroll_managed_only','review_own_timesheet']},
   {key:'accounting',label:'Accounting',icon:'🧾',perms:['view_invoices','create_invoices','view_ar_ap','view_bank','record_txns','export'],
     tabs:['tab_acct_dash','tab_acct_division','tab_invoices','tab_ar','tab_ap','tab_coa','tab_journal','tab_bank','tab_receipts','tab_acct_settings']},
@@ -565,7 +565,7 @@ const PERM_LABELS={
   tab_rma:'RMA',tab_testers:'Testers',tab_tools:'Tool Management',
   // ── HR sub-tabs ───────────────────────────────────────────────────────────
   tab_payroll:'Payroll',tab_employees:'Employee Info',tab_hr_state:'State Settings',
-  tab_timeoff:'Time Off Requests',tab_hr_settings:'HR Settings',
+  tab_timeoff:'Time Off Requests',tab_onboarding:'Onboarding',tab_hr_settings:'HR Settings',
   // ── Accounting sub-tabs ───────────────────────────────────────────────────
   tab_acct_dash:'Dashboard',tab_acct_division:'P&L',tab_invoices:'Invoices',
   tab_ar:'AR Aging',tab_ap:'Payables',tab_coa:'Chart of Accounts',
@@ -1637,6 +1637,8 @@ const TBL={
   'lhs:wo_tags':'lhs_wo_tags',
   'lhs:estimates':'lhs_estimates',
   'lhs:compliance_reports':'lhs_compliance_reports',
+  'lhs:onboarding_plans':'lhs_onboarding_plans',
+  'lhs:onboarding_templates':'lhs_onboarding_templates',
   'lhs:permits':'lhs_permits',
   'lhs:props':'lhs_properties',
   'lhs:receipts':'lhs_receipts',
@@ -2273,6 +2275,7 @@ const _PAGE_MODULE_MAP={
   'hr-employees':{mod:'hr',tab:'tab_employees'},
   'hr-state':{mod:'hr',tab:'tab_hr_state'},
   'hr-timeoff':{mod:'hr',tab:'tab_timeoff'},
+  'hr-onboarding':{mod:'hr',tab:'tab_onboarding'},
   'hr-settings':{mod:'hr',tab:'tab_hr_settings'},
   // Accounting sub-pages
   'acct-dashboard':{mod:'accounting',tab:'tab_acct_dash'},
@@ -2684,6 +2687,7 @@ async function startApp(){
     <div class="page" id="p-hr-employees"></div>
     <div class="page" id="p-hr-state"></div>
     <div class="page" id="p-hr-timeoff"></div>
+    <div class="page" id="p-hr-onboarding"></div>
     <div class="page" id="p-hr-radon"></div>
     <div class="page" id="p-hr-settings"></div>
     <div class="page" id="p-my-timeoff"></div>
@@ -3138,7 +3142,7 @@ window.addEventListener('popstate',e=>{
   const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial'];
-  const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-settings'];
+  const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-settings'];
   if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
   else if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
   else if(salesPages.includes(id)&&_navMode!=='sales') renderSalesNav();
@@ -3189,6 +3193,7 @@ function buildPage(id){
     'hr-employees':bHREmployees,
     'hr-state':bHRState,
     'hr-timeoff':bHRTimeOff,
+    'hr-onboarding':bHrOnboarding,
     'hr-radon':bHRRadonExposure,
     'hr-settings':bHRSettings,
     'my-timeoff':bMyTimeOff,
@@ -29971,6 +29976,634 @@ async function delHRState(id){
   }catch(e){tst('Remove failed','error')}
 }
 
+
+// ============================================================
+// ONBOARDING TRAINING PLANS
+// ============================================================
+
+// Built-in Radon Technician template (from PDF)
+var OB_TEMPLATES_BUILTIN = [
+  {
+    id: 'radon-tech',
+    name: 'Radon Technician',
+    division: 'Radon',
+    position: 'Radon Technician',
+    weeks: [
+      {label:'Pre-hire',days:[
+        {day:'Mon',location:'Office',assignee:'',time:'',topic:'Prepare onboarding material',description:'Identify company vehicle assigning to employee'},
+        {day:'Tues',location:'Office',assignee:'',time:'',topic:'Enrollments',description:'Create ServiceTitan/Salesforce accounts, Notify Dayna to add to company directory, Notify dispatcher of training plan for scheduling, Complete WEX enrollment, Assign Driver in Salesforce, Enterprise, and Geotab'},
+        {day:'Wed',location:'Location of Vehicle',assignee:'',time:'',topic:'Vehicle, Tools, PPE inspection / Employee Engagement',description:'Vehicle must be clean and stocked prior to start date. Ensure vehicle maintenance is up to date. Inspect all tools and replace equipment as necessary. Replace previous employee PPE with new. Call employee to confirm start date, location, and time to report. Remind them to be prepared to fill out I-9 form. Send them page 3 of I-9 for approved documents.'},
+        {day:'Thurs',location:'',assignee:'',time:'',topic:'',description:''},
+        {day:'Fri',location:'',assignee:'',time:'',topic:'',description:''}
+      ]},
+      {label:'Week 1',days:[
+        {day:'Mon',location:'HR',assignee:'',time:'',topic:'HR Documents / Platform Training',description:'I9 form, Review employee handbook, provide contact list, ServiceTitan/Salesforce review, clock in and out procedure, review company forms (Injury, damage, PTO/UTO, vehicle, etc), sign into all company platforms (Email, Teams, etc), review storage unit expectations & organization, review vehicle policy (WEX, Enterprise, safe driving)'},
+        {day:'Tues',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 OBSERVATION ONLY'},
+        {day:'Wed',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 OBSERVATION ONLY'},
+        {day:'Thurs',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'},
+        {day:'Fri',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'}
+      ]},
+      {label:'Week 2',days:[
+        {day:'Mon',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'},
+        {day:'Tues',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'},
+        {day:'Wed',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'},
+        {day:'Thurs',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'},
+        {day:'Fri',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Begin hands on training. Topics to review: System design concepts, drilling exit penetration, core hole, dig pit, seal sump lid'}
+      ]},
+      {label:'Week 3',days:[
+        {day:'Mon',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install discharge stack, garage attic piping, roof boot seal, crawlspace encapsulation, sump pump replacement, battery backup installation, new construction'},
+        {day:'Tues',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install discharge stack, garage attic piping, roof boot seal, crawlspace encapsulation, sump pump replacement, battery backup installation, new construction'},
+        {day:'Wed',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install discharge stack, garage attic piping, roof boot seal, crawlspace encapsulation, sump pump replacement, battery backup installation, new construction'},
+        {day:'Thurs',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install discharge stack, garage attic piping, roof boot seal, crawlspace encapsulation, sump pump replacement, battery backup installation, new construction'},
+        {day:'Fri',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install discharge stack, garage attic piping, roof boot seal, crawlspace encapsulation, sump pump replacement, battery backup installation, new construction'}
+      ]},
+      {label:'Week 4',days:[
+        {day:'Mon',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install fan, measure-cut-and glue interior pipe, secure interior pipe, install manometer, seal floor cracks, take pictures, add notes, and close out dispatch'},
+        {day:'Tues',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install fan, measure-cut-and glue interior pipe, secure interior pipe, install manometer, seal floor cracks, take pictures, add notes, and close out dispatch'},
+        {day:'Wed',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install fan, measure-cut-and glue interior pipe, secure interior pipe, install manometer, seal floor cracks, take pictures, add notes, and close out dispatch'},
+        {day:'Thurs',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install fan, measure-cut-and glue interior pipe, secure interior pipe, install manometer, seal floor cracks, take pictures, add notes, and close out dispatch'},
+        {day:'Fri',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Field Training \u2013 Add following tasks to training list. Install fan, measure-cut-and glue interior pipe, secure interior pipe, install manometer, seal floor cracks, take pictures, add notes, and close out dispatch'}
+      ]},
+      {label:'Week 5',days:[
+        {day:'Mon',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Complete 2 installs with supervision'},
+        {day:'Tues',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Complete 2 installs with supervision'},
+        {day:'Wed',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Complete 2 installs with supervision'},
+        {day:'Thurs',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Complete 2 installs with supervision'},
+        {day:'Fri',location:'Field Training',assignee:'',time:'',topic:'Field Training',description:'Complete 2 installs with supervision'}
+      ]},
+      {label:'Week 6',days:[
+        {day:'Mon',location:'Solo Installs',assignee:'',time:'',topic:'Solo Installs',description:'Complete 1 installation solo'},
+        {day:'Tues',location:'Solo Installs',assignee:'',time:'',topic:'Solo Installs',description:'Complete 1 installation solo'},
+        {day:'Wed',location:'Solo Installs',assignee:'',time:'',topic:'Solo Installs',description:'Complete 1 installation solo'},
+        {day:'Thurs',location:'Solo Installs',assignee:'',time:'',topic:'Solo Installs',description:'Complete 1 installation solo'},
+        {day:'Fri',location:'Solo Installs',assignee:'',time:'',topic:'Solo Installs',description:'Complete 1 installation solo'}
+      ]}
+    ],
+    checklist: [
+      'Clock in','Complete Vehicle Checklist','Read work orders','Dispatch to Job','Arrive to job','Setup vehicle cones',
+      'Design best system for the home','Get customer approval for placement','Drill pilot bit',
+      'Drill exit penetration (Siding)','Drill exit penetration (Brick)','Drill exit penetration (Stone)',
+      'Drill exit penetration (Cement board)','Drill exit penetration (Foundation Core)','Drill exit penetration (Garage)',
+      'Measure, cut, and glue pvc','Run interior piping (Basement)','Secure Interior piping (Basement)',
+      'Install manometer','Label all system components','Fill out manometer label completely and legibly','Fill out OM&M',
+      'Install audible alarm (If applicable)','Install manometer or alarm run (if applicable)',
+      'Core suction pit hole','Make suction pit cavity based on soil type','Install backerod around pipe for suction pit',
+      'Seal suction point with appropriate adhesive','Custom fit sump lid','Caulk sump lid','Label sump lid','Install sump access port',
+      'Complete sump pump checklist form','Replace pedestal sump with submersible','Install check valve','Install battery backup sump pump',
+      'Use thermal imager to locate in-floor heat lines','Identify radon entry points','Seal radon entry points','Use smoke pen','Seal floor cracks',
+      'Make connection to draintile (For new construction)','Install Nail Plates (For new construction)',
+      'Leave roof boot in garage and upload picture (For new cons.)','Make roof penetration (For new construction)',
+      'Seal exit penetration','Mount fan (Exterior)','Mount fan (Garage attic)',
+      'Build 1 story discharge stack','Build 2 story discharge stack','Install Black Pipe Discharge Stack','Install muffler',
+      'Run garage piping into attic','Install fire collars','Install garage attic piping','Label exposed pipe in garage and attic',
+      'Install fan in garage attic','Install fan in garage bay','Make roof penetration','Install standard roof boot','Install steep roof boot'
+    ]
+  }
+];
+
+function obGetTemplates(){
+  var custom=S.get('lhs:onboarding_templates')||[];
+  return OB_TEMPLATES_BUILTIN.concat(custom);
+}
+
+function obTemplateById(id){
+  var all=obGetTemplates();
+  for(var i=0;i<all.length;i++){if(all[i].id===id) return all[i];}
+  return null;
+}
+
+function obWeekProgress(plan){
+  if(!plan||!plan.weeks) return 0;
+  var count=0;
+  for(var i=0;i<plan.weeks.length;i++){
+    var w=plan.weeks[i];
+    var filled=false;
+    if(w.days){for(var j=0;j<w.days.length;j++){if(w.days[j].date){filled=true;break;}}}
+    if(filled) count++;
+  }
+  return count;
+}
+
+function obChecklistProgress(plan){
+  if(!plan||!plan.checklist) return {done:0,total:0};
+  var total=plan.checklist.length;
+  var done=0;
+  for(var i=0;i<plan.checklist.length;i++){
+    var item=plan.checklist[i];
+    if(item.obs&&(item.obs[0]||item.obs[1]||item.obs[2])) done++;
+  }
+  return {done:done,total:total};
+}
+
+function bHrOnboarding(){
+  var view=window._obView||'dashboard';
+  if(view==='plan') return bObPlanView(window._obPlanId);
+  if(view==='new') return bObNewPlan();
+  if(view==='templates') return bObTemplates();
+  return bObDashboard();
+}
+
+function bObDashboard(){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var active=plans.filter(function(p){return p.status==='Active';});
+  var complete=plans.filter(function(p){return p.status==='Complete';});
+  var released=plans.filter(function(p){return p.status==='Released';});
+
+  var html='';
+  html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">';
+  html+='<div style="font-size:18px;font-weight:700;color:var(--navy)">Onboarding Plans</div>';
+  html+='<div style="display:flex;gap:8px">';
+  html+='<button class="btn btn-o sm" onclick="window._obView=\'templates\';showPage(\'hr-onboarding\')">&#9776; Manage Templates</button>';
+  html+='<button class="btn btn-n" onclick="window._obView=\'new\';window._obPlanId=null;showPage(\'hr-onboarding\')">+ New Onboarding Plan</button>';
+  html+='</div></div>';
+
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px">';
+  var stats=[
+    {l:'Active',v:active.length,c:'#1565C0',bg:'#E3F2FD'},
+    {l:'Completed Training',v:complete.length,c:'#E65100',bg:'#FFF3E0'},
+    {l:'Released',v:released.length,c:'#2E7D32',bg:'#E8F5E9'},
+    {l:'Total',v:plans.length,c:'#37474F',bg:'#ECEFF1'}
+  ];
+  stats.forEach(function(s){
+    html+='<div style="background:'+s.bg+';border-radius:10px;padding:16px">';
+    html+='<div style="font-size:28px;font-weight:800;color:'+s.c+'">'+s.v+'</div>';
+    html+='<div style="font-weight:600;font-size:12px;color:'+s.c+';margin-top:2px">'+s.l+'</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+
+  if(!plans.length){
+    html+='<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No onboarding plans yet. Click &quot;+ New Onboarding Plan&quot; to get started.</div>';
+    return html;
+  }
+
+  html+='<div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:2px solid var(--bdr);padding-bottom:8px">';
+  var obStatusTab=window._obStatusTab||'Active';
+  ['Active','Complete','Released','All'].forEach(function(s){
+    var cnt=s==='All'?plans.length:plans.filter(function(p){return p.status===s;}).length;
+    var active2=obStatusTab===s;
+    html+='<button onclick="window._obStatusTab=\''+s+'\';showPage(\'hr-onboarding\')" style="padding:6px 14px;border-radius:20px;border:1px solid '+(active2?'var(--navy)':'var(--bdr)')+';background:'+(active2?'var(--navy)':'white')+';color:'+(active2?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer">'+s+' ('+cnt+')</button>';
+  });
+  html+='</div>';
+
+  var shown=obStatusTab==='All'?plans:plans.filter(function(p){return p.status===obStatusTab;});
+  shown=shown.slice().sort(function(a,b){return (b.created_at||'')>(a.created_at||'')?1:-1;});
+
+  if(!shown.length){
+    html+='<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No '+obStatusTab.toLowerCase()+' plans.</div>';
+    return html;
+  }
+
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">';
+  shown.forEach(function(plan){
+    var prog=obWeekProgress(plan);
+    var cl=obChecklistProgress(plan);
+    var statusColor=plan.status==='Active'?'#1565C0':plan.status==='Released'?'#2E7D32':'#E65100';
+    var statusBg=plan.status==='Active'?'#E3F2FD':plan.status==='Released'?'#E8F5E9':'#FFF3E0';
+    html+='<div class="card" style="padding:16px;cursor:pointer" onclick="window._obView=\'plan\';window._obPlanId=\''+plan.id+'\';showPage(\'hr-onboarding\')">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
+    html+='<div><div style="font-weight:700;font-size:15px">'+esc(plan.employee_name||'')+'</div>';
+    html+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+esc(plan.position||'')+' &mdash; '+esc(plan.division||'')+'</div></div>';
+    html+='<span style="background:'+statusBg+';color:'+statusColor+';font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px">'+plan.status+'</span>';
+    html+='</div>';
+    html+='<div style="font-size:12px;color:var(--muted);margin-bottom:8px">';
+    html+='Trainer: '+esc(plan.trainer_name||'&mdash;')+'  &bull;  Start: '+esc(plan.start_date||'&mdash;');
+    html+='</div>';
+    html+='<div style="margin-bottom:8px">';
+    html+='<div style="font-size:11px;color:var(--muted);margin-bottom:3px">Week Progress: '+prog+' / '+(plan.weeks?plan.weeks.length:0)+'</div>';
+    html+='<div style="background:#e5e7eb;border-radius:4px;height:6px"><div style="background:var(--navy);height:6px;border-radius:4px;width:'+(plan.weeks&&plan.weeks.length?Math.round(prog/plan.weeks.length*100):0)+'%"></div></div>';
+    html+='</div>';
+    html+='<div style="font-size:11px;color:var(--muted)">Checklist: '+cl.done+' / '+cl.total+' tasks signed off</div>';
+    html+='<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">';
+    html+='<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+(plan.employee_sig?'#E8F5E9':'#F5F5F5')+';color:'+(plan.employee_sig?'#2E7D32':'#9E9E9E')+';font-weight:600">Employee '+(plan.employee_sig?'&#10003;':'pending')+'</span>';
+    html+='<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+(plan.trainer_sig?'#E8F5E9':'#F5F5F5')+';color:'+(plan.trainer_sig?'#2E7D32':'#9E9E9E')+';font-weight:600">Trainer '+(plan.trainer_sig?'&#10003;':'pending')+'</span>';
+    html+='<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+(plan.manager_sig?'#E8F5E9':'#F5F5F5')+';color:'+(plan.manager_sig?'#2E7D32':'#9E9E9E')+';font-weight:600">Manager '+(plan.manager_sig?'&#10003;':'pending')+'</span>';
+    html+='</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function bObNewPlan(){
+  var templates=obGetTemplates();
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var editId=window._obEditId;
+  var existing=null;
+  if(editId){
+    var plans=S.get('lhs:onboarding_plans')||[];
+    existing=plans.find(function(p){return p.id===editId;})||null;
+  }
+
+  var html='';
+  html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">';
+  html+='<button class="btn btn-o sm" onclick="window._obView=\'dashboard\';window._obEditId=null;showPage(\'hr-onboarding\')">&larr; Back</button>';
+  html+='<div style="font-size:16px;font-weight:700;color:var(--navy)">'+(existing?'Edit':'New')+' Onboarding Plan</div>';
+  html+='</div>';
+
+  html+='<div class="card" style="padding:20px;max-width:700px">';
+  html+='<div class="fr" style="gap:14px;flex-wrap:wrap;margin-bottom:14px">';
+  html+='<div class="fl"><label>Employee *</label><select id="ob-employee" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Select --</option>';
+  users.forEach(function(u){var sel=existing&&existing.employee_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Template / Division *</label><select id="ob-template" onchange="obTemplateChanged(this.value)" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Select Template --</option>';
+  templates.forEach(function(t){var sel=existing&&existing.template_id===t.id?' selected':'';html+='<option value="'+esc(t.id)+'"'+sel+'>'+esc(t.name)+' ('+esc(t.division||t.position)+')</option>';});
+  html+='</select></div>';
+  html+='</div>';
+  html+='<div class="fr" style="gap:14px;flex-wrap:wrap;margin-bottom:14px">';
+  html+='<div class="fl"><label>Start Date *</label><input type="date" id="ob-start" value="'+(existing?existing.start_date:'')+'" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+  html+='<div class="fl"><label>Trainer</label><select id="ob-trainer" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Select Trainer --</option>';
+  users.forEach(function(u){var sel=existing&&existing.trainer_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Manager</label><select id="ob-manager" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Select Manager --</option>';
+  users.forEach(function(u){var sel=existing&&existing.manager_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+  html+='</select></div>';
+  html+='</div>';
+  html+='<div id="ob-template-preview" style="margin-top:6px;font-size:12px;color:var(--muted)">'+(existing?'Template: '+esc(existing.template_id):'Select a template to preview weeks')+'</div>';
+  html+='<div style="display:flex;gap:10px;margin-top:18px">';
+  html+='<button class="btn btn-n" onclick="svObPlan()">Create Plan</button>';
+  html+='<button class="btn btn-o" onclick="window._obView=\'dashboard\';window._obEditId=null;showPage(\'hr-onboarding\')">Cancel</button>';
+  html+='</div>';
+  html+='</div>';
+  return html;
+}
+
+function obTemplateChanged(id){
+  var el=document.getElementById('ob-template-preview');
+  if(!el) return;
+  var t=obTemplateById(id);
+  if(!t){el.innerHTML='';return;}
+  el.innerHTML='Template: <strong>'+esc(t.name)+'</strong> &mdash; '+t.weeks.length+' weeks, '+t.checklist.length+' checklist items';
+}
+
+async function svObPlan(){
+  var empName=v('ob-employee');
+  var templateId=v('ob-template');
+  var startDate=v('ob-start');
+  if(!empName){tst('Select an employee','error');return;}
+  if(!templateId){tst('Select a template','error');return;}
+  if(!startDate){tst('Enter a start date','error');return;}
+  var tmpl=obTemplateById(templateId);
+  if(!tmpl){tst('Template not found','error');return;}
+
+  var weeks=JSON.parse(JSON.stringify(tmpl.weeks));
+
+  var checklist=tmpl.checklist.map(function(task){
+    return {task:task,obs:[false,false,false],obs_dates:['','',''],trainer_sigs:['','','']};
+  });
+
+  var row={
+    employee_name:empName,
+    position:tmpl.position,
+    division:tmpl.division,
+    template_id:templateId,
+    start_date:startDate,
+    trainer_name:v('ob-trainer')||'',
+    manager_name:v('ob-manager')||'',
+    status:'Active',
+    weeks:weeks,
+    checklist:checklist,
+    employee_sig:'',
+    employee_sig_date:'',
+    trainer_sig:'',
+    trainer_sig_date:'',
+    manager_sig:'',
+    manager_sig_date:'',
+    created_by:(S.get('lhs:me')||{}).name||'',
+    created_at:new Date().toISOString()
+  };
+
+  try{
+    var res=await DB.from('lhs_onboarding_plans').insert(row).select();
+    if(res.data&&res.data[0]) row.id=res.data[0].id;
+    var plans=S.get('lhs:onboarding_plans')||[];
+    plans.unshift(row);
+    S.set('lhs:onboarding_plans',plans);
+    tst('Onboarding plan created','success');
+    window._obView='plan';
+    window._obPlanId=row.id;
+    showPage('hr-onboarding');
+  }catch(e){
+    tst('Error saving plan: '+e.message,'error');
+  }
+}
+
+window._obWeekTab=0;
+
+function bObPlanView(planId){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var plan=plans.find(function(p){return p.id===planId;});
+  if(!plan){
+    return '<div style="padding:40px;text-align:center;color:var(--muted)">Plan not found. <button class="btn btn-o sm" onclick="window._obView=\'dashboard\';showPage(\'hr-onboarding\')">&larr; Back</button></div>';
+  }
+
+  var weekIdx=window._obWeekTab||0;
+  if(weekIdx>=plan.weeks.length) weekIdx=0;
+
+  var html='';
+  html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+  html+='<button class="btn btn-o sm" onclick="window._obView=\'dashboard\';showPage(\'hr-onboarding\')">&larr; Back</button>';
+  html+='<div style="font-size:16px;font-weight:700;color:var(--navy)">'+esc(plan.employee_name)+' &mdash; '+esc(plan.position)+'</div>';
+  var statusColor2=plan.status==='Active'?'#1565C0':plan.status==='Released'?'#2E7D32':'#E65100';
+  var statusBg2=plan.status==='Active'?'#E3F2FD':plan.status==='Released'?'#E8F5E9':'#FFF3E0';
+  html+='<span style="background:'+statusBg2+';color:'+statusColor2+';font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px">'+plan.status+'</span>';
+  html+='<button class="btn btn-o sm" onclick="obShowEditWeek(\''+planId+'\','+weekIdx+')" style="margin-left:auto">&#9998; Edit Week</button>';
+  html+='</div>';
+
+  html+='<div class="card" style="padding:12px 16px;margin-bottom:16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px">';
+  html+='<div><span style="color:var(--muted);font-size:11px">START DATE</span><br><strong>'+esc(plan.start_date||'&mdash;')+'</strong></div>';
+  html+='<div><span style="color:var(--muted);font-size:11px">TRAINER</span><br><strong>'+esc(plan.trainer_name||'&mdash;')+'</strong></div>';
+  html+='<div><span style="color:var(--muted);font-size:11px">MANAGER</span><br><strong>'+esc(plan.manager_name||'&mdash;')+'</strong></div>';
+  html+='<div><span style="color:var(--muted);font-size:11px">DIVISION</span><br><strong>'+esc(plan.division||'&mdash;')+'</strong></div>';
+  html+='</div>';
+
+  html+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:0;border-bottom:2px solid var(--bdr)">';
+  plan.weeks.forEach(function(w,i){
+    var isActive=i===weekIdx;
+    html+='<button onclick="window._obWeekTab='+i+';showPage(\'hr-onboarding\')" style="padding:7px 14px;border-radius:6px 6px 0 0;border:1px solid '+(isActive?'var(--navy)':'var(--bdr)')+';border-bottom:'+(isActive?'2px solid white':'1px solid var(--bdr)')+';background:'+(isActive?'var(--navy)':'white')+';color:'+(isActive?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;margin-bottom:-2px">'+esc(w.label)+'</button>';
+  });
+  html+='<button onclick="window._obWeekTab='+(plan.weeks?plan.weeks.length:99)+';showPage(\'hr-onboarding\')" style="padding:7px 14px;border-radius:6px 6px 0 0;border:1px solid '+(weekIdx>=plan.weeks.length?'var(--navy)':'var(--bdr)')+';border-bottom:'+(weekIdx>=plan.weeks.length?'2px solid white':'1px solid var(--bdr)')+';background:'+(weekIdx>=plan.weeks.length?'var(--navy)':'white')+';color:'+(weekIdx>=plan.weeks.length?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;margin-bottom:-2px">Checklist &amp; Sign-off</button>';
+  html+='</div>';
+
+  if(weekIdx<plan.weeks.length){
+    var week=plan.weeks[weekIdx];
+    html+='<div class="card" style="padding:0;margin-top:0;border-radius:0 0 8px 8px">';
+    html+='<div class="tw"><table style="font-size:12px;width:100%">';
+    html+='<thead><tr style="background:var(--navy)">';
+    ['Day','Date','Location','Report To / Assignee','Time','Topic','Description'].forEach(function(h){
+      html+='<th style="padding:8px 10px;text-align:left;color:white;font-size:11px;font-weight:600;white-space:nowrap">'+h+'</th>';
+    });
+    html+='</tr></thead><tbody>';
+    (week.days||[]).forEach(function(day,di){
+      html+='<tr style="border-bottom:1px solid var(--bdr);vertical-align:top">';
+      html+='<td style="padding:8px 10px;font-weight:600;white-space:nowrap">'+esc(day.day||'')+'</td>';
+      html+='<td style="padding:8px 10px;white-space:nowrap;color:var(--muted)">'+esc(day.date||'')+'</td>';
+      html+='<td style="padding:8px 10px">'+esc(day.location||'')+'</td>';
+      html+='<td style="padding:8px 10px">'+esc(day.assignee||'')+'</td>';
+      html+='<td style="padding:8px 10px;white-space:nowrap">'+esc(day.time||'')+'</td>';
+      html+='<td style="padding:8px 10px;font-weight:500">'+esc(day.topic||'')+'</td>';
+      html+='<td style="padding:8px 10px;max-width:320px;line-height:1.4">'+esc(day.description||'')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div></div>';
+  } else {
+    html+='<div class="card" style="padding:0;margin-top:0;border-radius:0 0 8px 8px">';
+    html+='<div class="tw"><table style="font-size:12px;width:100%">';
+    html+='<thead><tr style="background:var(--navy)">';
+    html+='<th style="padding:8px 12px;text-align:left;color:white;font-size:11px;font-weight:600">Task</th>';
+    html+='<th style="padding:8px 8px;text-align:center;color:white;font-size:11px;font-weight:600;white-space:nowrap">Obs 1</th>';
+    html+='<th style="padding:8px 8px;text-align:center;color:white;font-size:11px;font-weight:600;white-space:nowrap">Obs 2</th>';
+    html+='<th style="padding:8px 8px;text-align:center;color:white;font-size:11px;font-weight:600;white-space:nowrap">Obs 3</th>';
+    html+='<th style="padding:8px 12px;text-align:left;color:white;font-size:11px;font-weight:600">Trainer Signature</th>';
+    html+='</tr></thead><tbody>';
+    (plan.checklist||[]).forEach(function(item,ci){
+      html+='<tr style="border-bottom:1px solid var(--bdr)">';
+      html+='<td style="padding:7px 12px">'+esc(item.task||'')+'</td>';
+      for(var oi=0;oi<3;oi++){
+        var checked=item.obs&&item.obs[oi];
+        html+='<td style="padding:7px 8px;text-align:center">';
+        html+='<input type="checkbox" onchange="obToggleObs(\''+planId+'\','+ci+','+oi+',this.checked)"'+(checked?' checked':'')+' style="width:16px;height:16px;cursor:pointer">';
+        html+='</td>';
+      }
+      html+='<td style="padding:7px 12px;font-size:11px;color:var(--muted)">'+esc(item.trainer_sigs&&item.trainer_sigs[0]?item.trainer_sigs[0]:'')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div></div>';
+
+    html+='<div class="card" style="padding:20px;margin-top:16px">';
+    html+='<div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:16px;border-bottom:2px solid var(--navy);padding-bottom:6px">Training Sign-Off</div>';
+
+    html+='<div style="margin-bottom:16px;padding:14px;background:'+(plan.employee_sig?'#E8F5E9':'#FAFAFA')+';border:1px solid '+(plan.employee_sig?'#A5D6A7':'var(--bdr)')+';border-radius:8px">';
+    html+='<div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--navy)">1. Employee Sign-Off</div>';
+    if(plan.employee_sig){
+      html+='<div style="font-size:13px">&#10003; <strong>'+esc(plan.employee_sig)+'</strong> &mdash; '+esc(plan.employee_sig_date||'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">I confirm I have received and completed training as outlined in this onboarding plan.</div>';
+    } else {
+      html+='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">I confirm I have received and completed training as outlined in this onboarding plan.</div>';
+      html+='<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+      html+='<div class="fl" style="margin:0;min-width:220px"><label style="font-size:11px">Type your full name to sign</label>';
+      html+='<input type="text" id="ob-emp-sig" placeholder="Full Name" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+      html+='<button class="btn btn-n sm" onclick="obSignEmployee(\''+planId+'\')">Sign</button>';
+      html+='</div>';
+    }
+    html+='</div>';
+
+    html+='<div style="margin-bottom:16px;padding:14px;background:'+(plan.trainer_sig?'#E8F5E9':'#FAFAFA')+';border:1px solid '+(plan.trainer_sig?'#A5D6A7':'var(--bdr)')+';border-radius:8px">';
+    html+='<div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--navy)">2. Trainer Sign-Off</div>';
+    if(plan.trainer_sig){
+      html+='<div style="font-size:13px">&#10003; <strong>'+esc(plan.trainer_sig)+'</strong> &mdash; '+esc(plan.trainer_sig_date||'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">I confirm I have provided training and the employee has demonstrated competency.</div>';
+    } else {
+      html+='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">I confirm I have provided training and the employee has demonstrated competency.</div>';
+      if(!plan.employee_sig){
+        html+='<div style="font-size:12px;color:#E65100">&#9888; Awaiting employee signature first.</div>';
+      } else {
+        html+='<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+        html+='<div class="fl" style="margin:0;min-width:220px"><label style="font-size:11px">Type your full name to sign</label>';
+        html+='<input type="text" id="ob-trainer-sig" placeholder="Full Name" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+        html+='<button class="btn btn-n sm" onclick="obSignTrainer(\''+planId+'\')">Sign</button>';
+        html+='</div>';
+      }
+    }
+    html+='</div>';
+
+    html+='<div style="padding:14px;background:'+(plan.manager_sig?'#E8F5E9':'#FAFAFA')+';border:1px solid '+(plan.manager_sig?'#A5D6A7':'var(--bdr)')+';border-radius:8px">';
+    html+='<div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--navy)">3. Upper Management Release</div>';
+    if(plan.manager_sig){
+      html+='<div style="font-size:13px">&#10003; <strong>'+esc(plan.manager_sig)+'</strong> &mdash; '+esc(plan.manager_sig_date||'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">Employee released from training. Status: Released.</div>';
+    } else {
+      html+='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Upper management release certifies the employee is ready to work independently.</div>';
+      if(!plan.trainer_sig){
+        html+='<div style="font-size:12px;color:#E65100">&#9888; Awaiting trainer signature first.</div>';
+      } else {
+        html+='<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+        html+='<div class="fl" style="margin:0;min-width:220px"><label style="font-size:11px">Type your full name to release</label>';
+        html+='<input type="text" id="ob-mgr-sig" placeholder="Full Name" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+        html+='<button class="btn btn-n sm" onclick="obSignManager(\''+planId+'\')">Release from Training</button>';
+        html+='</div>';
+      }
+    }
+    html+='</div>';
+    html+='</div>';
+  }
+
+  return html;
+}
+
+function obShowEditWeek(planId, weekIdx){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var plan=plans.find(function(p){return p.id===planId;});
+  if(!plan||!plan.weeks||!plan.weeks[weekIdx]) return;
+  var week=plan.weeks[weekIdx];
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+
+  var html='<div style="overflow-y:auto;max-height:75vh">';
+  html+='<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Edit schedule for <strong>'+esc(week.label)+'</strong></div>';
+  html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<thead><tr style="background:var(--navy)">';
+  ['Day','Date','Location','Report To / Assignee','Time','Topic','Description'].forEach(function(h){
+    html+='<th style="padding:6px 8px;color:white;font-size:11px;text-align:left">'+h+'</th>';
+  });
+  html+='</tr></thead><tbody>';
+  (week.days||[]).forEach(function(day,di){
+    html+='<tr style="border-bottom:1px solid var(--bdr)">';
+    html+='<td style="padding:6px 8px;font-weight:600">'+esc(day.day||'')+'</td>';
+    html+='<td style="padding:4px 6px"><input type="date" id="ob-ew-date-'+di+'" value="'+esc(day.date||'')+'" style="width:130px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px"></td>';
+    html+='<td style="padding:4px 6px"><input type="text" id="ob-ew-loc-'+di+'" value="'+esc(day.location||'')+'" placeholder="Location" style="width:110px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px"></td>';
+    html+='<td style="padding:4px 6px"><select id="ob-ew-asgn-'+di+'" style="width:120px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px"><option value="">-- None --</option>';
+    users.forEach(function(u){var sel=day.assignee===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+    html+='</select></td>';
+    html+='<td style="padding:4px 6px"><input type="text" id="ob-ew-time-'+di+'" value="'+esc(day.time||'')+'" placeholder="8:00 AM" style="width:80px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px"></td>';
+    html+='<td style="padding:4px 6px"><input type="text" id="ob-ew-topic-'+di+'" value="'+esc(day.topic||'')+'" placeholder="Topic" style="width:120px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px"></td>';
+    html+='<td style="padding:4px 6px"><textarea id="ob-ew-desc-'+di+'" rows="2" placeholder="Description" style="width:200px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px;resize:vertical">'+esc(day.description||'')+'</textarea></td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div style="display:flex;gap:10px;margin-top:14px">';
+  html+='<button class="btn btn-n" onclick="svObWeek(\''+planId+'\','+weekIdx+','+(week.days?week.days.length:5)+')">Save Week</button>';
+  html+='<button class="btn btn-o" onclick="cMod()">Cancel</button>';
+  html+='</div>';
+
+  oMod('Edit ' + week.label + ' Schedule', html);
+}
+
+async function svObWeek(planId, weekIdx, numDays){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0){tst('Plan not found','error');return;}
+  var plan=plans[planIdx];
+  var week=plan.weeks[weekIdx];
+  for(var di=0;di<numDays;di++){
+    week.days[di].date=document.getElementById('ob-ew-date-'+di)&&document.getElementById('ob-ew-date-'+di).value||'';
+    week.days[di].location=document.getElementById('ob-ew-loc-'+di)&&document.getElementById('ob-ew-loc-'+di).value||'';
+    week.days[di].assignee=document.getElementById('ob-ew-asgn-'+di)&&document.getElementById('ob-ew-asgn-'+di).value||'';
+    week.days[di].time=document.getElementById('ob-ew-time-'+di)&&document.getElementById('ob-ew-time-'+di).value||'';
+    week.days[di].topic=document.getElementById('ob-ew-topic-'+di)&&document.getElementById('ob-ew-topic-'+di).value||'';
+    week.days[di].description=document.getElementById('ob-ew-desc-'+di)&&document.getElementById('ob-ew-desc-'+di).value||'';
+  }
+  plans[planIdx]=plan;
+  S.set('lhs:onboarding_plans',plans);
+  try{
+    await DB.from('lhs_onboarding_plans').update({weeks:plan.weeks,updated_at:new Date().toISOString()}).eq('id',planId);
+    tst('Week saved','success');
+  }catch(e){tst('Saved locally (sync error)','warning');}
+  cMod();
+  showPage('hr-onboarding');
+}
+
+async function obToggleObs(planId,ci,oi,checked){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0) return;
+  var plan=plans[planIdx];
+  if(!plan.checklist||!plan.checklist[ci]) return;
+  plan.checklist[ci].obs[oi]=checked;
+  plan.checklist[ci].obs_dates=plan.checklist[ci].obs_dates||['','',''];
+  if(checked) plan.checklist[ci].obs_dates[oi]=new Date().toLocaleDateString();
+  plans[planIdx]=plan;
+  S.set('lhs:onboarding_plans',plans);
+  try{
+    await DB.from('lhs_onboarding_plans').update({checklist:plan.checklist,updated_at:new Date().toISOString()}).eq('id',planId);
+  }catch(e){}
+}
+
+async function obSignEmployee(planId){
+  var sig=(document.getElementById('ob-emp-sig')&&document.getElementById('ob-emp-sig').value||'').trim();
+  if(!sig){tst('Type your full name to sign','error');return;}
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0) return;
+  plans[planIdx].employee_sig=sig;
+  plans[planIdx].employee_sig_date=new Date().toLocaleDateString();
+  S.set('lhs:onboarding_plans',plans);
+  try{
+    await DB.from('lhs_onboarding_plans').update({employee_sig:sig,employee_sig_date:plans[planIdx].employee_sig_date,updated_at:new Date().toISOString()}).eq('id',planId);
+    tst('Employee signature saved','success');
+  }catch(e){tst('Signed locally (sync error)','warning');}
+  showPage('hr-onboarding');
+}
+
+async function obSignTrainer(planId){
+  var sig=(document.getElementById('ob-trainer-sig')&&document.getElementById('ob-trainer-sig').value||'').trim();
+  if(!sig){tst('Type your full name to sign','error');return;}
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0) return;
+  plans[planIdx].trainer_sig=sig;
+  plans[planIdx].trainer_sig_date=new Date().toLocaleDateString();
+  plans[planIdx].status='Complete';
+  S.set('lhs:onboarding_plans',plans);
+  try{
+    await DB.from('lhs_onboarding_plans').update({trainer_sig:sig,trainer_sig_date:plans[planIdx].trainer_sig_date,status:'Complete',updated_at:new Date().toISOString()}).eq('id',planId);
+    tst('Trainer signature saved','success');
+  }catch(e){tst('Signed locally (sync error)','warning');}
+  showPage('hr-onboarding');
+}
+
+async function obSignManager(planId){
+  var sig=(document.getElementById('ob-mgr-sig')&&document.getElementById('ob-mgr-sig').value||'').trim();
+  if(!sig){tst('Type your full name to release','error');return;}
+  if(!confirm('Release '+sig+' confirms this employee is cleared from training and approved to work independently. Continue?')) return;
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0) return;
+  plans[planIdx].manager_sig=sig;
+  plans[planIdx].manager_sig_date=new Date().toLocaleDateString();
+  plans[planIdx].status='Released';
+  S.set('lhs:onboarding_plans',plans);
+  try{
+    await DB.from('lhs_onboarding_plans').update({manager_sig:sig,manager_sig_date:plans[planIdx].manager_sig_date,status:'Released',updated_at:new Date().toISOString()}).eq('id',planId);
+    tst('Employee released from training!','success');
+  }catch(e){tst('Released locally (sync error)','warning');}
+  showPage('hr-onboarding');
+}
+
+function bObTemplates(){
+  var templates=obGetTemplates();
+
+  var html='';
+  html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">';
+  html+='<button class="btn btn-o sm" onclick="window._obView=\'dashboard\';showPage(\'hr-onboarding\')">&larr; Back</button>';
+  html+='<div style="font-size:16px;font-weight:700;color:var(--navy)">Onboarding Templates</div>';
+  html+='<button class="btn btn-n sm" onclick="obNewTemplate()" style="margin-left:auto">+ New Template</button>';
+  html+='</div>';
+
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
+  templates.forEach(function(t){
+    var isBuiltin=OB_TEMPLATES_BUILTIN.find(function(b){return b.id===t.id;});
+    html+='<div class="card" style="padding:16px">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+    html+='<div><div style="font-weight:700;font-size:14px">'+esc(t.name)+'</div>';
+    html+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+esc(t.division||t.position)+'</div></div>';
+    if(isBuiltin){
+      html+='<span style="font-size:10px;background:#E3F2FD;color:#1565C0;padding:2px 7px;border-radius:10px;font-weight:600">Built-in</span>';
+    } else {
+      html+='<button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="obDeleteTemplate(\''+t.id+'\')">Del</button>';
+    }
+    html+='</div>';
+    html+='<div style="font-size:12px;color:var(--muted);margin-top:10px">'+t.weeks.length+' weeks &bull; '+t.checklist.length+' checklist items</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function obNewTemplate(){
+  tst('Custom template builder coming soon. For now, use the built-in Radon Technician template as the starting point.','info');
+}
+
+async function obDeleteTemplate(id){
+  if(!confirm('Delete this template?')) return;
+  var custom=S.get('lhs:onboarding_templates')||[];
+  custom=custom.filter(function(t){return t.id!==id;});
+  S.set('lhs:onboarding_templates',custom);
+  try{
+    await DB.from('lhs_onboarding_templates').delete().eq('id',id);
+    tst('Template deleted','success');
+  }catch(e){tst('Deleted locally (sync error)','warning');}
+  showPage('hr-onboarding');
+}
 
 // ─── HR SETTINGS ──────────────────────────────────────────────────────────────
 function bHRSettings(){
