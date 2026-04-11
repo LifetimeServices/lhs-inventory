@@ -15709,25 +15709,33 @@ function previewInvoice(invId,tmplId){
 
 // ── VOICE / CHAT ASSISTANT ────────────────────────────────────────────────────
 const _VA_PERMS={
-  //                       financial  hr     payroll  customers  workorders   inventory    admin   allUsers  sales    dispatch   tasks    purchasing  accounting
-  'God View':        {financial:true, hr:true, payroll:true, customers:true, workorders:'all',     inventory:true,    admin:true,  allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
-  'Admin':           {financial:true, hr:true, payroll:true, customers:true, workorders:'all',     inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
-  'Director':        {financial:true, hr:true, payroll:false,customers:true, workorders:'all',     inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
-  'Regional Manager':{financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',  inventory:true,    admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
-  'Location Manager':{financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',  inventory:true,    admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
-  'Manager':         {financial:'limited',hr:false,payroll:false,customers:true,workorders:'division',inventory:true, admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
-  'Sales Rep':       {financial:false,hr:false, payroll:false,customers:true, workorders:false,    inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
-  'Sales':           {financial:false,hr:false, payroll:false,customers:true, workorders:false,    inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
-  'Van Tech':        {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
-  'Technician':      {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
-  'Field Tech':      {financial:false,hr:false, payroll:false,customers:false,workorders:'own',    inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  //                        financial  hr     payroll  customers  workorders      inventory      admin   allUsers  sales    dispatch   tasks    purchasing  accounting
+  'Creator':          {financial:true, hr:true, payroll:true, customers:true, workorders:'all', inventory:true,    admin:true,  allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'God View':         {financial:true, hr:true, payroll:true, customers:true, workorders:'all', inventory:true,    admin:true,  allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Admin':            {financial:true, hr:true, payroll:true, customers:true, workorders:'all', inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Director':         {financial:true, hr:true, payroll:false,customers:true, workorders:'all', inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Regional Director':{financial:true, hr:true, payroll:false,customers:true, workorders:'all', inventory:true,    admin:false, allUsers:true,  sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:true},
+  'Regional Manager': {financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',inventory:true,  admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Location Manager': {financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',inventory:true,  admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Operations Manager':{financial:'limited',hr:false,payroll:false,customers:true,workorders:'all',inventory:true, admin:false, allUsers:false, sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Manager':          {financial:'limited',hr:false,payroll:false,customers:true,workorders:'division',inventory:true,admin:false,allUsers:false,sales:true, dispatch:true, tasks:'all', purchasing:true,  accounting:false},
+  'Dispatcher':       {financial:false,hr:false, payroll:false,customers:true, workorders:'all', inventory:false,   admin:false, allUsers:false, sales:false,dispatch:true, tasks:'all', purchasing:false, accounting:false},
+  'Sales Rep':        {financial:false,hr:false, payroll:false,customers:true, workorders:false, inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Sales':            {financial:false,hr:false, payroll:false,customers:true, workorders:false, inventory:false,   admin:false, allUsers:false, sales:true, dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Van Tech':         {financial:false,hr:false, payroll:false,customers:false,workorders:'own', inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Technician':       {financial:false,hr:false, payroll:false,customers:false,workorders:'own', inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
+  'Field Tech':       {financial:false,hr:false, payroll:false,customers:false,workorders:'own', inventory:'limited',admin:false,allUsers:false, sales:false,dispatch:false,tasks:'own', purchasing:false, accounting:false},
 };
 let _vaHistory=[];
 let _vaRecognition=null;
 let _vaListening=false;
 let _vaSpeakEnabled=true;
 
-function _vaP(){const r=CU?.role||'';return _VA_PERMS[r]||{financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:false,admin:false,allUsers:false};}
+// Full access fallback for any unrecognised role that has Creator-level badge in the app
+function _vaP(){
+  const r=CU?.role||'';
+  return _VA_PERMS[r]||{financial:false,hr:false,payroll:false,customers:false,workorders:'own',inventory:false,admin:false,allUsers:false,sales:false,dispatch:false,tasks:'own',purchasing:false,accounting:false};
+}
 
 function toggleVA(){
   const panel=document.getElementById('va-panel');if(!panel)return;
