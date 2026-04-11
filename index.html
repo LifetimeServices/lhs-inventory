@@ -20726,8 +20726,22 @@ async function svCreateWO(){
   if(window._woEstId) wo.estimate_id=window._woEstId;
   if(window._woOppId) wo.opp_id=window._woOppId;
 
-  const savedWO=await dbInsert('lhs:work_orders',wo);
-  if(!savedWO){tst('Failed to save work order','error');return}
+  let savedWO=await dbInsert('lhs:work_orders',wo);
+  if(!savedWO){
+    // Retry without newer columns that may not yet exist in the DB schema
+    const woFallback={...wo};
+    delete woFallback.estimate_id;
+    delete woFallback.opp_id;
+    delete woFallback.job_group_id;
+    delete woFallback.property_id;
+    delete woFallback.wo_state;
+    savedWO=await dbInsert('lhs:work_orders',woFallback);
+    if(savedWO){
+      console.warn('WO saved with fallback schema — run SQL migration to add missing columns (estimate_id, opp_id, job_group_id, property_id, wo_state)');
+      tst('Work order saved — run DB migration to enable full linking','warning');
+    }
+  }
+  if(!savedWO){tst('Failed to save work order — check console for DB error','error');return}
   wo.id=savedWO.id;
 
   // Create first appointment — check for scheduling conflicts first
