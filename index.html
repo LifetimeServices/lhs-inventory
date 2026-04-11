@@ -33843,7 +33843,7 @@ function _renderAcctDetail(id,opps,activities,leads){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${c.phone||c.primary_phone?`<button class="btn btn-o sm">📞 Call</button>`:''}
         ${c.email?`<button class="btn btn-o sm">✉️ Email</button>`:''}
-        <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New Opportunity</button>
+        <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ New Opportunity</button>
         <button class="btn btn-o sm" onclick="openCustomer('${id}')">Edit Account</button>
       </div>
     </div>
@@ -34004,7 +34004,7 @@ function bAccountHub(){
       return`<div style="display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-size:14px;font-weight:700;color:var(--navy)">${opps.length} Opportunit${opps.length===1?'y':'ies'}</div>
-          <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New</button>
+          <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ New</button>
         </div>
         ${opps.length?opps.sort((a,b)=>stageOrder.indexOf(a.stage)-stageOrder.indexOf(b.stage)).map(o=>`
         <div class="card" style="padding:16px;cursor:pointer" onclick="openOpportunity('${o.id}')">
@@ -34032,7 +34032,7 @@ function bAccountHub(){
             ${bx(o.stage,stageColor(o.stage))}
             <div style="font-size:11px;color:var(--muted)">${o.assigned_to?'👤 '+esc(o.assigned_to):''} ${o.close_date?'· Close: '+new Date(o.close_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}):''}</div>
           </div>
-        </div>`).join(''):`<div class="card" style="padding:28px;text-align:center;color:var(--muted)">No opportunities yet. <button class="btn btn-o sm" style="margin-left:8px" onclick="oAddOpportunity()">Create one</button></div>`}
+        </div>`).join(''):`<div class="card" style="padding:28px;text-align:center;color:var(--muted)">No opportunities yet. <button class="btn btn-o sm" style="margin-left:8px" onclick="oAddOpportunity({customer_id:'${id}'})">Create one</button></div>`}
       </div>`;
     }
 
@@ -34110,7 +34110,7 @@ function bAccountHub(){
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
         ${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" class="btn btn-o sm">📞 Call</a>`:''}
         ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
-        <button class="btn btn-n sm" onclick="oAddOpportunity()">+ Opportunity</button>
+        <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ Opportunity</button>
         <button class="btn btn-o sm" onclick="window._acctHubEditing=true;showPage('account-hub')">✏️ Edit</button>
       </div>
     </div>
@@ -36581,7 +36581,13 @@ async function svAddLead(){
   const propMsg=finalProp?(finalProp.id.startsWith('prop_')?'property saved locally':'property created'):'';
   const oppMsg=savedOpp?'opportunity created':'opportunity saved locally';
   tst(`Lead saved · ${custMsg} · ${oppMsg}${propMsg?' · '+propMsg:''}`, 'success');
-  showPage('sales-leads');
+
+  // Take the user directly to the new account hub so they can see the linked opp and start the sales flow
+  if(finalCust?.id&&!String(finalCust.id).startsWith('cust_')){
+    openAccountHub(finalCust.id);
+  } else {
+    showPage('sales-leads');
+  }
 }
 
 function oEditLead(id){
@@ -37776,13 +37782,56 @@ async function updateOppStage(id,stage){
 function oppToWO(oppId){
   const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===oppId);
   if(!o) return;
-  cMod();
-  // Pre-fill WO creation with opportunity data
+
+  // Find the best linked estimate (Accepted > Sent > most recent)
+  const ests=(S.get('lhs:estimates')||[])
+    .filter(e=>(e.opp_id||e.opportunity_id)===oppId)
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const est=ests.find(e=>e.status==='Accepted')||ests.find(e=>e.status==='Sent')||ests[0]||null;
+
+  // Set division/type globals (set BEFORE woCreateForm() reads them)
   window._woDiv=o.division||DIVS[0];
   window._woType=o.job_type||'Installation';
+  window._woSub='';
   window._woOppId=oppId;
-  oCreateWO();
-  tst('WO pre-filled from opportunity — review and save','info');
+  window._woEstId=est?.id||null;
+
+  // Pre-select customer
+  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)||null;
+  window._wocSelectedCust=cust||null;
+
+  // Pre-select property — auto-pick if customer has exactly one
+  const props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===o.customer_id||p.customer_id===o.customer_id);
+  window._wocPropertyId=props.length===1?props[0].id:null;
+
+  // Price from estimate or opportunity value
+  const price=est?.total_price||o.estimated_value||null;
+
+  // Open modal directly (skip oCreateWO() which would reset _woDiv/_woType)
+  cMod();
+  oMod('Create Work Order', woCreateForm());
+
+  // After DOM renders, trigger all UI pre-fills
+  setTimeout(()=>{
+    // Customer
+    if(cust) wocSelectCust(cust.id);
+    // Property
+    if(window._wocPropertyId) propSelectInline(window._wocPropertyId);
+    // Price
+    if(price){
+      const priceEl=document.getElementById('woc-price');
+      if(priceEl) priceEl.value=Number(price).toFixed(2);
+    }
+    // Description: opportunity name + estimate number if available
+    const descEl=document.getElementById('woc-desc');
+    if(descEl&&!descEl.value){
+      const descParts=[o.name||''];
+      if(est?.estimate_number) descParts.push(`Est. ${est.estimate_number}`);
+      descEl.value=descParts.filter(Boolean).join(' — ');
+    }
+  },100);
+
+  tst(est?`Pre-filled from opportunity + estimate ${est.estimate_number||''}':'Pre-filled from opportunity — review and save`,'info');
 }
 
 
