@@ -39425,6 +39425,9 @@ async function stImportRows(rows) {
 
     var wo = {
       wo_number: woNum,
+      wo_year: woYear,
+      wo_state: woState,
+      division_code: divCode,
       st_job_id: jobId,
       st_invoice_id: row['Invoice #'] || '',
       status: 'Completed',
@@ -39433,22 +39436,20 @@ async function stImportRows(rows) {
       tech_name: firstTech,
       all_techs: techFull,
       customer_name: row['Customer Name'] || '',
-      address: row['Location Address'] || '',
-      city: row['Location City'] || '',
-      state: row['Location State'] || '',
-      zip: row['Location Zip'] || '',
+      customer_address: row['Location Address'] || '',
+      customer_city: row['Location City'] || '',
+      customer_state: row['Location State'] || '',
+      customer_zip: row['Location Zip'] || '',
       property_name: row['Location Name'] || '',
       division: jf.division,
       job_type: jf.job_type,
       job_subtype: jf.job_subtype,
       job_classification: jf.job_classification,
-      total: totalVal,
-      subtotal: subtotalVal,
-      tax: taxVal,
+      total_price: totalVal,
+      total_paid: totalVal,
       payment_type: row['Payment Types'] || '',
       completed_at: completedISO,
       invoice_date: invoiceDateISO,
-      notes: '',
       imported_at: new Date().toISOString()
     };
     currentBatch.push(wo);
