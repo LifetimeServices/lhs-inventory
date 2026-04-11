@@ -523,8 +523,8 @@ const PERM_MODS=[
   {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','unassign_techs','dispatch_techs','cancel_dispatch','arrive_techs','view_cost','view_pricing','adjust_materials','edit_tech_audit','edit_creation_audit','wo_assigned_only','wo_window_prior','wo_window_ahead']},
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
   {key:'accounts',label:'Accounts',icon:'🏢',perms:['view','create','edit','delete','import','download']},
-  {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export'],
-    tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_rma','tab_inv_reports','tab_testers','tab_tools']},
+  {key:'inventory',label:'Inventory',icon:'📦',perms:['view','create','edit','transfer','create_po','approve_po','view_cost','view_pricing','export','recon_submit','recon_approve','recon_reassign'],
+    tabs:['tab_inv_dash','tab_inv_master','tab_po','tab_receive','tab_transfer','tab_vans','tab_locations','tab_locstock','tab_rma','tab_inv_reports','tab_testers','tab_tools','tab_inv_recon']},
   {key:'hr',label:'HR',icon:'👤',perms:['view','edit','edit_employees','view_compensation','edit_compensation','manage_timeoff','view_all','view_managed_only'],
     tabs:['tab_payroll','tab_employees','tab_hr_state','tab_timeoff','tab_onboarding','tab_hr_settings']},
   {key:'payroll',label:'Payroll',icon:'💵',perms:['view','edit','process','export','view_all','payroll_managed_only','review_own_timesheet']},
@@ -562,7 +562,8 @@ const PERM_LABELS={
   tab_inv_dash:'Overview',tab_inv_master:'Master Inventory',tab_po:'Purchase Orders',
   tab_receive:'Receive',tab_transfer:'Transfer',tab_vans:'Van Stock',
   tab_locations:'Locations',tab_locstock:'Location Stock',tab_inv_reports:'Reports',
-  tab_rma:'RMA',tab_testers:'Testers',tab_tools:'Tool Management',
+  tab_rma:'RMA',tab_testers:'Testers',tab_tools:'Tool Management',tab_inv_recon:'Reconciliation',
+  recon_submit:'Can Submit Reconciliations',recon_approve:'Can Approve Reconciliations',recon_reassign:'Can Reassign Reconciliations',
   // ── HR sub-tabs ───────────────────────────────────────────────────────────
   tab_payroll:'Payroll',tab_employees:'Employee Info',tab_hr_state:'State Settings',
   tab_timeoff:'Time Off Requests',tab_onboarding:'Onboarding',tab_hr_settings:'HR Settings',
@@ -1676,6 +1677,9 @@ const TBL={
   'lhs:mk_drip':'lhs_mk_drip',
   'lhs:mk_settings':'lhs_mk_settings',
   'lhs:role_permissions':'lhs_role_permissions',
+  'lhs:recons':'lhs_inventory_recons',
+  'lhs:recon_items':'lhs_inventory_recon_items',
+  'lhs:inv_adjustments':'lhs_inventory_adjustments',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -2067,7 +2071,8 @@ const LOC_BASE_FIELDS=['name','type','region','state','city','addr','address','z
   'cost_per_month','unit_number','gate_code','access_code','key_label',
   'dumpster_size','dumpster_cost','contact_name','contact_phone','contact_email',
   'driver','driver_phone','division','year','make','model','color','plate','vin',
-  'wex_card','gps_serial','gps_camera_serial','notes'];
+  'wex_card','gps_serial','gps_camera_serial','notes',
+  'primary_user_name','primary_user_email'];
 // Vehicle-specific extras (stored locally until Supabase schema is extended)
 const LOC_VEH_FIELDS=['year','make','model','color','plate','vin','driver','driver_phone','division','wex_card','gps_serial','gps_camera_serial','notes'];
 function locBasePick(obj){
@@ -2286,6 +2291,7 @@ const _PAGE_MODULE_MAP={
   'inv-reports':{mod:'inventory',tab:'tab_inv_reports'},
   testers:{mod:'inventory',tab:'tab_testers'},
   tools:{mod:'inventory',tab:'tab_tools'},
+  'inv-recon':{mod:'inventory',tab:'tab_inv_recon'},
   // HR sub-pages
   'hr-payroll':{mod:'hr',tab:'tab_payroll'},
   'hr-employees':{mod:'hr',tab:'tab_employees'},
@@ -2661,6 +2667,7 @@ async function startApp(){
     <div class="page" id="p-inv-reports"></div>
     <div class="page" id="p-testers"></div>
     <div class="page" id="p-tools"></div>
+    <div class="page" id="p-inv-recon"></div>
     <div class="page" id="p-sales"></div>
     <div class="page" id="p-sales-crm-dashboard"></div>
     <div class="page" id="p-sales-email-sync"></div>
@@ -2878,6 +2885,7 @@ const INV_NAV=[
   {id:'inv-reports',  l:'Reports'},
   {id:'testers',      l:'Testers'},
   {id:'tools',        l:'Tool Management'},
+  {id:'inv-recon',    l:'Reconciliation'},
 ];
 const ACCOUNTS_NAV=[
   {id:'customers',         l:'Customers'},
@@ -3215,7 +3223,7 @@ function buildPage(id){
     closeout:bCloseout, inventory:bInv, 'inv-dashboard':bInvDash,
     po:bPO, receive:bRecv, transfer:bXfr, vans:bVans,
     locations:bLocs, locstock:bLS, rma:bRMA, 'inv-reports':bInvReports,
-    testers:bTest, tools:bTools,
+    testers:bTest, tools:bTools, 'inv-recon':bInvRecon,
     hr:()=>bPlaceholder('HR'),
     'hr-payroll':bPayroll,
     'hr-employees':bHREmployees,
@@ -4550,6 +4558,676 @@ async function editVanQty(rowId, vehicle, sku, newQty){
   tst(`${sku} on ${vehicle}: ${old} → ${qty}`,'success');
 }
 
+// ── INVENTORY RECONCILIATION ──────────────────────────────────────────────────
+const RECON_PERMS={
+  'Creator':           {view:'all',      submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'God View':          {view:'all',      submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'Admin':             {view:'all',      submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'Director':          {view:'all',      submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'Regional Director': {view:'region',   submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'Regional Manager':  {view:'region',   submit:true,  approve:true,  reassign:true,  viewCost:true},
+  'Operations Manager':{view:'all',      submit:true,  approve:true,  reassign:true,  viewCost:false},
+  'Manager':           {view:'location', submit:true,  approve:true,  reassign:true,  viewCost:false},
+  'Dispatcher':        {view:'assigned', submit:true,  approve:false, reassign:false, viewCost:false},
+  'Van Tech':          {view:'assigned', submit:true,  approve:false, reassign:false, viewCost:false},
+  'Technician':        {view:'assigned', submit:true,  approve:false, reassign:false, viewCost:false},
+  'Field Tech':        {view:'assigned', submit:true,  approve:false, reassign:false, viewCost:false},
+  'Sales Rep':         {view:'none',     submit:false, approve:false, reassign:false, viewCost:false},
+  'Sales':             {view:'none',     submit:false, approve:false, reassign:false, viewCost:false},
+};
+function _reconP(){return RECON_PERMS[CU?.role||'']||{view:'none',submit:false,approve:false,reassign:false,viewCost:false};}
+
+function _reconCanView(recon){
+  const p=_reconP();
+  if(p.view==='all') return true;
+  if(p.view==='none') return false;
+  if(p.view==='assigned') return recon.assigned_to_name===CU?.name||recon.assigned_to_email===CU?.email;
+  if(p.view==='region') return recon.region===CU?.region||!CU?.region;
+  if(p.view==='location') return recon.location_name===CU?.loc||!CU?.loc;
+  return false;
+}
+
+// Auto-generate recons for the current month on first load/visit
+async function _autoGenRecons(){
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const dueDay=6;
+  const dueDate=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-0${dueDay}`;
+  const existing=S.get('lhs:recons')||[];
+  if(existing.some(r=>r.period===period)) return; // already generated
+  // Try to load from DB first
+  try{
+    const{data}=await DB.from('lhs_inventory_recons').select('*').eq('period',period);
+    if(data&&data.length){S.set('lhs:recons',data);return;}
+  }catch{}
+  // Generate new recons from all active locations
+  const locs=(S.get('lhs:locs')||[]).filter(l=>l.active!==false&&l.active!=='false');
+  const newRecons=[];
+  for(const loc of locs){
+    const isVehicle=loc.type&&(loc.type.toLowerCase().includes('van')||loc.type.toLowerCase().includes('vehicle')||loc.type.toLowerCase().includes('truck'));
+    const assignedTo=isVehicle?(loc.driver||loc.primary_user_name||''):(loc.primary_user_name||'');
+    const assignedEmail=isVehicle?(loc.driver_email||loc.primary_user_email||''):(loc.primary_user_email||'');
+    const recon={
+      period, due_date:dueDate,
+      location_type:isVehicle?'vehicle':'location',
+      location_id:loc.id,
+      location_name:loc.name||'Unknown',
+      region:loc.region||'',
+      assigned_to_name:assignedTo,
+      assigned_to_email:assignedEmail,
+      status:'Not Started',
+      total_items:0,total_variances:0,variance_value:0,
+      created_at:new Date().toISOString(),updated_at:new Date().toISOString(),
+    };
+    try{
+      const{data:saved}=await DB.from('lhs_inventory_recons').insert(recon).select().single();
+      newRecons.push(saved||{...recon,id:'rc_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    }catch{
+      newRecons.push({...recon,id:'rc_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    }
+  }
+  S.set('lhs:recons',newRecons);
+  tst(`${newRecons.length} inventory recons generated for ${period}`,'success');
+}
+
+// Check for overdue recons and create tasks
+async function _checkOverdueRecons(){
+  const now=new Date();
+  if(now.getDate()<=6) return; // not overdue yet
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const recons=S.get('lhs:recons')||[];
+  const overdue=recons.filter(r=>r.period===period&&(r.status==='Not Started'||r.status==='In Progress'));
+  for(const r of overdue){
+    if(r.task_created) continue;
+    const task={
+      title:`⚠️ Overdue Inventory Recon — ${r.location_name}`,
+      description:`Monthly inventory reconciliation for ${r.location_name} (${period}) was due by the 6th and has not been submitted. Please complete immediately.`,
+      assigned_to_name:r.assigned_to_name||CU?.name||'',
+      assigned_to_email:r.assigned_to_email||CU?.email||'',
+      assigned_by:'System',priority:'High',status:'Open',
+      due_date:r.due_date,
+      created_at:new Date().toISOString(),updated_at:new Date().toISOString(),
+    };
+    try{await dbInsert('lhs:tasks',task);}catch{}
+    // Update recon status
+    r.status='Overdue';r.updated_at=new Date().toISOString();r.task_created=true;
+    try{await DB.from('lhs_inventory_recons').update({status:'Overdue',updated_at:r.updated_at}).eq('id',r.id);}catch{}
+  }
+  S.set('lhs:recons',recons);
+}
+
+function bInvRecon(){
+  const p=_reconP();
+  if(p.view==='none') return`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">You do not have access to inventory reconciliation.</div>`;
+  _autoGenRecons().then(()=>{_checkOverdueRecons();_refreshReconDash();});
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const dueDay=6;
+  const isOverdue=now.getDate()>dueDay;
+  const daysLeft=Math.max(0,dueDay-now.getDate());
+  return`
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+    <div>
+      <div class="pt" style="margin:0">Inventory Reconciliation</div>
+      <div class="ps" style="margin:0">Monthly physical count — due by the 6th of each month</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${p.approve?`<button class="btn btn-o sm" onclick="_reconRefreshFromDB()">↻ Refresh</button>`:''}
+      ${p.reassign?`<button class="btn btn-o sm" onclick="_reconOpenAdmin()">⚙ Admin Override</button>`:''}
+    </div>
+  </div>
+  <!-- Period + due date banner -->
+  <div style="background:${isOverdue?'#fff3cd':'#e8f5e9'};border:1px solid ${isOverdue?'#ffc107':'#a5d6a7'};border-radius:8px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-weight:700;font-size:13px;color:${isOverdue?'#856404':'#2e7d32'}">
+      ${isOverdue?'⚠️ Recon Period OVERDUE':'📋 Current Period: '+period}
+      <span style="font-weight:400;font-size:12px;margin-left:8px">Due: ${period}-0${dueDay}</span>
+    </div>
+    ${!isOverdue?`<span style="font-size:12px;color:var(--muted)">${daysLeft} day${daysLeft===1?'':'s'} remaining</span>`:'<span style="font-size:12px;color:#856404;font-weight:600">Submit immediately!</span>'}
+  </div>
+  <div id="recon-dash-wrap">
+    <div style="text-align:center;padding:24px;color:var(--muted)">Loading reconciliations...</div>
+  </div>`;
+}
+
+function _refreshReconDash(){
+  const el=document.getElementById('recon-dash-wrap');
+  if(!el) return;
+  el.innerHTML=_renderReconDash();
+}
+
+function _renderReconDash(){
+  const p=_reconP();
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  let recons=(S.get('lhs:recons')||[]).filter(r=>r.period===period&&_reconCanView(r));
+  // Period filter
+  const allPeriods=[...new Set((S.get('lhs:recons')||[]).map(r=>r.period))].sort().reverse();
+  // Status counts
+  const sCnt=s=>recons.filter(r=>r.status===s).length;
+  const statusBadge=s=>{
+    const cfg={
+      'Not Started':{bg:'#f5f5f5',color:'#666',icon:'⬜'},
+      'In Progress':{bg:'#e3f2fd',color:'#1565c0',icon:'🔵'},
+      'Submitted':  {bg:'#fff8e1',color:'#f57f17',icon:'🟡'},
+      'Overdue':    {bg:'#ffebee',color:'#c62828',icon:'🔴'},
+      'Approved':   {bg:'#e8f5e9',color:'#2e7d32',icon:'🟢'},
+      'Closed':     {bg:'#f3e5f5',color:'#6a1b9a',icon:'✅'},
+    };
+    const c=cfg[s]||cfg['Not Started'];
+    return`<span style="background:${c.bg};color:${c.color};border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">${c.icon} ${s}</span>`;
+  };
+  const statCard=(label,cnt,color)=>`
+    <div class="card" style="padding:12px 16px;text-align:center;min-width:100px">
+      <div style="font-size:22px;font-weight:800;color:${color}">${cnt}</div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">${label}</div>
+    </div>`;
+  if(!recons.length) return`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No reconciliations found for this period. They auto-generate on the 1st of each month.</div>`;
+  return`
+  <!-- Summary stats -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${statCard('Total',recons.length,'var(--navy)')}
+    ${statCard('Not Started',sCnt('Not Started'),'var(--muted)')}
+    ${statCard('In Progress',sCnt('In Progress'),'#1565c0')}
+    ${statCard('Submitted',sCnt('Submitted'),'#f57f17')}
+    ${statCard('Overdue',sCnt('Overdue'),'var(--red)')}
+    ${statCard('Closed',sCnt('Closed'),'var(--green)')}
+  </div>
+  <!-- Filter bar -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <select onchange="_reconFilterType(this.value)" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--bdr)">
+      <option value="">All Types</option>
+      <option value="vehicle">Vehicles</option>
+      <option value="location">Locations</option>
+    </select>
+    <select onchange="_reconFilterStatus(this.value)" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--bdr)">
+      <option value="">All Statuses</option>
+      ${['Not Started','In Progress','Submitted','Overdue','Approved','Closed'].map(s=>`<option>${s}</option>`).join('')}
+    </select>
+    <input id="recon-search" placeholder="Search location or assignee..." oninput="_reconSearch(this.value)" style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);min-width:200px">
+  </div>
+  <!-- Recon cards -->
+  <div id="recon-cards-wrap">
+    ${_renderReconCards(recons,p,statusBadge)}
+  </div>`;
+}
+
+let _reconTypeFilter='';let _reconStatusFilter='';let _reconSearchVal='';
+function _reconFilterType(v){_reconTypeFilter=v;_applyReconFilters();}
+function _reconFilterStatus(v){_reconStatusFilter=v;_applyReconFilters();}
+function _reconSearch(v){_reconSearchVal=v.toLowerCase();_applyReconFilters();}
+function _applyReconFilters(){
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  let recons=(S.get('lhs:recons')||[]).filter(r=>r.period===period&&_reconCanView(r));
+  if(_reconTypeFilter) recons=recons.filter(r=>r.location_type===_reconTypeFilter);
+  if(_reconStatusFilter) recons=recons.filter(r=>r.status===_reconStatusFilter);
+  if(_reconSearchVal) recons=recons.filter(r=>(r.location_name||'').toLowerCase().includes(_reconSearchVal)||(r.assigned_to_name||'').toLowerCase().includes(_reconSearchVal));
+  const p=_reconP();
+  const statusBadge=s=>{
+    const cfg={'Not Started':{bg:'#f5f5f5',color:'#666',icon:'⬜'},'In Progress':{bg:'#e3f2fd',color:'#1565c0',icon:'🔵'},'Submitted':{bg:'#fff8e1',color:'#f57f17',icon:'🟡'},'Overdue':{bg:'#ffebee',color:'#c62828',icon:'🔴'},'Approved':{bg:'#e8f5e9',color:'#2e7d32',icon:'🟢'},'Closed':{bg:'#f3e5f5',color:'#6a1b9a',icon:'✅'}};
+    const c=cfg[s]||cfg['Not Started'];
+    return`<span style="background:${c.bg};color:${c.color};border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">${c.icon} ${s}</span>`;
+  };
+  const el=document.getElementById('recon-cards-wrap');
+  if(el) el.innerHTML=_renderReconCards(recons,p,statusBadge);
+}
+
+function _renderReconCards(recons,p,statusBadge){
+  if(!recons.length) return`<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No reconciliations match your filters.</div>`;
+  return`<div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr>
+    <th>Location / Vehicle</th><th>Type</th><th>Assigned To</th>
+    <th>Items</th><th>Variances</th>${p.viewCost?'<th>$ Impact</th>':''}
+    <th>Status</th><th>Due</th><th></th>
+  </tr></thead>
+  <tbody>${recons.map(r=>{
+    const isAssigned=r.assigned_to_name===CU?.name||r.assigned_to_email===CU?.email;
+    const canStart=p.submit&&(isAssigned||p.reassign);
+    const canReview=p.approve&&r.status==='Submitted';
+    const isOverdue=r.status==='Overdue';
+    return`<tr style="${isOverdue?'background:#fff8f8':''}">
+      <td style="font-weight:700">${r.location_type==='vehicle'?'🚐':'🏭'} ${esc(r.location_name)}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.location_type==='vehicle'?'Vehicle':'Location'}</td>
+      <td style="font-size:12px${!r.assigned_to_name?';color:var(--muted)':''}">${esc(r.assigned_to_name||'Unassigned')}${isAssigned?' <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:8px;padding:1px 6px">You</span>':''}</td>
+      <td style="font-size:12px">${r.total_items||0}</td>
+      <td style="font-size:12px;color:${(r.total_variances||0)>0?'var(--red)':'var(--green)'};font-weight:${(r.total_variances||0)>0?'700':'400'}">${r.total_variances||0}</td>
+      ${p.viewCost?`<td style="font-size:12px;color:${(r.variance_value||0)!==0?'var(--red)':'inherit'}">${(r.variance_value||0)!==0?'$'+Math.abs(r.variance_value||0).toLocaleString('en-US',{minimumFractionDigits:2}):'—'}</td>`:''}
+      <td>${statusBadge(r.status)}</td>
+      <td style="font-size:12px;color:${isOverdue?'var(--red)':'var(--muted)'};font-weight:${isOverdue?'700':'400'}">${r.due_date||'—'}</td>
+      <td style="white-space:nowrap">
+        ${canReview?`<button class="btn sm btn-n" onclick="openReconReview('${r.id}')">Review</button>`
+          :canStart&&!['Approved','Closed'].includes(r.status)?`<button class="btn sm btn-n" onclick="openRecon('${r.id}')">Count</button>`
+          :`<button class="btn sm btn-o" onclick="openRecon('${r.id}')">View</button>`}
+        ${p.reassign&&!['Approved','Closed'].includes(r.status)?`<button class="btn sm btn-o" onclick="openReconReassign('${r.id}')" style="margin-left:4px">↺</button>`:''}
+      </td>
+    </tr>`;
+  }).join('')}
+  </tbody></table></div></div>`;
+}
+
+async function openRecon(reconId){
+  const recons=S.get('lhs:recons')||[];
+  let recon=recons.find(r=>r.id===reconId);
+  if(!recon){tst('Reconciliation not found','error');return;}
+  const p=_reconP();
+  const isAssigned=recon.assigned_to_name===CU?.name||recon.assigned_to_email===CU?.email;
+  const canEdit=p.submit&&(isAssigned||p.reassign)&&!['Approved','Closed'].includes(recon.status);
+  const canApprove=p.approve;
+  // Load items for this recon from DB
+  let items=[];
+  try{
+    const{data}=await DB.from('lhs_inventory_recon_items').select('*').eq('recon_id',reconId);
+    if(data&&data.length) items=data;
+  }catch{}
+  // If no items yet and we can edit — seed from location stock / van inventory
+  if(!items.length&&canEdit){
+    items=await _seedReconItems(recon);
+  }
+  // Store in local cache
+  const cached=S.get('lhs:recon_items')||[];
+  const otherItems=cached.filter(i=>i.recon_id!==reconId);
+  S.set('lhs:recon_items',[...otherItems,...items]);
+  _renderReconCountModal(recon,items,canEdit,canApprove,p);
+}
+
+async function _seedReconItems(recon){
+  const items=[];
+  const allItems=S.get('lhs:items')||[];
+  let stockRows=[];
+  if(recon.location_type==='vehicle'){
+    const vi=S.get('lhs:vi')||[];
+    stockRows=vi.filter(v=>v.vehicle===recon.location_name||v.vehicle_id===recon.location_id);
+  } else {
+    const ls=S.get('lhs:ls')||[];
+    stockRows=ls.filter(l=>l.location===recon.location_name||l.location_id===recon.location_id);
+  }
+  for(const row of stockRows){
+    const masterItem=allItems.find(i=>i.sku===row.sku||i.id===row.item_id||i.name===row.item);
+    const ri={
+      recon_id:recon.id,
+      item_id:masterItem?.id||row.item_id||row.sku||'',
+      item_name:row.item||masterItem?.name||row.item_name||'Unknown',
+      item_sku:row.sku||masterItem?.sku||'',
+      item_category:masterItem?.category||'',
+      unit_cost:masterItem?.cost||masterItem?.unit_cost||0,
+      system_count:parseFloat(row.qty_on_hand||row.qty||0),
+      physical_count:null,
+      variance:null,
+      variance_value:null,
+      variance_reason:null,
+      variance_notes:null,
+      adjustment_status:'Pending',
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+    };
+    try{
+      const{data:saved}=await DB.from('lhs_inventory_recon_items').insert(ri).select().single();
+      items.push(saved||{...ri,id:'rci_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    }catch{
+      items.push({...ri,id:'rci_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    }
+  }
+  // Update recon total_items
+  const now=new Date().toISOString();
+  try{await DB.from('lhs_inventory_recons').update({total_items:items.length,status:'In Progress',started_by:CU?.name||'',started_at:now,updated_at:now}).eq('id',recon.id);}catch{}
+  const reconList=S.get('lhs:recons')||[];
+  const r=reconList.find(x=>x.id===recon.id);
+  if(r){r.total_items=items.length;r.status='In Progress';r.started_by=CU?.name||'';r.started_at=now;}
+  S.set('lhs:recons',reconList);
+  return items;
+}
+
+function _renderReconCountModal(recon,items,canEdit,canApprove,p){
+  const countedItems=items.filter(i=>i.physical_count!==null&&i.physical_count!==undefined);
+  const varItems=items.filter(i=>i.variance!==null&&i.variance!==0);
+  const varNeedReason=varItems.filter(i=>!i.variance_reason);
+  const allCounted=countedItems.length===items.length&&items.length>0;
+  const canSubmit=canEdit&&allCounted&&varNeedReason.length===0&&!['Submitted','Approved','Closed'].includes(recon.status);
+  const REASONS=['Data Entry Error','Unlogged Usage','Damaged/Disposed','Theft/Loss','Found Extra','Other'];
+  const statusColor=s=>s==='Not Started'?'var(--muted)':s==='In Progress'?'#1565c0':s==='Submitted'?'#f57f17':s==='Overdue'?'var(--red)':s==='Approved'?'var(--green)':'#6a1b9a';
+  oMod(`${recon.location_type==='vehicle'?'🚐':'🏭'} ${esc(recon.location_name)} — ${recon.period} Recon`,`
+  <div style="max-height:78vh;overflow-y:auto;padding-right:4px">
+  <!-- Header -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div class="card" style="padding:10px 12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:var(--navy)">${items.length}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Total Items</div>
+    </div>
+    <div class="card" style="padding:10px 12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:var(--teal)">${countedItems.length}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Counted</div>
+    </div>
+    <div class="card" style="padding:10px 12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:${varItems.length>0?'var(--red)':'var(--green)'}">${varItems.length}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Variances</div>
+    </div>
+    <div class="card" style="padding:10px 12px;text-align:center">
+      <div style="font-size:13px;font-weight:700;color:${statusColor(recon.status)}">${recon.status}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase">Status</div>
+    </div>
+  </div>
+  <!-- Progress bar -->
+  <div style="background:var(--surf);border-radius:8px;height:8px;margin-bottom:16px;overflow:hidden">
+    <div style="background:var(--teal);height:100%;width:${items.length?Math.round(countedItems.length/items.length*100):0}%;transition:width .3s;border-radius:8px"></div>
+  </div>
+  <!-- Assigned to -->
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+    Assigned to: <strong style="color:var(--navy)">${esc(recon.assigned_to_name||'Unassigned')}</strong>
+    &nbsp;·&nbsp; Due: <strong style="color:${new Date()>new Date(recon.due_date)?'var(--red)':'var(--navy)'}">${recon.due_date}</strong>
+  </div>
+  ${!items.length?`<div style="text-align:center;padding:24px;color:var(--muted)">No inventory items found for this location. Items are seeded from current location/van stock.</div>`:''}
+  <!-- Items table -->
+  ${items.length?`<div class="card" style="padding:0;margin-bottom:14px"><div class="tw"><table>
+  <thead><tr>
+    <th>Item</th><th>SKU</th>
+    <th style="text-align:right">System Count</th>
+    <th style="text-align:center">Physical Count</th>
+    <th style="text-align:right">Variance</th>
+    ${p.viewCost?'<th style="text-align:right">$ Impact</th>':''}
+    <th>Reason</th>
+  </tr></thead>
+  <tbody>${items.map(item=>{
+    const counted=item.physical_count!==null&&item.physical_count!==undefined;
+    const variance=counted?item.physical_count-item.system_count:null;
+    const hasVar=variance!==null&&variance!==0;
+    const needsReason=hasVar&&!item.variance_reason;
+    return`<tr style="${needsReason?'background:#fff8f8':counted&&!hasVar?'background:#f0fff4':''}">
+      <td style="font-weight:600;font-size:13px">${esc(item.item_name)}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(item.item_sku||'—')}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${item.system_count}</td>
+      <td style="text-align:center">
+        ${canEdit?`<input type="number" step="1" min="0" value="${counted?item.physical_count:''}"
+          placeholder="—" style="width:70px;text-align:center;border:1px solid ${needsReason?'var(--red)':'var(--bdr)'};border-radius:4px;padding:3px 6px;font-size:13px"
+          onchange="_reconItemCount('${esc(recon.id)}','${esc(item.id)}',this.value,${item.system_count})">`
+          :`<span style="font-weight:${counted?'700':'400'};color:${counted?'var(--navy)':'var(--muted)'}">${counted?item.physical_count:'—'}</span>`}
+      </td>
+      <td style="text-align:right;font-weight:700;color:${!counted?'var(--muted)':variance===0?'var(--green)':variance>0?'#1565c0':'var(--red)'}">
+        ${!counted?'—':variance===0?'✓':(variance>0?'+':'')+variance}
+      </td>
+      ${p.viewCost?`<td style="text-align:right;font-size:12px;color:${hasVar&&(item.variance_value||0)!==0?'var(--red)':'var(--muted)'}">
+        ${hasVar&&(item.variance_value||0)!==0?'$'+Math.abs(item.variance_value||0).toFixed(2):'—'}
+      </td>`:''}
+      <td>
+        ${hasVar?canEdit?`<select onchange="_reconItemReason('${esc(recon.id)}','${esc(item.id)}',this.value)"
+          style="font-size:11px;border:1px solid ${needsReason?'var(--red)':'var(--bdr)'};border-radius:4px;padding:2px 4px;${needsReason?'background:#fff0f0':''}">
+          <option value="">— Required —</option>
+          ${REASONS.map(r=>`<option${item.variance_reason===r?' selected':''}>${r}</option>`).join('')}
+        </select>`
+        :`<span style="font-size:11px;background:#f0f0f0;border-radius:8px;padding:1px 8px">${esc(item.variance_reason||'—')}</span>`
+        :'<span style="color:var(--muted);font-size:11px">—</span>'}
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table></div></div>`:''}
+  <!-- Submit / status -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    ${canSubmit?`<button class="btn btn-n" onclick="svSubmitRecon('${recon.id}')">✓ Submit Reconciliation</button>`:''}
+    ${varNeedReason.length>0&&canEdit?`<span style="color:var(--red);font-size:12px;font-weight:600">⚠ ${varNeedReason.length} variance${varNeedReason.length>1?'s':''} still need a reason</span>`:''}
+    ${!allCounted&&items.length&&canEdit?`<span style="color:var(--muted);font-size:12px">${items.length-countedItems.length} item${items.length-countedItems.length>1?'s':''} not yet counted</span>`:''}
+    ${['Submitted','Approved','Closed'].includes(recon.status)&&canApprove?`<button class="btn btn-n" onclick="cMod();openReconReview('${recon.id}')">→ Go to Review</button>`:''}
+    <button class="btn btn-o" onclick="cMod()">Close</button>
+  </div>
+  </div>`);
+}
+
+async function _reconItemCount(reconId,itemId,val,systemCount){
+  const physCount=parseFloat(val);
+  if(isNaN(physCount)){return;}
+  const variance=physCount-parseFloat(systemCount);
+  const items=S.get('lhs:recon_items')||[];
+  const item=items.find(i=>i.id===itemId);
+  if(!item) return;
+  const unitCost=item.unit_cost||0;
+  item.physical_count=physCount;
+  item.variance=variance;
+  item.variance_value=Math.round(variance*unitCost*100)/100;
+  if(variance===0) item.variance_reason=null;
+  item.updated_at=new Date().toISOString();
+  S.set('lhs:recon_items',items);
+  try{await DB.from('lhs_inventory_recon_items').update({physical_count:physCount,variance,variance_value:item.variance_value,updated_at:item.updated_at}).eq('id',itemId);}catch{}
+  // Refresh the modal
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(recon){
+    const reconItems=items.filter(i=>i.recon_id===reconId);
+    const variances=reconItems.filter(i=>i.variance!==null&&i.variance!==0);
+    recon.total_variances=variances.length;
+    recon.total_items=reconItems.length;
+    S.set('lhs:recons',recons);
+    const p=_reconP();
+    const isAssigned=recon.assigned_to_name===CU?.name||recon.assigned_to_email===CU?.email;
+    const canEdit=p.submit&&(isAssigned||p.reassign)&&!['Approved','Closed'].includes(recon.status);
+    _renderReconCountModal(recon,reconItems,canEdit,p.approve,p);
+  }
+}
+
+async function _reconItemReason(reconId,itemId,reason){
+  const items=S.get('lhs:recon_items')||[];
+  const item=items.find(i=>i.id===itemId);
+  if(!item) return;
+  item.variance_reason=reason;
+  item.updated_at=new Date().toISOString();
+  S.set('lhs:recon_items',items);
+  try{await DB.from('lhs_inventory_recon_items').update({variance_reason:reason,updated_at:item.updated_at}).eq('id',itemId);}catch{}
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(recon){
+    const reconItems=items.filter(i=>i.recon_id===reconId);
+    const p=_reconP();
+    const isAssigned=recon.assigned_to_name===CU?.name||recon.assigned_to_email===CU?.email;
+    const canEdit=p.submit&&(isAssigned||p.reassign)&&!['Approved','Closed'].includes(recon.status);
+    _renderReconCountModal(recon,reconItems,canEdit,p.approve,p);
+  }
+}
+
+async function svSubmitRecon(reconId){
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon){tst('Recon not found','error');return;}
+  const items=(S.get('lhs:recon_items')||[]).filter(i=>i.recon_id===reconId);
+  // Validate all counted, all variances have reasons
+  const uncounted=items.filter(i=>i.physical_count===null||i.physical_count===undefined);
+  if(uncounted.length){tst(`${uncounted.length} items still need a physical count`,'error');return;}
+  const noReason=items.filter(i=>i.variance!==null&&i.variance!==0&&!i.variance_reason);
+  if(noReason.length){tst(`${noReason.length} variances still need a reason`,'error');return;}
+  const now=new Date().toISOString();
+  const variances=items.filter(i=>i.variance!==null&&i.variance!==0);
+  const varValue=variances.reduce((s,i)=>s+(i.variance_value||0),0);
+  recon.status='Submitted';
+  recon.submitted_by=CU?.name||'';
+  recon.submitted_at=now;
+  recon.total_variances=variances.length;
+  recon.variance_value=Math.round(varValue*100)/100;
+  recon.updated_at=now;
+  S.set('lhs:recons',recons);
+  try{await DB.from('lhs_inventory_recons').update({status:'Submitted',submitted_by:recon.submitted_by,submitted_at:now,total_variances:recon.total_variances,variance_value:recon.variance_value,updated_at:now}).eq('id',reconId);}catch(e){console.warn('Recon submit error:',e);}
+  tst('Reconciliation submitted! A manager will review the variances.','success');
+  cMod();
+  _refreshReconDash();
+}
+
+async function openReconReview(reconId){
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon){tst('Recon not found','error');return;}
+  let items=(S.get('lhs:recon_items')||[]).filter(i=>i.recon_id===reconId);
+  if(!items.length){
+    try{const{data}=await DB.from('lhs_inventory_recon_items').select('*').eq('recon_id',reconId);if(data)items=data;}catch{}
+    const cached=S.get('lhs:recon_items')||[];
+    S.set('lhs:recon_items',[...cached.filter(i=>i.recon_id!==reconId),...items]);
+  }
+  const p=_reconP();
+  const varItems=items.filter(i=>i.variance!==null&&i.variance!==0);
+  const matchItems=items.filter(i=>i.variance===0);
+  const pendingApproval=varItems.filter(i=>i.adjustment_status==='Pending');
+  const totalVarValue=varItems.reduce((s,i)=>s+(i.variance_value||0),0);
+  oMod(`📋 Review — ${esc(recon.location_name)} ${recon.period}`,`
+  <div style="max-height:78vh;overflow-y:auto;padding-right:4px">
+  <!-- Summary -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--navy)">${items.length}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Total Items</div></div>
+    <div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--green)">${matchItems.length}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Matched</div></div>
+    <div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--red)">${varItems.length}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Variances</div></div>
+    ${p.viewCost?`<div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:${totalVarValue<0?'var(--red)':'var(--navy)'}">$${Math.abs(totalVarValue).toLocaleString('en-US',{minimumFractionDigits:2})}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">$ Impact</div></div>`
+    :`<div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:18px;font-weight:800;color:var(--amber)">${pendingApproval.length}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Pending Approval</div></div>`}
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    Submitted by: <strong>${esc(recon.submitted_by||'—')}</strong> on ${recon.submitted_at?new Date(recon.submitted_at).toLocaleString():'—'}
+  </div>
+  ${pendingApproval.length&&p.approve?`<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="btn btn-n sm" onclick="_reconApproveAll('${reconId}')">✓ Approve All Variances</button>
+    <span style="font-size:12px;color:var(--muted);line-height:28px">${pendingApproval.length} variance${pendingApproval.length>1?'s':''} pending</span>
+  </div>`:''}
+  <!-- Variance items -->
+  ${varItems.length?`<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red);margin-bottom:8px">⚠ Variances Requiring Approval (${varItems.length})</div>
+  <div class="card" style="padding:0;margin-bottom:14px"><div class="tw"><table>
+  <thead><tr><th>Item</th><th>System</th><th>Physical</th><th>Variance</th>${p.viewCost?'<th>$ Impact</th>':''}<th>Reason</th><th>Status</th>${p.approve?'<th>Action</th>':''}</tr></thead>
+  <tbody>${varItems.map(item=>`<tr>
+    <td style="font-weight:600;font-size:13px">${esc(item.item_name)}</td>
+    <td style="text-align:right">${item.system_count}</td>
+    <td style="text-align:right">${item.physical_count}</td>
+    <td style="text-align:right;font-weight:700;color:${item.variance>0?'#1565c0':'var(--red)'}">${item.variance>0?'+':''}${item.variance}</td>
+    ${p.viewCost?`<td style="text-align:right;font-size:12px;color:var(--red)">$${Math.abs(item.variance_value||0).toFixed(2)}</td>`:''}
+    <td style="font-size:11px"><span style="background:#f0f0f0;border-radius:8px;padding:2px 8px">${esc(item.variance_reason||'—')}</span>${item.variance_notes?`<br><span style="color:var(--muted)">${esc(item.variance_notes)}</span>`:''}</td>
+    <td><span style="font-size:11px;font-weight:700;color:${item.adjustment_status==='Approved'?'var(--green)':item.adjustment_status==='Rejected'?'var(--red)':'var(--amber)'}">${item.adjustment_status||'Pending'}</span></td>
+    ${p.approve?`<td style="white-space:nowrap">
+      ${item.adjustment_status==='Pending'?`
+        <button class="btn sm btn-n" onclick="_reconApproveItem('${reconId}','${item.id}',true)" style="font-size:10px;padding:2px 8px">✓</button>
+        <button class="btn sm btn-o" onclick="_reconApproveItem('${reconId}','${item.id}',false)" style="font-size:10px;padding:2px 8px;margin-left:2px">✗</button>`
+      :`<span style="font-size:11px;color:var(--muted)">${item.adjustment_status}</span>`}
+    </td>`:''}
+  </tr>`).join('')}</tbody></table></div></div>`:'<div class="card" style="text-align:center;padding:16px;color:var(--green);font-weight:600">✓ No variances — all counts matched system!</div>'}
+  <!-- Finalize -->
+  ${p.approve&&pendingApproval.length===0&&varItems.length&&recon.status!=='Closed'?`
+  <button class="btn btn-n" onclick="svFinalizeRecon('${reconId}')">🔒 Approve & Post Adjustments</button>`:''}
+  ${p.approve&&!varItems.length&&recon.status!=='Closed'?`
+  <button class="btn btn-n" onclick="svFinalizeRecon('${reconId}')">🔒 Close Reconciliation (No Adjustments)</button>`:''}
+  <button class="btn btn-o" style="margin-left:8px" onclick="cMod()">Close</button>
+  </div>`);
+}
+
+async function _reconApproveItem(reconId,itemId,approved){
+  const items=S.get('lhs:recon_items')||[];
+  const item=items.find(i=>i.id===itemId);
+  if(!item) return;
+  const now=new Date().toISOString();
+  item.adjustment_status=approved?'Approved':'Rejected';
+  item.adjustment_approved_by=CU?.name||'';
+  item.adjustment_approved_at=now;
+  item.updated_at=now;
+  S.set('lhs:recon_items',items);
+  try{await DB.from('lhs_inventory_recon_items').update({adjustment_status:item.adjustment_status,adjustment_approved_by:CU?.name||'',adjustment_approved_at:now,updated_at:now}).eq('id',itemId);}catch{}
+  openReconReview(reconId);
+}
+
+async function _reconApproveAll(reconId){
+  const items=S.get('lhs:recon_items')||[];
+  const now=new Date().toISOString();
+  const pending=items.filter(i=>i.recon_id===reconId&&i.variance!==null&&i.variance!==0&&i.adjustment_status==='Pending');
+  for(const item of pending){
+    item.adjustment_status='Approved';item.adjustment_approved_by=CU?.name||'';item.adjustment_approved_at=now;item.updated_at=now;
+    try{await DB.from('lhs_inventory_recon_items').update({adjustment_status:'Approved',adjustment_approved_by:CU?.name||'',adjustment_approved_at:now,updated_at:now}).eq('id',item.id);}catch{}
+  }
+  S.set('lhs:recon_items',items);
+  openReconReview(reconId);
+}
+
+async function svFinalizeRecon(reconId){
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon){tst('Recon not found','error');return;}
+  const items=(S.get('lhs:recon_items')||[]).filter(i=>i.recon_id===reconId);
+  const approvedItems=items.filter(i=>i.adjustment_status==='Approved'&&i.variance!==null&&i.variance!==0);
+  const now=new Date().toISOString();
+  // Post adjustment transactions
+  let adjustCount=0;
+  for(const item of approvedItems){
+    const adj={
+      recon_id:reconId,recon_item_id:item.id,
+      item_id:item.item_id,item_name:item.item_name,item_sku:item.item_sku,
+      location_type:recon.location_type,location_id:recon.location_id,location_name:recon.location_name,
+      period:recon.period,
+      old_count:item.system_count,new_count:item.physical_count,adjustment:item.variance,
+      unit_cost:item.unit_cost||0,adjustment_value:item.variance_value||0,
+      reason:item.variance_reason,approved_by:CU?.name||'',approved_at:now,
+      created_at:now,
+    };
+    try{await dbInsert('lhs:inv_adjustments',adj);}catch{}
+    // Update live inventory count
+    if(recon.location_type==='vehicle'){
+      const vi=S.get('lhs:vi')||[];
+      const row=vi.find(v=>(v.vehicle===recon.location_name||v.vehicle_id===recon.location_id)&&(v.sku===item.item_sku||v.item===item.item_name));
+      if(row){row.qty=item.physical_count;row.qty_on_hand=item.physical_count;
+        try{await DB.from('lhs_van_inventory').update({qty:item.physical_count,qty_on_hand:item.physical_count}).eq('id',row.id);}catch{}
+      }
+      S.set('lhs:vi',vi);
+    } else {
+      const ls=S.get('lhs:ls')||[];
+      const row=ls.find(l=>(l.location===recon.location_name||l.location_id===recon.location_id)&&(l.sku===item.item_sku||l.item===item.item_name));
+      if(row){row.qty=item.physical_count;row.qty_on_hand=item.physical_count;
+        try{await DB.from('lhs_location_stock').update({qty_on_hand:item.physical_count}).eq('id',row.id);}catch{}
+      }
+      S.set('lhs:ls',ls);
+    }
+    adjustCount++;
+  }
+  // Close the recon
+  recon.status='Closed';recon.approved_by=CU?.name||'';recon.approved_at=now;recon.updated_at=now;
+  S.set('lhs:recons',recons);
+  try{await DB.from('lhs_inventory_recons').update({status:'Closed',approved_by:CU?.name||'',approved_at:now,updated_at:now}).eq('id',reconId);}catch{}
+  tst(`Recon closed — ${adjustCount} inventory adjustment${adjustCount===1?'':'s'} posted`,'success');
+  cMod();_refreshReconDash();
+}
+
+function openReconReassign(reconId){
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon) return;
+  const users=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  oMod(`Reassign — ${esc(recon.location_name)}`,`
+  <div style="padding:8px 0">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Currently assigned to: <strong>${esc(recon.assigned_to_name||'Unassigned')}</strong></div>
+    <div class="fl" style="margin-bottom:14px"><label>Assign To</label>
+      <select id="recon-reassign-user" style="width:100%">
+        <option value="">— Select User —</option>
+        ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}">${esc(u.name)} (${esc(u.role||'')})</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" style="margin-bottom:14px"><label>Reason for Override</label>
+      <select id="recon-reassign-reason">
+        <option>Tech on PTO</option><option>Vehicle Unassigned</option><option>Driver Change</option><option>Admin Override</option><option>Other</option>
+      </select>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svReconReassign('${reconId}')">Save</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>
+  </div>`);
+}
+
+async function svReconReassign(reconId){
+  const sel=document.getElementById('recon-reassign-user');
+  const name=sel?.value||'';
+  const email=sel?.options[sel.selectedIndex]?.dataset.email||'';
+  if(!name){tst('Please select a user','error');return;}
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon) return;
+  recon.assigned_to_name=name;recon.assigned_to_email=email;recon.updated_at=new Date().toISOString();
+  S.set('lhs:recons',recons);
+  try{await DB.from('lhs_inventory_recons').update({assigned_to_name:name,assigned_to_email:email,updated_at:recon.updated_at}).eq('id',reconId);}catch{}
+  tst(`Reassigned to ${name}`,'success');
+  cMod();_refreshReconDash();
+}
+
+async function _reconRefreshFromDB(){
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  try{
+    const{data}=await DB.from('lhs_inventory_recons').select('*').eq('period',period);
+    if(data){S.set('lhs:recons',data);_refreshReconDash();}
+  }catch(e){tst('Refresh failed','error');}
+}
+
 // ─── LOCATIONS ───────────────────────────────────────────────────────────────
 function bLocs(){
   const locs=S.get('lhs:locs')||[];
@@ -4982,6 +5660,14 @@ async function oEditLoc(i){
       <div class="fl"><label>Contact Phone</label><input id="el-cphone" value="${esc(l.contact_phone||'')}" placeholder="(555) 555-5555"></div>
       <div class="fl"><label>Contact Email</label><input id="el-cemail" value="${esc(l.contact_email||'')}" placeholder="manager@example.com"></div>
     </div>
+    <div class="fr">
+      <div class="fl"><label>Primary User (Responsible for Recon)</label>
+        <select id="el-primary-user" onchange="_locPrimaryUserChange(this.value)">
+          <option value="">— None —</option>
+          ${(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===(l.primary_user_name||'')?'  selected':''}>${esc(u.name)}${u.role?' ('+u.role+')':''}</option>`).join('')}
+        </select>
+      </div>
+    </div>
   </div>
 
   <!-- Vehicle fields -->
@@ -5006,6 +5692,14 @@ async function oEditLoc(i){
         </select>
       </div>
       <div class="fl"><label>Driver Phone</label><input id="el-dphone" value="${l.driver_phone||''}" placeholder="(555) 555-5555"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Primary User (Responsible for Recon)</label>
+        <select id="el-primary-user-veh" onchange="_locPrimaryUserChange(this.value,'veh')">
+          <option value="">— None —</option>
+          ${(S.get('lhs:users')||[]).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===(l.primary_user_name||'')?'  selected':''}>${esc(u.name)}${u.role?' ('+u.role+')':''}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div class="fr">
       <div class="fl"><label>Division Assigned</label>
@@ -5125,6 +5819,15 @@ async function refreshVehicleDocSections(locId,locIdx){
   }catch(e){console.warn('refreshVehicleDocSections:',e.message);}
 }
 
+function _locPrimaryUserChange(name,variant){
+  // Store the email in a hidden field by looking up user data
+  const users=S.get('lhs:users')||[];
+  const u=users.find(x=>x.name===name);
+  const email=u?.email||'';
+  const sel=document.getElementById(variant==='veh'?'el-primary-user-veh':'el-primary-user');
+  if(sel) sel.dataset.selectedEmail=email;
+}
+
 function locTypeChangeEdit(type){
   const regionRow=g('el-region-row');
   const vehSection=g('el-vehicle-section');
@@ -5228,15 +5931,22 @@ async function svEditLoc(i){
   let updates={name:v('el0'),type};
   let vehExtras={};
   if(isVeh){
+    const puSelVeh=document.getElementById('el-primary-user-veh');
+    const puNameVeh=puSelVeh?.value||'';
+    const puEmailVeh=puSelVeh?.options[puSelVeh.selectedIndex]?.dataset.email||puSelVeh?.dataset.selectedEmail||'';
     vehExtras={year:v('el-year'),make:v('el-make'),model:v('el-model'),
       color:v('el-color'),plate:v('el-plate'),vin:v('el-vin'),
       driver:v('el-driver'),driver_phone:v('el-dphone'),
       division:v('el-div'),region:v('el-vregion'),
       state:v('el-vstate'),city:v('el-vcity'),
       wex_card:v('el-wex'),gps_serial:v('el-gps'),
-      gps_camera_serial:v('el-gpscam'),notes:v('el-vnotes')};
+      gps_camera_serial:v('el-gpscam'),notes:v('el-vnotes'),
+      primary_user_name:puNameVeh,primary_user_email:puEmailVeh};
     updates={...updates,...vehExtras};
   } else {
+    const puSel=document.getElementById('el-primary-user');
+    const puName=puSel?.value||'';
+    const puEmail=puSel?.options[puSel.selectedIndex]?.dataset.email||puSel?.dataset.selectedEmail||'';
     const state=v('el3');const city=v('el4');const street=v('el5');const zip=v('el6');
     const addr=[street,city,state,zip].filter(Boolean).join(', ');
     updates={...updates,region:v('el2'),state,city,addr,address:addr,zip,
@@ -5245,7 +5955,8 @@ async function svEditLoc(i){
       cost_per_month:parseFloat(document.getElementById('el-cpm')?.value)||0,
       dumpster_size:v('el-dumpsize'),
       dumpster_cost:parseFloat(document.getElementById('el-dumpcost')?.value)||0,
-      contact_name:v('el-cname'),contact_phone:v('el-cphone'),contact_email:v('el-cemail')};
+      contact_name:v('el-cname'),contact_phone:v('el-cphone'),contact_email:v('el-cemail'),
+      primary_user_name:puName,primary_user_email:puEmail};
   }
   // Merge into localStorage immediately
   locs[i]={...l,...updates};
