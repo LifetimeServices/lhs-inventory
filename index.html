@@ -1716,8 +1716,24 @@ async function warmCache(){
   try{
     // Tables too large to bulk-load into localStorage — queried on demand instead
     const ON_DEMAND_TBLS=['lhs_customers','lhs_wo_photos','lhs_audit_log'];
+    // lhs_work_orders uses paginated load to handle large post-import datasets
+    const WO_TBL='lhs_work_orders';
+    const woLoad=(async()=>{
+      try{
+        var woAll=[]; var woFrom=0; var woPageSize=1000; var woGo=true;
+        while(woGo){
+          const{data,error}=await DB.from(WO_TBL).select('*').order('created_at',{ascending:true,nullsFirst:true}).range(woFrom,woFrom+woPageSize-1);
+          if(error||!data||data.length===0){woGo=false;break;}
+          woAll=woAll.concat(data);
+          if(data.length<woPageSize) woGo=false; else woFrom+=woPageSize;
+        }
+        if(woAll.length>0){S.set('lhs:work_orders',woAll);console.log('Loaded lhs_work_orders',woAll.length,'rows (paginated)');}
+      }catch(e){console.warn('WO paginated load failed:',e.message);}
+    })();
+
     const loads=Object.entries(TBL).map(async([k,tbl])=>{
       if(ON_DEMAND_TBLS.includes(tbl)) return; // skip — loaded on demand with pagination
+      if(tbl===WO_TBL) return; // handled above with pagination
       try{
         let query=DB.from(tbl).select('*');
         // Only order by created_at for tables that have it
@@ -1749,7 +1765,7 @@ async function warmCache(){
         }
       }catch(e){console.warn('Failed to load',tbl,e.message);}
     });
-    await Promise.all(loads);
+    await Promise.all([...loads, woLoad]);
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
@@ -39416,6 +39432,11 @@ async function stImportRows(rows) {
     var invoiceDateISO = stParseDate(row['Invoice Date'] || '');
 
     var jf = stParseJobFields(row['Job Type'] || '');
+    // LRS (Lifetime Radon Solutions) jobs are Commercial regardless of job type
+    var custName = row['Customer Name'] || '';
+    if (/lifetime radon solutions|LRS/i.test(custName)) {
+      jf.division = 'Commercial'; jf.job_type = ''; jf.job_subtype = ''; jf.job_classification = '';
+    }
     var divCode = DIV_CODES[jf.division] || 'ST';
     var woState = ((row['Location State'] || '').trim().toUpperCase().replace(/[^A-Z]/g,'') || 'XX').slice(0,2);
     var woYear = completedISO ? parseInt((completedISO+'').substring(0,4)) || new Date().getFullYear() : new Date().getFullYear();
