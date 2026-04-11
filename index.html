@@ -36213,7 +36213,7 @@ function _defaultSalesSettings(){
       'Real Estate':['Buyers Agent','Sellers Agent','Real Estate Company'],
       'Other':['Phone In','Walk In','Unknown'],
     },
-    services_of_interest:['Radon Mitigation','Concrete Coatings','Electrical','Closet Organization','Handyman','Commercial','Waterproofing'],
+    services_of_interest:['Radon Mitigation','Concrete Coatings','Electrical','Closet Organization','Handyman','Commercial'],
     activity_types:ACTIVITY_TYPES.slice(),
     activity_outcomes:ACTIVITY_OUTCOMES.slice(),
   };
@@ -36309,8 +36309,9 @@ function leadForm(l,saveFn){
       <div style="position:relative">
         <input id="${pfx}-rep-search" value="${esc(ownerDefault)}" placeholder="Search users..." autocomplete="off"
           oninput="leadOwnerSearch(this.value,'${pfx}')"
+          onfocus="leadOwnerSearch(this.value,'${pfx}')"
           onblur="setTimeout(function(){var d=document.getElementById('${pfx}-rep-drop');if(d)d.style.display='none';},150)"
-          style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box">
+          style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box;background:white url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22><text y=%2210%22 font-size=%2211%22>🔍</text></svg>') no-repeat right 10px center">
         <input type="hidden" id="${pfx}-rep" value="${esc(ownerDefault)}">
         <div id="${pfx}-rep-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.18);z-index:9999;max-height:180px;overflow-y:auto"></div>
       </div>
@@ -36471,9 +36472,7 @@ function leadAutoTerritory(pfx){
 }
 
 function leadOwnerSearch(query,pfx){
-  var reps=(S.get('lhs:users')||[]).filter(function(u){
-    return ['Sales Rep','Regional Manager','God View','Admin','Director'].includes(u.role);
-  });
+  var reps=(S.get('lhs:users')||[]).filter(function(u){return u.name&&u.active!==false;});
   var drop=document.getElementById(pfx+'-rep-drop');
   var q=(query||'').toLowerCase();
   var matches=q?reps.filter(function(u){return u.name.toLowerCase().includes(q);}):reps;
