@@ -39142,6 +39142,8 @@ var ST_JOB_TYPE_MAP = [
   { match: /^service$/i,                div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
   { match: /^warranty/i,                div:'Radon Mitigation', type:'Warranty',       sub:'',                 cls:''  },
   // ── Electric ──
+  { match: /electric.*fan\s*hookup/i,   div:'Electric',         type:'Fan Hookup',     sub:'',                 cls:''  },
+  { match: /electric.*service\s*call/i, div:'Electric',         type:'Service Call',   sub:'',                 cls:''  },
   { match: /electric/i,                 div:'Electric',         type:'',               sub:'',                 cls:''  },
   // ── Concrete Coatings ──
   { match: /concrete/i,                 div:'Concrete Coatings',type:'',               sub:'',                 cls:''  },
@@ -39171,8 +39173,17 @@ var ST_JOB_TYPE_MAP = [
 
 function stParseJobFields(rawJobType) {
   if (!rawJobType) return { division:'', job_type:'', job_subtype:'', job_classification:'' };
-  var parts = rawJobType.split(' | ');
-  var seg = parts.length >= 2 ? parts[1].trim() : rawJobType.trim();
+  var raw = rawJobType.trim();
+  // First: test the full raw string (catches "Electrical | Fan Hookup" etc.)
+  for (var i = 0; i < ST_JOB_TYPE_MAP.length; i++) {
+    if (ST_JOB_TYPE_MAP[i].match.test(raw)) {
+      var m = ST_JOB_TYPE_MAP[i];
+      return { division: m.div, job_type: m.type, job_subtype: m.sub, job_classification: m.cls };
+    }
+  }
+  // Second: test only the segment after the pipe (catches "LHS | Radon ..." style)
+  var parts = raw.split(' | ');
+  var seg = parts.length >= 2 ? parts[1].trim() : raw;
   for (var i = 0; i < ST_JOB_TYPE_MAP.length; i++) {
     if (ST_JOB_TYPE_MAP[i].match.test(seg)) {
       var m = ST_JOB_TYPE_MAP[i];
