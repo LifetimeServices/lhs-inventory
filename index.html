@@ -37849,7 +37849,7 @@ async function updateOppStage(id,stage){
   openOpportunity(id);
 }
 
-function oppToWO(oppId){
+async function oppToWO(oppId){
   const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===oppId);
   if(!o) return;
 
@@ -37866,12 +37866,32 @@ function oppToWO(oppId){
   window._woOppId=oppId;
   window._woEstId=est?.id||null;
 
-  // Pre-select customer
-  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)||null;
+  // ── Resolve customer (cache first, DB fallback) ──────────────────────────
+  let cust=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)||null;
+  if(!cust&&o.customer_id){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',o.customer_id).maybeSingle();
+      if(data){
+        cust=data;
+        const custs=S.get('lhs:customers')||[]; custs.unshift(data); S.set('lhs:customers',custs);
+      }
+    }catch{}
+  }
   window._wocSelectedCust=cust||null;
 
-  // Pre-select property — auto-pick if customer has exactly one
-  const props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===o.customer_id||p.customer_id===o.customer_id);
+  // ── Resolve property (cache first, DB fallback) ──────────────────────────
+  let props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===o.customer_id||p.customer_id===o.customer_id);
+  if(!props.length&&o.customer_id){
+    try{
+      const{data}=await DB.from('lhs_properties').select('*').or(`current_customer_id.eq.${o.customer_id},customer_id.eq.${o.customer_id}`);
+      if(data&&data.length){
+        props=data;
+        const cached=S.get('lhs:props')||[];
+        data.forEach(p=>{if(!cached.find(x=>x.id===p.id)) cached.unshift(p);});
+        S.set('lhs:props',cached);
+      }
+    }catch{}
+  }
   window._wocPropertyId=props.length===1?props[0].id:null;
 
   // Price from estimate or opportunity value
@@ -37883,6 +37903,12 @@ function oppToWO(oppId){
 
   // After DOM renders, trigger all UI pre-fills
   setTimeout(()=>{
+    // Pre-populate lookup caches so wocSelectCust / propSelectInline can find the records
+    if(cust) _wocCustResults[cust.id]=cust;
+    if(window._wocPropertyId){
+      const p=props.find(x=>x.id===window._wocPropertyId);
+      if(p) _wocPropResults[p.id]=p;
+    }
     // Customer
     if(cust) wocSelectCust(cust.id);
     // Property
@@ -37899,9 +37925,9 @@ function oppToWO(oppId){
       if(est?.estimate_number) descParts.push(`Est. ${est.estimate_number}`);
       descEl.value=descParts.filter(Boolean).join(' — ');
     }
-  },100);
+  },150);
 
-  tst(est?`Pre-filled from opportunity + estimate ${est.estimate_number||''}`:'Pre-filled from opportunity — review and save','info');
+  tst(est?`Pre-filled from estimate ${est.estimate_number||''}`:'Pre-filled from opportunity — review and save','info');
 }
 
 
@@ -39872,7 +39898,7 @@ function _startJobGroup(estId){
   _openNextJobGroupWO();
 }
 
-function _openNextJobGroupWO(){
+async function _openNextJobGroupWO(){
   const jg=_woJobGroup;
   if(!jg) return;
   const pendingIdx=jg.wos.findIndex(w=>!w.done);
@@ -39887,20 +39913,54 @@ function _openNextJobGroupWO(){
   window._woEstId=jg.estimateId;
   window._woJobGroupId=jg.groupId;
   window._woJobGroupIdx=pendingIdx;
-  window._wocSelectedCust=jg.customerId?(S.get('lhs:customers')||[]).find(c=>c.id===jg.customerId)||null:null;
-  const props=jg.customerId?(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===jg.customerId||p.customer_id===jg.customerId):[];
+
+  // ── Resolve customer (cache first, DB fallback) ──────────────────────────
+  let cust=jg.customerId?(S.get('lhs:customers')||[]).find(c=>c.id===jg.customerId)||null:null;
+  if(!cust&&jg.customerId){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',jg.customerId).maybeSingle();
+      if(data){
+        cust=data;
+        const custs=S.get('lhs:customers')||[]; custs.unshift(data); S.set('lhs:customers',custs);
+      }
+    }catch{}
+  }
+  window._wocSelectedCust=cust||null;
+
+  // ── Resolve property (cache first, DB fallback) ──────────────────────────
+  let props=jg.customerId?(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===jg.customerId||p.customer_id===jg.customerId):[];
+  if(!props.length&&jg.customerId){
+    try{
+      const{data}=await DB.from('lhs_properties').select('*').or(`current_customer_id.eq.${jg.customerId},customer_id.eq.${jg.customerId}`);
+      if(data&&data.length){
+        props=data;
+        const cached=S.get('lhs:props')||[];
+        data.forEach(p=>{if(!cached.find(x=>x.id===p.id)) cached.unshift(p);});
+        S.set('lhs:props',cached);
+      }
+    }catch{}
+  }
   window._wocPropertyId=props.length===1?props[0].id:null;
+
+  // Render the form
   oMod(totalWOs>1?`Work Order ${pendingIdx+1} of ${totalWOs} — ${wo.division}`:`Create Work Order — ${wo.division}`,woCreateForm());
+
   setTimeout(()=>{
-    if(window._wocSelectedCust) wocSelectCust(window._wocSelectedCust.id);
+    // Pre-populate lookup caches so wocSelectCust / propSelectInline can find the records
+    if(cust) _wocCustResults[cust.id]=cust;
+    if(window._wocPropertyId){
+      const p=props.find(x=>x.id===window._wocPropertyId);
+      if(p) _wocPropResults[p.id]=p;
+    }
+    if(cust) wocSelectCust(cust.id);
     if(window._wocPropertyId) propSelectInline(window._wocPropertyId);
     const priceEl=document.getElementById('woc-price');
-    if(priceEl) priceEl.value=wo.price.toFixed(2);
+    if(priceEl&&wo.price) priceEl.value=Number(wo.price).toFixed(2);
     const descEl=document.getElementById('woc-desc');
     if(descEl&&!descEl.value){
       descEl.value=[wo.division,jg.customerName,est?.estimate_number?'Est. '+est.estimate_number:''].filter(Boolean).join(' — ');
     }
-  },100);
+  },150);
 }
 
 async function _afterJobGroupWOSaved(savedWO,groupId){
