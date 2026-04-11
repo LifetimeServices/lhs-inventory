@@ -2693,6 +2693,9 @@ async function startApp(){
     <div class="page" id="p-accounts"></div>
     <div class="page" id="p-business"></div>
     <div class="page" id="p-commercial"></div>
+    <div class="page" id="p-rolodex-builders"></div>
+    <div class="page" id="p-rolodex-realtors"></div>
+    <div class="page" id="p-rolodex-inspectors"></div>
     <div class="page" id="p-sales-accounts"></div>
     <div class="page" id="p-account-hub"></div>
     <div class="page" id="p-sales-discounts"></div>
@@ -2737,7 +2740,7 @@ async function startApp(){
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
-  const _acctsPgs=['customers','properties','business','commercial'];
+  const _acctsPgs=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
   if(_dispPgs.includes(_restorePage)) renderDispatchNav();
   else if(_invPgs.includes(_restorePage)) renderInvNav();
@@ -2775,7 +2778,7 @@ const MAIN_NAV=[
   {id:'dispatch',    l:'Dispatch'},
   {id:'workorders',  l:'Work Orders'},
   {id:'closeout',    l:'Closeout'},
-  {id:'accounts',    l:'Accounts'},
+  {id:'accounts',    l:'Rolodex'},
   {id:'sales',       l:'Sales'},
   {id:'inventory',   l:'Inventory'},
   {id:'hr',          l:'HR'},
@@ -2881,6 +2884,9 @@ const ACCOUNTS_NAV=[
   {id:'properties',        l:'Properties'},
   {id:'business',          l:'Business'},
   {id:'commercial',        l:'Commercial'},
+  {id:'rolodex-builders',  l:'Builders'},
+  {id:'rolodex-realtors',  l:'Realtors'},
+  {id:'rolodex-inspectors',l:'Inspectors'},
 ];
 
 const SALES_NAV=[
@@ -3160,7 +3166,7 @@ window.addEventListener('popstate',e=>{
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
-  const accountsPages=['customers','properties','business','commercial'];
+  const accountsPages=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-settings'];
   if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
   else if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
@@ -3183,9 +3189,12 @@ function buildPage(id){
     dashboard:bDash, chatter:bChatter,
     dispatch:bDispatch, 'dispatch-board':bDispatch, 'dispatch-calendar':bCompanyCalendar,
     workorders:bWorkOrders, customers:bCustomers, properties:bProperties,
-    accounts:()=>bPlaceholder('Accounts'),
+    accounts:()=>bPlaceholder('Rolodex'),
     business:bBusiness,
     commercial:bCommercial,
+    'rolodex-builders':bRolodexBuilders,
+    'rolodex-realtors':bRolodexRealtors,
+    'rolodex-inspectors':bRolodexInspectors,
     sales:bSales,'sales-crm-dashboard':bCRMDashboard,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
     'sales-accounts':bSalesAccountsPage,'account-hub':bAccountHub,
     'sales-estimates':bSalesEstimates,
@@ -24926,6 +24935,191 @@ function propForm(p,saveFn){
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>
   </div>`;
+}
+
+// ─── ROLODEX PAGES ────────────────────────────────────────────────────────────
+const _RDX_INP='width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:\'DM Sans\',sans-serif;box-sizing:border-box';
+
+function _rdxSearch(key){
+  const q=(document.getElementById(`rdx-${key}-search`)?.value||'').toLowerCase();
+  window[`_rdx_${key}_q`]=q;
+  showPage(`rolodex-${key}`);
+}
+
+function _rdxOpenAdd(key){
+  window[`_rdx_${key}_edit`]=null;
+  _rdxShowForm(key,{});
+}
+
+function _rdxOpenEdit(key,id){
+  const rec=(S.get(`lhs:rdx_${key}`)||[]).find(x=>x.id===id)||{};
+  window[`_rdx_${key}_edit`]=id;
+  _rdxShowForm(key,rec);
+}
+
+function _rdxShowForm(key,r){
+  const title={builders:'Builder',realtors:'Realtor',inspectors:'Inspector'}[key];
+  const isEdit=!!window[`_rdx_${key}_edit`];
+  oMod(`${isEdit?'Edit':'New'} ${title}`,`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">First Name *</label><br><input id="rdx-fn" value="${esc(r.first_name||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Last Name *</label><br><input id="rdx-ln" value="${esc(r.last_name||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Company / Brokerage</label><br><input id="rdx-co" value="${esc(r.company||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Title / Role</label><br><input id="rdx-title" value="${esc(r.title||'')}" style="${_RDX_INP}" placeholder="${key==='builders'?'e.g. Owner, Project Manager':key==='realtors'?'e.g. Listing Agent, Buyer Agent':'e.g. Certified Inspector'}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Phone</label><br><input id="rdx-ph" value="${esc(r.phone||'')}" style="${_RDX_INP}" type="tel"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Email</label><br><input id="rdx-em" value="${esc(r.email||'')}" style="${_RDX_INP}" type="email"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">City</label><br><input id="rdx-city" value="${esc(r.city||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">State</label><br>
+      <select id="rdx-state" style="${_RDX_INP}">
+        <option value="">— State —</option>
+        ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${(r.state||'')===code?' selected':''}>${s}</option>`;}).join('')}
+      </select>
+    </div>
+    ${key==='builders'?`
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">License #</label><br><input id="rdx-lic" value="${esc(r.license_number||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Specialty</label><br><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. Custom Homes, Remodels"></div>
+    `:''}
+    ${key==='realtors'?`
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">License #</label><br><input id="rdx-lic" value="${esc(r.license_number||'')}" style="${_RDX_INP}"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">MLS / Board</label><br><input id="rdx-mls" value="${esc(r.mls_board||'')}" style="${_RDX_INP}" placeholder="e.g. SCWMLS, MLS Heartland"></div>
+    `:''}
+    ${key==='inspectors'?`
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Certification</label><br><input id="rdx-cert" value="${esc(r.certification||'')}" style="${_RDX_INP}" placeholder="e.g. NACHI, ASHI, InterNACHI"></div>
+    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Inspection Types</label><br><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. Radon, Home Inspection"></div>
+    `:''}
+  </div>
+  <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
+    <textarea id="rdx-notes" style="${_RDX_INP};height:70px;resize:vertical">${esc(r.notes||'')}</textarea>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-n" onclick="_rdxSave('${key}')">Save</button>
+    <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    ${isEdit?`<button class="btn btn-r" style="margin-left:auto" onclick="_rdxDelete('${key}','${window[`_rdx_${key}_edit`]}')">Delete</button>`:''}
+  </div>`);
+}
+
+async function _rdxSave(key){
+  const fn=(document.getElementById('rdx-fn')?.value||'').trim();
+  const ln=(document.getElementById('rdx-ln')?.value||'').trim();
+  if(!fn&&!ln){tst('Name is required','error');return;}
+  const now=new Date().toISOString();
+  const base={
+    first_name:fn||null,last_name:ln||null,
+    company:document.getElementById('rdx-co')?.value||null,
+    title:document.getElementById('rdx-title')?.value||null,
+    phone:document.getElementById('rdx-ph')?.value||null,
+    email:document.getElementById('rdx-em')?.value||null,
+    city:document.getElementById('rdx-city')?.value||null,
+    state:document.getElementById('rdx-state')?.value||null,
+    notes:document.getElementById('rdx-notes')?.value||null,
+    type:key.slice(0,-1), // 'builder','realtor','inspector'
+    updated_at:now,
+  };
+  if(key==='builders'||key==='realtors') base.license_number=document.getElementById('rdx-lic')?.value||null;
+  if(key==='realtors') base.mls_board=document.getElementById('rdx-mls')?.value||null;
+  if(key==='inspectors') base.certification=document.getElementById('rdx-cert')?.value||null;
+  if(key==='builders'||key==='inspectors') base.specialty=document.getElementById('rdx-spec')?.value||null;
+
+  const editId=window[`_rdx_${key}_edit`];
+  const cacheKey=`lhs:rdx_${key}`;
+  const recs=S.get(cacheKey)||[];
+
+  if(editId){
+    // Update
+    const idx=recs.findIndex(x=>x.id===editId);
+    const updated={...recs[idx],...base,id:editId};
+    if(idx>=0) recs[idx]=updated; S.set(cacheKey,recs);
+    try{await DB.from('lhs_rolodex').update(base).eq('id',editId);}catch(e){console.warn('rdxSave update:',e.message);}
+    tst(`${fn} ${ln} updated`,'success');
+  }else{
+    // Insert
+    base.created_by=CU?.name||'';base.created_at=now;
+    let saved=null;
+    try{const{data,error}=await DB.from('lhs_rolodex').insert(base).select().single();if(!error&&data)saved=data;}catch(e){console.warn('rdxSave insert:',e.message);}
+    const final=saved||{...base,id:'rdx_'+Date.now()};
+    recs.unshift(final);S.set(cacheKey,recs);
+    tst(`${fn} ${ln} added`,'success');
+  }
+  cMod();
+  showPage(`rolodex-${key}`);
+}
+
+async function _rdxDelete(key,id){
+  if(!confirm('Delete this contact?')) return;
+  const cacheKey=`lhs:rdx_${key}`;
+  const recs=(S.get(cacheKey)||[]).filter(x=>x.id!==id);
+  S.set(cacheKey,recs);
+  try{await DB.from('lhs_rolodex').delete().eq('id',id);}catch(e){console.warn('rdxDelete:',e.message);}
+  tst('Deleted','success');cMod();
+  showPage(`rolodex-${key}`);
+}
+
+function _rdxPage(key,title,subtitle,emptyMsg,extraCols){
+  const q=(window[`_rdx_${key}_q`]||'').toLowerCase();
+  let recs=S.get(`lhs:rdx_${key}`)||[];
+  // Load from lhs_rolodex table filtered by type, if not cached yet
+  if(!recs.length){
+    const typeVal=key.slice(0,-1); // builders→builder etc
+    DB.from('lhs_rolodex').select('*').eq('type',typeVal).order('last_name',{ascending:true}).then(({data})=>{
+      if(data?.length){S.set(`lhs:rdx_${key}`,data);showPage(`rolodex-${key}`);}
+    }).catch(()=>{});
+  }
+  if(q) recs=recs.filter(r=>[r.first_name,r.last_name,r.company,r.phone,r.email,r.city,r.state,r.title,r.specialty,r.certification,r.mls_board].filter(Boolean).join(' ').toLowerCase().includes(q));
+
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">${title}</div>
+      <div class="ps">${subtitle} &nbsp;·&nbsp; ${recs.length} contact${recs.length===1?'':'s'}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="rdx-${key}-search" value="${esc(window[`_rdx_${key}_q`]||'')}" placeholder="🔍 Search…" oninput="_rdxSearch('${key}')"
+        style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;width:200px">
+      <button class="btn btn-n" onclick="_rdxOpenAdd('${key}')">+ Add ${title.replace(/s$/,'')}</button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;margin-top:12px">
+    <div class="tw"><table>
+      <thead><tr>
+        <th>Name</th>
+        <th>Company</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>City / State</th>
+        ${extraCols.map(c=>`<th>${c.label}</th>`).join('')}
+        <th></th>
+      </tr></thead>
+      <tbody>${recs.length?recs.map(r=>`<tr style="cursor:pointer" onclick="_rdxOpenEdit('${key}','${r.id}')">
+        <td style="font-weight:600">${esc((r.first_name||'')+' '+(r.last_name||''))}<br><span style="font-size:11px;color:var(--muted);font-weight:400">${esc(r.title||'')}</span></td>
+        <td style="font-size:13px">${esc(r.company||'—')}</td>
+        <td style="font-size:13px">${r.phone?`<a href="tel:${esc(r.phone)}" onclick="event.stopPropagation()">${esc(r.phone)}</a>`:'—'}</td>
+        <td style="font-size:13px">${r.email?`<a href="mailto:${esc(r.email)}" onclick="event.stopPropagation()">${esc(r.email)}</a>`:'—'}</td>
+        <td style="font-size:13px;color:var(--muted)">${esc([r.city,r.state].filter(Boolean).join(', ')||'—')}</td>
+        ${extraCols.map(c=>`<td style="font-size:13px;color:var(--muted)">${esc(r[c.field]||'—')}</td>`).join('')}
+        <td><button class="btn sm btn-o" onclick="event.stopPropagation();_rdxOpenEdit('${key}','${r.id}')">Edit</button></td>
+      </tr>`).join(''):`<tr><td colspan="${5+extraCols.length+1}" style="text-align:center;color:var(--muted);padding:32px">${emptyMsg}<br><button class="btn btn-n sm" style="margin-top:10px" onclick="_rdxOpenAdd('${key}')">Add First ${title.replace(/s$/,'')}</button></td></tr>`}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function bRolodexBuilders(){
+  return _rdxPage('builders','Builders','Home builders and contractors in your network',
+    'No builders on file yet.',
+    [{label:'License #',field:'license_number'},{label:'Specialty',field:'specialty'}]);
+}
+
+function bRolodexRealtors(){
+  return _rdxPage('realtors','Realtors','Real estate agents and brokers in your network',
+    'No realtors on file yet.',
+    [{label:'License #',field:'license_number'},{label:'MLS / Board',field:'mls_board'}]);
+}
+
+function bRolodexInspectors(){
+  return _rdxPage('inspectors','Inspectors','Home and radon inspectors in your network',
+    'No inspectors on file yet.',
+    [{label:'Certification',field:'certification'},{label:'Specialties',field:'specialty'}]);
 }
 
 function propStateChange(state){
