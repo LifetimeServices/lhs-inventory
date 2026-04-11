@@ -38909,9 +38909,12 @@ function openEstimate(id){
   <!-- Status bar -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
     ${['Draft','Sent','Accepted','Declined'].map(s=>`<button class="btn sm ${e.status===s?'btn-n':'btn-o'}" onclick="updateEstStatus('${id}','${s}')">${s}</button>`).join('')}
-    <button class="btn sm btn-o" style="margin-left:auto" onclick="cMod();editEstimate('${id}')">✏️ Edit</button>
-    <button class="btn sm btn-g" onclick="printEstimate('${id}')">🖨 Print / PDF</button>
-    ${e.status==='Accepted'?`<button class="btn sm btn-n" onclick="estToWO('${id}')">→ Create Work Order</button>`:''}
+    <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn sm btn-o" onclick="cMod();editEstimate('${id}')">✏️ Edit</button>
+      <button class="btn sm btn-o" onclick="emailEstimate('${id}')">✉️ Email</button>
+      <button class="btn sm btn-g" onclick="printEstimate('${id}')">🖨 Print / PDF</button>
+      ${e.status==='Accepted'?`<button class="btn sm btn-n" onclick="estToWO('${id}')">→ Create Work Order</button>`:''}
+    </div>
   </div>
 
   <!-- Details -->
@@ -38967,6 +38970,154 @@ function openEstimate(id){
 
   ${e.notes?`<div class="card" style="margin-top:12px;padding:12px;font-size:13px"><div class="ct">Site Notes</div>${e.notes}</div>`:''}
   </div>`);
+}
+
+// ── EMAIL ESTIMATE ────────────────────────────────────────────────────────────
+function emailEstimate(id){
+  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
+  if(!e){tst('Estimate not found','error');return;}
+  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id);
+  const custEmail=cust?.email||'';
+  const custName=e.customer_name||(cust?(cust.first_name||'')+' '+(cust.last_name||''):'');
+  const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
+  const printLines=lines.filter(l=>(l.label||l.name||'').trim()||(l.price||0)!==0);
+  const svcLines=printLines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
+  const discLines=printLines.filter(l=>l.type==='Discount'||l.type==='discount');
+  const subtotal=svcLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const discTotal=discLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const grandTotal=subtotal+discTotal;
+  const fmtMoney=n=>'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const defaultSubj=`Your Estimate from Lifetime Home Services — ${e.estimate_number}`;
+  const defaultMsg=`Hi ${cust?.first_name||custName||'there'},\n\nPlease find your estimate attached. The details are shown below.\n\nEstimate #: ${e.estimate_number}\nTotal: ${fmtMoney(grandTotal)}\n\nPlease don't hesitate to reach out with any questions. To accept this estimate, simply reply to this email.\n\nThank you for choosing Lifetime Home Services!`;
+
+  oMod('Email Estimate',`
+  <div class="fl" style="margin-bottom:10px"><label>To (email address)</label>
+    <input id="em-est-to" value="${esc(custEmail)}" placeholder="customer@email.com" style="font-size:13px">
+  </div>
+  <div class="fl" style="margin-bottom:10px"><label>Subject</label>
+    <input id="em-est-subj" value="${esc(defaultSubj)}" style="font-size:13px">
+  </div>
+  <div class="fl" style="margin-bottom:14px"><label>Message (shown above estimate)</label>
+    <textarea id="em-est-msg" rows="6" style="font-size:13px;resize:vertical">${esc(defaultMsg)}</textarea>
+  </div>
+  <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px">
+    <div style="font-weight:700;margin-bottom:6px">Estimate Preview</div>
+    <div style="display:flex;justify-content:space-between;color:var(--muted)"><span>${e.estimate_number} · ${e.division||'—'} · ${e.job_type||'—'}</span><span style="font-weight:700;color:var(--navy)">${fmtMoney(grandTotal)}</span></div>
+    <div style="color:var(--muted);margin-top:4px">${printLines.length} line item${printLines.length===1?'':'s'} · ${e.estimate_date||e.created_at?.slice(0,10)||'Today'}</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-n" onclick="svEmailEstimate('${id}')">✉️ Send Estimate</button>
+    <button class="btn btn-o" onclick="cMod();openEstimate('${id}')">Cancel</button>
+  </div>`);
+}
+
+async function svEmailEstimate(id){
+  const to=(document.getElementById('em-est-to')?.value||'').trim();
+  const subj=(document.getElementById('em-est-subj')?.value||'').trim();
+  const msg=(document.getElementById('em-est-msg')?.value||'').trim();
+  if(!to){tst('Recipient email required','error');return;}
+  if(!subj){tst('Subject required','error');return;}
+
+  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
+  if(!e){tst('Estimate not found','error');return;}
+  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id);
+  const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
+  const printLines=lines.filter(l=>(l.label||l.name||'').trim()||(l.price||0)!==0);
+  const svcLines=printLines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
+  const discLines=printLines.filter(l=>l.type==='Discount'||l.type==='discount');
+  const subtotal=svcLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const discTotal=discLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const grandTotal=subtotal+discTotal;
+  const fmtMoney=n=>'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const custName=e.customer_name||(cust?(cust.first_name||'')+' '+(cust.last_name||''):'');
+  const siteAddr=e.site_address||[cust?.address,cust?.city&&cust?.state?`${cust.city}, ${cust.state} ${cust.zip||''}`:cust?.city||''].filter(Boolean).join(', ')||'';
+
+  const msgHtml=msg.replace(/\n/g,'<br>');
+  const lineRows=printLines.map(l=>{
+    const name=l.label||l.name||l.description||'—';
+    const ext=(l.qty||1)*(l.price||0);
+    const isDisc=l.type==='Discount'||l.type==='discount';
+    return`<tr style="border-bottom:1px solid #eee">
+      <td style="padding:8px 10px;font-size:13px">${name}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:12px;color:#666">${l.qty||1}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:13px;font-weight:600;color:${isDisc?'#c0392b':'#1B2A4A'}">${isDisc?'-':'+'}${fmtMoney(Math.abs(ext))}</td>
+    </tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{font-family:Arial,sans-serif;color:#1a1a1a;background:#f5f5f5;margin:0;padding:20px}
+    .wrap{max-width:620px;margin:0 auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+    .hdr{background:#0f1f3d;color:white;padding:28px 32px;text-align:center}
+    .hdr h1{font-size:22px;font-weight:900;margin:0;letter-spacing:-0.5px}
+    .hdr p{margin:4px 0 0;font-size:13px;color:#3abfbf;font-weight:600}
+    .body{padding:28px 32px}
+    .msg-box{font-size:14px;line-height:1.7;color:#333;margin-bottom:24px;padding:16px;background:#f8f9fc;border-radius:8px;border-left:4px solid #3abfbf}
+    .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#888;margin:0 0 8px}
+    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+    .info-item{background:#f8f9fc;padding:12px;border-radius:8px}
+    .info-item .lbl{font-size:11px;color:#888;font-weight:600;text-transform:uppercase;margin-bottom:3px}
+    .info-item .val{font-size:14px;font-weight:700;color:#1B2A4A}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}
+    .t-head{background:#0f1f3d;color:white}
+    .t-head th{padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:left}
+    .t-head th.r{text-align:right}
+    .total-row{border-top:2px solid #0f1f3d;padding:12px 10px;font-size:16px;font-weight:900;color:#0f1f3d;display:flex;justify-content:space-between}
+    .cta{background:#3abfbf;color:white;padding:16px;border-radius:8px;text-align:center;margin-top:20px}
+    .cta p{margin:0;font-size:14px;font-weight:700}
+    .ftr{background:#f8f9fc;padding:16px 32px;text-align:center;font-size:11px;color:#999;border-top:1px solid #eee}
+  </style></head><body>
+  <div class="wrap">
+    <div class="hdr">
+      <h1>Lifetime Home Services</h1>
+      <p>Estimate ${e.estimate_number}</p>
+    </div>
+    <div class="body">
+      <div class="msg-box">${msgHtml}</div>
+      <div class="section-title">Estimate Details</div>
+      <div class="info-grid">
+        <div class="info-item"><div class="lbl">Customer</div><div class="val">${custName||'—'}</div></div>
+        <div class="info-item"><div class="lbl">Estimate #</div><div class="val">${e.estimate_number}</div></div>
+        <div class="info-item"><div class="lbl">Division</div><div class="val">${e.division||'—'}</div></div>
+        <div class="info-item"><div class="lbl">Date</div><div class="val">${e.estimate_date||e.created_at?.slice(0,10)||'—'}</div></div>
+        ${siteAddr?`<div class="info-item" style="grid-column:span 2"><div class="lbl">Service Address</div><div class="val" style="font-size:13px;font-weight:500">${siteAddr}</div></div>`:''}
+      </div>
+      <div class="section-title">Services</div>
+      <table>
+        <thead class="t-head"><tr><th>Description</th><th style="text-align:center">Qty</th><th class="r">Amount</th></tr></thead>
+        <tbody>${lineRows}</tbody>
+      </table>
+      <div class="total-row"><span>Total</span><span>${fmtMoney(grandTotal)}</span></div>
+      <div class="cta"><p>Questions? Reply to this email or call us anytime.</p></div>
+    </div>
+    <div class="ftr">This estimate is valid for 30 days · Lifetime Home Services LLC · lifetimehomeservices.com</div>
+  </div></body></html>`;
+
+  const btn=document.querySelector('[onclick^="svEmailEstimate"]');
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  try{
+    await sendBrevoEmail({
+      to,
+      toName:custName||to,
+      subject:subj,
+      html,
+      replyTo:'info@lifetimehomeservices.com',
+    });
+    // Auto-update status to Sent
+    await updateEstStatus(id,'Sent');
+    // Auto-log activity
+    autoLogActivity({
+      customer_id:e.customer_id||null,
+      activity_type:'Email',
+      subject:subj,
+      notes:`Estimate ${e.estimate_number} emailed to ${to} — ${fmtMoney(grandTotal)}`,
+    }).catch(()=>{});
+    tst(`Estimate emailed to ${to}`,'success');
+    cMod();
+    openEstimate(id);
+  }catch(err){
+    tst('Email failed: '+(err.message||'check Brevo API key'),'error');
+    if(btn){btn.disabled=false;btn.textContent='✉️ Send Estimate';}
+  }
 }
 
 // ── EDIT EXISTING ESTIMATE ────────────────────────────────────────────────────
@@ -39284,16 +39435,31 @@ function printEstimate(id){
 }
 
 // ── BUILD ESTIMATE BUTTON on Opportunity modal ────────────────────────────────
-function buildEstimateFromOpp(oppId){
+async function buildEstimateFromOpp(oppId){
   const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===oppId);
   if(!o) return;
   cMod();
+  // Ensure customer is in local cache so the name pre-fills correctly
+  let custInCache=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id);
+  if(o.customer_id&&!custInCache){
+    try{
+      const{data}=await DB.from('lhs_customers').select('id,first_name,last_name,company,phone,email,address,city,state,zip').eq('id',o.customer_id).maybeSingle();
+      if(data){
+        custInCache=data;
+        const custs=S.get('lhs:customers')||[];
+        if(!custs.find(c=>c.id===data.id)){custs.push(data);S.set('lhs:customers',custs);}
+      }
+    }catch(e){console.warn('buildEstimateFromOpp: customer fetch',e.message);}
+  }
+  // Extract state from customer for pricebook scoping
+  const custState=custInCache?.state||'';
   oNewEstimate({
     division:o.division||'',
     job_type:o.job_type||'Installation',
     customer_id:o.customer_id||null,
     opp_id:oppId,
     assigned_to:o.assigned_to||CU.name,
+    state:custState,
   });
 }
 
