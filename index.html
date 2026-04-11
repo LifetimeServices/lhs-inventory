@@ -20120,7 +20120,8 @@ function renderWOList(wos,status){
     const apts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===wo.id);
     const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.wo_id===wo.id);
     const nextApt=apts.find(a=>a.status==='Scheduled')||apts[0];
-    const uniqueTechs=[...new Set(techs.map(t=>t.tech_name))];
+    const aptTechNames=[...new Set(techs.map(t=>t.tech_name))];
+    const uniqueTechs=aptTechNames.length>0?aptTechNames:(wo.all_techs?(wo.all_techs.split(',').map(function(t){return t.trim();}).filter(Boolean)):(wo.tech_name?[wo.tech_name]:[]));
     const statusColor=wo.status==='Completed'||wo.status==='Closed with Dispatch'?'bg':wo.status==='In Progress'?'bb':wo.status==='Cancelled'?'br':'ba';
     const balance=(wo.total_price||0)-(wo.total_paid||0);
     return`<tr style="cursor:pointer" onclick="openWO('${wo.id}')">
@@ -39450,6 +39451,7 @@ async function stImportRows(rows) {
       payment_type: row['Payment Types'] || '',
       completed_at: completedISO,
       invoice_date: invoiceDateISO,
+      created_at: new Date().toISOString(),
       imported_at: new Date().toISOString()
     };
     currentBatch.push(wo);
@@ -39505,6 +39507,29 @@ async function stImportRows(rows) {
   }
 
   tst('Import complete: ' + imported + ' imported, ' + skipped + ' skipped, ' + errors.length + ' errors', errors.length > 0 ? 'warning' : 'success');
+
+  // Reload WO cache from Supabase so imported records show immediately
+  if (imported > 0) {
+    try {
+      var allWOs = [];
+      var pageSize = 1000;
+      var from = 0;
+      var keepGoing = true;
+      while (keepGoing) {
+        var res = await DB.from('lhs_work_orders').select('*').order('created_at', {ascending: true, nullsFirst: true}).range(from, from + pageSize - 1);
+        if (res.error || !res.data || res.data.length === 0) { keepGoing = false; break; }
+        allWOs = allWOs.concat(res.data);
+        if (res.data.length < pageSize) keepGoing = false;
+        else from += pageSize;
+      }
+      if (allWOs.length > 0) {
+        S.set('lhs:work_orders', allWOs);
+        tst('Work order list refreshed — ' + allWOs.length + ' total records loaded', 'success');
+      }
+    } catch (cacheErr) {
+      console.warn('Cache reload failed:', cacheErr);
+    }
+  }
 }
 </script>
 </body>
