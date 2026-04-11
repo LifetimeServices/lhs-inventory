@@ -39128,6 +39128,17 @@ function stParseCsv(text) {
 
 // Map ST "LHS | Radon New Construction" → { division, job_type, job_subtype, job_classification }
 var ST_JOB_TYPE_MAP = [
+  // ── Window Treatments (WW | prefix) — must come before generic radon/warranty catches ──
+  { match: /^ww\s*\|.*measur/i,         div:'Window Treatments', type:'Measure',        sub:'',                cls:''  },
+  { match: /^ww\s*\|.*warranty/i,       div:'Window Treatments', type:'Warranty',       sub:'',                cls:''  },
+  { match: /^ww\s*\|/i,                 div:'Window Treatments', type:'',               sub:'',                cls:''  },
+  // ── Closet Organization (CC | prefix) — must come before generic installation catch ──
+  { match: /^cc\s*\|.*install/i,        div:'Closet Organization',type:'Installation',  sub:'',                cls:''  },
+  { match: /^cc\s*\|/i,                 div:'Closet Organization',type:'',              sub:'',                cls:''  },
+  // ── Outside Sales/Designers (radon estimate/test variants — before radon mitigation) ──
+  { match: /radon.*test.*estimate/i,    div:'Outside Sales/Designers', type:'Radon Test/Estimate', sub:'', cls:''  },
+  { match: /radon.*estimate/i,          div:'Outside Sales/Designers', type:'Estimate',            sub:'', cls:''  },
+  { match: /radon.*retest/i,            div:'Outside Sales/Designers', type:'Re-Test',             sub:'', cls:''  },
   // ── Radon Mitigation ──
   { match: /radon.*standard\s*call/i,   div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
   { match: /radon.*service\s*call/i,    div:'Radon Mitigation', type:'Standard Call',  sub:'Standard',         cls:''  },
@@ -39147,28 +39158,33 @@ var ST_JOB_TYPE_MAP = [
   { match: /electric/i,                 div:'Electric',         type:'',               sub:'',                 cls:''  },
   // ── Concrete Coatings ──
   { match: /concrete/i,                 div:'Concrete Coatings',type:'',               sub:'',                 cls:''  },
-  // ── Closet Organization ──
+  // ── Closet Organization (word "closet" in type) ──
   { match: /closet/i,                   div:'Closet Organization',type:'',             sub:'',                 cls:''  },
   // ── Air Solutions ──
   { match: /air\s*solution/i,           div:'Air Solutions',    type:'',               sub:'',                 cls:''  },
   { match: /^hvac$/i,                   div:'Air Solutions',    type:'HVAC',           sub:'',                 cls:''  },
   { match: /^duct/i,                    div:'Air Solutions',    type:'Duct',           sub:'',                 cls:''  },
   { match: /^fan/i,                     div:'Air Solutions',    type:'Fan',            sub:'',                 cls:''  },
-  // ── Window Treatments ──
+  // ── Window Treatments (word "window" in type) ──
   { match: /window/i,                   div:'Window Treatments',type:'',               sub:'',                 cls:''  },
   { match: /^measure/i,                 div:'Window Treatments',type:'Measure',        sub:'',                 cls:''  },
   // ── Struxure ──
   { match: /struxure/i,                 div:'Struxure',         type:'',               sub:'',                 cls:''  },
   // ── AIH Security ──
-  { match: /security|wiring|aih/i,      div:'AIH Security & Wiring',type:'',           sub:'',                 cls:''  },
+  { match: /aih.*rough/i,               div:'AIH Security & Wiring',type:'Installation',sub:'Rough-In',        cls:''  },
+  { match: /aih.*trim/i,                div:'AIH Security & Wiring',type:'Installation',sub:'Trim-Out',        cls:''  },
+  { match: /aih.*setup/i,               div:'AIH Security & Wiring',type:'Installation',sub:'Setup',           cls:''  },
+  { match: /aih.*service\s*call/i,      div:'AIH Security & Wiring',type:'Service Call',sub:'',                cls:''  },
+  { match: /aih.*install/i,             div:'AIH Security & Wiring',type:'Installation',sub:'',                cls:''  },
+  { match: /security|wiring|aih/i,      div:'AIH Security & Wiring',type:'',            sub:'',                cls:''  },
   // ── Handyman ──
   { match: /handyman/i,                 div:'Handyman',         type:'',               sub:'',                 cls:''  },
   // ── Commercial ──
   { match: /commercial/i,               div:'Commercial',       type:'',               sub:'',                 cls:''  },
   // ── Outside Sales/Designers ──
-  { match: /^network/i,                 div:'Outside Sales/Designers', type:'Networking', sub:'',              cls:''  },
-  { match: /^estimate/i,                div:'Outside Sales/Designers', type:'Estimate',   sub:'',              cls:''  },
-  { match: /^consultation/i,            div:'Outside Sales/Designers', type:'Consultation',sub:'',             cls:''  },
+  { match: /^network/i,                 div:'Outside Sales/Designers', type:'Networking',    sub:'', cls:''  },
+  { match: /^estimate/i,                div:'Outside Sales/Designers', type:'Estimate',      sub:'', cls:''  },
+  { match: /^consultation/i,            div:'Outside Sales/Designers', type:'Consultation',  sub:'', cls:''  },
 ];
 
 function stParseJobFields(rawJobType) {
