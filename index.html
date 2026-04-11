@@ -10122,11 +10122,11 @@ function bCrDashboard(){
       html+='<tr style="border-bottom:1px solid var(--bdr);background:'+(idx%2===0?'white':'var(--surf)')+'">';
       html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.report_date||'')+'</td>';
       html+='<td style="padding:8px 12px;font-weight:600">'+esc(r.employee_name||'')+'</td>';
-      html+='<td style="padding:8px 12px;font-size:12px;color:var(--muted)">'+esc(r.manager_name||'&#8212;')+'</td>';
-      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.division||'&#8212;')+'</td>';
-      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.region||'&#8212;')+'</td>';
-      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.state||'&#8212;')+'</td>';
-      html+='<td style="padding:8px 12px"><span style="font-weight:700;font-size:13px;color:'+color+'">'+(sc!==null&&sc!==undefined?sc+'%':'&#8212;')+'</span></td>';
+      html+='<td style="padding:8px 12px;font-size:12px;color:var(--muted)">'+(r.manager_name?esc(r.manager_name):'&mdash;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+(r.division?esc(r.division):'&mdash;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+(r.region?esc(r.region):'&mdash;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+(r.state?esc(r.state):'&mdash;')+'</td>';
+      html+='<td style="padding:8px 12px"><span style="font-weight:700;font-size:13px;color:'+color+'">'+(sc!==null&&sc!==undefined?sc+'%':'&mdash;')+'</span></td>';
       html+='<td style="padding:8px 12px;white-space:nowrap">';
       html+='<button class="btn sm btn-o" onclick="oCrReview(\''+r.id+'\')">View</button> ';
       html+='<button class="btn sm btn-o" onclick="crEdit(\''+r.id+'\')">Edit</button> ';
@@ -10188,7 +10188,7 @@ function bCrForm(rpt){
   html+='<div class="fl"><label>Manager *</label><select id="cr-manager" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; Select &#8212;</option>';
   users.forEach(function(u){var sel=rpt&&rpt.manager_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
   html+='</select></div>';
-  html+='<div class="fl"><label>Employee *</label><select id="cr-employee" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; Select &#8212;</option>';
+  html+='<div class="fl"><label>Employee *</label><select id="cr-employee" onchange="crAutoFillFromEmployee(this.value)" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; Select &#8212;</option>';
   users.forEach(function(u){var sel=rpt&&rpt.employee_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
   html+='</select></div>';
   html+='<div class="fl"><label>Date *</label><input type="date" id="cr-date" value="'+(rpt?rpt.report_date:today)+'" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
@@ -10248,22 +10248,70 @@ function _crActionItemsHTML(items,users){
   for(var i=0;i<items.length;i++){
     var item=items[i];
     var assignees=item.assignees||[];
-    html+='<div style="display:flex;gap:8px;align-items:flex-start;padding:8px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;margin-bottom:6px" id="cr-ai-row-'+i+'">';
-    html+='<div style="flex:3"><label style="font-size:11px;color:var(--muted)">Action Item</label>';
-    html+='<input style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px" value="'+esc(item.item||'')+'" oninput="window._crActionItems['+i+'].item=this.value" placeholder="Describe the action required..."></div>';
+    html+='<div style="padding:10px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px" id="cr-ai-row-'+i+'">';
+    // Row 1: action item text + remove button
+    html+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">';
+    html+='<div style="flex:1"><label style="font-size:11px;color:var(--muted)">Action Item</label>';
+    html+='<input style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;box-sizing:border-box" value="'+esc(item.item||'')+'" oninput="window._crActionItems['+i+'].item=this.value" placeholder="Describe the action required..."></div>';
+    html+='<div style="padding-top:18px"><button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="crRemoveActionRow('+i+')">&times;</button></div>';
+    html+='</div>';
+    // Row 2: assignee picker + due date
+    html+='<div style="display:flex;gap:12px;align-items:flex-start">';
+    // Assignee chip picker
     html+='<div style="flex:2"><label style="font-size:11px;color:var(--muted)">Assigned To</label>';
-    html+='<select multiple style="width:100%;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;height:60px" onchange="crUpdateAssignees('+i+',this)">';
+    html+='<div id="cr-ai-chips-'+i+'" style="display:flex;flex-wrap:wrap;gap:4px;min-height:32px;border:1px solid var(--bdr);border-radius:8px;padding:5px;margin-bottom:4px">';
+    if(!assignees.length){
+      html+='<span style="font-size:12px;color:var(--muted);line-height:22px">No assignees yet</span>';
+    } else {
+      for(var j=0;j<assignees.length;j++){
+        html+='<span style="background:var(--navy);color:var(--teal);padding:3px 8px;border-radius:20px;font-size:11px;display:flex;align-items:center;gap:4px">'+esc(assignees[j]);
+        html+='<button type="button" onclick="crRemoveAssignee('+i+','+j+')" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:13px;line-height:1;padding:0">&#215;</button></span>';
+      }
+    }
+    html+='</div>';
+    html+='<input type="text" id="cr-ai-srch-'+i+'" placeholder="&#128269; Search people..." oninput="crFilterAssignSel(this,'+i+')"';
+    html+=' style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px 6px 0 0;font-size:12px;width:100%;border-bottom:none;box-sizing:border-box">';
+    html+='<select id="cr-ai-sel-'+i+'" onchange="crAddAssignee('+i+',this.value)"';
+    html+=' style="border-radius:0 0 6px 6px;border-top:none;width:100%;font-size:12px;padding:3px 6px">';
+    html+='<option value="">— Add person —</option>';
     usrs.forEach(function(u){
-      var sel=assignees.indexOf(u.name)>=0?' selected':'';
-      html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';
+      if(assignees.indexOf(u.name)<0) html+='<option value="'+esc(u.name)+'">'+esc(u.name)+'</option>';
     });
     html+='</select></div>';
+    // Due date
     html+='<div style="flex:1"><label style="font-size:11px;color:var(--muted)">Due Date</label>';
     html+='<input type="date" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px" value="'+(item.due_date||'')+'" onchange="window._crActionItems['+i+'].due_date=this.value"></div>';
-    html+='<div style="padding-top:18px"><button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="crRemoveActionRow('+i+')">&times;</button></div>';
+    html+='</div>';
     html+='</div>';
   }
   return html||'<div style="color:var(--muted);font-size:12px;padding:8px">No action items added yet.</div>';
+}
+
+function crAutoFillFromEmployee(name){
+  if(!name) return;
+  var users=S.get('lhs:users')||[];
+  var u=users.find(function(x){return x.name===name;});
+  if(!u) return;
+  var divEl=document.getElementById('cr-division');
+  var regEl=document.getElementById('cr-region');
+  var stEl=document.getElementById('cr-state');
+  var terEl=document.getElementById('cr-territory');
+  var mgrEl=document.getElementById('cr-manager');
+  if(divEl&&u.division){
+    for(var i=0;i<divEl.options.length;i++){if(divEl.options[i].value===u.division){divEl.selectedIndex=i;break;}}
+  }
+  if(regEl&&u.region){
+    for(var i=0;i<regEl.options.length;i++){if(regEl.options[i].value===u.region){regEl.selectedIndex=i;break;}}
+  }
+  if(stEl&&u.state){
+    for(var i=0;i<stEl.options.length;i++){if(stEl.options[i].value===u.state){stEl.selectedIndex=i;break;}}
+  }
+  if(terEl&&u.territory){
+    for(var i=0;i<terEl.options.length;i++){if(terEl.options[i].value===u.territory){terEl.selectedIndex=i;break;}}
+  }
+  if(mgrEl&&u.manager){
+    for(var i=0;i<mgrEl.options.length;i++){if(mgrEl.options[i].value===u.manager){mgrEl.selectedIndex=i;break;}}
+  }
 }
 
 function crAddActionRow(){
@@ -10282,11 +10330,34 @@ function crRemoveActionRow(i){
   if(el) el.innerHTML=_crActionItemsHTML(window._crActionItems,users);
 }
 
-function crUpdateAssignees(i,sel){
-  if(!window._crActionItems||!window._crActionItems[i]) return;
-  var selected=[];
-  for(var j=0;j<sel.options.length;j++){if(sel.options[j].selected)selected.push(sel.options[j].value);}
-  window._crActionItems[i].assignees=selected;
+function crAddAssignee(rowIdx,name){
+  if(!name||!window._crActionItems||!window._crActionItems[rowIdx]) return;
+  var assignees=window._crActionItems[rowIdx].assignees||[];
+  if(assignees.indexOf(name)>=0) return;
+  assignees.push(name);
+  window._crActionItems[rowIdx].assignees=assignees;
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var el=document.getElementById('cr-action-rows');
+  if(el) el.innerHTML=_crActionItemsHTML(window._crActionItems,users);
+}
+
+function crRemoveAssignee(rowIdx,idx){
+  if(!window._crActionItems||!window._crActionItems[rowIdx]) return;
+  window._crActionItems[rowIdx].assignees.splice(idx,1);
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var el=document.getElementById('cr-action-rows');
+  if(el) el.innerHTML=_crActionItemsHTML(window._crActionItems,users);
+}
+
+function crFilterAssignSel(input,rowIdx){
+  var sel=document.getElementById('cr-ai-sel-'+rowIdx);
+  if(!sel) return;
+  var q=(input.value||'').toLowerCase();
+  for(var i=0;i<sel.options.length;i++){
+    var opt=sel.options[i];
+    if(!opt.value) continue;
+    opt.style.display=(!q||opt.text.toLowerCase().indexOf(q)>=0)?'':'none';
+  }
 }
 
 async function svComplianceReport(){
