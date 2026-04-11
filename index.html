@@ -34214,9 +34214,49 @@ function bSalesLeads(){
 let _oppView='kanban';
 let _oppDivFilter='';
 let _oppRepFilter='';
+
+// Returns the rep name that this user is restricted to ('' = no restriction / see all)
+function _getOppVisibleFilter(){
+  const managerRoles=['Creator','God View','Director','Admin','Regional Director','Regional Manager','Operations Manager'];
+  if(managerRoles.includes(CU?.role)) return '';
+  const ss=getSalesSettings();
+  if(ss.sales_reps_see_all) return '';
+  return CU?.name||'';
+}
+
+function oppRepSearch(query){
+  const all=(S.get('lhs:users')||[]).filter(u=>u.name||u.full_name);
+  const q=(query||'').toLowerCase();
+  const matches=q?all.filter(u=>(u.name||u.full_name||'').toLowerCase().includes(q)):all;
+  const drop=document.getElementById('opp-rep-drop');
+  if(!drop) return;
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=matches.map(u=>{
+    const n=u.name||u.full_name||'';
+    return`<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
+      onmouseenter="this.style.background='#f0fafa'" onmouseleave="this.style.background=''"
+      onmousedown="oppRepPick('${n.replace(/'/g,"\\'")}')"> ${esc(n)}</div>`;
+  }).join('');
+}
+function oppRepPick(name){
+  _oppRepFilter=name;
+  const si=document.getElementById('opp-rep-search');
+  const drop=document.getElementById('opp-rep-drop');
+  if(si) si.value=name;
+  if(drop) drop.style.display='none';
+  _refreshOppView();
+}
+function oppRepClear(){
+  _oppRepFilter='';
+  const si=document.getElementById('opp-rep-search');
+  if(si) si.value='';
+  _refreshOppView();
+}
 function bSalesOpps(){
   const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
-  const reps=(S.get('lhs:users')||[]).map(u=>u.name||u.full_name||'').filter(Boolean);
+  const forcedRep=_getOppVisibleFilter();
+  const canSeeAll=!forcedRep;
   return`<div class="pt">Opportunities</div><div class="ps">Active sales pipeline &nbsp;·&nbsp; Drag cards between stages or click to open</div>
   <div style="display:flex;justify-content:space-between;margin-bottom:16px;gap:8px;align-items:center;flex-wrap:wrap">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -34228,13 +34268,23 @@ function bSalesOpps(){
         <option value="">All Divisions</option>
         ${divs.map(d=>`<option value="${esc(d)}"${_oppDivFilter===d?' selected':''}>${esc(d)}</option>`).join('')}
       </select>
-      <select onchange="_oppRepFilter=this.value;_refreshOppView()" style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white">
-        <option value="">All Reps</option>
-        ${reps.map(r=>`<option value="${esc(r)}"${_oppRepFilter===r?' selected':''}>${esc(r)}</option>`).join('')}
-      </select>
+      ${canSeeAll?`<div style="position:relative">
+        <div style="display:flex;align-items:center;border:1.5px solid var(--bdr);border-radius:8px;background:white;padding:0 8px;gap:4px">
+          <span style="color:var(--muted);font-size:13px">👤</span>
+          <input id="opp-rep-search" placeholder="Search rep…" value="${esc(_oppRepFilter)}"
+            style="padding:7px 4px;border:none;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;width:140px"
+            oninput="oppRepSearch(this.value)"
+            onfocus="oppRepSearch(this.value)"
+            onblur="setTimeout(()=>{const d=document.getElementById('opp-rep-drop');if(d)d.style.display='none'},200)">
+          ${_oppRepFilter?`<button onclick="oppRepClear()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;line-height:1">×</button>`:''}
+        </div>
+        <div id="opp-rep-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--bdr);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:50;max-height:200px;overflow-y:auto;margin-top:2px"></div>
+      </div>`
+      :`<div style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;background:var(--surf);color:var(--muted)">👤 ${esc(forcedRep)}</div>`}
     </div>
     <button class="btn btn-n" onclick="oAddOpportunity()">+ New Opportunity</button>
   </div>
+  ${forcedRep?`<div style="background:#fef9e7;border:1px solid var(--amber);border-radius:8px;padding:8px 14px;font-size:12px;color:#92400e;margin-bottom:12px">🔒 Showing your opportunities only. Contact an admin to change this setting.</div>`:''}
   <div id="opp-view-content">${_oppView==='kanban'?renderCRMKanban():renderCRMPipeline()}</div>
   <div id="opp-forecast-card">${renderOppForecast()}</div>`;
 }
@@ -34258,7 +34308,8 @@ function _setOppView(v){
 
 function renderOppForecast(){
   const opps=(S.get('lhs:opportunities')||[]);
-  const f=o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter);
+  const _forcedRep=_getOppVisibleFilter();
+  const f=o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter)&&(!_forcedRep||o.assigned_to===_forcedRep);
   const filtered=opps.filter(f);
   const total=filtered.filter(o=>o.stage!=='Lost').reduce((s,o)=>s+(o.estimated_value||0),0);
   const bestCase=filtered.filter(o=>!['Lost','Prospect'].includes(o.stage)).reduce((s,o)=>s+(o.estimated_value||0),0);
@@ -34280,7 +34331,8 @@ function renderOppForecast(){
 
 function renderCRMKanban(){
   const allOpps=(S.get('lhs:opportunities')||[]);
-  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter));
+  const _forcedRep=_getOppVisibleFilter();
+  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter)&&(!_forcedRep||o.assigned_to===_forcedRep));
   const ss=getSalesSettings();
   const stages=ss.opp_stages||OPP_STAGES;
   const stageColor={Prospect:'var(--teal)','Site Visit':'#2980b9','Estimate Sent':'var(--amber)',Negotiation:'#e67e22',Won:'var(--green)',Lost:'var(--muted)'};
@@ -35083,10 +35135,66 @@ async function delFee(i){
 }
 
 // ── ESTIMATES PAGE ─────────────────────────────────────────────────────────────
+let _estStatusFilter='';
+let _estDivFilter='';
+let _estRepFilter='';
+let _estCustSearch='';
+let _estDateFrom='';
+let _estDateTo='';
+
+function _refreshEstimates(){
+  const el=document.getElementById('est-list-content');
+  if(el) el.innerHTML=renderCRMEstimates();
+}
+
 function bSalesEstimates(){
+  const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
+  const reps=(S.get('lhs:users')||[]).map(u=>u.name||u.full_name||'').filter(Boolean);
   return`<div class="pt">Estimates</div><div class="ps">All estimates across all opportunities</div>
   ${_salesHeader()}
-  ${renderCRMEstimates()}`;
+  <div class="card" style="margin-bottom:14px;padding:14px 16px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Customer</div>
+        <input id="est-cust-search" placeholder="Search customer…" value="${esc(_estCustSearch)}"
+          style="width:100%;padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box"
+          oninput="_estCustSearch=this.value;_refreshEstimates()">
+      </div>
+      <div style="min-width:130px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Status</div>
+        <select onchange="_estStatusFilter=this.value;_refreshEstimates()" style="padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;width:100%">
+          <option value="">All Statuses</option>
+          ${['Draft','Sent','Accepted','Declined'].map(s=>`<option value="${s}"${_estStatusFilter===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div style="min-width:130px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Division</div>
+        <select onchange="_estDivFilter=this.value;_refreshEstimates()" style="padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;width:100%">
+          <option value="">All Divisions</option>
+          ${divs.map(d=>`<option value="${esc(d)}"${_estDivFilter===d?' selected':''}>${esc(d)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="min-width:140px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Rep</div>
+        <select onchange="_estRepFilter=this.value;_refreshEstimates()" style="padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;width:100%">
+          <option value="">All Reps</option>
+          ${reps.map(r=>`<option value="${esc(r)}"${_estRepFilter===r?' selected':''}>${esc(r)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="min-width:120px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">From</div>
+        <input type="date" value="${_estDateFrom}" onchange="_estDateFrom=this.value;_refreshEstimates()"
+          style="padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;width:100%">
+      </div>
+      <div style="min-width:120px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">To</div>
+        <input type="date" value="${_estDateTo}" onchange="_estDateTo=this.value;_refreshEstimates()"
+          style="padding:7px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;width:100%">
+      </div>
+      ${(_estStatusFilter||_estDivFilter||_estRepFilter||_estCustSearch||_estDateFrom||_estDateTo)?`<button class="btn btn-o sm" onclick="_estStatusFilter='';_estDivFilter='';_estRepFilter='';_estCustSearch='';_estDateFrom='';_estDateTo='';_refreshEstimates();showPage('sales-estimates')" style="white-space:nowrap;align-self:flex-end">✕ Clear</button>`:''}
+    </div>
+  </div>
+  <div id="est-list-content">${renderCRMEstimates()}</div>`;
 }
 
 // ── FOLLOW-UPS & TASKS PAGE ────────────────────────────────────────────────────
@@ -35377,7 +35485,8 @@ function renderCRMLeadsTable(leads){
 
 function renderCRMPipeline(){
   const allOpps=(S.get('lhs:opportunities')||[]).sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0));
-  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter));
+  const _forcedRep=_getOppVisibleFilter();
+  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter)&&(!_forcedRep||o.assigned_to===_forcedRep));
   const ss=getSalesSettings();
   const stages=ss.opp_stages||OPP_STAGES;
   const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
@@ -36000,6 +36109,7 @@ function _defaultSalesSettings(){
     priorities:['Normal','Hot','Cold','Urgent'],
     lead_statuses:LEAD_STATUSES.slice(),
     opp_stages:OPP_STAGES.slice(),
+    sales_reps_see_all:false,
     source_categories:['Digital','Referral','Field','Repeat Customer','Real Estate','Other'],
     source_details:{
       'Digital':['Website','Google Ads','Facebook','Instagram','TikTok','Email Campaign'],
@@ -36820,6 +36930,26 @@ function renderSalesSettings(){
   const canEdit=['Creator','God View','Admin','Director'].includes(CU?.role);
   return`
   <div id="est-doc-settings-card">${renderEstDocSettingsCard()}</div>
+
+  <!-- Sales Permissions -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div>
+        <div class="ct" style="margin:0">Sales Opportunity Permissions</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Controls what opportunities Sales Rep / Sales roles can see in the pipeline.</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:${canEdit?'pointer':'default'}">
+        <input type="checkbox" ${ss.sales_reps_see_all?'checked':''} ${canEdit?`onchange="(function(v){const s=getSalesSettings();s.sales_reps_see_all=v;saveSalesSettings(s);tst(v?'Reps can see all opps':'Reps see only their own','success');})(this.checked)"`:'disabled'}
+          style="width:16px;height:16px;accent-color:var(--navy)">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--navy)">Sales reps can view all opportunities</div>
+          <div style="font-size:12px;color:var(--muted)">When off, Sales Rep and Sales roles only see opportunities assigned to them. Managers always see all.</div>
+        </div>
+      </label>
+    </div>
+  </div>
 
   <!-- Division Display Names (shared with Accounting Settings) -->
   <div class="card" style="margin-bottom:20px">
@@ -38181,18 +38311,25 @@ function getEstTemplate(div,jtype){
 
 // ── ESTIMATES LIST ─────────────────────────────────────────────────────────────
 function renderCRMEstimates(){
-  const ests=(S.get('lhs:estimates')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  let ests=(S.get('lhs:estimates')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  if(_estStatusFilter) ests=ests.filter(e=>(e.status||'Draft')===_estStatusFilter);
+  if(_estDivFilter) ests=ests.filter(e=>(e.division||'')=== _estDivFilter);
+  if(_estRepFilter) ests=ests.filter(e=>(e.assigned_to||'')=== _estRepFilter);
+  if(_estCustSearch){const q=_estCustSearch.toLowerCase();ests=ests.filter(e=>(e.customer_name||'').toLowerCase().includes(q));}
+  if(_estDateFrom) ests=ests.filter(e=>e.created_at&&e.created_at.slice(0,10)>=_estDateFrom);
+  if(_estDateTo) ests=ests.filter(e=>e.created_at&&e.created_at.slice(0,10)<=_estDateTo);
   const statusColor=s=>s==='Draft'?'bn':s==='Sent'?'ba':s==='Accepted'?'bg':s==='Declined'?'br':'bgr';
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div style="font-size:13px;color:var(--muted)">${ests.length} estimate${ests.length!==1?'s':''}</div>
     <button class="btn btn-n" onclick="oNewEstimate()">+ New Estimate</button>
   </div>
   ${ests.length?`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Estimate #</th><th>Customer</th><th>Division</th><th>Package</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
+  <thead><tr><th>Estimate #</th><th>Customer</th><th>Division</th><th>Rep</th><th>Package</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
   <tbody>${ests.map(e=>`<tr>
     <td style="font-family:'DM Sans',sans-serif;font-weight:700;color:var(--navy)">${e.estimate_number||'EST-?'}</td>
     <td style="font-weight:500">${e.customer_name||'—'}</td>
     <td>${bx(e.division||'—','bn')}</td>
+    <td style="font-size:12px;color:var(--muted)">${e.assigned_to||'—'}</td>
     <td style="font-size:12px">${e.selected_package||'Custom'}</td>
     <td style="font-family:'DM Sans',sans-serif">${f$(e.total_price)}</td>
     <td>${bx(e.status||'Draft',statusColor(e.status))}</td>
@@ -38202,7 +38339,7 @@ function renderCRMEstimates(){
       <button class="btn sm btn-n" onclick="printEstimate('${e.id}')">PDF</button>
     </td>
   </tr>`).join('')}</tbody></table></div></div>`
-  :`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No estimates yet — click + New Estimate to start</div>`}`;
+  :`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">${(_estStatusFilter||_estDivFilter||_estRepFilter||_estCustSearch||_estDateFrom||_estDateTo)?'No estimates match the current filters.':'No estimates yet — click + New Estimate to start'}</div>`}`;
 }
 
 // ── NEW / OPEN ESTIMATE ────────────────────────────────────────────────────────
