@@ -20799,6 +20799,9 @@ async function svCreateWO(){
   if((window._wocTechs||[]).length) logWOAudit(savedWO.id,'Initial Appointment',`${wo.status} for ${v('woc-adate')} ${v('woc-awin')} | Techs:${techNames}`);
   const _inJobGroup=!!window._woJobGroupId;
   const _savedJobGroupId=window._woJobGroupId||null;
+  const _savedEstId=window._woEstId||null;
+  const _savedOppId=window._woOppId||null;
+  const _savedDiv=wo.division||'';
   window._wocSelectedCust=null; window._wocTechs=[]; window._wocPropertyId=null;
   window._woJobGroupId=null; window._woEstId=null; window._woOppId=null;
   tst(`${woNum} created successfully`,'success');
@@ -20806,9 +20809,70 @@ async function svCreateWO(){
   if(_inJobGroup){
     await _afterJobGroupWOSaved(savedWO,_savedJobGroupId);
   } else {
+    // ── Check if this estimate/opp might need additional WOs ──────────────
+    if(_savedEstId||_savedOppId){
+      const allWOs=S.get('lhs:work_orders')||[];
+      const siblingWOs=allWOs.filter(w=>w.id!==savedWO.id&&(
+        (_savedEstId&&w.estimate_id===_savedEstId)||
+        (_savedOppId&&w.opp_id===_savedOppId)
+      ));
+      if(!siblingWOs.length){
+        // No other WOs for this job — prompt the rep
+        const est=_savedEstId?(S.get('lhs:estimates')||[]).find(e=>e.id===_savedEstId):null;
+        const estRef=est?.estimate_number?` (${est.estimate_number})`:'';
+        oMod('📋 Additional Work Orders?',`
+          <div style="text-align:center;padding:24px 16px">
+            <div style="font-size:48px;margin-bottom:14px">🏗️</div>
+            <div style="font-size:17px;font-weight:800;color:var(--navy);margin-bottom:8px">${woNum} Created!</div>
+            <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px">
+              Does this job${estRef} require a work order<br>for <strong>any other divisions?</strong><br>
+              <span style="font-size:12px">(e.g. a Radon install AND an Electrical service)</span>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-n" onclick="cMod();_addAnotherWOFromEst('${_savedEstId||''}','${_savedOppId||''}','${esc(savedWO.customer_name||'')}')">
+                ➕ Yes — Create Another WO
+              </button>
+              <button class="btn btn-o" onclick="cMod();showPage('workorders')">
+                ✓ No — This Job Is Complete
+              </button>
+            </div>
+          </div>`);
+        return;
+      }
+    }
     cMod();
     showPage('workorders');
   }
+}
+
+function _addAnotherWOFromEst(estId,oppId,custName){
+  // Pull customer/property info and open a new WO form for an additional division
+  const est=estId?(S.get('lhs:estimates')||[]).find(e=>e.id===estId):null;
+  const opp=oppId?(S.get('lhs:opportunities')||[]).find(o=>o.id===oppId):null;
+  const custId=est?.customer_id||opp?.customer_id||null;
+  // Set WO globals — division/type will be picked by user in form
+  window._woDiv=DIVS[0];
+  window._woType='Installation';
+  window._woSub='';
+  window._woEstId=estId||null;
+  window._woOppId=oppId||null;
+  window._woJobGroupId=null;
+  // Resolve customer
+  const cust=custId?(S.get('lhs:customers')||[]).find(c=>c.id===custId)||null:null;
+  window._wocSelectedCust=cust||null;
+  const props=custId?(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===custId||p.customer_id===custId):[];
+  window._wocPropertyId=props.length===1?props[0].id:null;
+  const price=est?.total_price||opp?.estimated_value||null;
+  oMod('Create Additional Work Order',woCreateForm());
+  setTimeout(()=>{
+    if(cust){_wocCustResults[cust.id]=cust; wocSelectCust(cust.id);}
+    if(window._wocPropertyId){
+      const p=props.find(x=>x.id===window._wocPropertyId);
+      if(p){_wocPropResults[p.id]=p; propSelectInline(p.id);}
+    }
+    const descEl=document.getElementById('woc-desc');
+    if(descEl&&!descEl.value&&est?.estimate_number) descEl.value=`Est. ${est.estimate_number} — Additional WO`;
+  },150);
 }
 
 
@@ -20897,8 +20961,27 @@ async function openWO(woId){
     <span style="margin-left:12px;font-size:12px;background:${statusColor};color:white;padding:3px 10px;border-radius:12px;font-weight:600">${liveStatus}</span>
     ${woPct>0?`<span style="margin-left:8px;font-size:11px;color:var(--muted)">${woPct}% complete</span>`:''}`;
 
+  // ── Sibling WO check — warn if this is the only WO for its estimate/opp ──
+  const _woSiblings=(S.get('lhs:work_orders')||[]).filter(w=>
+    w.id!==woId&&(
+      (wo.estimate_id&&w.estimate_id===wo.estimate_id)||
+      (wo.opp_id&&w.opp_id===wo.opp_id)
+    )
+  );
+  const _showSiblingBanner=(wo.estimate_id||wo.opp_id)&&!_woSiblings.length&&!['Closed with Dispatch','Cancelled','Completed'].includes(liveStatus);
+  const _siblingBannerHTML=_showSiblingBanner?`
+    <div style="background:#FFF8E1;border:1px solid #F9A825;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="font-size:13px;color:#5D4037;font-weight:600">
+        🏗️ Does this job need a work order for another division?
+        <span style="font-weight:400;font-size:12px;display:block;margin-top:2px">This is the only WO linked to this estimate/opportunity.</span>
+      </div>
+      <button class="btn btn-o sm" onclick="cMod();_addAnotherWOFromEst('${wo.estimate_id||''}','${wo.opp_id||''}','${esc(wo.customer_name||'')}')">➕ Create Another WO</button>
+    </div>`:'';
+
   document.getElementById('mb').innerHTML=`
   <div style="max-height:75vh;overflow-y:auto;padding-right:4px">
+
+  ${_siblingBannerHTML}
 
   <!-- WO Completion Bar -->
   ${woCompletionBar('${woId}')}
