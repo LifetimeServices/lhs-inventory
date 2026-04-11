@@ -25321,7 +25321,7 @@ function invTableRows(items, divFilter, search){
   const q=(search||'').toLowerCase();
   const div=divFilter||window._invFDiv||'';
   let filtered=items;
-  if(div) filtered=filtered.filter(i=>i.division===div);
+  if(div) filtered=filtered.filter(i=>_invDivArr(i).includes(div));
   if(q) filtered=filtered.filter(i=>
     (i.sku||'').toLowerCase().includes(q)||
     (i.name||'').toLowerCase().includes(q)||
@@ -25334,7 +25334,7 @@ function invTableRows(items, divFilter, search){
   return filtered.map(item=>`<tr>
     <td style="font-size:12px;font-weight:700;color:var(--navy)">${esc(item.sku)}</td>
     <td style="font-weight:500">${esc(item.name)}</td>
-    <td>${bx(item.division||'—')}</td>
+    <td>${_invDivBadges(item)}</td>
     <td style="font-size:13px">${esc(item.unit||'—')}</td>
     <td style="color:var(--muted);font-size:12px">${esc(item.vendor||'—')}</td>
     <td style="font-weight:600;color:var(--navy)">${f$(item.customer_cost||0)}</td>
@@ -25354,6 +25354,38 @@ function filterInvTable(q){
   tbody.innerHTML=invTableRows(all,div,q);
 }
 
+function _invDivArr(item){
+  var d=item.division||'';
+  if(!d) return [];
+  return d.split(',').map(function(x){return x.trim();}).filter(Boolean);
+}
+function _invDivBadges(item){
+  var arr=_invDivArr(item);
+  if(!arr.length) return '—';
+  return arr.map(function(d){return bx(d);}).join(' ');
+}
+function _invDivCheckboxes(sel,pfx){
+  var selArr=typeof sel==='string'?sel.split(',').map(function(x){return x.trim();}).filter(Boolean):(sel||[]);
+  var html='<div style="display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:4px">';
+  DIVS.forEach(function(d){
+    var cbId=pfx+'__'+d.replace(/[\s\/]+/g,'_');
+    var chk=selArr.indexOf(d)>=0?' checked':'';
+    html+='<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap">';
+    html+='<input type="checkbox" id="'+cbId+'" value="'+esc(d)+'"'+chk+'>';
+    html+=esc(d)+'</label>';
+  });
+  html+='</div>';
+  return html;
+}
+function _readDivCbs(pfx){
+  var result=[];
+  DIVS.forEach(function(d){
+    var cbId=pfx+'__'+d.replace(/[\s\/]+/g,'_');
+    var cb=document.getElementById(cbId);
+    if(cb&&cb.checked) result.push(d);
+  });
+  return result.join(',');
+}
 function oAddItem(){
   oMod('Add Inventory Item',`
   <div class="fr">
@@ -25361,11 +25393,8 @@ function oAddItem(){
     <div class="fl"><label>Item Name *</label><input id="ai-name" placeholder="e.g. Radon Fan Model X"></div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Division</label>
-      <select id="ai-div">
-        <option value="">— None —</option>
-        ${DIVS.map(d=>`<option>${d}</option>`).join('')}
-      </select>
+    <div class="fl" style="min-width:100%"><label>Divisions</label>
+      ${_invDivCheckboxes('','ai-div')}
     </div>
     <div class="fl"><label>Unit</label>
       <input id="ai-unit" placeholder="Each, ea, ft, gal, Box…" value="Each">
@@ -25401,7 +25430,7 @@ async function svAddItem(){
   if(!sku||!name){tst('SKU and Name are required','error');return}
   const items=S.get('lhs:items')||[];
   if(items.find(i=>i.sku===sku)){tst('SKU already exists','error');return}
-  const item={sku,name,division:v('ai-div'),unit:v('ai-unit')||'Each',
+  const item={sku,name,division:_readDivCbs('ai-div'),unit:v('ai-unit')||'Each',
     vendor:v('ai-vendor'),cost:parseFloat(v('ai-cost'))||0,
     customer_cost:parseFloat(v('ai-custcost'))||0,
     min:parseInt(v('ai-min'))||0,max:parseInt(v('ai-max'))||0,
@@ -25429,11 +25458,8 @@ function oEditItem(itemId){
     </div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Division</label>
-      <select id="ei-div">
-        <option value="">— None —</option>
-        ${DIVS.map(d=>`<option${d===(item.division||'')?'  selected':''}>${esc(d)}</option>`).join('')}
-      </select>
+    <div class="fl" style="min-width:100%"><label>Divisions</label>
+      ${_invDivCheckboxes(item.division||'','ei-div')}
     </div>
     <div class="fl"><label>Unit</label>
       <input id="ei-unit" value="${esc(item.unit||'Each')}" placeholder="Each, ea, ft, gal, Box…">
@@ -25486,7 +25512,7 @@ async function svEditItem(){
   }
   item.sku=newSku;
   item.name=name;
-  item.division=v('ei-div');
+  item.division=_readDivCbs('ei-div');
   item.unit=v('ei-unit')||'Each';
   item.vendor=v('ei-vendor');
   item.cost=parseFloat(v('ei-cost'))||0;
