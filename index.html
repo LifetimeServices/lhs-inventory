@@ -2693,6 +2693,7 @@ async function startApp(){
     <div class="page" id="p-my-timeoff"></div>
     <div class="page" id="p-sales-marketing"></div>
     <div class="page" id="p-admin-security"></div>
+    <div class="page" id="p-admin-import"></div>
   `;
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
@@ -2705,7 +2706,7 @@ async function startApp(){
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
-    'reports','operations','admin','admin-security'];
+    'reports','operations','admin','admin-security','admin-import'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -3199,7 +3200,7 @@ function buildPage(id){
     'hr-settings':bHRSettings,
     'my-timeoff':bMyTimeOff,
     payroll:bPayroll,
-    reports:bReports, operations:bOperations, admin:bAdmin, 'admin-security':aSecurityTraining,
+    reports:bReports, operations:bOperations, admin:bAdmin, 'admin-security':aSecurityTraining, 'admin-import':bAdminImport,
   };
   return (pages[id]||bDash)();
 }
@@ -10790,6 +10791,7 @@ function bAdmin(){
     <button class="tab" onclick="aTab('vendors',this)">Vendors</button>
     <button class="tab" onclick="aTab('integrations',this)">Integrations</button>
     <button class="tab" onclick="aTab('security',this)">🔒 Security & Training</button>
+    <button class="tab" onclick="aTab('import',this)">ST Import</button>
   </div>
   <div id="atab">${aUsers()}</div>`;
 }
@@ -10799,7 +10801,7 @@ function aTab(tab,btn){
   btn.classList.add('active');
   const el=g('atab'); if(!el) return;
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
-    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt,security:aSecurityTraining};
+    regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt,security:aSecurityTraining,import:bAdminImport};
   if(fns[tab]) el.innerHTML=fns[tab]();
   if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
 }
@@ -39059,6 +39061,346 @@ async function showVendorConfirmPage(token){
     document.getElementById('vc-loading').style.display='none';
     document.getElementById('vc-error').style.display='block';
   }
+}
+
+// ─── SERVICETITAN CSV IMPORT ──────────────────────────────────────────────────
+
+var _stStep = 1;
+var _stRows = [];
+var _stImporting = false;
+
+function stParseCsv(text) {
+  var lines = [[]];
+  var cur = '';
+  var inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (ch === '"') {
+      if (inQ && text[i+1] === '"') { cur += '"'; i++; }
+      else { inQ = !inQ; }
+    } else if (ch === ',' && !inQ) {
+      lines[lines.length - 1].push(cur); cur = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQ) {
+      if (ch === '\r' && text[i+1] === '\n') i++;
+      lines[lines.length - 1].push(cur); cur = '';
+      lines.push([]);
+    } else {
+      cur += ch;
+    }
+  }
+  // Push the last field
+  lines[lines.length - 1].push(cur);
+  // Remove empty trailing rows
+  while (lines.length > 0 && lines[lines.length-1].length <= 1 && (lines[lines.length-1][0]||'').trim() === '') {
+    lines.pop();
+  }
+  if (lines.length < 2) return [];
+  var headers = lines[0].map(function(h){ return h.trim(); });
+  var result = [];
+  for (var r = 1; r < lines.length; r++) {
+    var row = lines[r];
+    if (!row || row.length === 0) continue;
+    var obj = {};
+    for (var c = 0; c < headers.length; c++) {
+      obj[headers[c]] = (row[c] || '').trim();
+    }
+    result.push(obj);
+  }
+  return result;
+}
+
+function stParseDivision(jobType) {
+  if (!jobType) return '';
+  var parts = jobType.split(' | ');
+  if (parts.length < 2) return jobType;
+  var seg = parts[1].trim();
+  var words = seg.split(/\s+/);
+  return words[0] || jobType;
+}
+
+function stParseJobType(jobType) {
+  if (!jobType) return '';
+  var parts = jobType.split(' | ');
+  if (parts.length < 2) return jobType;
+  var seg = parts[1].trim();
+  var idx = seg.indexOf(' ');
+  if (idx === -1) return seg;
+  return seg.substring(idx + 1).trim();
+}
+
+function bAdminImport() {
+  if (!['Creator','God View','Admin','Director'].includes(CU && CU.role ? CU.role : '')) {
+    return '<div class="pt">ST Import</div><div class="al al-r">Access restricted.</div>';
+  }
+  var html = '';
+  html += '<div class="pt">ServiceTitan Import</div>';
+  html += '<div class="ps">Import Job Completion Details from ServiceTitan into Work Orders</div>';
+  html += '<div id="st-wizard">' + _stWizardStep() + '</div>';
+  return html;
+}
+
+function _stWizardStep() {
+  if (_stStep === 1) return _stStep1();
+  if (_stStep === 2) return _stStep2();
+  if (_stStep === 3) return _stStep3();
+  return _stStep1();
+}
+
+function _stStep1() {
+  var html = '';
+  html += '<div class="card">';
+  html += '<div class="ct">Step 1 of 3 — Upload CSV</div>';
+  html += '<div style="background:#f0f4ff;border:1px solid #c7d6ff;border-radius:8px;padding:16px 20px;margin-bottom:20px;font-size:13px;color:var(--navy)">';
+  html += '<strong>Instructions:</strong> Export the <em>Job Completion Details</em> report from ServiceTitan with all dates selected. Save as CSV, then upload below.';
+  html += '</div>';
+  html += '<div class="fg">';
+  html += '<label style="font-size:13px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px">Select CSV File</label>';
+  html += '<input type="file" id="st-file-input" accept=".csv" style="font-family:inherit;font-size:13px;padding:8px;border:1.5px solid var(--bdr);border-radius:8px;width:100%;background:white" onchange="stHandleFile(this)">';
+  html += '</div>';
+  html += '<div id="st-parse-msg" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>';
+  html += '</div>';
+  return html;
+}
+
+function stHandleFile(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var msg = g('st-parse-msg');
+  if (msg) msg.innerHTML = '<span style="color:var(--muted)">Parsing...</span>';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    var rows = stParseCsv(text);
+    if (!rows || rows.length === 0) {
+      if (msg) msg.innerHTML = '<span style="color:var(--red)">No data found in CSV. Please check the file and try again.</span>';
+      return;
+    }
+    _stRows = rows;
+    _stStep = 2;
+    var wiz = g('st-wizard');
+    if (wiz) wiz.innerHTML = _stWizardStep();
+  };
+  reader.onerror = function() {
+    if (msg) msg.innerHTML = '<span style="color:var(--red)">Error reading file.</span>';
+  };
+  reader.readAsText(file);
+}
+
+function _stStep2() {
+  var rows = _stRows;
+  var n = rows.length;
+  var preview = rows.slice(0, 5);
+  var cols = Object.keys(rows[0] || {});
+
+  // Column mapping display
+  var mappings = [
+    ['Job #', 'Work Order #'],
+    ['Invoice #', 'Invoice Reference'],
+    ['Assigned Technicians', 'Technician'],
+    ['Customer Name', 'Customer'],
+    ['Location Address + City + State + Zip', 'Address'],
+    ['Location Name', 'Property Name'],
+    ['Job Type', 'Division + Job Type (parsed)'],
+    ['Total', 'Job Total ($)'],
+    ['Completion Date', 'Completed Date'],
+    ['Payment Types', 'Payment Method'],
+    ['(auto)', 'Status = Completed']
+  ];
+
+  var html = '';
+  html += '<div class="card">';
+  html += '<div class="ct">Step 2 of 3 — Preview</div>';
+  html += '<div style="display:flex;gap:20px;margin-bottom:18px;flex-wrap:wrap">';
+  html += '<div class="sc n" style="min-width:140px"><div class="sl">Rows Detected</div><div class="sv">' + n + '</div></div>';
+  html += '<div class="sc g" style="min-width:140px"><div class="sl">Columns Found</div><div class="sv">' + cols.length + '</div></div>';
+  html += '</div>';
+
+  // Column mapping table
+  html += '<div style="margin-bottom:20px">';
+  html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Column Mapping</div>';
+  html += '<div class="tw"><table><thead><tr><th>ServiceTitan Column</th><th>Maps To</th></tr></thead><tbody>';
+  for (var m = 0; m < mappings.length; m++) {
+    html += '<tr><td style="font-size:12px;color:var(--muted)">' + esc(mappings[m][0]) + '</td><td style="font-size:12px;font-weight:600">' + esc(mappings[m][1]) + '</td></tr>';
+  }
+  html += '</tbody></table></div></div>';
+
+  // Preview rows
+  html += '<div style="margin-bottom:20px">';
+  html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">First ' + Math.min(5, n) + ' Rows</div>';
+  html += '<div class="tw" style="overflow-x:auto"><table><thead><tr>';
+  var previewCols = ['Job #','Invoice #','Customer Name','Job Type','Total','Completion Date','Assigned Technicians'];
+  for (var c = 0; c < previewCols.length; c++) {
+    html += '<th>' + esc(previewCols[c]) + '</th>';
+  }
+  html += '</tr></thead><tbody>';
+  for (var r = 0; r < preview.length; r++) {
+    html += '<tr>';
+    for (var pc = 0; pc < previewCols.length; pc++) {
+      var val = preview[r][previewCols[pc]] || '';
+      html += '<td style="font-size:12px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">' + esc(val) + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div></div>';
+
+  html += '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+  html += '<button class="btn btn-o" onclick="_stStep=1;var wiz=g(\'st-wizard\');if(wiz)wiz.innerHTML=_stWizardStep()">&#8592; Back</button>';
+  html += '<button class="btn btn-n" onclick="stStartImport()">Import All ' + n + ' Records</button>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+function stStartImport() {
+  _stStep = 3;
+  var wiz = g('st-wizard');
+  if (wiz) wiz.innerHTML = _stWizardStep();
+  stImportRows(_stRows);
+}
+
+function _stStep3() {
+  var html = '';
+  html += '<div class="card">';
+  html += '<div class="ct">Step 3 of 3 — Importing</div>';
+  html += '<div id="st-progress-wrap" style="margin-bottom:16px">';
+  html += '<div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="st-progress-label">Starting import...</div>';
+  html += '<div style="background:#e8e6e0;border-radius:8px;height:12px;overflow:hidden">';
+  html += '<div id="st-progress-bar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;border-radius:8px"></div>';
+  html += '</div></div>';
+  html += '<div id="st-error-list" style="margin-bottom:12px"></div>';
+  html += '<div id="st-done-summary" style="display:none">';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+async function stImportRows(rows) {
+  var total = rows.length;
+  var imported = 0;
+  var skipped = 0;
+  var errors = [];
+  var batchSize = 50;
+  var delay = 200;
+
+  // Get existing st_job_ids for duplicate detection
+  var existing = S.get('lhs:work_orders') || [];
+  var existingIds = {};
+  for (var e = 0; e < existing.length; e++) {
+    if (existing[e].st_job_id) existingIds[existing[e].st_job_id] = true;
+  }
+
+  function setProgress(done, tot, msg) {
+    var bar = g('st-progress-bar');
+    var lbl = g('st-progress-label');
+    var pct = tot > 0 ? Math.round(done / tot * 100) : 0;
+    if (bar) bar.style.width = pct + '%';
+    if (lbl) lbl.textContent = msg || ('Importing ' + done + ' of ' + tot + '...');
+  }
+
+  function addError(msg) {
+    var el = g('st-error-list');
+    if (!el) return;
+    var existing_html = el.innerHTML;
+    if (errors.length === 1) {
+      existing_html = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red);margin-bottom:6px">Errors</div>';
+    }
+    el.innerHTML = existing_html + '<div style="font-size:12px;color:var(--red);padding:4px 0;border-bottom:1px solid #fde">' + esc(msg) + '</div>';
+  }
+
+  // Build batches, skipping duplicates
+  var batches = [];
+  var currentBatch = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var jobId = (row['Job #'] || '').trim();
+    if (!jobId) { skipped++; continue; }
+    if (existingIds[jobId]) { skipped++; continue; }
+
+    var techFull = (row['Assigned Technicians'] || '').trim();
+    var firstTech = techFull.split(',')[0].trim();
+
+    var totalVal = parseFloat((row['Total'] || '0').replace(/[$,]/g, '')) || 0;
+    var subtotalVal = parseFloat((row['Subtotal'] || '0').replace(/[$,]/g, '')) || 0;
+    var taxVal = parseFloat((row['Tax'] || '0').replace(/[$,]/g, '')) || 0;
+
+    var wo = {
+      wo_number: jobId,
+      st_job_id: jobId,
+      st_invoice_id: row['Invoice #'] || '',
+      status: 'Completed',
+      source: 'ServiceTitan Import',
+      tech_name: firstTech,
+      all_techs: techFull,
+      customer_name: row['Customer Name'] || '',
+      address: row['Location Address'] || '',
+      city: row['Location City'] || '',
+      state: row['Location State'] || '',
+      zip: row['Location Zip'] || '',
+      property_name: row['Location Name'] || '',
+      division: stParseDivision(row['Job Type'] || ''),
+      job_type: stParseJobType(row['Job Type'] || ''),
+      total: totalVal,
+      subtotal: subtotalVal,
+      tax: taxVal,
+      payment_type: row['Payment Types'] || '',
+      completed_at: row['Completion Date'] || '',
+      invoice_date: row['Invoice Date'] || '',
+      notes: '',
+      imported_at: new Date().toISOString()
+    };
+    currentBatch.push(wo);
+    if (currentBatch.length >= batchSize) {
+      batches.push(currentBatch);
+      currentBatch = [];
+    }
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+
+  setProgress(0, total, 'Starting import...');
+
+  for (var b = 0; b < batches.length; b++) {
+    var batch = batches[b];
+    try {
+      var result = await DB.from('lhs_work_orders').insert(batch);
+      if (result.error) {
+        errors.push('Batch ' + (b + 1) + ': ' + result.error.message);
+        addError('Batch ' + (b + 1) + ' error: ' + result.error.message);
+      } else {
+        imported += batch.length;
+      }
+    } catch (ex) {
+      errors.push('Batch ' + (b + 1) + ': ' + String(ex));
+      addError('Batch ' + (b + 1) + ' exception: ' + String(ex));
+    }
+    var done = Math.min((b + 1) * batchSize, total - skipped);
+    setProgress(done, total - skipped, 'Importing ' + done + ' of ' + (total - skipped) + '...');
+    if (b < batches.length - 1) {
+      await new Promise(function(res){ setTimeout(res, delay); });
+    }
+  }
+
+  // Done
+  setProgress(total - skipped, total - skipped, 'Import complete');
+  var lbl = g('st-progress-label');
+  if (lbl) lbl.textContent = 'Import complete';
+
+  var summary = g('st-done-summary');
+  if (summary) {
+    summary.style.display = 'block';
+    var shtml = '';
+    shtml += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">';
+    shtml += '<div class="sc gr" style="min-width:130px"><div class="sl">Imported</div><div class="sv">' + imported + '</div></div>';
+    shtml += '<div class="sc a" style="min-width:130px"><div class="sl">Skipped (dupes)</div><div class="sv">' + skipped + '</div></div>';
+    shtml += '<div class="sc ' + (errors.length > 0 ? 'r' : 'g') + '" style="min-width:130px"><div class="sl">Errors</div><div class="sv">' + errors.length + '</div></div>';
+    shtml += '</div>';
+    shtml += '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+    shtml += '<button class="btn btn-o" onclick="_stStep=1;_stRows=[];var wiz=g(\'st-wizard\');if(wiz)wiz.innerHTML=_stWizardStep()">&#8592; Import Another File</button>';
+    shtml += '<button class="btn btn-n" onclick="showPage(\'workorders\')">View Work Orders &#8594;</button>';
+    shtml += '</div>';
+    summary.innerHTML = shtml;
+  }
+
+  tst('Import complete: ' + imported + ' imported, ' + skipped + ' skipped, ' + errors.length + ' errors', errors.length > 0 ? 'warning' : 'success');
 }
 </script>
 </body>
