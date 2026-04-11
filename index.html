@@ -4821,6 +4821,9 @@ function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId, co
       if(countyId==='woc-county') wocAutoTerritory();
       // Trigger territory for property form
       if(countyId==='pf-county') countyEl.dispatchEvent(new Event('input'));
+      // Trigger territory for lead forms (al = add lead, el = edit lead)
+      if(countyId==='al-county') leadAutoTerritory('al');
+      if(countyId==='el-county') leadAutoTerritory('el');
     }
   }
 
@@ -35582,18 +35585,29 @@ function leadForm(l,saveFn){
   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Address Information</div>
   <div class="fl" style="margin-bottom:8px">
     <label>Street</label>
-    <input id="${pfx}-addr" value="${esc(l.address||'')}" placeholder="Street address">
+    <input id="${pfx}-addr" value="${esc(l.address||'')}" placeholder="Start typing address..." autocomplete="off"
+      oninput="addrAutoComplete(this.value,'${pfx}-addr-drop','${pfx}-addr','${pfx}-city','${pfx}-state','${pfx}-zip','${pfx}-county')">
+    <div id="${pfx}-addr-verify-result" style="margin-top:4px;font-size:12px;display:none"></div>
   </div>
-  <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+  <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
     <div><span style="${lbl}">City</span><input id="${pfx}-city" value="${esc(l.city||'')}" placeholder="City" style="width:100%;box-sizing:border-box"></div>
     <div><span style="${lbl}">State / Province</span>
-      <select id="${pfx}-state" style="width:100%">
+      <select id="${pfx}-state" style="width:100%" onchange="leadAutoTerritory('${pfx}')">
         <option value="">—</option>
         ${ALL_STATES.map(s=>`<option${(l.state||'')=== s?' selected':''}>${s}</option>`).join('')}
       </select>
     </div>
     <div><span style="${lbl}">Zip / Postal Code</span><input id="${pfx}-zip" value="${esc(l.zip||'')}" placeholder="00000" style="width:100%;box-sizing:border-box"></div>
     <div><span style="${lbl}">Country</span><input id="${pfx}-country" value="${esc(l.country||'USA')}" placeholder="USA" style="width:100%;box-sizing:border-box"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <div class="fl" style="margin:0"><label>County</label>
+      <input id="${pfx}-county" value="${esc(l.county||'')}" placeholder="e.g. Brown County" autocomplete="off"
+        oninput="leadAutoTerritory('${pfx}')">
+    </div>
+    <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+      <span id="${pfx}-terr-preview" style="font-size:12px;color:var(--teal);font-weight:600">${l.territory?'Territory: '+esc(l.territory):''}</span>
+    </div>
   </div>
 
   <!-- ── ADDITIONAL CONTACTS ───────────────────────────────────── -->
@@ -35693,10 +35707,47 @@ function leadFieldsFromForm(pfx){
     state:state||null,
     zip:v(pfx+'-zip')||null,
     country:v(pfx+'-country')||null,
+    county:v(pfx+'-county')||null,
+    territory:lookupTerritory(state,v(pfx+'-county')||'')||null,
     account_notes:v(pfx+'-anotes')||null,
     notes:v(pfx+'-notes')||null,
     region:Object.keys(REGIONS).find(r=>REGIONS[r].states&&REGIONS[r].states.includes(state))||null,
   };
+}
+
+function leadAutoTerritory(pfx){
+  var stateRaw=v(pfx+'-state')||'';
+  var state=stateRaw.includes(' - ')?stateRaw.split(' - ')[0].trim():stateRaw;
+  var county=v(pfx+'-county')||'';
+  var terr=lookupTerritory(state,county);
+  var el=document.getElementById(pfx+'-terr-preview');
+  if(el) el.textContent=terr?'Territory: '+terr:'';
+}
+
+function leadOwnerSearch(query,pfx){
+  var reps=(S.get('lhs:users')||[]).filter(function(u){
+    return ['Sales Rep','Regional Manager','God View','Admin','Director'].includes(u.role);
+  });
+  var drop=document.getElementById(pfx+'-rep-drop');
+  var q=(query||'').toLowerCase();
+  var matches=q?reps.filter(function(u){return u.name.toLowerCase().includes(q);}):reps;
+  if(!drop) return;
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=matches.map(function(u){
+    return '<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"'+
+      ' onmouseenter="this.style.background=\'#f0fafa\'" onmouseleave="this.style.background=\'\'"'+
+      ' onmousedown="leadOwnerPick(\''+u.name.replace(/'/g,"\\'")+"','"+pfx+'\')">'+esc(u.name)+'</div>';
+  }).join('');
+}
+
+function leadOwnerPick(name,pfx){
+  var si=document.getElementById(pfx+'-rep-search');
+  var hi=document.getElementById(pfx+'-rep');
+  var dr=document.getElementById(pfx+'-rep-drop');
+  if(si) si.value=name;
+  if(hi) hi.value=name;
+  if(dr) dr.style.display='none';
 }
 
 function oAddLead(){
