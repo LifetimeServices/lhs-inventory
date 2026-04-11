@@ -30298,8 +30298,10 @@ function bObPlanView(planId){
     return '<div style="padding:40px;text-align:center;color:var(--muted)">Plan not found. <button class="btn btn-o sm" onclick="window._obView=\'dashboard\';showPage(\'hr-onboarding\')">&larr; Back</button></div>';
   }
 
-  var weekIdx=window._obWeekTab||0;
-  if(weekIdx>=plan.weeks.length) weekIdx=0;
+  var OB_CHECKLIST_TAB=999;
+  var weekIdx=(window._obWeekTab!==undefined&&window._obWeekTab!==null)?window._obWeekTab:0;
+  var showChecklist=(weekIdx===OB_CHECKLIST_TAB);
+  if(!showChecklist&&weekIdx>=(plan.weeks?plan.weeks.length:0)) weekIdx=0;
 
   var html='';
   html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
@@ -30308,7 +30310,12 @@ function bObPlanView(planId){
   var statusColor2=plan.status==='Active'?'#1565C0':plan.status==='Released'?'#2E7D32':'#E65100';
   var statusBg2=plan.status==='Active'?'#E3F2FD':plan.status==='Released'?'#E8F5E9':'#FFF3E0';
   html+='<span style="background:'+statusBg2+';color:'+statusColor2+';font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px">'+plan.status+'</span>';
-  html+='<button class="btn btn-o sm" onclick="obShowEditWeek(\''+planId+'\','+weekIdx+')" style="margin-left:auto">&#9998; Edit Week</button>';
+  if(!showChecklist){
+    html+='<button class="btn btn-o sm" onclick="obShowEditWeek(\''+planId+'\','+weekIdx+')" style="margin-left:auto">&#9998; Edit Week</button>';
+  }
+  if(plan.start_date){
+    html+='<button class="btn btn-o sm" onclick="obAutoFillDates(\''+planId+'\')" style="'+(showChecklist?'margin-left:auto':'')+'">&#128197; Auto-fill Dates</button>';
+  }
   html+='</div>';
 
   html+='<div class="card" style="padding:12px 16px;margin-bottom:16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px">';
@@ -30320,13 +30327,13 @@ function bObPlanView(planId){
 
   html+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:0;border-bottom:2px solid var(--bdr)">';
   plan.weeks.forEach(function(w,i){
-    var isActive=i===weekIdx;
+    var isActive=(!showChecklist&&i===weekIdx);
     html+='<button onclick="window._obWeekTab='+i+';showPage(\'hr-onboarding\')" style="padding:7px 14px;border-radius:6px 6px 0 0;border:1px solid '+(isActive?'var(--navy)':'var(--bdr)')+';border-bottom:'+(isActive?'2px solid white':'1px solid var(--bdr)')+';background:'+(isActive?'var(--navy)':'white')+';color:'+(isActive?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;margin-bottom:-2px">'+esc(w.label)+'</button>';
   });
-  html+='<button onclick="window._obWeekTab='+(plan.weeks?plan.weeks.length:99)+';showPage(\'hr-onboarding\')" style="padding:7px 14px;border-radius:6px 6px 0 0;border:1px solid '+(weekIdx>=plan.weeks.length?'var(--navy)':'var(--bdr)')+';border-bottom:'+(weekIdx>=plan.weeks.length?'2px solid white':'1px solid var(--bdr)')+';background:'+(weekIdx>=plan.weeks.length?'var(--navy)':'white')+';color:'+(weekIdx>=plan.weeks.length?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;margin-bottom:-2px">Checklist &amp; Sign-off</button>';
+  html+='<button onclick="window._obWeekTab=999;showPage(\'hr-onboarding\')" style="padding:7px 14px;border-radius:6px 6px 0 0;border:1px solid '+(showChecklist?'var(--navy)':'var(--bdr)')+';border-bottom:'+(showChecklist?'2px solid white':'1px solid var(--bdr)')+';background:'+(showChecklist?'var(--navy)':'white')+';color:'+(showChecklist?'white':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;margin-bottom:-2px">Checklist &amp; Sign-off</button>';
   html+='</div>';
 
-  if(weekIdx<plan.weeks.length){
+  if(!showChecklist){
     var week=plan.weeks[weekIdx];
     html+='<div class="card" style="padding:0;margin-top:0;border-radius:0 0 8px 8px">';
     html+='<div class="tw"><table style="font-size:12px;width:100%">';
@@ -30590,8 +30597,103 @@ function bObTemplates(){
   return html;
 }
 
+function obAutoFillDates(planId){
+  var plans=S.get('lhs:onboarding_plans')||[];
+  var planIdx=plans.findIndex(function(p){return p.id===planId;});
+  if(planIdx<0){tst('Plan not found','error');return;}
+  var plan=plans[planIdx];
+  if(!plan.start_date){tst('No start date set on this plan','error');return;}
+
+  // Parse start date and find the Monday of that week
+  var sd=new Date(plan.start_date+'T12:00:00');
+  var dow=sd.getDay(); // 0=Sun,1=Mon,...
+  var diffToMon=dow===0?1:(dow===1?0:-(dow-1));
+  var weekOneMonday=new Date(sd);
+  weekOneMonday.setDate(sd.getDate()+diffToMon);
+
+  function fmtDate(d){
+    return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();
+  }
+
+  var dayNames=['Mon','Tues','Wed','Thurs','Fri'];
+  var dayOffsets=[0,1,2,3,4];
+
+  plan.weeks.forEach(function(week,wi){
+    var weekOffset; // weeks relative to week 1 monday
+    if(wi===0){weekOffset=-1;} // Pre-hire = week before
+    else{weekOffset=wi-1;}     // Week 1=0, Week 2=1, etc.
+    var weekStart=new Date(weekOneMonday);
+    weekStart.setDate(weekOneMonday.getDate()+(weekOffset*7));
+    (week.days||[]).forEach(function(day,di){
+      var d=new Date(weekStart);
+      d.setDate(weekStart.getDate()+(di<5?dayOffsets[di]:di));
+      day.date=fmtDate(d);
+    });
+  });
+
+  plans[planIdx]=plan;
+  S.set('lhs:onboarding_plans',plans);
+  DB.from('lhs_onboarding_plans').update({weeks:plan.weeks,updated_at:new Date().toISOString()}).eq('id',planId).then(function(){
+    tst('Dates filled in for all weeks','success');
+  }).catch(function(){tst('Dates filled locally (sync error)','warning');});
+  showPage('hr-onboarding');
+}
+
 function obNewTemplate(){
-  tst('Custom template builder coming soon. For now, use the built-in Radon Technician template as the starting point.','info');
+  var html='';
+  html+='<div style="font-size:13px;color:var(--muted);margin-bottom:14px">Start from a copy of an existing template or build from scratch.</div>';
+  html+='<div class="fr" style="gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+  html+='<div class="fl"><label>Template Name *</label><input type="text" id="obt-name" placeholder="e.g. Handyman Technician" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+  html+='<div class="fl"><label>Division *</label><select id="obt-division" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Select --</option>';
+  DIVS.forEach(function(d){html+='<option value="'+esc(d)+'">'+esc(d)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Position / Role</label><input type="text" id="obt-position" placeholder="e.g. Handyman Technician" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+  html+='</div>';
+  html+='<div class="fl" style="margin-bottom:14px"><label>Copy weeks &amp; checklist from</label><select id="obt-clone" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">-- Start blank (6 weeks) --</option>';
+  obGetTemplates().forEach(function(t){html+='<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>';});
+  html+='</select></div>';
+  html+='<div style="display:flex;gap:10px;margin-top:6px">';
+  html+='<button class="btn btn-n" onclick="svObTemplate()">Create Template</button>';
+  html+='<button class="btn btn-o" onclick="cMod()">Cancel</button>';
+  html+='</div>';
+  oMod('New Onboarding Template', html);
+}
+
+async function svObTemplate(){
+  var name=(document.getElementById('obt-name')&&document.getElementById('obt-name').value||'').trim();
+  var division=document.getElementById('obt-division')&&document.getElementById('obt-division').value||'';
+  var position=(document.getElementById('obt-position')&&document.getElementById('obt-position').value||'').trim()||name;
+  var cloneId=document.getElementById('obt-clone')&&document.getElementById('obt-clone').value||'';
+  if(!name){tst('Template name is required','error');return;}
+  if(!division){tst('Division is required','error');return;}
+
+  var weeks,checklist;
+  if(cloneId){
+    var src=obTemplateById(cloneId);
+    if(src){
+      weeks=JSON.parse(JSON.stringify(src.weeks));
+      checklist=JSON.parse(JSON.stringify(src.checklist));
+    }
+  }
+  if(!weeks){
+    var blankDays=['Mon','Tues','Wed','Thurs','Fri'].map(function(d){return {day:d,location:'',assignee:'',time:'',topic:'',description:''};});
+    weeks=[{label:'Pre-hire',days:JSON.parse(JSON.stringify(blankDays))}];
+    for(var w=1;w<=6;w++){weeks.push({label:'Week '+w,days:JSON.parse(JSON.stringify(blankDays))});}
+    checklist=[];
+  }
+
+  var row={name:name,division:division,position:position,weeks:weeks,checklist:checklist,created_by:(S.get('lhs:me')||{}).name||''};
+  try{
+    var res=await DB.from('lhs_onboarding_templates').insert(row).select();
+    if(res.data&&res.data[0]) row.id=res.data[0].id;
+    else row.id='custom-'+Date.now();
+    var custom=S.get('lhs:onboarding_templates')||[];
+    custom.push(row);
+    S.set('lhs:onboarding_templates',custom);
+    tst('Template created: '+name,'success');
+    cMod();
+    showPage('hr-onboarding');
+  }catch(e){tst('Error: '+e.message,'error');}
 }
 
 async function obDeleteTemplate(id){
