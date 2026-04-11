@@ -20045,11 +20045,16 @@ function bWorkOrders(){
   }
   if(_wf.date_from||_wf.date_to) filtered=filtered.filter(w=>{
     const woApts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===w.id);
-    if(!woApts.length) return false;
-    return woApts.some(a=>{
-      const d=a.scheduled_date||'';
-      return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
-    });
+    if(woApts.length){
+      return woApts.some(a=>{
+        const d=a.scheduled_date||'';
+        return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
+      });
+    }
+    // Imported WOs have no appointments — fall back to completed_at or invoice_date
+    var d=(w.completed_at||w.invoice_date||'').substring(0,10);
+    if(!d) return true;
+    return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
   });
   if(_wf.search){
     const q=_wf.search.toLowerCase();
