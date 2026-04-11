@@ -36495,6 +36495,27 @@ function leadOwnerPick(name,pfx){
   if(dr) dr.style.display='none';
 }
 
+function estRepSearch(query){
+  const all=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const q=(query||'').toLowerCase();
+  const matches=q?all.filter(u=>(u.name||'').toLowerCase().includes(q)):all;
+  const drop=document.getElementById('est-rep-drop');
+  if(!drop) return;
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=matches.map(u=>`<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
+    onmouseenter="this.style.background='#f0fafa'" onmouseleave="this.style.background=''"
+    onmousedown="estRepPick('${u.name.replace(/'/g,"\\'")}')"> ${esc(u.name)}</div>`).join('');
+}
+function estRepPick(name){
+  const si=document.getElementById('est-rep-search');
+  const hi=document.getElementById('est-rep');
+  const drop=document.getElementById('est-rep-drop');
+  if(si) si.value=name;
+  if(hi) hi.value=name;
+  if(drop) drop.style.display='none';
+}
+
 function oAddLead(){
   oMod('New Lead',leadForm({},'svAddLead'));
 }
@@ -38657,7 +38678,14 @@ function oNewEstimate(prefill={}){
   </div>
   <div class="fr" style="margin-bottom:4px">
     <div class="fl"><label>Assigned Rep</label>
-      <select id="est-rep"><option value="">—</option>${reps.map(u=>`<option${u.name===(prefill.assigned_to||'')?'  selected':''}>${u.name}</option>`).join('')}</select>
+      <div style="position:relative">
+        <input id="est-rep-search" placeholder="Search rep…" autocomplete="off" value="${esc(prefill.assigned_to||'')}"
+          oninput="estRepSearch(this.value)" onfocus="estRepSearch(this.value)"
+          onblur="setTimeout(()=>{const d=document.getElementById('est-rep-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="est-rep" value="${esc(prefill.assigned_to||'')}">
+        <div id="est-rep-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.15);z-index:9999;max-height:200px;overflow-y:auto"></div>
+      </div>
     </div>
   </div>
   <div class="fl" style="margin-bottom:10px"><label>Site Address</label>
