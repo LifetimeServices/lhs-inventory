@@ -25366,12 +25366,12 @@ function _invDivBadges(item){
 }
 function _invDivCheckboxes(sel,pfx){
   var selArr=typeof sel==='string'?sel.split(',').map(function(x){return x.trim();}).filter(Boolean):(sel||[]);
-  var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px">';
+  var html='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px">';
   DIVS.forEach(function(d){
     var cbId=pfx+'__'+d.replace(/[\s\/]+/g,'_');
     var chk=selArr.indexOf(d)>=0?' checked':'';
     var bg=selArr.indexOf(d)>=0?'background:#eff6ff;border-color:#93c5fd;':'';
-    html+='<label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;'+bg+'">';
+    html+='<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;padding:5px 7px;border:1px solid var(--bdr);border-radius:6px;'+bg+'">';
     html+='<input type="checkbox" id="'+cbId+'" value="'+esc(d)+'"'+chk+'>';
     html+=esc(d)+'</label>';
   });
@@ -25393,10 +25393,10 @@ function oAddItem(){
     <div class="fl"><label>SKU *</label><input id="ai-sku" placeholder="e.g. RM-FAN-001"></div>
     <div class="fl"><label>Item Name *</label><input id="ai-name" placeholder="e.g. Radon Fan Model X"></div>
   </div>
+  <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:2px">Divisions</label>
+    ${_invDivCheckboxes('','ai-div')}
+  </div>
   <div class="fr">
-    <div class="fl" style="min-width:100%"><label>Divisions</label>
-      ${_invDivCheckboxes('','ai-div')}
-    </div>
     <div class="fl"><label>Unit</label>
       <input id="ai-unit" placeholder="Each, ea, ft, gal, Box…" value="Each">
     </div>
@@ -25458,10 +25458,10 @@ function oEditItem(itemId){
       <input id="ei-name" value="${esc(item.name)}">
     </div>
   </div>
+  <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:2px">Divisions</label>
+    ${_invDivCheckboxes(item.division||'','ei-div')}
+  </div>
   <div class="fr">
-    <div class="fl" style="min-width:100%"><label>Divisions</label>
-      ${_invDivCheckboxes(item.division||'','ei-div')}
-    </div>
     <div class="fl"><label>Unit</label>
       <input id="ei-unit" value="${esc(item.unit||'Each')}" placeholder="Each, ea, ft, gal, Box…">
     </div>
