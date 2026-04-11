@@ -33996,6 +33996,9 @@ function bAccountHub(){
           ${fld('Source',esc(c.lead_source||c.source||''))}
           ${fld('Customer Since',c.created_at?new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'')}
           ${fld('Account Rep',esc(c.assigned_to||c.rep||''))}
+          ${c.sold_by?fld('Sold By',`<span style="color:var(--green);font-weight:600">🏆 ${esc(c.sold_by)}</span>`):''}
+          ${c.office_sold_by?fld('Office Sold By',`<span style="color:var(--teal);font-weight:600">${esc(c.office_sold_by)}</span>`):''}
+
         </div>
         ${c.notes?`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Notes</div>
@@ -39326,14 +39329,14 @@ async function svEstimate(){
         S.set('lhs:estimates',existingEsts);
         window._estEditId=null; cMod();
         tst(`${est.estimate_number} synced to cloud ☁️ — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
-        showPage('sales-estimates'); return;
+        openEstimate(saved.id); return;
       } else {
         // Supabase insert failed — update local record in place
         if(idx>=0) existingEsts[idx]={...existingEsts[idx],...est,id:editId};
         S.set('lhs:estimates',existingEsts);
         window._estEditId=null; cMod();
         tst(`${est.estimate_number} updated locally (Supabase sync failed)`,'info');
-        showPage('sales-estimates'); return;
+        openEstimate(editId); return;
       }
     } else {
       // Real Supabase UUID — UPDATE the existing row
@@ -39345,7 +39348,7 @@ async function svEstimate(){
       S.set('lhs:estimates',existingEsts);
       window._estEditId=null; cMod();
       tst(`${est.estimate_number} updated — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
-      showPage('sales-estimates'); return;
+      openEstimate(editId); return;
     }
   }
 
@@ -39372,7 +39375,7 @@ async function svEstimate(){
   }
   cMod();
   tst(`${est.estimate_number} saved — $${grand.toLocaleString('en-US',{minimumFractionDigits:2})}`,'success');
-  showPage('sales-estimates');
+  openEstimate(final.id);
 }
 
 // ── SAVE AS TEMPLATE ────────────────────────────────────────────────────────────
@@ -39435,6 +39438,8 @@ function openEstimate(id){
         <span style="color:var(--muted)">Package</span><span>${e.selected_package||'Custom'}</span>
         <span style="color:var(--muted)">Rep</span><span>${e.assigned_to||'—'}</span>
         <span style="color:var(--muted)">Date</span><span>${e.estimate_date||e.created_at?.slice(0,10)||'—'}</span>
+        ${e.sold_by?`<span style="color:var(--muted)">Sold By</span><span style="font-weight:600;color:var(--green)">🏆 ${esc(e.sold_by)}</span>`:''}
+        ${e.office_sold_by?`<span style="color:var(--muted)">Office</span><span style="font-weight:600;color:var(--teal)">${esc(e.office_sold_by)}</span>`:''}
       </div>
     </div>
   </div>
@@ -39649,6 +39654,11 @@ function editEstimate(id){
 }
 
 async function updateEstStatus(id,status){
+  if(status==='Accepted'){
+    // Show Sold By modal before marking accepted
+    _showSoldByModal(id);
+    return;
+  }
   const ests=S.get('lhs:estimates')||[];
   const e=ests.find(x=>x.id===id);
   if(!e) return;
@@ -39658,6 +39668,108 @@ async function updateEstStatus(id,status){
   try{await dbUpdate('lhs:estimates',id,{status,updated_at:now});}catch{}
   tst(`Estimate marked ${status}`,'success');
   openEstimate(id);
+}
+
+function _showSoldByModal(estId){
+  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===estId);
+  if(!e) return;
+  oMod('🏆 Mark as Accepted — Sold By',`
+  <div style="text-align:center;margin-bottom:20px">
+    <div style="font-size:32px;margin-bottom:6px">🏆</div>
+    <div style="font-size:16px;font-weight:700;color:var(--navy)">Congratulations on the sale!</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">${esc(e.estimate_number)} — ${esc(e.customer_name||'')} — ${f$(e.total_price)}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+    <div>
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Sold By <span style="color:var(--red)">*</span></label>
+      <div style="position:relative">
+        <input id="sold-by-search" placeholder="Search users…" autocomplete="off" value="${esc(e.sold_by||e.assigned_to||CU?.name||'')}"
+          oninput="_soldBySearch(this.value,'sold-by-search','sold-by-val','sold-by-drop')"
+          onfocus="_soldBySearch(this.value,'sold-by-search','sold-by-val','sold-by-drop')"
+          onblur="setTimeout(()=>{const d=document.getElementById('sold-by-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="sold-by-val" value="${esc(e.sold_by||e.assigned_to||CU?.name||'')}">
+        <div id="sold-by-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:9999;max-height:180px;overflow-y:auto"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">The rep who closed the deal</div>
+    </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Office Sold By</label>
+      <div style="position:relative">
+        <input id="office-sold-search" placeholder="Search users…" autocomplete="off" value="${esc(e.office_sold_by||'')}"
+          oninput="_soldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
+          onfocus="_soldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
+          onblur="setTimeout(()=>{const d=document.getElementById('office-sold-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="office-sold-val" value="${esc(e.office_sold_by||'')}">
+        <div id="office-sold-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:9999;max-height:180px;overflow-y:auto"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Office rep who assisted (optional)</div>
+    </div>
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" onclick="_confirmEstAccepted('${estId}')">✓ Confirm Sale</button>
+    <button class="btn btn-o" onclick="openEstimate('${estId}')">Cancel</button>
+  </div>`);
+}
+
+function _soldBySearch(query,searchId,valId,dropId){
+  const all=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const q=(query||'').toLowerCase();
+  const matches=q?all.filter(u=>(u.name||'').toLowerCase().includes(q)):all;
+  const drop=document.getElementById(dropId);
+  if(!drop) return;
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=matches.map(u=>`<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
+    onmouseenter="this.style.background='#f0fafa'" onmouseleave="this.style.background=''"
+    onmousedown="_soldByPick('${u.name.replace(/'/g,"\\'")}','${searchId}','${valId}','${dropId}')">👤 ${esc(u.name)}</div>`).join('');
+}
+
+function _soldByPick(name,searchId,valId,dropId){
+  const si=document.getElementById(searchId);
+  const hi=document.getElementById(valId);
+  const drop=document.getElementById(dropId);
+  if(si) si.value=name;
+  if(hi) hi.value=name;
+  if(drop) drop.style.display='none';
+}
+
+async function _confirmEstAccepted(estId){
+  const soldBy=document.getElementById('sold-by-val')?.value||'';
+  const officeSoldBy=document.getElementById('office-sold-val')?.value||'';
+  if(!soldBy){tst('Sold By is required','error');return;}
+  const now=new Date().toISOString();
+  const ests=S.get('lhs:estimates')||[];
+  const e=ests.find(x=>x.id===estId);
+  if(!e) return;
+  // Update estimate
+  Object.assign(e,{status:'Accepted',sold_by:soldBy,office_sold_by:officeSoldBy||null,updated_at:now});
+  S.set('lhs:estimates',ests);
+  try{await dbUpdate('lhs:estimates',estId,{status:'Accepted',sold_by:soldBy,office_sold_by:officeSoldBy||null,updated_at:now});}catch{}
+  // Update linked opportunity — mark Won + record sold_by
+  const opps=S.get('lhs:opportunities')||[];
+  const opp=opps.find(o=>o.id===e.opportunity_id||o.id===e.opp_id);
+  if(opp){
+    Object.assign(opp,{stage:'Won',sold_by:soldBy,office_sold_by:officeSoldBy||null,updated_at:now});
+    S.set('lhs:opportunities',opps);
+    try{await dbUpdate('lhs:opportunities',opp.id,{stage:'Won',sold_by:soldBy,office_sold_by:officeSoldBy||null,updated_at:now});}catch{}
+    // Auto-log the win
+    autoLogActivity({opportunity_id:opp.id,customer_id:opp.customer_id,activity_type:'Stage Changed',
+      notes:`Estimate accepted. Stage moved to Won. Sold by: ${soldBy}${officeSoldBy?' · Office: '+officeSoldBy:''}`}).catch(()=>{});
+  }
+  // Update customer record
+  if(e.customer_id){
+    const custs=S.get('lhs:customers')||[];
+    const cust=custs.find(c=>c.id===e.customer_id);
+    if(cust){
+      cust.sold_by=soldBy;cust.office_sold_by=officeSoldBy||null;
+      S.set('lhs:customers',custs);
+      try{await dbUpdate('lhs:customers',e.customer_id,{sold_by:soldBy,office_sold_by:officeSoldBy||null});}catch{}
+    }
+  }
+  tst(`🏆 Sale confirmed — Sold by ${soldBy}${officeSoldBy?' & '+officeSoldBy:''}`, 'success');
+  openEstimate(estId);
 }
 
 // ── ESTIMATE → WORK ORDER ─────────────────────────────────────────────────────
