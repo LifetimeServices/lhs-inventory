@@ -35541,10 +35541,156 @@ async function delSalesTask(id){
 // ── ACTIVITIES PAGE ────────────────────────────────────────────────────────────
 let _actFilter='All';
 let _actLogOpen=false;
+let _actRepFilter='';
+let _actDateFrom='';
+let _actDateTo='';
+let _actSearch='';
+
 function bSalesActivities(){
-  return`<div class="pt">Activities</div>
-  <div class="ps">All logged sales activities — calls, emails, texts, visits, demos</div>
-  ${renderCRMActivities()}`;
+  const acts=S.get('lhs:activities')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const now=new Date();
+  const today=now.toDateString();
+  const weekAgo=new Date(Date.now()-7*86400000);
+  const actsToday=acts.filter(a=>new Date(a.performed_at||a.created_at).toDateString()===today);
+  const actsWeek=acts.filter(a=>new Date(a.performed_at||a.created_at)>=weekAgo);
+  const typeCount=t=>acts.filter(a=>(a.activity_type||a.type)===t).length;
+  const weekType=t=>actsWeek.filter(a=>(a.activity_type||a.type)===t).length;
+
+  const statCard=(label,val,sub,color='var(--navy)')=>`
+    <div class="card" style="padding:14px 16px;min-width:110px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">${label}</div>
+      <div style="font-size:26px;font-weight:800;color:${color};line-height:1.1">${val}</div>
+      ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${sub}</div>`:''}
+    </div>`;
+
+  // ── Rep leaderboard (this week) ────────────────────────────────────────────
+  const repTally={};
+  actsWeek.forEach(a=>{const r=a.performed_by||'Unknown';repTally[r]=(repTally[r]||0)+1;});
+  const repRanked=Object.entries(repTally).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxTally=repRanked[0]?.[1]||1;
+
+  // ── Rep search for filter ──────────────────────────────────────────────────
+  const repOptions=users.map(u=>`<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
+
+  return`
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+    <div>
+      <div class="pt" style="margin:0">Activities</div>
+      <div class="ps" style="margin:0">All logged sales activities — calls, emails, texts, visits, demos</div>
+    </div>
+    <button class="btn btn-n" onclick="_actToggleLog()">+ Log Activity</button>
+  </div>
+
+  <!-- Log Form -->
+  <div id="act-log-form" style="display:${_actLogOpen?'block':'none'}">
+  <div class="card" style="background:#f0f4ff;border:1px solid #c8d8f8;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:14px">Log New Activity</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="fl"><label>Activity Type</label>
+        <select id="act-type" style="width:100%"><option>Call</option><option>Email</option><option>Text</option><option>Visit</option><option>Demo</option><option>Note</option></select>
+      </div>
+      <div class="fl"><label>Subject / Brief</label><input id="act-subject" placeholder="What happened?"></div>
+      <div class="fl"><label>Outcome</label>
+        <select id="act-outcome">
+          <option value="">— Select —</option>
+          <option>Connected</option><option>Left Voicemail</option><option>No Answer</option><option>Scheduled Follow-up</option><option>Sent Estimate</option><option>Meeting Booked</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="fl"><label>Logged By</label>
+        <select id="act-rep"><option value="${esc(CU?.name||'')}">${esc(CU?.name||'Me')}</option>${repOptions}</select>
+      </div>
+      <div class="fl"><label>Related Lead / Opportunity</label>
+        <select id="act-related">
+          <option value="">— Select —</option>
+          ${(S.get('lhs:leads')||[]).slice(0,30).map(l=>`<option value="lead:${l.id}">${esc((l.first_name||'')+' '+(l.last_name||''))} (Lead)</option>`).join('')}
+          ${(S.get('lhs:opportunities')||[]).slice(0,30).map(o=>`<option value="opp:${o.id}">${esc(o.name)} (Opp)</option>`).join('')}
+        </select>
+      </div>
+      <div class="fl"><label>Date &amp; Time</label><input type="datetime-local" id="act-datetime"></div>
+      <div class="fl"><label>Next Action Date</label><input type="date" id="act-next-date"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Notes</label>
+      <textarea id="act-notes" rows="2" placeholder="What was discussed, what's the status, what's next..." style="width:100%;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-n" onclick="svLogActivity()">Save Activity</button>
+      <button class="btn btn-o" onclick="_actToggleLog()">Cancel</button>
+    </div>
+  </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${statCard('Total All Time',acts.length,'activities logged')}
+    ${statCard('This Week',actsWeek.length,`${actsToday.length} today`,'var(--teal)')}
+    ${statCard('📞 Calls',typeCount('Call'),`${weekType('Call')} this wk`,'#1565c0')}
+    ${statCard('✉️ Emails',typeCount('Email'),`${weekType('Email')} this wk`,'#6a1b9a')}
+    ${statCard('💬 Texts',typeCount('Text'),`${weekType('Text')} this wk`,'#e65100')}
+    ${statCard('🏠 Visits',typeCount('Visit')+(typeCount('Site Visit')),`${weekType('Visit')+weekType('Site Visit')} this wk`,'#2e7d32')}
+    ${statCard('🖥 Demos',typeCount('Demo'),`${weekType('Demo')} this wk`,'#c62828')}
+  </div>
+
+  <!-- Rep Leaderboard (This Week) -->
+  ${repRanked.length?`
+  <div class="card" style="margin-bottom:16px;padding:14px 16px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">🏆 Rep Activity — This Week</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${repRanked.map(([name,cnt],i)=>{
+        const pct=Math.round(cnt/maxTally*100);
+        const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+        const typeCounts=Object.fromEntries(['Call','Email','Text','Visit','Site Visit','Demo'].map(t=>[t,actsWeek.filter(a=>a.performed_by===name&&(a.activity_type||a.type)===t).length]));
+        const breakdown=Object.entries(typeCounts).filter(([,n])=>n>0).map(([t,n])=>`${n} ${t}`).join(' · ');
+        return`<div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--navy);min-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${medal} ${esc(name)}</div>
+          <div style="flex:1;background:var(--surf);border-radius:20px;height:14px;overflow:hidden">
+            <div style="background:var(--teal);height:100%;width:${pct}%;border-radius:20px;transition:width .3s"></div>
+          </div>
+          <div style="font-size:13px;font-weight:800;color:var(--navy);min-width:28px;text-align:right">${cnt}</div>
+          <div style="font-size:11px;color:var(--muted);min-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${breakdown}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`:''}
+
+  <!-- Filter Bar -->
+  <div class="card" style="margin-bottom:12px;padding:12px 16px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${['All','Call','Email','Text','Visit','Demo','Note'].map(f=>`<button class="btn ${_actFilter===f?'btn-n':'btn-o'} sm" onclick="_actSetFilter('${f}')">${f==='Call'?'📞 Calls':f==='Email'?'✉️ Emails':f==='Text'?'💬 Texts':f==='Visit'?'🏠 Visits':f==='Demo'?'🖥 Demos':f==='Note'?'📋 Notes':f}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;align-items:center">
+        <select id="act-rep-filter" onchange="_actRepFilter=this.value;_refreshActTimeline()" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--bdr);min-width:140px">
+          <option value="">All Reps</option>
+          ${users.map(u=>`<option value="${esc(u.name)}"${_actRepFilter===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+        </select>
+        <input type="date" id="act-date-from" value="${_actDateFrom}" onchange="_actDateFrom=this.value;_refreshActTimeline()" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--bdr)" title="From date">
+        <input type="date" id="act-date-to" value="${_actDateTo}" onchange="_actDateTo=this.value;_refreshActTimeline()" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--bdr)" title="To date">
+        <input id="act-search" value="${esc(_actSearch)}" placeholder="Search subject / notes..." oninput="_actSearch=this.value;_refreshActTimeline()" style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);min-width:180px">
+        <button class="btn btn-o sm" onclick="_actClearFilters()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div id="act-timeline-wrap">
+    ${renderCRMActivities()}
+  </div>`;
+}
+
+function _actClearFilters(){
+  _actFilter='All';_actRepFilter='';_actDateFrom='';_actDateTo='';_actSearch='';
+  const el=document.getElementById('p-sales-activities');
+  if(el) el.innerHTML=bSalesActivities();
+}
+
+function _refreshActTimeline(){
+  const el=document.getElementById('act-timeline-wrap');
+  if(el) el.innerHTML=renderCRMActivities();
 }
 
 let _leadView='list';
@@ -35700,9 +35846,17 @@ function renderCRMActivities(){
   const allActs=(S.get('lhs:activities')||[]).sort((a,b)=>new Date(b.performed_at||b.created_at)-new Date(a.performed_at||a.created_at));
   const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Demo'?'🖥️':'📋';
   const typeBg=t=>t==='Call'?'#dbeafe':t==='Email'?'#f3e5f5':t==='Text'?'#fef3c7':t==='Visit'||t==='Site Visit'?'#dcfce7':t==='Demo'?'#fce7f3':'#f0f0f0';
-  const acts=_actFilter==='All'?allActs:allActs.filter(a=>(a.activity_type||a.type)===_actFilter);
+  const typeColor=t=>t==='Call'?'#1565c0':t==='Email'?'#6a1b9a':t==='Text'?'#e65100':t==='Visit'||t==='Site Visit'?'#2e7d32':t==='Demo'?'#c62828':'#424242';
   const leads=S.get('lhs:leads')||[];
   const opps=S.get('lhs:opportunities')||[];
+
+  // Apply all filters
+  let acts=allActs;
+  if(_actFilter!=='All') acts=acts.filter(a=>(a.activity_type||a.type)===_actFilter);
+  if(_actRepFilter) acts=acts.filter(a=>a.performed_by===_actRepFilter);
+  if(_actDateFrom) acts=acts.filter(a=>new Date(a.performed_at||a.created_at)>=new Date(_actDateFrom));
+  if(_actDateTo){const to=new Date(_actDateTo);to.setHours(23,59,59);acts=acts.filter(a=>new Date(a.performed_at||a.created_at)<=to);}
+  if(_actSearch){const q=_actSearch.toLowerCase();acts=acts.filter(a=>(a.subject||'').toLowerCase().includes(q)||(a.notes||'').toLowerCase().includes(q)||(a.performed_by||'').toLowerCase().includes(q)||(a.outcome||'').toLowerCase().includes(q));}
 
   // Group by date
   const groups={};
@@ -35717,92 +35871,78 @@ function renderCRMActivities(){
   const yesterday=new Date(Date.now()-86400000).toDateString();
   const dateLabel=k=>k===today?'Today — '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):k===yesterday?'Yesterday — '+new Date(Date.now()-86400000).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):k==='Unknown'?'Unknown Date':new Date(k).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
-  const timelineHtml=Object.keys(groups).map((key,gi)=>{
+  const filterDesc=[
+    _actFilter!=='All'?_actFilter:'',
+    _actRepFilter?`Rep: ${_actRepFilter}`:'',
+    _actDateFrom?`From: ${_actDateFrom}`:'',
+    _actDateTo?`To: ${_actDateTo}`:'',
+    _actSearch?`"${_actSearch}"`:'',
+  ].filter(Boolean).join(' · ');
+
+  const timelineHtml=!acts.length
+    ?`<div style="text-align:center;padding:32px;color:var(--muted)">No activities match${filterDesc?` (${filterDesc})`:''}. <button class="btn btn-o sm" onclick="_actClearFilters()">Clear Filters</button></div>`
+    :Object.keys(groups).map((key,gi)=>{
     const dayActs=groups[key];
-    return`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);${gi>0?'margin-top:16px;':''}margin-bottom:10px">${dateLabel(key)}</div>
+    return`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);${gi>0?'margin-top:18px;':''}margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">${dateLabel(key)} <span style="font-weight:400;font-size:10px">(${dayActs.length})</span></div>
     ${dayActs.map((a,i)=>{
       const t=a.activity_type||a.type||'Note';
       const d=new Date(a.performed_at||a.created_at);
       const timeStr=isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
       const relLead=leads.find(l=>l.id===a.lead_id);
       const relOpp=opps.find(o=>o.id===a.opportunity_id);
-      const relName=relOpp?esc(relOpp.name):relLead?esc(relLead.first_name+' '+relLead.last_name):'';
-      return`<div style="display:flex;gap:14px;align-items:flex-start;padding:12px 0;${i<dayActs.length-1?'border-bottom:1px solid var(--bdr)':''}">
-        <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:${typeBg(t)}">${typeIcon(t)}</div>
-        <div style="flex:1">
-          <div style="font-weight:600">${typeIcon(t)} ${esc(t)} — ${esc(a.subject||'—')}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${a.performed_by||'—'}${relName?' &nbsp;·&nbsp; '+relName:''}${a.outcome?` &nbsp;·&nbsp; <span style="background:#f0f0f0;border-radius:12px;padding:1px 8px;font-size:11px">${esc(a.outcome)}</span>`:''}</div>
-          ${a.notes||a.description?`<div style="font-size:13px;margin-top:4px;color:var(--navy)">${esc(a.notes||a.description)}</div>`:''}
+      const relName=relOpp?esc(relOpp.name):relLead?esc((relLead.first_name||'')+' '+(relLead.last_name||'')):'';
+      const isAuto=a.auto_logged;
+      return`<div style="display:flex;gap:14px;align-items:flex-start;padding:10px 8px;${i<dayActs.length-1?'border-bottom:1px solid var(--bdr)':''}${isAuto?';opacity:.7':''}">
+        <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;background:${typeBg(t)}">${typeIcon(t)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:13px;color:${typeColor(t)}">${esc(t)}</span>
+            ${a.subject?`<span style="font-weight:600;font-size:13px;color:var(--navy)">— ${esc(a.subject)}</span>`:''}
+            ${a.outcome?`<span style="background:#f0f0f0;border-radius:10px;padding:1px 8px;font-size:11px;color:var(--muted)">${esc(a.outcome)}</span>`:''}
+            ${isAuto?'<span style="background:#eee;border-radius:10px;padding:1px 6px;font-size:10px;color:var(--muted)">auto</span>':''}
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--navy)">${esc(a.performed_by||'—')}</span>
+            ${relName?`<span>· ${relName}</span>`:''}
+            ${a.next_action_date?`<span style="color:var(--amber);font-weight:600">· Follow up: ${new Date(a.next_action_date).toLocaleDateString()}</span>`:''}
+          </div>
+          ${a.notes||a.description?`<div style="font-size:12px;margin-top:4px;color:var(--navy);background:var(--surf);padding:6px 10px;border-radius:6px;border-left:3px solid ${typeColor(t)}">${esc(a.notes||a.description)}</div>`:''}
         </div>
-        <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:8px">${timeStr}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">${timeStr}</div>
       </div>`;
     }).join('')}`;
   }).join('');
 
-  const logLeads=leads.slice(0,20).map(l=>`<option value="lead:${l.id}">${esc(l.first_name+' '+l.last_name)} (Lead)</option>`).join('');
-  const logOpps=opps.slice(0,20).map(o=>`<option value="opp:${o.id}">${esc(o.name)} (Opp)</option>`).join('');
-
   return`
-  <div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;align-items:center">
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${['All','Call','Email','Text','Visit','Demo'].map(f=>`<button class="btn ${_actFilter===f?'btn-n':'btn-o'} sm" onclick="_actSetFilter('${f}',this)">${f==='All'?'All':f==='Call'?'📞 Calls':f==='Email'?'✉️ Emails':f==='Text'?'💬 Texts':f==='Visit'?'🏠 Visits':'🖥 Demos'}</button>`).join('')}
+  <div class="card" style="padding:0 16px 16px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 12px;display:flex;align-items:center;gap:10px">
+      Activity Timeline
+      <span style="font-weight:400;font-size:11px;background:var(--surf);border-radius:10px;padding:2px 8px">${acts.length} ${acts.length===1?'entry':'entries'}</span>
+      ${filterDesc?`<span style="font-weight:400;font-size:11px;color:var(--teal)">${filterDesc}</span>`:''}
     </div>
-    <button class="btn btn-n" onclick="_actToggleLog()">+ Log Activity</button>
-  </div>
-
-  <div id="act-log-form" style="display:${_actLogOpen?'block':'none'}">
-  <div class="card" style="background:#f0f4ff;border:1px solid #c8d8f8;margin-bottom:16px">
-    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:14px">Log New Activity</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-      <div class="fl"><label>Activity Type</label>
-        <select id="act-type" style="width:100%">
-          <option>Call</option><option>Email</option><option>Text</option><option>Visit</option><option>Demo</option><option>Note</option>
-        </select>
-      </div>
-      <div class="fl"><label>Subject / Brief</label><input id="act-subject" placeholder="What happened?"></div>
-      <div class="fl"><label>Outcome</label>
-        <select id="act-outcome">
-          <option value="">— Select —</option>
-          <option>Connected</option><option>Left Voicemail</option><option>No Answer</option><option>Scheduled Follow-up</option><option>Sent Estimate</option><option>Meeting Booked</option>
-        </select>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-      <div class="fl"><label>Related Lead / Opportunity</label>
-        <select id="act-related">
-          <option value="">— Select —</option>
-          ${logLeads}${logOpps}
-        </select>
-      </div>
-      <div class="fl"><label>Date &amp; Time</label><input type="datetime-local" id="act-datetime"></div>
-      <div class="fl"><label>Next Action Date</label><input type="date" id="act-next-date"></div>
-    </div>
-    <div class="fl" style="margin-bottom:12px"><label>Notes</label>
-      <textarea id="act-notes" rows="2" placeholder="What was discussed, what's the status, what's next..." style="width:100%;resize:vertical"></textarea>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-n" onclick="svLogActivity()">Save Activity</button>
-      <button class="btn btn-o" onclick="_actToggleLog()">Cancel</button>
-    </div>
-  </div>
-  </div>
-
-  <div class="card">
-    <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px">Activity Timeline</div>
-    ${!acts.length?`<div style="text-align:center;padding:24px;color:var(--muted)">No activities logged yet.</div>`:timelineHtml}
+    ${timelineHtml}
   </div>`;
 }
 
+// Legacy wrapper — old callers that passed (f, btn) still work
 function _actSetFilter(f){
   _actFilter=f;
+  _refreshActTimeline();
+  // Update button states
+  document.querySelectorAll('#p-sales-activities .btn').forEach(b=>{
+    if(b.onclick&&b.onclick.toString().includes('_actSetFilter')){
+      const isActive=b.getAttribute('onclick')?.includes(`'${f}'`);
+      b.className='btn '+(isActive?'btn-n':'btn-o')+' sm';
+    }
+  });
   const el=document.getElementById('p-sales-activities');
   if(el) el.innerHTML=bSalesActivities();
 }
 
 function _actToggleLog(){
   _actLogOpen=!_actLogOpen;
-  const frm=document.getElementById('act-log-form');
-  if(frm) frm.style.display=_actLogOpen?'block':'none';
+  const el=document.getElementById('p-sales-activities');
+  if(el) el.innerHTML=bSalesActivities();
 }
 
 async function svLogActivity(){
@@ -35814,11 +35954,13 @@ async function svLogActivity(){
   const dt=document.getElementById('act-datetime')?.value;
   const nextDate=document.getElementById('act-next-date')?.value||null;
   const notes=document.getElementById('act-notes')?.value||'';
+  const repEl=document.getElementById('act-rep');
+  const performedBy=repEl?.value||CU?.name||'';
   if(!subject){tst('Please enter a subject','error');return;}
   const now=new Date().toISOString();
   const act={
     activity_type:t,type:t,subject,outcome:outcome||null,notes:notes||null,
-    performed_by:CU?.name||'',performed_at:dt?new Date(dt).toISOString():now,
+    performed_by:performedBy,performed_at:dt?new Date(dt).toISOString():now,
     next_action_date:nextDate,created_at:now,updated_at:now,
     lead_id:related.startsWith('lead:')?related.replace('lead:',''):null,
     opportunity_id:related.startsWith('opp:')?related.replace('opp:',''):null,
