@@ -33680,11 +33680,11 @@ function bAccountHub(){
   const c=custs.find(x=>x.id===id)||{};
   if(!c.id) return`<div class="card" style="padding:40px;text-align:center;color:var(--muted)">Account not found. <a href="#" onclick="showPage('sales-accounts');return false">← Back to Accounts</a></div>`;
 
-  const props=(S.get('lhs:properties')||[]).filter(p=>p.customer_id===id);
+  const props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===id||p.customer_id===id);
   const opps=(S.get('lhs:opportunities')||[]).filter(o=>o.customer_id===id);
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.customer_id===id);
   const leads=(S.get('lhs:leads')||[]).filter(l=>l.customer_id===id);
-  const acts=(S.get('lhs:activity')||[]).filter(a=>a.customer_id===id).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+  const acts=(S.get('lhs:activities')||[]).filter(a=>a.customer_id===id||a.lead_id&&leads.some(l=>l.id===a.lead_id)||a.opportunity_id&&opps.some(o=>o.id===a.opportunity_id)).sort((a,b)=>(b.performed_at||b.created_at||'').localeCompare(a.performed_at||a.created_at||''));
 
   const totalRev=wos.reduce((s,w)=>s+Number(w.invoice_amount||w.total||0),0);
   const openOpps=opps.filter(o=>!['Won','Lost','Closed'].includes(o.stage));
@@ -33693,76 +33693,128 @@ function bAccountHub(){
   const name=((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||c.company||'Unnamed Account';
   const cityState=[c.city,c.state].filter(Boolean).join(', ');
 
-  const tabs=['details','locations','opportunities','work_orders','estimates','activity'];
-  const tabLabels={'details':'Details','locations':`Locations (${props.length})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'estimates':'Estimates','activity':`Activity (${acts.length})`};
+  const tabs=['details','locations','opportunities','work_orders','activity'];
+  const tabLabels={'details':'Details','locations':`Locations (${props.length})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`};
+
+  const fld=(label,val)=>`<div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">${label}</div>
+    <div style="font-size:13px;color:var(--text)">${val||'—'}</div>
+  </div>`;
+
+  const inpStyle='width:100%;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:\'DM Sans\',sans-serif;box-sizing:border-box';
 
   function tabContent(){
     if(_acctHubTab==='details'){
+      if(window._acctHubEditing){
+        return`<div class="card" style="padding:20px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">First Name</label><br><input id="ahub-fn" value="${esc(c.first_name||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Last Name</label><br><input id="ahub-ln" value="${esc(c.last_name||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Company</label><br><input id="ahub-co" value="${esc(c.company||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Phone</label><br><input id="ahub-ph" value="${esc(c.phone||c.primary_phone||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Email</label><br><input id="ahub-em" value="${esc(c.email||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Source</label><br><input id="ahub-src" value="${esc(c.lead_source||c.source||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Address</label><br><input id="ahub-addr" value="${esc(c.address||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">City</label><br><input id="ahub-city" value="${esc(c.city||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">State</label><br><input id="ahub-state" value="${esc(c.state||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Zip</label><br><input id="ahub-zip" value="${esc(c.zip||'')}" style="${inpStyle}"></div>
+          </div>
+          <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
+            <textarea id="ahub-notes" style="${inpStyle};height:80px;resize:vertical">${esc(c.notes||'')}</textarea>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-n" onclick="acctHubSave('${id}')">Save Changes</button>
+            <button class="btn btn-o" onclick="window._acctHubEditing=false;showPage('account-hub')">Cancel</button>
+          </div>
+        </div>`;
+      }
       return`<div class="card" style="padding:20px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Full Name</div><div style="font-size:14px">${esc(((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Company</div><div style="font-size:14px">${esc(c.company||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Email</div><div style="font-size:14px">${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:'—'}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Phone</div><div style="font-size:14px">${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}">${esc(c.phone||c.primary_phone)}</a>`:'—'}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Address</div><div style="font-size:14px">${esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Territory</div><div style="font-size:14px">${esc(c.territory||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">County</div><div style="font-size:14px">${esc(c.county||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Source</div><div style="font-size:14px">${esc(c.lead_source||c.source||'—')}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Customer Since</div><div style="font-size:14px">${c.created_at?new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</div></div>
-          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Account Rep</div><div style="font-size:14px">${esc(c.assigned_to||c.rep||'—')}</div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Account Details</div>
+          <button class="btn btn-o sm" onclick="window._acctHubEditing=true;showPage('account-hub')">✏️ Edit</button>
         </div>
-        ${c.notes?`<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bdr)"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Notes</div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(c.notes)}</div></div>`:''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px">
+          ${fld('Full Name',esc(((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||''))}
+          ${fld('Company',esc(c.company||''))}
+          ${fld('Email',c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--teal)">${esc(c.email)}</a>`:'')}
+          ${fld('Phone',(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" style="color:var(--teal)">${esc(c.phone||c.primary_phone)}</a>`:'')}
+          ${fld('Address',esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||''))}
+          ${fld('Territory',esc(c.territory||''))}
+          ${fld('County',esc(c.county||''))}
+          ${fld('Source',esc(c.lead_source||c.source||''))}
+          ${fld('Customer Since',c.created_at?new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'')}
+          ${fld('Account Rep',esc(c.assigned_to||c.rep||''))}
+        </div>
+        ${c.notes?`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Notes</div>
+          <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--text)">${esc(c.notes)}</div>
+        </div>`:''}
       </div>`;
     }
+
     if(_acctHubTab==='locations'){
       return`<div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700">Service Locations</div>
-          <button class="btn btn-n sm" onclick="openCustomer('${id}')">+ Add Location</button>
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Service Locations</div>
+          <button class="btn btn-n sm" onclick="oAddProperty({current_customer_id:'${id}'})">+ Add Location</button>
         </div>
-        ${props.length?props.map(p=>`<div style="padding:12px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
-            <div style="font-size:13px;font-weight:600">${esc(p.address||'Unknown Address')}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc([p.city,p.state,p.zip].filter(Boolean).join(', '))}</div>
-            ${p.county?`<div style="font-size:12px;color:var(--muted)">${esc(p.county)}</div>`:''}
+        ${props.length?props.map(p=>`<div style="padding:14px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;cursor:pointer" onclick="cMod();openProperty('${p.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(p.address||'Unknown Address')}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:3px">${esc([p.city,p.state,p.zip].filter(Boolean).join(', '))}</div>
+              ${p.county?`<div style="font-size:12px;color:var(--muted)">${esc(p.county)}</div>`:''}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              ${p.territory?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:rgba(58,191,191,.12);color:var(--teal)">${esc(p.territory)}</span>`:''}
+            </div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            ${p.territory?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--surf);color:var(--teal)">${esc(p.territory)}</span>`:''}
-          </div>
-        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No locations on file. <button class="btn btn-o sm" onclick="openCustomer('${id}')">Add one</button></div>`}
+          ${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length?`<div style="margin-top:8px;font-size:11px;color:var(--muted)">${(S.get('lhs:work_orders')||[]).filter(w=>w.property_id===p.id).length} work order(s)</div>`:''}
+        </div>`).join(''):`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No service locations on file.<br><button class="btn btn-o sm" style="margin-top:10px" onclick="oAddProperty({current_customer_id:'${id}'})">Add First Location</button></div>`}
       </div>`;
     }
+
     if(_acctHubTab==='opportunities'){
-      return`<div class="card" style="padding:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700">Opportunities</div>
-          <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New Opportunity</button>
+      const stageOrder=['Prospect','Site Visit','Estimate Sent','Negotiation','Won','Lost'];
+      return`<div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">${opps.length} Opportunit${opps.length===1?'y':'ies'}</div>
+          <button class="btn btn-n sm" onclick="oAddOpportunity()">+ New</button>
         </div>
-        ${opps.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:2px solid var(--bdr)">
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Name</th>
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Division</th>
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Stage</th>
-            <th style="padding:6px 8px;text-align:right;font-weight:700">Value</th>
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Rep</th>
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Date</th>
-          </tr></thead>
-          <tbody>${opps.map(o=>`<tr style="border-bottom:1px solid var(--bdr);cursor:pointer" onclick="openOpportunity('${o.id}')">
-            <td style="padding:8px">${esc(o.name||'—')}</td>
-            <td style="padding:8px">${esc(o.division||'—')}</td>
-            <td style="padding:8px">${bx(o.stage,stageColor(o.stage))}</td>
-            <td style="padding:8px;text-align:right;font-weight:600">$${Number(o.estimated_value||0).toLocaleString()}</td>
-            <td style="padding:8px">${esc(o.rep||o.assigned_to||'—')}</td>
-            <td style="padding:8px;color:var(--muted)">${o.created_at?new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</td>
-          </tr>`).join('')}</tbody>
-        </table>`:`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No opportunities yet. <button class="btn btn-o sm" onclick="oAddOpportunity()">Create one</button></div>`}
+        ${opps.length?opps.sort((a,b)=>stageOrder.indexOf(a.stage)-stageOrder.indexOf(b.stage)).map(o=>`
+        <div class="card" style="padding:16px;cursor:pointer" onclick="openOpportunity('${o.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:var(--navy)">${esc(o.name||'Opportunity')}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.division||'—')}${o.job_type?' · '+esc(o.job_type):''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:18px;font-weight:800;color:var(--teal)">$${Number(o.estimated_value||0).toLocaleString()}</div>
+              <div style="font-size:11px;color:var(--muted)">${o.probability||0}% probability</div>
+            </div>
+          </div>
+          <!-- Stage progress bar -->
+          <div style="display:flex;gap:2px;margin-bottom:10px">
+            ${stageOrder.filter(s=>s!=='Lost').map(s=>{
+              const idx=stageOrder.filter(x=>x!=='Lost').indexOf(s);
+              const curIdx=stageOrder.filter(x=>x!=='Lost').indexOf(o.stage);
+              const isLost=o.stage==='Lost';
+              const active=!isLost&&idx<=curIdx;
+              return`<div style="flex:1;height:4px;border-radius:2px;background:${isLost?'var(--red)':active?'var(--teal)':'var(--bdr)'}"></div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            ${bx(o.stage,stageColor(o.stage))}
+            <div style="font-size:11px;color:var(--muted)">${o.assigned_to?'👤 '+esc(o.assigned_to):''} ${o.close_date?'· Close: '+new Date(o.close_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}):''}</div>
+          </div>
+        </div>`).join(''):`<div class="card" style="padding:28px;text-align:center;color:var(--muted)">No opportunities yet. <button class="btn btn-o sm" style="margin-left:8px" onclick="oAddOpportunity()">Create one</button></div>`}
       </div>`;
     }
+
     if(_acctHubTab==='work_orders'){
       return`<div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700">Work Orders</div>
-          <button class="btn btn-n sm" onclick="showPage('work-orders')">View All WOs</button>
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Work Orders (${wos.length})</div>
         </div>
         ${wos.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:2px solid var(--bdr)">
@@ -33771,43 +33823,47 @@ function bAccountHub(){
             <th style="padding:6px 8px;text-align:left;font-weight:700">Type</th>
             <th style="padding:6px 8px;text-align:left;font-weight:700">Status</th>
             <th style="padding:6px 8px;text-align:right;font-weight:700">Amount</th>
-            <th style="padding:6px 8px;text-align:left;font-weight:700">Completed</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:700">Date</th>
           </tr></thead>
           <tbody>${wos.slice(0,50).map(w=>`<tr style="border-bottom:1px solid var(--bdr)">
-            <td style="padding:8px;font-family:monospace;font-size:12px">${esc(w.wo_number||w.id||'—')}</td>
+            <td style="padding:8px;font-family:monospace;font-size:12px">${esc(w.wo_number||'—')}</td>
             <td style="padding:8px">${esc(w.division||'—')}</td>
             <td style="padding:8px">${esc(w.job_type||'—')}</td>
-            <td style="padding:8px">${bx(w.status,woStatusColor(w.status))}</td>
+            <td style="padding:8px">${bx(w.status||'—',woStatusColor(w.status))}</td>
             <td style="padding:8px;text-align:right;font-weight:600">$${Number(w.invoice_amount||w.total||0).toLocaleString()}</td>
-            <td style="padding:8px;color:var(--muted)">${(w.completed_at||'').substring(0,10)||'—'}</td>
+            <td style="padding:8px;color:var(--muted)">${(w.completed_at||w.invoice_date||'').substring(0,10)||'—'}</td>
           </tr>`).join('')}</tbody>
-        </table>${wos.length>50?`<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">Showing 50 of ${wos.length} work orders</div>`:''}`:`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No work orders on file.</div>`}
+        </table>${wos.length>50?`<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">Showing 50 of ${wos.length}</div>`:''}`:`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No work orders on file.</div>`}
       </div>`;
     }
-    if(_acctHubTab==='estimates'){
-      return`<div class="card" style="padding:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700">Estimates</div>
-          <button class="btn btn-n sm">+ New Estimate</button>
-        </div>
-        <div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">Estimates integration coming soon.</div>
-      </div>`;
-    }
+
     if(_acctHubTab==='activity'){
+      const aIcon=a=>{const t=a.activity_type||a.type||'';return t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':t.includes('Stage')||t.includes('stage')?'🔄':t.includes('Created')||t.includes('created')?'✨':'📋';};
       return`<div class="card" style="padding:20px">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px">Activity Log</div>
-        ${acts.length?acts.map(a=>{
-          const d=a.created_at?new Date(a.created_at):null;
-          const label=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-          return`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--bdr);align-items:flex-start">
-            <div style="font-size:18px;flex-shrink:0">${actIcon(a.type)}</div>
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:600">${esc(a.type||'Activity')}</div>
-              <div style="font-size:13px;color:var(--text);margin-top:2px">${esc(a.notes||a.description||'—')}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">${label}${a.rep?' · '+esc(a.rep):''}</div>
-            </div>
-          </div>`;
-        }).join(''):`<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No activity logged yet.</div>`}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Activity Timeline</div>
+          <button class="btn btn-o sm" onclick="oAddActivity(null,null,'${id}')">+ Log Activity</button>
+        </div>
+        ${acts.length?`<div style="position:relative">
+          <div style="position:absolute;left:18px;top:0;bottom:0;width:2px;background:var(--bdr)"></div>
+          ${acts.map(a=>{
+            const d=new Date(a.performed_at||a.created_at||Date.now());
+            const label=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+            const time=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+            const isAuto=a.auto_logged;
+            return`<div style="display:flex;gap:14px;padding-bottom:20px;position:relative">
+              <div style="width:36px;height:36px;border-radius:50%;background:${isAuto?'var(--surf)':'var(--navy)'};border:2px solid ${isAuto?'var(--bdr)':'var(--navy)'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;z-index:1">${aIcon(a)}</div>
+              <div style="flex:1;padding-top:4px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                  <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(a.activity_type||a.type||'Activity')}${a.subject?' — '+esc(a.subject):''}</div>
+                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;margin-left:8px">${label} ${time}</div>
+                </div>
+                ${a.notes||a.outcome||a.description?`<div style="font-size:13px;color:var(--text);margin-top:3px;line-height:1.5">${esc(a.notes||a.outcome||a.description||'')}</div>`:''}
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">${a.performed_by||a.created_by||a.rep||CU?.name||''}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`:`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No activity logged yet.</div>`}
       </div>`;
     }
     return'';
@@ -33815,22 +33871,22 @@ function bAccountHub(){
 
   return`
   <div style="margin-bottom:14px">
-    <a href="#" onclick="showPage('sales-accounts');return false" style="font-size:13px;color:var(--teal);text-decoration:none;font-weight:600">← Accounts</a>
+    <a href="#" onclick="window._acctHubEditing=false;showPage('sales-accounts');return false" style="font-size:13px;color:var(--teal);text-decoration:none;font-weight:600">← Accounts</a>
   </div>
 
   <!-- Header Card -->
   <div class="card" style="padding:20px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
-        <div style="font-size:22px;font-weight:800;color:var(--navy)">${esc(name)}</div>
-        ${c.company&&c.name!==c.company?`<div style="font-size:14px;color:var(--muted);margin-top:2px">${esc(c.company)}</div>`:''}
-        <div style="font-size:13px;color:var(--muted);margin-top:4px">${cityState||'No address on file'}</div>
+        <div style="font-size:24px;font-weight:800;color:var(--navy)">${esc(name)}</div>
+        ${c.company?`<div style="font-size:13px;color:var(--muted);margin-top:2px">${esc(c.company)}</div>`:''}
+        <div style="font-size:13px;color:var(--muted);margin-top:2px">${cityState||'No address on file'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
         ${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" class="btn btn-o sm">📞 Call</a>`:''}
         ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
         <button class="btn btn-n sm" onclick="oAddOpportunity()">+ Opportunity</button>
-        <button class="btn btn-o sm" onclick="openCustomer('${id}')">✏️ Edit</button>
+        <button class="btn btn-o sm" onclick="window._acctHubEditing=true;showPage('account-hub')">✏️ Edit</button>
       </div>
     </div>
   </div>
@@ -33842,76 +33898,108 @@ function bAccountHub(){
     <div>
       <!-- Tab Bar -->
       <div style="display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:4px;margin-bottom:14px;flex-wrap:wrap">
-        ${tabs.map(t=>`<button onclick="_acctHubTab='${t}';showPage('account-hub')" style="flex:1;min-width:80px;padding:6px 10px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;background:${_acctHubTab===t?'var(--navy)':'transparent'};color:${_acctHubTab===t?'var(--teal)':'var(--muted)'}">${tabLabels[t]}</button>`).join('')}
+        ${tabs.map(t=>`<button onclick="_acctHubTab='${t}';showPage('account-hub')" style="flex:1;padding:7px 10px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;background:${_acctHubTab===t?'var(--navy)':'transparent'};color:${_acctHubTab===t?'var(--teal)':'var(--muted)'}">${tabLabels[t]}</button>`).join('')}
       </div>
       <!-- Tab Content -->
       ${tabContent()}
     </div>
 
-    <!-- Right: Stats + Recent -->
+    <!-- Right: Stats + Recent Activity -->
     <div style="display:flex;flex-direction:column;gap:14px">
       <!-- Account Summary -->
       <div class="card" style="padding:18px">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px">Account Summary</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:var(--teal)">$${totalRev>=1000?(totalRev/1000).toFixed(1)+'K':totalRev.toLocaleString()}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Total Revenue</div>
+            <div style="font-size:18px;font-weight:800;color:var(--teal)">$${totalRev>=1000?(totalRev/1000).toFixed(1)+'K':totalRev.toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Revenue</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:var(--navy)">${wos.length}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Work Orders</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)">${wos.length}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Work Orders</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:#f59e0b">${openOpps.length}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Open Opps</div>
+            <div style="font-size:18px;font-weight:800;color:#f59e0b">${openOpps.length}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Open Opps</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:#10b981">${wonOpps.length}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Won</div>
+            <div style="font-size:18px;font-weight:800;color:#10b981">${wonOpps.length}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Won</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:var(--navy)">${props.length}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Locations</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)">${props.length}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Locations</div>
           </div>
           <div style="text-align:center;padding:10px;background:var(--surf);border-radius:8px">
-            <div style="font-size:20px;font-weight:800;color:var(--navy)">${leads.length}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Leads</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)">${leads.length}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;font-weight:600">Leads</div>
           </div>
         </div>
       </div>
 
-      <!-- Recent Activity -->
+      <!-- Quick Activity Feed -->
       <div class="card" style="padding:18px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Recent Activity</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Recent Activity</div>
+          ${acts.length>4?`<button class="btn btn-o sm" style="font-size:10px;padding:3px 8px" onclick="_acctHubTab='activity';showPage('account-hub')">View All</button>`:''}
+        </div>
         ${acts.length?acts.slice(0,5).map(a=>{
-          const d=a.created_at?new Date(a.created_at):null;
-          const label=d?d.toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+          const aIcon2=t=>{t=t||'';return t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t.includes('Stage')?'🔄':t.includes('Created')?'✨':'📋';};
+          const d=new Date(a.performed_at||a.created_at||Date.now());
+          const label=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
           return`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--bdr);display:flex;gap:8px;align-items:flex-start">
-            <span style="flex-shrink:0">${actIcon(a.type)}</span>
-            <div><span style="font-weight:600">${esc(a.type||'Activity')}</span> — ${esc((a.notes||a.description||'').substring(0,60))} <span style="color:var(--muted)">(${label})</span></div>
+            <span style="flex-shrink:0;font-size:14px">${aIcon2(a.activity_type||a.type)}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.activity_type||a.type||'Activity')}${a.subject?' — '+esc(a.subject):''}</div>
+              ${a.notes||a.outcome?`<div style="color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((a.notes||a.outcome||'').substring(0,50))}</div>`:''}
+            </div>
+            <div style="color:var(--muted);font-size:11px;flex-shrink:0">${label}</div>
           </div>`;
-        }).join(''):`<div style="color:var(--muted);font-size:12px">No activity yet.</div>`}
-        ${acts.length>5?`<button class="btn btn-o sm" style="margin-top:10px;width:100%" onclick="_acctHubTab='activity';showPage('account-hub')">View All Activity</button>`:''}
+        }).join(''):`<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">No activity yet.</div>`}
       </div>
 
-      <!-- Recent Work Orders (mini) -->
+      <!-- Recent Work Orders -->
       ${wos.length?`<div class="card" style="padding:18px">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Recent Work Orders</div>
-        ${wos.slice(0,4).map(w=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center">
+        ${wos.slice(0,4).map(w=>`<div style="font-size:12px;padding:7px 0;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:600">${esc(w.division||'—')}</div>
-            <div style="color:var(--muted)">${(w.completed_at||'').substring(0,10)||'—'}</div>
+            <div style="color:var(--muted);font-size:11px">${(w.completed_at||w.invoice_date||'').substring(0,10)||'—'}</div>
           </div>
           <div style="text-align:right">
             <div style="font-weight:700;color:var(--teal)">$${Number(w.invoice_amount||w.total||0).toLocaleString()}</div>
-            ${bx(w.status,woStatusColor(w.status))}
+            ${bx(w.status||'—',woStatusColor(w.status))}
           </div>
         </div>`).join('')}
         ${wos.length>4?`<button class="btn btn-o sm" style="margin-top:10px;width:100%" onclick="_acctHubTab='work_orders';showPage('account-hub')">View All (${wos.length})</button>`:''}
       </div>`:''}
     </div>
   </div>`;
+}
+
+async function acctHubSave(id){
+  const fn=document.getElementById('ahub-fn')?.value||'';
+  const ln=document.getElementById('ahub-ln')?.value||'';
+  const updates={
+    first_name:fn||null,last_name:ln||null,
+    company:document.getElementById('ahub-co')?.value||null,
+    phone:document.getElementById('ahub-ph')?.value||null,
+    email:document.getElementById('ahub-em')?.value||null,
+    address:document.getElementById('ahub-addr')?.value||null,
+    city:document.getElementById('ahub-city')?.value||null,
+    state:document.getElementById('ahub-state')?.value||null,
+    zip:document.getElementById('ahub-zip')?.value||null,
+    notes:document.getElementById('ahub-notes')?.value||null,
+    source:document.getElementById('ahub-src')?.value||null,
+    updated_at:new Date().toISOString(),
+  };
+  const custs=S.get('lhs:customers')||[];
+  const idx=custs.findIndex(x=>x.id===id);
+  if(idx>=0){Object.assign(custs[idx],updates);S.set('lhs:customers',custs);}
+  try{await DB.from('lhs_customers').update(updates).eq('id',id);}catch(e){console.warn('acctHubSave:',e.message);}
+  tst('Account updated','success');
+  window._acctHubEditing=false;
+  showPage('account-hub');
 }
 
 // ── LEADS PAGE ────────────────────────────────────────────────────────────────
@@ -36114,6 +36202,16 @@ async function svAddLead(){
   S.set('lhs:leads',leadsRef2);
   try{await dbUpdate('lhs:leads',finalLead.id,{opportunity_id:finalOpp.id});}catch{}
 
+  // ── Step 5: Auto-log "Lead Created" activity ───────────────────
+  const isRealOppId=finalOpp.id&&!String(finalOpp.id).startsWith('opp_');
+  autoLogActivity({
+    opportunity_id:isRealOppId?finalOpp.id:null,
+    customer_id:isRealCustId?finalCust.id:null,
+    lead_id:isRealLeadId?finalLead.id:null,
+    activity_type:'Lead Created',
+    notes:`New lead created by ${CU?.name||'system'}${f.source_category?' via '+f.source_category:''}.${f.division?' Division: '+f.division:''}`,
+  }).catch(()=>{});
+
   cMod();
   const custMsg=savedCust?`Customer ${custNum} created`:'Customer saved locally';
   const propMsg=finalProp?(finalProp.id.startsWith('prop_')?'property saved locally':'property created'):'';
@@ -36952,7 +37050,7 @@ async function leadCreateCustomer(leadId){
   openLead(leadId);
 }
 
-function oAddActivity(leadId,oppId){
+function oAddActivity(leadId,oppId,custId){
   const ss=getSalesSettings();
   const types=ss.activity_types||ACTIVITY_TYPES;
   const outcomes=ss.activity_outcomes||ACTIVITY_OUTCOMES;
@@ -36977,14 +37075,14 @@ function oAddActivity(leadId,oppId){
     <div class="fl"><label>Next Action Date</label><input type="date" id="act-nad"></div>
   </div>
   <div class="br2">
-    <button class="btn btn-n" onclick="svAddActivity('${leadId||''}','${oppId||''}')">Save Activity</button>
+    <button class="btn btn-n" onclick="svAddActivity('${leadId||''}','${oppId||''}','${custId||''}')">Save Activity</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
 }
 
-async function svAddActivity(leadId,oppId){
+async function svAddActivity(leadId,oppId,custId){
   const act={
-    lead_id:leadId||null,opportunity_id:oppId||null,
+    lead_id:leadId||null,opportunity_id:oppId||null,customer_id:custId||null,
     activity_type:v('act-type'),subject:v('act-sub')||null,
     outcome:v('act-out')||null,notes:v('act-notes')||null,
     next_action:v('act-na')||null,
@@ -37129,63 +37227,166 @@ function openOpportunity(id){
   const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===id);
   if(!o) return;
   const acts=(S.get('lhs:activities')||[]).filter(a=>a.opportunity_id===id)
-    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
-  const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Proposal Sent'?'bb':s==='Negotiation'?'ba':'bn';
-  oMod(`Opportunity — ${o.name}`,`
-  <div style="max-height:75vh;overflow-y:auto;padding-right:4px">
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
-    ${(getSalesSettings().opp_stages||OPP_STAGES).map(s=>`<button class="btn sm ${o.stage===s?'btn-n':'btn-o'}" onclick="updateOppStage('${id}','${s}')">${s}</button>`).join('')}
-    ${o.stage!=='Won'?`<button class="btn sm btn-o" onclick="buildEstimateFromOpp('${id}')">📋 Build Estimate</button>`:''} 
-    ${o.stage!=='Won'?`<button class="btn sm btn-g" style="margin-left:auto" onclick="oppToWO('${id}')">→ Create Work Order</button>`:''}
-  </div>
-  <div class="two-col" style="margin-bottom:16px">
-    <div class="card" style="padding:14px">
-      <div class="ct">Opportunity Details</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px">
-        <span style="color:var(--muted)">Stage</span><span>${bx(o.stage,stageColor(o.stage))}</span>
-        <span style="color:var(--muted)">Division</span><span>${o.division||'—'}</span>
-        <span style="color:var(--muted)">Job Type</span><span>${o.job_type||'—'}</span>
-        <span style="color:var(--muted)">Assigned</span><span>${o.assigned_to||'—'}</span>
-        <span style="color:var(--muted)">Probability</span><span style="font-weight:600">${o.probability||0}%</span>
-        <span style="color:var(--muted)">Est. Value</span><span style="font-weight:700;font-family:'DM Sans',sans-serif">$${Number(o.estimated_value||0).toLocaleString()}</span>
-        <span style="color:var(--muted)">Close Date</span><span>${o.close_date?new Date(o.close_date).toLocaleDateString():'—'}</span>
-      </div>
-      ${o.description?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">${o.description}</div>`:''}
-    </div>
-    <div class="card" style="padding:14px">
-      <div class="ct">Weighted Value</div>
-      <div style="text-align:center;padding:16px">
-        <div style="font-size:32px;font-weight:800;color:var(--navy);font-family:'DM Sans',sans-serif">
-          $${Math.round((o.estimated_value||0)*(o.probability||0)/100).toLocaleString()}
-        </div>
-        <div style="font-size:13px;color:var(--muted)">$${Number(o.estimated_value||0).toLocaleString()} × ${o.probability||0}%</div>
+    .sort((a,b)=>new Date(b.performed_at||b.created_at)-new Date(a.performed_at||a.created_at));
+  const stages=getSalesSettings().opp_stages||OPP_STAGES;
+  const stageIdx=stages.indexOf(o.stage);
+  const won=o.stage==='Won',lost=o.stage==='Lost';
+  const custName=o.name||'Opportunity';
+  const aIcon=t=>{t=t||'';return t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':t.includes('Stage')||t.includes('stage')?'🔄':t.includes('Created')?'✨':'📋';};
+
+  oMod(custName,`
+  <div style="max-height:80vh;overflow-y:auto;padding-right:4px">
+
+  <!-- Stage Path Bar (Salesforce style) -->
+  <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:0;overflow-x:auto">
+      ${stages.filter(s=>s!=='Lost').map((s,i)=>{
+        const done=!lost&&stageIdx>=i;
+        const current=s===o.stage&&!lost;
+        return`<div onclick="updateOppStage('${id}','${s}')" style="display:flex;align-items:center;cursor:pointer;flex-shrink:0">
+          <div style="display:flex;flex-direction:column;align-items:center;padding:4px 10px;border-radius:6px;background:${current?'var(--navy)':done?'rgba(58,191,191,.1)':'transparent'};transition:background .15s">
+            <div style="width:10px;height:10px;border-radius:50%;background:${current?'var(--teal)':done?'var(--teal)':'var(--bdr)'};margin-bottom:4px"></div>
+            <div style="font-size:11px;font-weight:${current?'700':'600'};color:${current?'var(--teal)':done?'var(--teal)':'var(--muted)'};white-space:nowrap">${s}</div>
+          </div>
+          ${i<stages.filter(x=>x!=='Lost').length-1?`<div style="width:24px;height:2px;background:${done&&stageIdx>i?'var(--teal)':'var(--bdr)'}"></div>`:''}
+        </div>`;
+      }).join('')}
+      <div style="margin-left:auto;flex-shrink:0">
+        <button onclick="updateOppStage('${id}','Lost')" class="btn sm ${lost?'btn-n':'btn-o'}" style="${lost?'background:var(--red);color:white;border-color:var(--red)':''}">Lost</button>
       </div>
     </div>
   </div>
+
+  <!-- Key Metrics Row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:var(--teal)">$${Number(o.estimated_value||0).toLocaleString()}</div>
+      <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--muted);margin-top:2px">Est. Value</div>
+    </div>
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:var(--navy)">$${Math.round((o.estimated_value||0)*(o.probability||0)/100).toLocaleString()}</div>
+      <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--muted);margin-top:2px">Weighted</div>
+    </div>
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${won?'#10b981':lost?'var(--red)':'#f59e0b'}">${o.probability||0}%</div>
+      <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--muted);margin-top:2px">Probability</div>
+    </div>
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:var(--navy)">${acts.length}</div>
+      <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--muted);margin-top:2px">Activities</div>
+    </div>
+  </div>
+
+  <!-- Details + Activity split -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <!-- Details -->
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:10px;letter-spacing:.06em">Details</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px">
+        <span style="color:var(--muted);font-weight:600">Division</span><span>${esc(o.division||'—')}</span>
+        <span style="color:var(--muted);font-weight:600">Job Type</span><span>${esc(o.job_type||'—')}</span>
+        <span style="color:var(--muted);font-weight:600">Rep</span><span>${esc(o.assigned_to||'—')}</span>
+        <span style="color:var(--muted);font-weight:600">Close Date</span><span>${o.close_date?new Date(o.close_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</span>
+        <span style="color:var(--muted);font-weight:600">Created</span><span>${o.created_at?new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</span>
+      </div>
+      ${o.description?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);font-size:13px;color:var(--text);line-height:1.5">${esc(o.description)}</div>`:''}
+    </div>
+    <!-- Quick Activity Entry -->
+    <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:10px;letter-spacing:.06em">Log Activity</div>
+      <select id="opp-act-type" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px;box-sizing:border-box">
+        <option>Call</option><option>Email</option><option>Text</option><option>Meeting</option><option>Visit</option><option>Note</option>
+      </select>
+      <textarea id="opp-act-notes" placeholder="Notes..." style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;height:68px;resize:none;box-sizing:border-box;margin-bottom:8px"></textarea>
+      <button class="btn btn-n" style="width:100%" onclick="logOppActivity('${id}')">Save Activity</button>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--bdr);margin-bottom:14px">
+    ${!won?`<button class="btn btn-o sm" onclick="buildEstimateFromOpp('${id}')">📋 Build Estimate</button>`:''}
+    ${!won&&!lost?`<button class="btn btn-g sm" onclick="oppToWO('${id}')">→ Create Work Order</button>`:''}
+    ${won?`<span style="font-size:13px;color:#10b981;font-weight:700">🏆 Won — $${Number(o.estimated_value||0).toLocaleString()}</span>`:''}
+    ${lost?`<span style="font-size:13px;color:var(--red);font-weight:700">❌ Lost</span>`:''}
+  </div>
+
+  <!-- Activity Timeline -->
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div style="font-weight:600;font-size:14px;color:var(--navy)">Activity Log (${acts.length})</div>
-      <button class="btn btn-o sm" onclick="oAddActivity(null,'${id}')">+ Log Activity</button>
-    </div>
-    ${acts.map(a=>`<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--bdr)">
-      <div style="font-size:18px">${a.activity_type==='Call'?'📞':a.activity_type==='Email'?'✉️':a.activity_type==='Text'?'💬':'📋'}</div>
-      <div><div style="font-weight:600">${a.activity_type}${a.subject?' — '+a.subject:''}</div>
-        ${a.outcome?`<div style="font-size:12px;color:var(--muted)">${a.outcome}</div>`:''}
-        ${a.notes?`<div style="font-size:13px">${a.notes}</div>`:''}
-      </div>
-      <div style="margin-left:auto;font-size:11px;color:var(--muted)">${new Date(a.performed_at).toLocaleDateString()}</div>
-    </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">No activities yet</div>'}
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Activity Timeline (${acts.length})</div>
+    ${acts.length?`<div style="position:relative">
+      <div style="position:absolute;left:17px;top:0;bottom:0;width:2px;background:var(--bdr)"></div>
+      ${acts.map(a=>{
+        const d=new Date(a.performed_at||a.created_at||Date.now());
+        const label=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+        const time=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+        return`<div style="display:flex;gap:12px;padding-bottom:16px;position:relative">
+          <div style="width:34px;height:34px;border-radius:50%;background:${a.auto_logged?'white':'var(--navy)'};border:2px solid ${a.auto_logged?'var(--bdr)':'var(--navy)'};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;z-index:1">${aIcon(a.activity_type||a.type)}</div>
+          <div style="flex:1;padding-top:5px">
+            <div style="display:flex;justify-content:space-between">
+              <div style="font-size:13px;font-weight:600">${esc(a.activity_type||a.type||'Activity')}${a.subject?' — '+esc(a.subject):''}</div>
+              <div style="font-size:11px;color:var(--muted);white-space:nowrap">${label} ${time}</div>
+            </div>
+            ${a.notes||a.outcome?`<div style="font-size:13px;color:var(--text);margin-top:3px;line-height:1.5">${esc(a.notes||a.outcome||'')}</div>`:''}
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(a.performed_by||a.created_by||a.rep||'')}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`:'<div style="font-size:13px;color:var(--muted);padding:12px 0">No activities yet — use the form above to log the first one.</div>'}
   </div>
   </div>`);
+}
+
+async function logOppActivity(oppId){
+  const type=document.getElementById('opp-act-type')?.value||'Note';
+  const notes=document.getElementById('opp-act-notes')?.value||'';
+  if(!notes.trim()){tst('Add a note before saving','error');return;}
+  const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===oppId);
+  const now=new Date().toISOString();
+  const act={
+    opportunity_id:oppId,
+    customer_id:o?.customer_id||null,
+    activity_type:type,
+    notes:notes.trim(),
+    performed_at:now,
+    performed_by:CU?.name||'',
+    created_at:now,
+    auto_logged:false,
+  };
+  const saved=await dbInsert('lhs:activities',act);
+  const acts=S.get('lhs:activities')||[];
+  acts.unshift(saved||{...act,id:'act_'+Date.now()});
+  S.set('lhs:activities',acts);
+  tst('Activity logged','success');
+  openOpportunity(oppId);
+}
+
+async function autoLogActivity(data){
+  // Auto-log system activities without user prompt
+  const now=new Date().toISOString();
+  const act={...data,performed_at:now,created_at:now,performed_by:CU?.name||'System',auto_logged:true};
+  const saved=await dbInsert('lhs:activities',act);
+  const acts=S.get('lhs:activities')||[];
+  acts.unshift(saved||{...act,id:'act_'+Date.now()});
+  S.set('lhs:activities',acts);
 }
 
 async function updateOppStage(id,stage){
   const opps=S.get('lhs:opportunities')||[];
   const o=opps.find(x=>x.id===id);
+  const prevStage=o?.stage||'';
   if(o){o.stage=stage;o.updated_at=new Date().toISOString();S.set('lhs:opportunities',opps);}
-  const prob=stage==='Won'?100:stage==='Lost'?0:stage==='Negotiation'?75:stage==='Proposal Sent'?50:20;
+  const prob=stage==='Won'?100:stage==='Lost'?0:stage==='Negotiation'?75:stage==='Proposal Sent'?50:stage==='Estimate Sent'?40:stage==='Site Visit'?30:20;
   await dbUpdate('lhs:opportunities',id,{stage,probability:prob,updated_at:new Date().toISOString()});
-  tst(`Stage: ${stage}`,'success');openOpportunity(id);
+  // Auto-log stage change
+  if(prevStage!==stage){
+    autoLogActivity({
+      opportunity_id:id,customer_id:o?.customer_id||null,
+      activity_type:'Stage Changed',
+      notes:`Stage moved from "${prevStage}" to "${stage}"`,
+    }).catch(()=>{});
+  }
+  tst(`Stage: ${stage}`,'success');
+  openOpportunity(id);
 }
 
 function oppToWO(oppId){
