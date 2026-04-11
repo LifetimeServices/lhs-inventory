@@ -1636,6 +1636,7 @@ const TBL={
   'lhs:custom_reports':'lhs_custom_reports',
   'lhs:wo_tags':'lhs_wo_tags',
   'lhs:estimates':'lhs_estimates',
+  'lhs:compliance_reports':'lhs_compliance_reports',
   'lhs:permits':'lhs_permits',
   'lhs:props':'lhs_properties',
   'lhs:receipts':'lhs_receipts',
@@ -9764,55 +9765,670 @@ function bOpsAssignments(assigns,docs,users){
   </table></div></div>`:''}`;
 }
 
-// ── Compliance tab ────────────────────────────────────────────────────────────
-function bOpsCompliance(assigns,docs,users){
-  const today=new Date().toISOString().split('T')[0];
-  const total=assigns.length;
-  const completed=assigns.filter(a=>a.status==='completed').length;
-  const overdue=assigns.filter(a=>a.status!=='completed'&&a.due_date&&a.due_date<today).length;
-  const pending=assigns.filter(a=>a.status==='assigned'&&(!a.due_date||a.due_date>=today)).length;
-  const pct=total?Math.round(completed/total*100):0;
+// ── COMPANY COMPLIANCE REPORT SYSTEM ─────────────────────────────────────────
 
-  // Per-user compliance
-  const byUser={};
-  assigns.forEach(a=>{
-    if(!byUser[a.user_name]) byUser[a.user_name]={name:a.user_name,total:0,done:0,overdue:0};
-    byUser[a.user_name].total++;
-    if(a.status==='completed') byUser[a.user_name].done++;
-    if(a.status!=='completed'&&a.due_date&&a.due_date<today) byUser[a.user_name].overdue++;
+var CR_SECTIONS=[
+  {key:'safety',label:'Safety',items:[
+    'PPE functional, clean, and in use?',
+    'Corded tools/Extension cords non frayed and grounded?',
+    'First aid kit stocked and easily accessible? \u2014 Vehicle',
+    'First aid kit stocked and easily accessible? \u2014 Office',
+    'Fire extinguisher charged and within maintenance period? \u2014 Vehicle',
+    'Fire extinguisher charged and within maintenance period? \u2014 Office',
+    'Is the employee trained in proper use of fire extinguisher?',
+    'Did employee operate all tools safely?',
+    'Was employee workstation set up to prevent safety hazards?',
+    'Did employee check for existing safety hazards prior to start of work?',
+    'Updated SDS available and easily accessible?',
+    'Does employee know procedure for reporting injury? (Ask them to describe in detail)',
+    'Did the employee keep their work area free of any safety hazard either temporarily or permanently?'
+  ]},
+  {key:'quality',label:'Quality',items:[
+    'Does the installation conform to all state and local standards?',
+    'Was the installation optimized for the conditions of the specific location?',
+    'Were the interior and exterior workstations cleaned?',
+    'Did the materials used in the installation conform to company standards?',
+    'Does the employee have all standard materials available for the day?'
+  ]},
+  {key:'vehicle',label:'Vehicle',items:[
+    'Employee completed daily vehicle checklist.',
+    'WEX card is in card holder above driver visor.',
+    'Physical Enterprise maintenance card, Insurance, and registration is in the glovebox.',
+    'License & registration sticker correct.',
+    'GPS & Camera installed & confirmed working.',
+    'Enterprise app is loaded on employee issued iPad & can be accessed by employee.',
+    'Is vehicle maintenance current?',
+    'Is the vehicle free of defects that would make it unsafe for the driver or others?',
+    'Ladder rack works properly.',
+    'Doors operate properly including locks.',
+    'Hitch step or ramp secured & in working order.',
+    'Cowl is clean of debris.',
+    'Horn works.',
+    'Is the dashboard clear of any current or potential obstruction?',
+    'Are all vehicle decal stickers installed & in good standing?',
+    'Were orange cones deployed while parking at work location?'
+  ]},
+  {key:'storage',label:'Storage/Warehouse',items:[
+    'Were all points of egress free of any current or potential obstructions?',
+    'Were all points of egress in working conditions?',
+    'Were all points of egress clearly marked?',
+    'Were all points of egress secured or have ability to be locked?',
+    'Were the state & federal labor standards displayed in a visible location?',
+    'Fire extinguishers placed correctly & within compliance periods.',
+    'Is all garbage in approved disposal bins?',
+    'Utilities/Appliances are free of obstructions.',
+    'Electrical panels and boxes are free of obstructions per code.',
+    'All PPE areas are properly marked & enforced.',
+    'Tools & materials are properly secured & stored on shelves.',
+    'Lockout & tagout procedures are enforced.',
+    'Hazardous areas are marked.',
+    'General cleanliness of facility maintained.',
+    'Bathrooms are cleaned & maintained.',
+    'Free of safety hazards.'
+  ]},
+  {key:'office',label:'Office',items:[
+    'Were all points of egress free of any current or potential obstructions?',
+    'Were all points of egress in working conditions?',
+    'Were all points of egress clearly marked?',
+    'Were all points of egress secured or have ability to be locked?',
+    'Were the state & federal labor standards displayed in a visible location?',
+    'Is all garbage in approved disposal bins?',
+    'Are all company hygiene signs posted?',
+    'General cleanliness of facility maintained.',
+    'Bathrooms are cleaned & maintained.',
+    'Free of safety hazards.',
+    'Utilities & appliances free of obstructions.',
+    'Evacuation plans posted & shelter in place posted.',
+    'Fire extinguishers correctly placed & within compliance periods.',
+    'Employee only areas clearly marked.',
+    'Bathrooms labeled correctly.',
+    'Marketing material full & visible for customers.',
+    'Hours of operations & company logos posted by main entrances.'
+  ]},
+  {key:'customer_service',label:'Customer Service',items:[
+    'Did the employee treat the customers, occupants, & property with respect?',
+    'Throughout the installation did the employee answer all customer questions/concerns in a positive engaging manner?',
+    'Before installation, did the employee clearly explain the installation process and get customer approval?',
+    'Did the employee ask customer to provide a review for the service provided?',
+    'Did the employee inform the customer about other services we provide?'
+  ]},
+  {key:'dress_code',label:'Dress Code',items:[
+    'Did employee follow company dress code?',
+    'Was employee neat in appearance (well groomed, clean shaven, and following company jewelry policy)?',
+    'Was employee wearing company approved footwear?',
+    'Did employee wear company badge during initial consultation and final walkthrough?',
+    "Did employee wear shoe booties while in the customer's property?"
+  ]},
+  {key:'dispatch',label:'Dispatch/Job Closeout',items:[
+    'Is workorder status marked completed or additional appointment created?',
+    'Are all required pictures uploaded?',
+    'Are all required notes uploaded?',
+    'Are materials dispatched correctly?',
+    'Are all customer signatures collected?',
+    'Was payment collected?',
+    'If payment not collected, did they follow the notification process?',
+    'Did the employee dispatch correctly?',
+    'Did the employee "arrive" correctly?'
+  ]}
+];
+
+function _crScore(ans){
+  var yes=0,no=0;
+  for(var i=0;i<ans.length;i++){if(ans[i]==='Y')yes++;else if(ans[i]==='N')no++;}
+  var tot=yes+no;
+  return tot>0?Math.round(yes/tot*100):null;
+}
+
+function _crScoreColor(score){
+  if(score===null||score===undefined) return 'var(--muted)';
+  return score>=80?'#2E7D32':score>=60?'#E65100':'#C62828';
+}
+
+function _crScoreBadge(score){
+  if(score===null||score===undefined) return '<span style="color:var(--muted);font-size:12px">&#8212;</span>';
+  var color=_crScoreColor(score);
+  return '<span style="font-weight:700;color:'+color+'">'+score+'%</span>';
+}
+
+function _crSectionHTML(sec,answers){
+  var ans=answers||[];
+  var html='<div style="margin-bottom:24px;border:1px solid var(--bdr);border-radius:10px;overflow:hidden">';
+  html+='<div style="background:var(--navy);color:white;font-weight:700;font-size:13px;padding:10px 14px;letter-spacing:.03em">'+esc(sec.label)+'</div>';
+  html+='<table style="width:100%;border-collapse:collapse">';
+  for(var i=0;i<sec.items.length;i++){
+    var q=sec.items[i];
+    var cur=ans[i]||'';
+    var bg=i%2===0?'white':'var(--surf)';
+    html+='<tr style="background:'+bg+';border-bottom:1px solid var(--bdr)">';
+    html+='<td style="padding:9px 12px;font-size:13px;width:70%"><span style="color:var(--muted);font-size:11px;margin-right:6px">'+(i+1)+'.</span>'+esc(q)+'</td>';
+    html+='<td style="padding:9px 12px;white-space:nowrap;text-align:right">';
+    var opts=[{v:'Y',l:'Yes',c:'#2E7D32'},{v:'N',l:'No',c:'#C62828'},{v:'NA',l:'N/A',c:'#666'}];
+    for(var j=0;j<opts.length;j++){
+      var opt=opts[j];
+      var chk=cur===opt.v?' checked':'';
+      html+='<label style="margin-left:14px;cursor:pointer;font-size:13px;font-weight:600;color:'+opt.c+'">';
+      html+='<input type="radio" name="cr-'+sec.key+'-'+i+'" value="'+opt.v+'"'+chk+' style="margin-right:3px">';
+      html+=opt.l+'</label>';
+    }
+    html+='</td></tr>';
+  }
+  var yes=0,no=0;
+  for(var k=0;k<ans.length;k++){if(ans[k]==='Y')yes++;else if(ans[k]==='N')no++;}
+  var tot=yes+no;
+  var pct=tot>0?Math.round(yes/tot*100):null;
+  html+='</table>';
+  html+='<div style="display:flex;gap:20px;padding:8px 14px;background:#f8f9fa;border-top:2px solid var(--bdr);font-size:12px">';
+  html+='<span>Yes: <strong>'+yes+'</strong></span>';
+  html+='<span>No: <strong>'+no+'</strong></span>';
+  html+='<span>Score: '+_crScoreBadge(pct)+'</span>';
+  html+='</div></div>';
+  return html;
+}
+
+function _crReadSection(sectionKey,itemCount){
+  var ans=[];
+  for(var i=0;i<itemCount;i++){
+    var radios=document.querySelectorAll('input[name="cr-'+sectionKey+'-'+i+'"]');
+    var val='';
+    for(var j=0;j<radios.length;j++){if(radios[j].checked){val=radios[j].value;break;}}
+    ans.push(val);
+  }
+  return ans;
+}
+
+function _crReadAllAnswers(){
+  var answers={};
+  for(var i=0;i<CR_SECTIONS.length;i++){
+    var sec=CR_SECTIONS[i];
+    answers[sec.key]=_crReadSection(sec.key,sec.items.length);
+  }
+  return answers;
+}
+
+function _crCalcAllScores(answers){
+  var scores={};
+  for(var i=0;i<CR_SECTIONS.length;i++){
+    var sec=CR_SECTIONS[i];
+    scores[sec.key]=_crScore(answers[sec.key]||[]);
+  }
+  return scores;
+}
+
+function _crOverallScore(scores){
+  var vals=[];
+  for(var k in scores){if(scores[k]!==null&&scores[k]!==undefined)vals.push(scores[k]);}
+  if(!vals.length) return null;
+  return Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length);
+}
+
+function _crMonthLabel(ym){
+  var parts=ym.split('-');
+  var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[parseInt(parts[1])-1]+' '+parts[0];
+}
+
+function _crGetMonth(date){
+  return (date||'').substring(0,7);
+}
+
+if(!window._crView) window._crView='dashboard';
+if(!window._crActionItems) window._crActionItems=[];
+if(!window._crFilters) window._crFilters={};
+
+function bOpsCompliance(){
+  var crView=window._crView||'dashboard';
+  if(crView==='form') return bCrForm(window._crEditReport||null);
+  if(crView==='dashboard') return bCrDashboard();
+  return bCrDashboard();
+}
+
+function bCrDashboard(){
+  var reports=S.get('lhs:compliance_reports')||[];
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var requiredUsers=users.filter(function(u){return u.compliance_required;});
+  var f=window._crFilters||{};
+
+  // Current + prev 2 months
+  var now=new Date();
+  var months=[];
+  for(var m=2;m>=0;m--){
+    var d=new Date(now.getFullYear(),now.getMonth()-m,1);
+    months.push(d.getFullYear()+'-'+(d.getMonth()+1<10?'0':'')+(d.getMonth()+1));
+  }
+  var curMonth=months[months.length-1];
+
+  // Apply filters
+  var filtered=reports;
+  if(f.region) filtered=filtered.filter(function(r){return r.region===f.region;});
+  if(f.state) filtered=filtered.filter(function(r){return r.state===f.state;});
+  if(f.territory) filtered=filtered.filter(function(r){return r.territory===f.territory;});
+  if(f.division) filtered=filtered.filter(function(r){return r.division===f.division;});
+  if(f.manager) filtered=filtered.filter(function(r){return r.manager_name===f.manager;});
+  if(f.employee) filtered=filtered.filter(function(r){return r.employee_name===f.employee;});
+  if(f.dateFrom) filtered=filtered.filter(function(r){return r.report_date>=f.dateFrom;});
+  if(f.dateTo) filtered=filtered.filter(function(r){return r.report_date<=f.dateTo;});
+
+  // Stats for current month
+  var thisMonthReports=reports.filter(function(r){return _crGetMonth(r.report_date)===curMonth;});
+  var requiredCount=requiredUsers.length;
+  var submittedThisMonth=thisMonthReports.length;
+  var onTrack=submittedThisMonth;
+  var missing=Math.max(0,requiredCount-submittedThisMonth);
+
+  // Monthly grid: for each required employee, show status per month
+  var empMonthMap={};
+  reports.forEach(function(r){
+    var key=r.employee_name+'|'+_crGetMonth(r.report_date);
+    if(!empMonthMap[key]||r.overall_score>empMonthMap[key].overall_score) empMonthMap[key]=r;
   });
 
-  return`
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px">
-    ${[
-      {label:'Overall Completion',val:pct+'%',sub:`${completed} of ${total} assigned`,color:'#2E7D32',bg:'#E8F5E9'},
-      {label:'Completed',val:completed,sub:'assignments done',color:'#2E7D32',bg:'#E8F5E9'},
-      {label:'Overdue',val:overdue,sub:'need attention now',color:'#C62828',bg:'#FFEBEE'},
-      {label:'Pending',val:pending,sub:'not yet started',color:'#1565C0',bg:'#E3F2FD'},
-    ].map(s=>`<div style="background:${s.bg};border-radius:12px;padding:18px">
-      <div style="font-size:28px;font-weight:800;color:${s.color}">${s.val}</div>
-      <div style="font-weight:700;font-size:13px;color:${s.color}">${s.label}</div>
-      <div style="font-size:11px;color:${s.color};opacity:.75;margin-top:2px">${s.sub}</div>
-    </div>`).join('')}
-  </div>
-  ${Object.keys(byUser).length?`
-  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Compliance by Employee</div>
-  <div class="card" style="padding:0"><div class="tw"><table>
-    <thead><tr><th>Employee</th><th>Assigned</th><th>Completed</th><th>Overdue</th><th>Rate</th></tr></thead>
-    <tbody>${Object.values(byUser).sort((a,b)=>b.overdue-a.overdue).map(u=>`<tr>
-      <td style="font-weight:600">${esc(u.name)}</td>
-      <td style="text-align:center">${u.total}</td>
-      <td style="text-align:center;color:#2E7D32;font-weight:600">${u.done}</td>
-      <td style="text-align:center;color:${u.overdue?'#C62828':'var(--muted)'};font-weight:${u.overdue?'700':'400'}">${u.overdue||'—'}</td>
-      <td>
-        <div style="background:#E5E7EB;border-radius:4px;height:8px;width:100%;min-width:80px">
-          <div style="background:${u.overdue?'#C62828':'#2E7D32'};height:8px;border-radius:4px;width:${u.total?Math.round(u.done/u.total*100):0}%"></div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${u.total?Math.round(u.done/u.total*100):0}%</div>
-      </td>
-    </tr>`).join('')}
-    </tbody>
-  </table></div></div>`:'<div style="color:var(--muted);font-size:13px">No assignment data yet.</div>'}`;
+  var html='';
+  html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">';
+  html+='<div style="font-size:18px;font-weight:700;color:var(--navy)">Compliance Reports</div>';
+  html+='<button class="btn btn-n" onclick="window._crView=\'form\';window._crEditReport=null;window._crActionItems=[];showPage(\'operations\')">+ New Compliance Report</button>';
+  html+='</div>';
+
+  // Stats cards
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">';
+  var stats=[
+    {l:'Reports This Month',v:submittedThisMonth,c:'#1565C0',bg:'#E3F2FD'},
+    {l:'Required Employees',v:requiredCount,c:'#E65100',bg:'#FFF3E0'},
+    {l:'On Track',v:onTrack,c:'#2E7D32',bg:'#E8F5E9'},
+    {l:'Missing This Month',v:missing,c:missing?'#C62828':'#2E7D32',bg:missing?'#FFEBEE':'#E8F5E9'}
+  ];
+  stats.forEach(function(s){
+    html+='<div style="background:'+s.bg+';border-radius:10px;padding:16px">';
+    html+='<div style="font-size:28px;font-weight:800;color:'+s.c+'">'+s.v+'</div>';
+    html+='<div style="font-weight:600;font-size:12px;color:'+s.c+';margin-top:2px">'+s.l+'</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+
+  // Filters
+  var allManagers=[...new Set(reports.map(function(r){return r.manager_name||'';}).filter(Boolean))].sort();
+  var allEmployees=[...new Set(reports.map(function(r){return r.employee_name||'';}).filter(Boolean))].sort();
+  var regionKeys=Object.keys(REGIONS).sort();
+  html+='<div style="background:var(--surf);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">';
+  html+='<div class="fl" style="margin:0;min-width:110px"><label>Region</label><select id="cr-f-region" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"><option value="">All</option>';
+  regionKeys.forEach(function(rn){html+='<option value="'+esc(rn)+'"'+(f.region===rn?' selected':'')+'>'+esc(rn)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl" style="margin:0;min-width:80px"><label>State</label><select id="cr-f-state" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"><option value="">All</option>';
+  var allStates=[];var rk=Object.keys(REGIONS);for(var ri=0;ri<rk.length;ri++){var sts=REGIONS[rk[ri]].states||[];for(var si=0;si<sts.length;si++){if(allStates.indexOf(sts[si])<0)allStates.push(sts[si]);}}allStates.sort();
+  allStates.forEach(function(st){html+='<option value="'+st+'"'+(f.state===st?' selected':'')+'>'+st+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl" style="margin:0;min-width:120px"><label>Division</label><select id="cr-f-division" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"><option value="">All</option>';
+  DIVS.forEach(function(d){html+='<option value="'+esc(d)+'"'+(f.division===d?' selected':'')+'>'+esc(d)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl" style="margin:0;min-width:140px"><label>Manager</label><select id="cr-f-manager" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"><option value="">All</option>';
+  allManagers.forEach(function(m){html+='<option value="'+esc(m)+'"'+(f.manager===m?' selected':'')+'>'+esc(m)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl" style="margin:0;min-width:140px"><label>Employee</label><select id="cr-f-employee" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"><option value="">All</option>';
+  allEmployees.forEach(function(e){html+='<option value="'+esc(e)+'"'+(f.employee===e?' selected':'')+'>'+esc(e)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl" style="margin:0;min-width:120px"><label>Date From</label><input type="date" id="cr-f-from" value="'+(f.dateFrom||'')+'" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"></div>';
+  html+='<div class="fl" style="margin:0;min-width:120px"><label>Date To</label><input type="date" id="cr-f-to" value="'+(f.dateTo||'')+'" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px"></div>';
+  html+='<button class="btn btn-n sm" onclick="crApplyFilters()">Filter</button>';
+  html+='<button class="btn btn-o sm" onclick="crClearFilters()">Clear</button>';
+  html+='</div>';
+
+  // Monthly compliance grid (required employees)
+  if(requiredUsers.length){
+    html+='<div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--navy)">Monthly Compliance Monitor</div>';
+    html+='<div class="card" style="padding:0;margin-bottom:20px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">';
+    html+='<thead><tr style="background:var(--navy)">';
+    html+='<th style="padding:9px 14px;text-align:left;color:white;font-size:11px">Employee</th>';
+    html+='<th style="padding:9px 14px;text-align:left;color:white;font-size:11px">Manager</th>';
+    months.forEach(function(m){html+='<th style="padding:9px 14px;text-align:center;color:white;font-size:11px">'+_crMonthLabel(m)+'</th>';});
+    html+='</tr></thead><tbody>';
+    requiredUsers.forEach(function(u,idx){
+      html+='<tr style="border-bottom:1px solid var(--bdr);background:'+(idx%2===0?'white':'var(--surf)')+'">';
+      html+='<td style="padding:9px 14px;font-weight:600">'+esc(u.name||'')+'</td>';
+      html+='<td style="padding:9px 14px;color:var(--muted);font-size:12px">'+esc(u.manager||'&#8212;')+'</td>';
+      months.forEach(function(m){
+        var key=(u.name||'')+'|'+m;
+        var rpt=empMonthMap[key];
+        var cell='';
+        if(rpt){
+          var sc=rpt.overall_score;
+          var color=_crScoreColor(sc);
+          cell='<div style="display:inline-flex;align-items:center;gap:4px;cursor:pointer" onclick="oCrReview(\''+rpt.id+'\')"><span style="width:10px;height:10px;border-radius:50%;background:'+color+';display:inline-block"></span><span style="font-size:12px;font-weight:600;color:'+color+'">'+sc+'%</span></div>';
+        } else if(m<=curMonth){
+          cell='<span style="font-size:11px;color:#C62828;font-weight:600">Missing</span>';
+        } else {
+          cell='<span style="color:var(--muted);font-size:11px">&#8212;</span>';
+        }
+        html+='<td style="padding:9px 14px;text-align:center">'+cell+'</td>';
+      });
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+  }
+
+  // Recent reports table
+  html+='<div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--navy)">All Reports ('+filtered.length+')</div>';
+  if(!filtered.length){
+    html+='<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No compliance reports found. Click &quot;+ New Compliance Report&quot; to get started.</div>';
+  } else {
+    html+='<div class="card" style="padding:0"><div class="tw"><table style="font-size:13px">';
+    html+='<thead><tr style="background:var(--navy)">';
+    ['Date','Employee','Manager','Division','Region','State','Overall Score','Actions'].forEach(function(h){
+      html+='<th style="padding:8px 12px;text-align:left;color:white;font-size:11px;font-weight:600;text-transform:uppercase">'+h+'</th>';
+    });
+    html+='</tr></thead><tbody>';
+    var sorted=filtered.slice().sort(function(a,b){return (b.report_date||'')>(a.report_date||'')?1:-1;});
+    sorted.forEach(function(r,idx){
+      var sc=r.overall_score;
+      var color=_crScoreColor(sc);
+      html+='<tr style="border-bottom:1px solid var(--bdr);background:'+(idx%2===0?'white':'var(--surf)')+'">';
+      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.report_date||'')+'</td>';
+      html+='<td style="padding:8px 12px;font-weight:600">'+esc(r.employee_name||'')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px;color:var(--muted)">'+esc(r.manager_name||'&#8212;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.division||'&#8212;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.region||'&#8212;')+'</td>';
+      html+='<td style="padding:8px 12px;font-size:12px">'+esc(r.state||'&#8212;')+'</td>';
+      html+='<td style="padding:8px 12px"><span style="font-weight:700;font-size:13px;color:'+color+'">'+(sc!==null&&sc!==undefined?sc+'%':'&#8212;')+'</span></td>';
+      html+='<td style="padding:8px 12px;white-space:nowrap">';
+      html+='<button class="btn sm btn-o" onclick="oCrReview(\''+r.id+'\')">View</button> ';
+      html+='<button class="btn sm btn-o" onclick="crEdit(\''+r.id+'\')">Edit</button> ';
+      html+='<button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="delComplianceReport(\''+r.id+'\')">Del</button>';
+      html+='</td></tr>';
+    });
+    html+='</tbody></table></div></div>';
+  }
+  return html;
+}
+
+function crApplyFilters(){
+  window._crFilters={
+    region:document.getElementById('cr-f-region')&&document.getElementById('cr-f-region').value||'',
+    state:document.getElementById('cr-f-state')&&document.getElementById('cr-f-state').value||'',
+    division:document.getElementById('cr-f-division')&&document.getElementById('cr-f-division').value||'',
+    manager:document.getElementById('cr-f-manager')&&document.getElementById('cr-f-manager').value||'',
+    employee:document.getElementById('cr-f-employee')&&document.getElementById('cr-f-employee').value||'',
+    dateFrom:document.getElementById('cr-f-from')&&document.getElementById('cr-f-from').value||'',
+    dateTo:document.getElementById('cr-f-to')&&document.getElementById('cr-f-to').value||''
+  };
+  showPage('operations');
+}
+
+function crClearFilters(){
+  window._crFilters={};
+  showPage('operations');
+}
+
+function crEdit(id){
+  var reports=S.get('lhs:compliance_reports')||[];
+  var rpt=reports.find(function(r){return r.id===id;});
+  if(!rpt) return;
+  var ai=[];
+  try{ai=typeof rpt.action_items==='string'?JSON.parse(rpt.action_items):(rpt.action_items||[]);}catch(e){ai=[];}
+  window._crEditReport=rpt;
+  window._crActionItems=ai;
+  window._crView='form';
+  showPage('operations');
+}
+
+function bCrForm(rpt){
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var answers={};
+  try{answers=rpt?(typeof rpt.answers==='string'?JSON.parse(rpt.answers):(rpt.answers||{})):{};} catch(e){answers={};}
+  var ai=window._crActionItems||[];
+  var today=new Date().toISOString().split('T')[0];
+  var territories=[...new Set((S.get('lhs:territories')||[]).map(function(t){return t.name||'';}).filter(Boolean))].sort();
+
+  var html='';
+  html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+  html+='<button class="btn btn-o sm" onclick="window._crView=\'dashboard\';window._crEditReport=null;showPage(\'operations\')">&#8592; Back</button>';
+  html+='<div style="font-size:18px;font-weight:700;color:var(--navy)">'+(rpt?'Edit':'New')+' Compliance Report</div>';
+  html+='</div>';
+
+  // Header fields
+  html+='<div class="card" style="padding:16px;margin-bottom:20px">';
+  html+='<div class="fr" style="gap:12px;flex-wrap:wrap">';
+  html+='<div class="fl"><label>Manager *</label><select id="cr-manager" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; Select &#8212;</option>';
+  users.forEach(function(u){var sel=rpt&&rpt.manager_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Employee *</label><select id="cr-employee" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; Select &#8212;</option>';
+  users.forEach(function(u){var sel=rpt&&rpt.employee_name===u.name?' selected':'';html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Date *</label><input type="date" id="cr-date" value="'+(rpt?rpt.report_date:today)+'" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"></div>';
+  html+='</div>';
+  html+='<div class="fr" style="gap:12px;flex-wrap:wrap;margin-top:10px">';
+  html+='<div class="fl"><label>Region</label><select id="cr-region" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; None &#8212;</option>';
+  Object.keys(REGIONS).sort().forEach(function(rn){var sel=rpt&&rpt.region===rn?' selected':'';html+='<option value="'+esc(rn)+'"'+sel+'>'+esc(rn)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>State</label><select id="cr-state" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; None &#8212;</option>';
+  var allStates2=[];var rk2=Object.keys(REGIONS);for(var ri2=0;ri2<rk2.length;ri2++){var sts2=REGIONS[rk2[ri2]].states||[];for(var si2=0;si2<sts2.length;si2++){if(allStates2.indexOf(sts2[si2])<0)allStates2.push(sts2[si2]);}}allStates2.sort();
+  allStates2.forEach(function(st){var sel=rpt&&rpt.state===st?' selected':'';html+='<option value="'+st+'"'+sel+'>'+st+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Territory</label><select id="cr-territory" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; None &#8212;</option>';
+  territories.forEach(function(t){var sel=rpt&&rpt.territory===t?' selected':'';html+='<option value="'+esc(t)+'"'+sel+'>'+esc(t)+'</option>';});
+  html+='</select></div>';
+  html+='<div class="fl"><label>Division</label><select id="cr-division" style="padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%"><option value="">&#8212; None &#8212;</option>';
+  DIVS.forEach(function(d){var sel=rpt&&rpt.division===d?' selected':'';html+='<option value="'+esc(d)+'"'+sel+'>'+esc(d)+'</option>';});
+  html+='</select></div>';
+  html+='</div></div>';
+
+  // Sections
+  for(var i=0;i<CR_SECTIONS.length;i++){
+    html+=_crSectionHTML(CR_SECTIONS[i],answers[CR_SECTIONS[i].key]||[]);
+  }
+
+  // Action Plan
+  html+='<div class="card" style="padding:16px;margin-bottom:20px">';
+  html+='<div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:12px;border-bottom:2px solid var(--navy);padding-bottom:6px">Action Plan</div>';
+  html+='<div id="cr-action-rows">';
+  html+=_crActionItemsHTML(ai,users);
+  html+='</div>';
+  html+='<button class="btn btn-o sm" onclick="crAddActionRow()" style="margin-top:8px">+ Add Action Item</button>';
+  html+='</div>';
+
+  // Save
+  html+='<div style="display:flex;gap:10px;margin-bottom:32px">';
+  html+='<button class="btn btn-n" onclick="svComplianceReport()">Save Report</button>';
+  html+='<button class="btn btn-o" onclick="window._crView=\'dashboard\';window._crEditReport=null;showPage(\'operations\')">Cancel</button>';
+  html+='</div>';
+
+  // Load data async
+  setTimeout(function(){
+    var rpts=S.get('lhs:compliance_reports')||[];
+    if(!rpts.length){
+      DB.from('lhs_compliance_reports').select('*').order('report_date',{ascending:false}).then(function(res){
+        if(res.data&&res.data.length){S.set('lhs:compliance_reports',res.data);}
+      });
+    }
+  },0);
+
+  return html;
+}
+
+function _crActionItemsHTML(items,users){
+  var html='';
+  var usrs=users||(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  for(var i=0;i<items.length;i++){
+    var item=items[i];
+    var assignees=item.assignees||[];
+    html+='<div style="display:flex;gap:8px;align-items:flex-start;padding:8px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;margin-bottom:6px" id="cr-ai-row-'+i+'">';
+    html+='<div style="flex:3"><label style="font-size:11px;color:var(--muted)">Action Item</label>';
+    html+='<input style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px" value="'+esc(item.item||'')+'" oninput="window._crActionItems['+i+'].item=this.value" placeholder="Describe the action required..."></div>';
+    html+='<div style="flex:2"><label style="font-size:11px;color:var(--muted)">Assigned To</label>';
+    html+='<select multiple style="width:100%;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;height:60px" onchange="crUpdateAssignees('+i+',this)">';
+    usrs.forEach(function(u){
+      var sel=assignees.indexOf(u.name)>=0?' selected':'';
+      html+='<option value="'+esc(u.name)+'"'+sel+'>'+esc(u.name)+'</option>';
+    });
+    html+='</select></div>';
+    html+='<div style="flex:1"><label style="font-size:11px;color:var(--muted)">Due Date</label>';
+    html+='<input type="date" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px" value="'+(item.due_date||'')+'" onchange="window._crActionItems['+i+'].due_date=this.value"></div>';
+    html+='<div style="padding-top:18px"><button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="crRemoveActionRow('+i+')">&times;</button></div>';
+    html+='</div>';
+  }
+  return html||'<div style="color:var(--muted);font-size:12px;padding:8px">No action items added yet.</div>';
+}
+
+function crAddActionRow(){
+  if(!window._crActionItems) window._crActionItems=[];
+  window._crActionItems.push({item:'',assignees:[],due_date:''});
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var el=document.getElementById('cr-action-rows');
+  if(el) el.innerHTML=_crActionItemsHTML(window._crActionItems,users);
+}
+
+function crRemoveActionRow(i){
+  if(!window._crActionItems) return;
+  window._crActionItems.splice(i,1);
+  var users=(S.get('lhs:users')||[]).filter(function(u){return u.active!==false;});
+  var el=document.getElementById('cr-action-rows');
+  if(el) el.innerHTML=_crActionItemsHTML(window._crActionItems,users);
+}
+
+function crUpdateAssignees(i,sel){
+  if(!window._crActionItems||!window._crActionItems[i]) return;
+  var selected=[];
+  for(var j=0;j<sel.options.length;j++){if(sel.options[j].selected)selected.push(sel.options[j].value);}
+  window._crActionItems[i].assignees=selected;
+}
+
+async function svComplianceReport(){
+  var manager=document.getElementById('cr-manager')&&document.getElementById('cr-manager').value||'';
+  var employee=document.getElementById('cr-employee')&&document.getElementById('cr-employee').value||'';
+  var date=document.getElementById('cr-date')&&document.getElementById('cr-date').value||'';
+  if(!employee||!date){tst('Employee and Date are required','error');return;}
+  var answers=_crReadAllAnswers();
+  var scores=_crCalcAllScores(answers);
+  var overall=_crOverallScore(scores);
+  var actionItems=window._crActionItems||[];
+  var now=new Date().toISOString();
+  var rpt={
+    report_date:date,
+    report_month:date.substring(0,7),
+    manager_name:manager,
+    employee_name:employee,
+    division:document.getElementById('cr-division')&&document.getElementById('cr-division').value||null,
+    region:document.getElementById('cr-region')&&document.getElementById('cr-region').value||null,
+    state:document.getElementById('cr-state')&&document.getElementById('cr-state').value||null,
+    territory:document.getElementById('cr-territory')&&document.getElementById('cr-territory').value||null,
+    answers:JSON.stringify(answers),
+    scores:JSON.stringify(scores),
+    overall_score:overall,
+    action_items:JSON.stringify(actionItems),
+    status:'Submitted',
+    created_by:CU&&CU.name||'',
+    updated_at:now
+  };
+  var editId=window._crEditReport&&window._crEditReport.id||null;
+  var reports=S.get('lhs:compliance_reports')||[];
+  try{
+    if(editId){
+      var idx=reports.findIndex(function(r){return r.id===editId;});
+      if(idx>=0){Object.assign(reports[idx],rpt);}
+      S.set('lhs:compliance_reports',reports);
+      try{await DB.from('lhs_compliance_reports').update(rpt).eq('id',editId);}catch(e){console.warn('cr update:',e&&e.message);}
+    } else {
+      rpt.created_at=now;
+      var saved=await dbInsert('lhs:compliance_reports',rpt);
+      if(saved){rpt.id=saved.id;}else{rpt.id='cr_'+Date.now();}
+      reports.push(rpt);
+      S.set('lhs:compliance_reports',reports);
+    }
+    // Create tasks for action items
+    var tasks=S.get('lhs:tasks')||[];
+    for(var i=0;i<actionItems.length;i++){
+      var ai=actionItems[i];
+      if(!ai.item||!ai.assignees||!ai.assignees.length) continue;
+      for(var j=0;j<ai.assignees.length;j++){
+        var assigneeName=ai.assignees[j];
+        var assigneeUser=(S.get('lhs:users')||[]).find(function(u){return u.name===assigneeName;});
+        var task={
+          assigned_to_email:assigneeUser&&assigneeUser.email||'',
+          assigned_to_name:assigneeName,
+          assigned_by:CU&&CU.name||'',
+          title:'Compliance Action: '+ai.item,
+          description:'From compliance report for '+employee+' on '+date+'. Compliance action item requiring follow-up.',
+          due_date:ai.due_date||null,
+          priority:'High',
+          status:'Open',
+          created_at:now,
+          updated_at:now
+        };
+        tasks.push(Object.assign({},task,{id:'task_'+Date.now()+'_'+j}));
+        try{await DB.from('lhs_tasks').insert(task);}catch(e){console.warn('task insert:',e&&e.message);}
+        if(assigneeUser&&assigneeUser.email){
+          try{await sendNotification({user_email:assigneeUser.email,user_name:assigneeName,type:'task',title:'Compliance Action: '+ai.item,body:'Assigned by '+manager+' \u2014 Compliance report for '+employee,from_user:manager});}catch(e){}
+        }
+      }
+    }
+    S.set('lhs:tasks',tasks);
+    tst('Compliance report saved','success');
+    window._crView='dashboard';
+    window._crEditReport=null;
+    window._crActionItems=[];
+    showPage('operations');
+  } catch(e){
+    tst('Save failed: '+(e&&e.message||'unknown error'),'error');
+    console.warn('svComplianceReport:',e&&e.message);
+  }
+}
+
+async function delComplianceReport(id){
+  if(!confirm('Delete this compliance report? This cannot be undone.')) return;
+  var reports=S.get('lhs:compliance_reports')||[];
+  S.set('lhs:compliance_reports',reports.filter(function(r){return r.id!==id;}));
+  try{await DB.from('lhs_compliance_reports').delete().eq('id',id);}catch(e){console.warn('cr delete:',e&&e.message);}
+  tst('Report deleted','success');
+  showPage('operations');
+}
+
+function oCrReview(id){
+  var reports=S.get('lhs:compliance_reports')||[];
+  var rpt=reports.find(function(r){return r.id===id;});
+  if(!rpt) return;
+  var answers={};var scores={};var ai=[];
+  try{answers=typeof rpt.answers==='string'?JSON.parse(rpt.answers):(rpt.answers||{});}catch(e){answers={};}
+  try{scores=typeof rpt.scores==='string'?JSON.parse(rpt.scores):(rpt.scores||{});}catch(e){scores={};}
+  try{ai=typeof rpt.action_items==='string'?JSON.parse(rpt.action_items):(rpt.action_items||[]);}catch(e){ai=[];}
+
+  var html='<div style="font-size:12px;color:var(--muted);margin-bottom:12px">'+esc(rpt.report_date||'')+' \u00b7 Manager: '+esc(rpt.manager_name||'&#8212;')+' \u00b7 '+esc(rpt.division||'&#8212;')+'</div>';
+
+  // Scoring summary table
+  html+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">';
+  html+='<thead><tr style="background:var(--navy)"><th style="padding:7px 10px;color:white;text-align:left">Category</th><th style="padding:7px 10px;color:white;text-align:center">Score</th></tr></thead><tbody>';
+  var scoreSum=0;var scoreCt=0;
+  CR_SECTIONS.forEach(function(sec,idx){
+    var sc=scores[sec.key];
+    var color=_crScoreColor(sc);
+    html+='<tr style="background:'+(idx%2===0?'white':'var(--surf)')+';border-bottom:1px solid var(--bdr)">';
+    html+='<td style="padding:7px 10px">'+esc(sec.label)+'</td>';
+    html+='<td style="padding:7px 10px;text-align:center;font-weight:700;color:'+color+'">'+(sc!==null&&sc!==undefined?sc+'%':'&#8212;')+'</td>';
+    html+='</tr>';
+    if(sc!==null&&sc!==undefined){scoreSum+=sc;scoreCt++;}
+  });
+  var overall=scoreCt>0?Math.round(scoreSum/scoreCt):null;
+  html+='<tr style="background:var(--navy)"><td style="padding:7px 10px;color:white;font-weight:700">Overall Grade</td>';
+  html+='<td style="padding:7px 10px;text-align:center;color:white;font-weight:800;font-size:16px">'+(overall!==null?overall+'%':'&#8212;')+'</td></tr>';
+  html+='</tbody></table>';
+
+  // Sections with answers
+  CR_SECTIONS.forEach(function(sec){
+    html+=_crSectionHTML(sec,answers[sec.key]||[]);
+  });
+
+  // Action items
+  if(ai.length){
+    html+='<div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:8px">Action Plan</div>';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">';
+    html+='<thead><tr style="background:var(--navy)"><th style="padding:7px 10px;color:white;text-align:left">Action Item</th><th style="padding:7px 10px;color:white">Assigned To</th><th style="padding:7px 10px;color:white">Due Date</th></tr></thead><tbody>';
+    ai.forEach(function(a,i){
+      html+='<tr style="background:'+(i%2===0?'white':'var(--surf)')+';border-bottom:1px solid var(--bdr)">';
+      html+='<td style="padding:7px 10px">'+esc(a.item||'')+'</td>';
+      html+='<td style="padding:7px 10px">'+esc((a.assignees||[]).join(', '))+'</td>';
+      html+='<td style="padding:7px 10px;font-size:12px;color:var(--muted)">'+esc(a.due_date||'&#8212;')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+  }
+
+  oMod('Compliance Report \u2014 '+esc(rpt.employee_name||''),html);
 }
 
 // ── Add / Edit document modal ─────────────────────────────────────────────────
@@ -28612,6 +29228,12 @@ function _hrEmployeeForm(u, saveFn){
       <option value="true"${u.active!==false?'selected':''}>Active</option>
       <option value="false"${u.active===false?'selected':''}>Inactive</option>
     </select></div>
+    <div class="fl"><label>Compliance Report Required</label>
+      <select id="hef-compliance-req">
+        <option value="false"${!u.compliance_required?' selected':''}>No</option>
+        <option value="true"${u.compliance_required?' selected':''}>Yes &#8212; Monthly</option>
+      </select>
+    </div>
   </div>
 
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Time Off Approval Chain</div>
@@ -28744,6 +29366,7 @@ function _hrEmployeePayload(){
     include_dispatch:document.getElementById('hef-disp')?.value!=='false',
     timesheet_needed:document.getElementById('hef-ts')?.value!=='false',
     active:document.getElementById('hef-active')?.value!=='false',
+    compliance_required:document.getElementById('hef-compliance-req')?.value==='true',
     approver_1_email:v('hef-apr1')||null,
     approver_1_name:(()=>{const e=v('hef-apr1');return e?(S.get('lhs:users')||[]).find(u=>u.email===e)?.name||null:null;})(),
     approver_2_email:v('hef-apr2')||null,
