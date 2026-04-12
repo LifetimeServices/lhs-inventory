@@ -1782,33 +1782,32 @@ async function warmCache(){
       'lhs_wlm_exposures','lhs_calendar_events','lhs_grey_blocks',
       'lhs_scheduled_reports','lhs_custom_reports',
     ];
-    // Load WOs — paginated in 1000-row batches (Supabase caps single requests at 1000 rows).
-    // Clear any stale/poisoned [] from a previous failed load so S.get never returns empty array.
-    try{localStorage.removeItem('lhs:work_orders');}catch{}
+    // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
+    // DO NOT clear localStorage here — stale-while-revalidate relies on it for fast initial render.
+    // Only clear the in-memory slot so the fresh fetch always wins over any mid-session stale value.
     delete _C['lhs:work_orders'];
     try{
-      const WO_PAGE=1000;   // Supabase default max rows per request
-      const WO_MAX=25000;   // stop paginating after this many (safety ceiling)
-      let allWOData=[];
-      let page=0;
-      let keepGoing=true;
-      while(keepGoing&&allWOData.length<WO_MAX){
-        const from=page*WO_PAGE;
-        const to=from+WO_PAGE-1;
-        const{data,error}=await DB.from(WO_TBL).select('*')
+      const WO_PAGE=1000;
+      // Step 1: lightweight count so we know exactly how many pages to fire
+      const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
+      const pages=count?Math.ceil(count/WO_PAGE):1;
+      // Step 2: fire all page requests in parallel — browser queues them across 6 connections
+      const pageReqs=Array.from({length:pages},(_,i)=>
+        DB.from(WO_TBL).select('*')
           .order('created_at',{ascending:false,nullsFirst:false})
-          .range(from,to);
-        if(error){console.warn('WO page load error:',error.message);break;}
-        if(!data||data.length===0){keepGoing=false;break;}
-        allWOData=allWOData.concat(data);
-        if(data.length<WO_PAGE) keepGoing=false; // last page
-        page++;
+          .range(i*WO_PAGE,(i+1)*WO_PAGE-1)
+      );
+      const results=await Promise.all(pageReqs);
+      // Step 3: merge pages in order (already sorted by created_at desc per page)
+      let allWOData=[];
+      for(const{data,error} of results){
+        if(!error&&data) allWOData=allWOData.concat(data);
       }
       if(allWOData.length){
         S.set('lhs:work_orders',allWOData);
         console.log(`WOs loaded: ${allWOData.length}`);
       } else {
-        console.warn('WO load returned 0 rows');
+        console.warn('WO load returned 0 rows — count:',count);
       }
     }catch(e){console.warn('WO load failed:',e.message);}
 
