@@ -1749,12 +1749,13 @@ async function warmCache(){
       'lhs_permits':500,'lhs_receipts':500,'lhs_tester_deployments':500,
       'lhs_cross_checks':1000,'lhs_alpha_results':1000,'lhs_crm_cross_checks':500,
     };
-    // FAST (blocking ~10 queries): only what's needed to render the app shell
-    // LAZY (3s delay, batched): everything else loads quietly in the background
+    // FAST (blocking): tables needed to render any page the user might land on
+    // LAZY (delayed): heavy/infrequently-used tables that load quietly in background
+    // Core CRM tables (leads, opps, estimates, payments, tasks) are FAST so navigating
+    // to those sections immediately after login shows real data, not empty cache.
     const LAZY_TBLS=[
-      // ── Section-specific — only needed when user navigates there ───────────
-      'lhs_items','lhs_leads','lhs_opportunities','lhs_estimates',
-      'lhs_payments','lhs_tasks',
+      // ── Inventory / purchasing — only needed in inv sections ──────────────
+      'lhs_items',
       'lhs_location_stock','lhs_van_inventory','lhs_purchase_orders','lhs_po_lines',
       'lhs_transfers','lhs_rmas','lhs_vendors',
       'lhs_permits','lhs_receipts','lhs_tester_deployments','lhs_testers',
@@ -1846,9 +1847,18 @@ async function warmCache(){
     const lazyEntries=Object.entries(TBL).filter(([,tbl])=>LAZY_TBLS.includes(tbl));
     const fastLoads=fastEntries.map(_loadTbl);
     await Promise.all(fastLoads);
-    // Kick off lazy tables after a 4s delay so foreground actions aren't starved
-    // Browser has ~6 connections per host — firing 40+ at once blocks user interactions
-    setTimeout(()=>{ Promise.all(lazyEntries.map(_loadTbl)).catch(()=>{}); }, 4000);
+    // Kick off lazy tables after a 2s delay so foreground actions aren't starved.
+    // When done, re-render the active page so any lazy data that just arrived is visible.
+    setTimeout(async()=>{
+      try{ await Promise.all(lazyEntries.map(_loadTbl)); }catch{}
+      // Re-render active page with fresh lazy data (only if no modal is open)
+      if(!CU) return;
+      if(document.getElementById('mod')?.style.display==='flex') return;
+      const activePg=document.querySelector('.page.active');
+      if(!activePg) return;
+      const pgId=activePg.id?.replace(/^p-/,'');
+      if(pgId){try{const fresh=buildPage(pgId);if(fresh) activePg.innerHTML=fresh;}catch{}}
+    }, 2000);
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
