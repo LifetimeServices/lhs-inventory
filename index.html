@@ -1782,15 +1782,17 @@ async function warmCache(){
       'lhs_wlm_exposures','lhs_calendar_events','lhs_grey_blocks',
       'lhs_scheduled_reports','lhs_custom_reports',
     ];
-    const woLoad=(async()=>{
-      try{
-        // Load all WOs — ServiceTitan imports have 2024 created_at but current appointments,
-        // so a hard row cap would exclude them. Supabase handles this fine as a single query.
-        const{data,error}=await DB.from(WO_TBL).select('*')
-          .order('created_at',{ascending:false,nullsFirst:false}).limit(15000);
-        if(!error&&data&&data.length) S.set('lhs:work_orders',data);
-      }catch(e){console.warn('WO load failed:',e.message);}
-    })();
+    // Load WOs — awaited so tag-map code below doesn't overwrite with [] before data arrives
+    try{
+      const{data,error}=await DB.from(WO_TBL).select('*')
+        .order('created_at',{ascending:false,nullsFirst:false}).limit(15000);
+      if(!error&&data&&data.length){
+        S.set('lhs:work_orders',data);
+        console.log(`WOs loaded: ${data.length}`);
+      } else {
+        console.warn('WO load issue — error:',error?.message,'rows:',data?.length??'null');
+      }
+    }catch(e){console.warn('WO load failed:',e.message);}
 
     const _loadTbl=async([k,tbl])=>{
       if(ON_DEMAND_TBLS.includes(tbl)) return;
@@ -1907,8 +1909,11 @@ async function warmCache(){
     const tagMap=getWOTagAssignments();
     if(Object.keys(tagMap).length){
       const wos=S.get('lhs:work_orders')||[];
-      wos.forEach(w=>{if(tagMap[w.id]) w.tags=tagMap[w.id];});
-      S.set('lhs:work_orders',wos);
+      // Only write back if we actually have WOs — never overwrite with empty array
+      if(wos.length){
+        wos.forEach(w=>{if(tagMap[w.id]) w.tags=tagMap[w.id];});
+        S.set('lhs:work_orders',wos);
+      }
     }
     // Load material presets from Supabase (stored there, not in localStorage quota)
     await loadPresetsFromSupabase();
