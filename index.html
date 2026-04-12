@@ -8718,17 +8718,21 @@ function rmaItemSearch(q){
   const dd=document.getElementById('rma-item-dd');
   if(!dd) return;
   const items=S.get('lhs:items')||[];
-  const filtered=q.trim()
-    ?items.filter(i=>(i.name||'').toLowerCase().includes(q.toLowerCase())||(i.sku||'').toLowerCase().includes(q.toLowerCase()))
+  const qt=q.trim().toLowerCase();
+  const filtered=qt
+    ?items.filter(i=>(i.name||'').toLowerCase().includes(qt)||(i.sku||'').toLowerCase().includes(qt)||(i.category||'').toLowerCase().includes(qt))
     :items;
-  if(!filtered.length){dd.style.display='none';return;}
-  dd.innerHTML=filtered.slice(0,60).map(i=>`
+  if(!filtered.length){dd.innerHTML='<div style="padding:10px 12px;color:var(--muted);font-size:13px">No items found</div>';dd.style.display='block';return;}
+  const show=filtered.slice(0,200);
+  dd.innerHTML=show.map(i=>`
     <div onclick="rmaItemSelect('${esc(i.sku)}','${esc(i.name)}')"
       style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--surf)"
       onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background='white'">
       <span style="font-weight:600;color:var(--navy)">${esc(i.name)}</span>
       <span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(i.sku)}</span>
-    </div>`).join('');
+      ${i.category?`<span style="font-size:11px;color:var(--muted);margin-left:6px">· ${esc(i.category)}</span>`:''}
+    </div>`).join('')
+    +(filtered.length>200?`<div style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:center">Showing 200 of ${filtered.length} — type to narrow results</div>`:'');
   dd.style.display='block';
   // Close dropdown on outside click
   setTimeout(()=>{
