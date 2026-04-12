@@ -8895,7 +8895,7 @@ function aStateDocs(){
           <td><span style="font-size:11px;font-weight:600;color:${regionColor}">${region}</span></td>
           <td style="font-size:12px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.notes||'—')}</td>
           <td style="text-align:center">
-            ${d.file_url?`<a href="${esc(d.file_url)}" target="_blank" class="btn sm btn-n" style="text-decoration:none;font-size:11px">📎 View</a>`:`<span style="color:#ccc;font-size:12px">—</span>`}
+            ${d.file_url?`<button class="btn sm btn-n" style="font-size:11px" onclick="_viewStateDoc('${esc(d.id)}','${esc(d.file_url)}')">📎 View</button>`:`<span style="color:#ccc;font-size:12px">—</span>`}
           </td>
           <td style="text-align:center;white-space:nowrap">
             <button class="btn sm btn-o" onclick="oEditStateDoc('${d.id}')">Edit</button>
@@ -8996,8 +8996,8 @@ async function svSaveStateDoc(editId){
       const path=`${state}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
       const{data:upData,error:upErr}=await DB.storage.from('lhs-state-docs').upload(path,file,{cacheControl:'3600',upsert:false});
       if(upErr) throw upErr;
-      const{data:{publicUrl}}=DB.storage.from('lhs-state-docs').getPublicUrl(path);
-      file_url=publicUrl||path;
+      // Store the path only — never a public URL. Signed URLs are generated on demand at view time.
+      file_url=path;
       tst('File uploaded ✓','success');
     }catch(e){
       console.warn('Storage upload failed:',e?.message);
@@ -9032,6 +9032,19 @@ async function svSaveStateDoc(editId){
   cMod();
   const el=document.getElementById('reg-sub-body');
   if(el) el.innerHTML=aStateDocs();
+}
+
+async function _viewStateDoc(id, filePath){
+  // If it's an external URL (Google Drive, Dropbox, etc.) open directly
+  if(filePath.startsWith('http')){window.open(filePath,'_blank');return;}
+  // Private Supabase Storage — generate a signed URL valid for 1 hour
+  try{
+    const{data,error}=await DB.storage.from('lhs-state-docs').createSignedUrl(filePath,3600);
+    if(error||!data?.signedUrl) throw error||new Error('No signed URL returned');
+    window.open(data.signedUrl,'_blank');
+  }catch(e){
+    tst(`Could not open file — ${e?.message||'storage error'}`,'error');
+  }
 }
 
 async function delStateDoc(id){
