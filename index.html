@@ -21193,6 +21193,10 @@ function bWorkOrders(){
     const allAptTechs=S.get('lhs:apt_techs')||[];
     const allApts=S.get('lhs:appointments')||[];
     filtered=filtered.filter(w=>{
+      // Check direct tech assignment on WO (covers imported WOs without appointment records)
+      if(w.assigned_to===_wf.tech||w.technician===_wf.tech) return true;
+      if(Array.isArray(w.technicians)&&w.technicians.includes(_wf.tech)) return true;
+      // Also check appointment-level tech assignments
       const woAptIds=new Set(allApts.filter(a=>a.wo_id===w.id).map(a=>a.id));
       return allAptTechs.some(t=>t.tech_name===_wf.tech&&
         (t.wo_id===w.id||woAptIds.has(t.appointment_id)));
