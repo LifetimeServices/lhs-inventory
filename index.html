@@ -1782,18 +1782,33 @@ async function warmCache(){
       'lhs_wlm_exposures','lhs_calendar_events','lhs_grey_blocks',
       'lhs_scheduled_reports','lhs_custom_reports',
     ];
-    // Load WOs — awaited so downstream code always sees a populated cache.
+    // Load WOs — paginated in 1000-row batches (Supabase caps single requests at 1000 rows).
     // Clear any stale/poisoned [] from a previous failed load so S.get never returns empty array.
     try{localStorage.removeItem('lhs:work_orders');}catch{}
     delete _C['lhs:work_orders'];
     try{
-      const{data,error}=await DB.from(WO_TBL).select('*')
-        .order('created_at',{ascending:false,nullsFirst:false}).limit(15000);
-      if(!error&&data&&data.length){
-        S.set('lhs:work_orders',data);
-        console.log(`WOs loaded: ${data.length}`);
+      const WO_PAGE=1000;   // Supabase default max rows per request
+      const WO_MAX=25000;   // stop paginating after this many (safety ceiling)
+      let allWOData=[];
+      let page=0;
+      let keepGoing=true;
+      while(keepGoing&&allWOData.length<WO_MAX){
+        const from=page*WO_PAGE;
+        const to=from+WO_PAGE-1;
+        const{data,error}=await DB.from(WO_TBL).select('*')
+          .order('created_at',{ascending:false,nullsFirst:false})
+          .range(from,to);
+        if(error){console.warn('WO page load error:',error.message);break;}
+        if(!data||data.length===0){keepGoing=false;break;}
+        allWOData=allWOData.concat(data);
+        if(data.length<WO_PAGE) keepGoing=false; // last page
+        page++;
+      }
+      if(allWOData.length){
+        S.set('lhs:work_orders',allWOData);
+        console.log(`WOs loaded: ${allWOData.length}`);
       } else {
-        console.warn('WO load issue — error:',error?.message,'rows:',data?.length??'null');
+        console.warn('WO load returned 0 rows');
       }
     }catch(e){console.warn('WO load failed:',e.message);}
 
