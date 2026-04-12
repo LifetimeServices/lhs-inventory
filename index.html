@@ -1816,20 +1816,25 @@ async function warmCache(){
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
-      if(rawTs.length&&rawTs[0].tester_id!==undefined){
-        const normTs=rawTs.map(r=>({
-          _supaId:r.id,
-          id:r.tester_id,
-          type:r.tester_type,
-          serial:r.serial_number,
-          status:r.status,
-          vehicle:r.vehicle,
-          customer:r.customer,
-          address:r.address,
-          dropDate:r.drop_date,
-          active:r.active,
-          created_at:r.created_at
-        }));
+      const needsNorm=rawTs.some(r=>r.tester_id!==undefined||r.tester_type!==undefined||r.serial_number!==undefined);
+      if(rawTs.length&&needsNorm){
+        const uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const normTs=rawTs
+          .map(r=>({
+            _supaId:r.id,
+            id:r.tester_id||r.id,
+            type:r.tester_type||r.type||null,
+            serial:r.serial_number||r.serial||null,
+            status:r.status||'At Warehouse',
+            vehicle:r.vehicle||null,
+            customer:r.customer||null,
+            address:r.address||null,
+            dropDate:r.drop_date||r.dropDate||null,
+            active:r.active!==false&&r.active!=='Inactive',
+            created_at:r.created_at
+          }))
+          // Filter out corrupt records: no real tester ID or UUID used as ID with no type
+          .filter(r=>r.id&&!( uuidRe.test(r.id)&&!r.type ));
         S.set('lhs:ts',normTs);
       }
     }catch(e){console.warn('tester normalize:',e.message);}
