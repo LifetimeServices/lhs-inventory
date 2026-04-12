@@ -8663,7 +8663,7 @@ function oAddRMA(){
   <div class="fr">
     <div class="fl" style="flex:2"><label>Submitted By</label>
       <select id="rma-user">
-        ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===CU?.name?' selected':''}>${esc(u.name)}${u.role?' ('+esc(u.role)+')':''}</option>`).join('')}
+        ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===CU?.name?' selected':''}>${esc(u.name)}</option>`).join('')}
       </select>
     </div>
     <div class="fl"><label>Quantity</label>
