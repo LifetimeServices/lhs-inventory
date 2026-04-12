@@ -38412,11 +38412,11 @@ async function svAddLead(){
   const now=new Date().toISOString();
   const lead={...f,created_by:CU?.name||'',created_at:now,updated_at:now,last_updated:now};
 
-  // ── Step 1: Save Lead ───────────────────────────────────────────
+  // ── Step 1: Save Lead to Supabase ──────────────────────────────
   const savedLead=await dbInsert('lhs:leads',lead);
-  const finalLead=savedLead||{...lead,id:'lead_'+Date.now()};
+  if(!savedLead){tst('Failed to save lead — check your connection and try again','error');return;}
   const leads=S.get('lhs:leads')||[];
-  leads.unshift(finalLead);
+  leads.unshift(savedLead);
   S.set('lhs:leads',leads);
 
   // ── Step 2: Auto-create Customer ───────────────────────────────
@@ -38449,15 +38449,15 @@ async function svAddLead(){
   _C['lhs:customers']=custs;
 
   // Back-link lead → customer
-  finalLead.customer_id=finalCust.id;
+  savedLead.customer_id=finalCust.id;
   const leadsRef=S.get('lhs:leads')||[];
-  const lRef=leadsRef.find(x=>x.id===finalLead.id);
+  const lRef=leadsRef.find(x=>x.id===savedLead.id);
   if(lRef) lRef.customer_id=finalCust.id;
   S.set('lhs:leads',leadsRef);
-  try{await dbUpdate('lhs:leads',finalLead.id,{customer_id:finalCust.id});}catch{}
+  try{await dbUpdate('lhs:leads',savedLead.id,{customer_id:finalCust.id});}catch{}
 
-  // Only pass real UUIDs to FK columns — temp local IDs are not valid
-  var isRealLeadId=finalLead.id&&!String(finalLead.id).startsWith('lead_');
+  // savedLead always has a real Supabase UUID at this point
+  var isRealLeadId=true;
   var isRealCustId=finalCust.id&&!String(finalCust.id).startsWith('cust_');
 
   // ── Step 3: Auto-create Property (if address provided) ─────────
@@ -38490,7 +38490,7 @@ async function svAddLead(){
   const newOpp={
     name:oppName,
     customer_id:isRealCustId?finalCust.id:null,
-    lead_id:isRealLeadId?finalLead.id:null,
+    lead_id:isRealLeadId?savedLead.id:null,
     division:f.division||null,
     stage:'Prospect',
     probability:20,
@@ -38509,19 +38509,19 @@ async function svAddLead(){
   opps.unshift(finalOpp);
   S.set('lhs:opportunities',opps);
   // Back-link lead → opportunity
-  finalLead.opportunity_id=finalOpp.id;
+  savedLead.opportunity_id=finalOpp.id;
   const leadsRef2=S.get('lhs:leads')||[];
-  const lRef2=leadsRef2.find(x=>x.id===finalLead.id);
+  const lRef2=leadsRef2.find(x=>x.id===savedLead.id);
   if(lRef2) lRef2.opportunity_id=finalOpp.id;
   S.set('lhs:leads',leadsRef2);
-  try{await dbUpdate('lhs:leads',finalLead.id,{opportunity_id:finalOpp.id});}catch{}
+  try{await dbUpdate('lhs:leads',savedLead.id,{opportunity_id:finalOpp.id});}catch{}
 
   // ── Step 5: Auto-log "Lead Created" activity ───────────────────
   const isRealOppId=finalOpp.id&&!String(finalOpp.id).startsWith('opp_');
   autoLogActivity({
     opportunity_id:isRealOppId?finalOpp.id:null,
     customer_id:isRealCustId?finalCust.id:null,
-    lead_id:isRealLeadId?finalLead.id:null,
+    lead_id:isRealLeadId?savedLead.id:null,
     activity_type:'Lead Created',
     notes:`New lead created by ${CU?.name||'system'}${f.source_category?' via '+f.source_category:''}.${f.division?' Division: '+f.division:''}`,
   }).catch(()=>{});
