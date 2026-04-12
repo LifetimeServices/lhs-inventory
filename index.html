@@ -1799,9 +1799,13 @@ async function warmCache(){
         const lastUpdTbls=['lhs_wo_sequence','lhs_van_inventory','lhs_location_stock'];
         const updatedAtTbls=['lhs_estimates'];
         const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions','lhs_testers','lhs_rmas'];
+        // Sort appointments by scheduled_date so current/upcoming dates are always loaded
+        // even when the record was created years ago (e.g. ServiceTitan imports)
+        const scheduledDateTbls=['lhs_appointments'];
         const lim=ROW_LIMITS[tbl]||null;
         if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:false,nullsFirst:false}).limit(lim||5000);
         else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:false,nullsFirst:false}).limit(lim||5000);
+        else if(scheduledDateTbls.includes(tbl)) query=query.order('scheduled_date',{ascending:false,nullsFirst:false}).limit(lim||5000);
         else if(noSortTbls.includes(tbl)) {if(lim) query=query.limit(lim);}
         else{query=query.order('created_at',{ascending:false,nullsFirst:false});if(lim) query=query.limit(lim);}
         const{data,error}=await query;
@@ -19853,9 +19857,11 @@ function renderDispBoard(){
   });
 
   // Add appointments to relevant divisions (apts only — tech rows are owned by home division only)
-  allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)&&a.status!=='Cancelled').forEach(apt=>{
+  // Do NOT gate on filteredWOIds — appointments whose WO wasn't loaded (e.g. old ServiceTitan
+  // imports outside the 3000-row cap) would otherwise be invisible even when utilization % shows them.
+  allApts.filter(a=>dates.includes(a.scheduled_date)&&a.status!=='Cancelled').forEach(apt=>{
     const wo=allWOs.find(w=>w.id===apt.wo_id);
-    if(!wo) return;
+    if(!wo) return; // can't determine division without WO — skip division count only
     // Normalize to canonical DIVS name to prevent duplicate rows from casing/whitespace differences
     const canonDiv=DIVS.find(d=>d.trim().toLowerCase()===(wo.division||'').trim().toLowerCase())||(wo.division||'').trim();
     if(!divGroups[canonDiv]) divGroups[canonDiv]={apts:[],techs:new Set()};
@@ -19963,12 +19969,12 @@ function renderDispBoard(){
       }
       const techUser=users.find(u=>u.name===techName);
       const techApts=[];
-      // Show ALL appointments for this tech regardless of which division the WO belongs to
-      // Tech rows are home-division pinned, but cross-div WOs show in their row too
-      // Triple-layer: filteredWOIds + explicit WO status + appointment status
-      allApts.filter(a=>dates.includes(a.scheduled_date)&&filteredWOIds.has(a.wo_id)&&a.status!=='Cancelled').forEach(apt=>{
-        const wo=allWOs.find(w=>w.id===apt.wo_id);
-        if(!wo||wo.status==='Cancelled') return;
+      // Show ALL appointments for this tech regardless of which division the WO belongs to.
+      // Do NOT gate on filteredWOIds — WOs outside the 3000-row load cap would hide blocks
+      // even when calcUtilization already counts them (causing utilization% ≠ visible apts).
+      allApts.filter(a=>dates.includes(a.scheduled_date)&&a.status!=='Cancelled').forEach(apt=>{
+        const wo=allWOs.find(w=>w.id===apt.wo_id)||{id:apt.wo_id,division:'',customer_name:'—',wo_number:'—',status:'Unknown',is_flexible:false,job_type:'',total_price:0};
+        if(wo.status==='Cancelled') return;
         // Match by name OR email
         const isTechOnApt=allTechs.some(t=>
           t.appointment_id===apt.id&&
@@ -21194,7 +21200,7 @@ function bWorkOrders(){
     const allApts=S.get('lhs:appointments')||[];
     filtered=filtered.filter(w=>{
       // Check direct tech assignment on WO (covers imported WOs without appointment records)
-      if(w.assigned_to===_wf.tech||w.technician===_wf.tech) return true;
+      if(w.assigned_to===_wf.tech||w.technician===_wf.tech||w.tech_name===_wf.tech) return true;
       if(Array.isArray(w.technicians)&&w.technicians.includes(_wf.tech)) return true;
       // Also check appointment-level tech assignments
       const woAptIds=new Set(allApts.filter(a=>a.wo_id===w.id).map(a=>a.id));
