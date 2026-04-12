@@ -35494,7 +35494,18 @@ function bSalesAccountsPage(){
 async function _acctLoad(){
   const el=document.getElementById('acct-page-body');
   if(!el) return;
-  const customers=S.get('lhs:customers')||[];
+  // Customers are on-demand — fetch from Supabase if cache is empty
+  let customers=_C['lhs:customers']||S.get('lhs:customers')||[];
+  if(!customers.length){
+    try{
+      el.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">Loading accounts…</div>';
+      const{data}=await DB.from('lhs_customers').select('*').order('created_at',{ascending:false}).limit(2000);
+      if(data&&data.length){
+        customers=data;
+        _C['lhs:customers']=customers;
+      }
+    }catch(e){console.warn('_acctLoad fetch:',e.message);}
+  }
   const opps=S.get('lhs:opportunities')||[];
   const activities=S.get('lhs:activities')||[];
   const leads=S.get('lhs:leads')||[];
