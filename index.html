@@ -5331,6 +5331,91 @@ async function svReconReassign(reconId){
   cMod();_refreshReconDash();
 }
 
+function _reconOpenAdmin(){
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const recons=(S.get('lhs:recons')||[]).filter(r=>r.period===period).sort((a,b)=>(a.location_name||'').localeCompare(b.location_name||''));
+  const users=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  const userOpts=`<option value="">— Select —</option>${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}">${esc(u.name)}</option>`).join('')}`;
+  const statusColor={Overdue:'var(--red)','Not Started':'var(--amber)','In Progress':'var(--teal)',Submitted:'var(--green)',Closed:'var(--muted)'};
+  oMod('Admin Override — Inventory Reconciliation',`
+  <div style="min-width:640px;max-width:820px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Reassign any reconciliation for <strong>${period}</strong>. Changes are saved immediately per row.</div>
+    <div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:16px;max-height:60vh;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f8f7f4;border-bottom:1px solid var(--bdr);position:sticky;top:0">
+          <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy)">Location / Vehicle</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy)">Status</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy)">Assign To</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy)">Reason</th>
+          <th style="width:70px"></th>
+        </tr></thead>
+        <tbody>
+          ${recons.map((r,i)=>`<tr style="${i>0?'border-top:1px solid var(--bdr)':''}">
+            <td style="padding:9px 12px;font-weight:600">${esc(r.location_name||'')}</td>
+            <td style="padding:9px 12px"><span style="color:${statusColor[r.status]||'var(--muted)'};font-weight:600;font-size:12px">${esc(r.status||'')}</span></td>
+            <td style="padding:6px 8px">
+              <select id="roa-user-${r.id}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;width:100%">
+                ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${r.assigned_to_name===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:6px 8px">
+              <select id="roa-reason-${r.id}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;width:100%">
+                <option>Admin Override</option><option>Tech on PTO</option><option>Vehicle Unassigned</option><option>Driver Change</option><option>Other</option>
+              </select>
+            </td>
+            <td style="padding:6px 8px;text-align:center">
+              <button class="btn btn-n sm" onclick="_reconAdminSaveRow('${r.id}')">Save</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <button class="btn btn-o" onclick="cMod()">Close</button>
+      <button class="btn btn-n" onclick="_reconAdminSaveAll()">Save All</button>
+    </div>
+  </div>`);
+}
+
+async function _reconAdminSaveRow(reconId){
+  const sel=document.getElementById(`roa-user-${reconId}`);
+  const name=sel?.value||'';
+  const email=sel?.options[sel?.selectedIndex]?.dataset?.email||'';
+  const reason=document.getElementById(`roa-reason-${reconId}`)?.value||'Admin Override';
+  if(!name){tst('Select a user first','error');return;}
+  const recons=S.get('lhs:recons')||[];
+  const recon=recons.find(r=>r.id===reconId);
+  if(!recon){tst('Recon not found','error');return;}
+  recon.assigned_to_name=name;recon.assigned_to_email=email;recon.override_reason=reason;recon.updated_at=new Date().toISOString();
+  S.set('lhs:recons',recons);
+  try{await DB.from('lhs_inventory_recons').update({assigned_to_name:name,assigned_to_email:email,override_reason:reason,updated_at:recon.updated_at}).eq('id',reconId);}catch(e){console.warn(e);}
+  tst(`${recon.location_name} → ${name}`,'success');
+  _refreshReconDash();
+}
+
+async function _reconAdminSaveAll(){
+  const recons=S.get('lhs:recons')||[];
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const periodRecons=recons.filter(r=>r.period===period);
+  let saved=0;
+  for(const r of periodRecons){
+    const sel=document.getElementById(`roa-user-${r.id}`);
+    if(!sel) continue;
+    const name=sel.value||'';
+    const email=sel.options[sel.selectedIndex]?.dataset?.email||'';
+    const reason=document.getElementById(`roa-reason-${r.id}`)?.value||'Admin Override';
+    if(!name) continue;
+    r.assigned_to_name=name;r.assigned_to_email=email;r.override_reason=reason;r.updated_at=new Date().toISOString();
+    try{await DB.from('lhs_inventory_recons').update({assigned_to_name:name,assigned_to_email:email,override_reason:reason,updated_at:r.updated_at}).eq('id',r.id);}catch{}
+    saved++;
+  }
+  S.set('lhs:recons',recons);
+  tst(`${saved} recon${saved!==1?'s':''} updated`,'success');
+  cMod();_refreshReconDash();
+}
+
 async function _reconRefreshFromDB(){
   const now=new Date();
   const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
