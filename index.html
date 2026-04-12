@@ -24366,6 +24366,14 @@ function viewPhoto(photoId,aptId,woId){
   renderPhotoViewer(aptPhotos,idx,aptId,woId);
 }
 
+function _fullImg(url){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  ov.innerHTML=`<img src="${url}" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:6px"><button onclick="this.parentElement.remove()" style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,.15);border:none;color:white;font-size:28px;width:44px;height:44px;border-radius:50%;cursor:pointer;line-height:1">×</button>`;
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  document.body.appendChild(ov);
+}
+
 function renderPhotoViewer(photos,idx,aptId,woId){
   if(!photos.length) return;
   const p=photos[idx];
@@ -24387,7 +24395,7 @@ function renderPhotoViewer(photos,idx,aptId,woId){
     <!-- Photo -->
     <div style="text-align:center;margin-bottom:16px;background:#000;border-radius:8px;overflow:hidden;max-height:50vh;position:relative">
       <img src="${p.photo_url}" style="max-width:100%;max-height:50vh;object-fit:contain;display:block;margin:0 auto;cursor:zoom-in"
-        onclick="window.open('${p.photo_url}','_blank')" title="Click to open full size">
+        onclick="_fullImg('${p.photo_url}')" title="Tap to expand">
       <div style="position:absolute;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,.6);pointer-events:none">tap to expand</div>
     </div>
 
