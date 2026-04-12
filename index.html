@@ -38379,15 +38379,14 @@ async function svAddLead(){
     notes:[f.account_notes,f.notes].filter(Boolean).join('\n')||null,
     source:f.source_category||'Lead',
     customer_number:custNum,
-    lead_id:finalLead.id,
     created_at:now,
   };
   let savedCust=null;
   try{
     const{data,error}=await DB.from('lhs_customers').insert(newCust).select().single();
     if(!error&&data) savedCust=data;
-    else console.warn('Customer auto-create:',error?.message);
-  }catch(e){console.warn('Customer auto-create exception:',e.message);}
+    else{console.warn('Customer auto-create:',error?.message);tst(`Customer save warning: ${error?.message}`,'error');}
+  }catch(e){console.warn('Customer auto-create exception:',e.message);tst(`Customer save error: ${e.message}`,'error');}
   const finalCust=savedCust||{...newCust,id:'cust_'+Date.now()};
   const custs=S.get('lhs:customers')||[];
   custs.unshift(finalCust);
@@ -39655,6 +39654,15 @@ async function autoLogActivity(data){
   S.set('lhs:activities',acts);
 }
 
+// Opp stage → Lead status mapping
+const _OPP_LEAD_STATUS_MAP={
+  'Site Visit':   'Contacted',
+  'Estimate Sent':'Qualified',
+  'Negotiation':  'Qualified',
+  'Won':          'Converted',
+  'Lost':         'Unqualified',
+};
+
 async function updateOppStage(id,stage){
   const opps=S.get('lhs:opportunities')||[];
   const o=opps.find(x=>x.id===id);
@@ -39669,6 +39677,24 @@ async function updateOppStage(id,stage){
       activity_type:'Stage Changed',
       notes:`Stage moved from "${prevStage}" to "${stage}"`,
     }).catch(()=>{});
+  }
+  // ── Auto-sync linked lead status ──────────────────────────────────────────
+  const newLeadStatus=_OPP_LEAD_STATUS_MAP[stage];
+  if(newLeadStatus&&o?.lead_id){
+    const leads=S.get('lhs:leads')||[];
+    const lead=leads.find(l=>l.id===o.lead_id);
+    if(lead&&lead.status!==newLeadStatus){
+      const prevLeadStatus=lead.status;
+      lead.status=newLeadStatus;
+      lead.updated_at=new Date().toISOString();
+      S.set('lhs:leads',leads);
+      dbUpdate('lhs:leads',lead.id,{status:newLeadStatus,updated_at:lead.updated_at}).catch(()=>{});
+      autoLogActivity({
+        opportunity_id:id,customer_id:o?.customer_id||null,lead_id:o.lead_id,
+        activity_type:'Lead Status Updated',
+        notes:`Lead status auto-updated from "${prevLeadStatus}" to "${newLeadStatus}" (Opportunity moved to ${stage})`,
+      }).catch(()=>{});
+    }
   }
   tst(`Stage: ${stage}`,'success');
   openOpportunity(id);
