@@ -8653,12 +8653,23 @@ function bRMA(){
 function oAddRMA(){
   const items=S.get('lhs:items')||[];
   const _locs=S.get('lhs:locs')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false&&u.name).sort((a,b)=>a.name.localeCompare(b.name));
   const vehOpts=VH.map(vn=>{
     const loc=_locs.find(l=>l.name===vn);
     const drv=loc?.driver?` — ${loc.driver}`:'';
     return`<option value="${vn}">${vn}${drv}</option>`;
   }).join('');
   oMod('New RMA',`
+  <div class="fr">
+    <div class="fl" style="flex:2"><label>Submitted By</label>
+      <select id="rma-user">
+        ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===CU?.name?' selected':''}>${esc(u.name)}${u.role?' ('+esc(u.role)+')':''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Quantity</label>
+      <input type="number" id="rma-qty" value="1" min="1" style="width:70px">
+    </div>
+  </div>
   <div class="fr">
     <div class="fl"><label>From Location</label>
       <select id="rma-loc">
@@ -8673,9 +8684,6 @@ function oAddRMA(){
         ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
         <option value="Vendor">Vendor</option>
       </select>
-    </div>
-    <div class="fl"><label>Quantity</label>
-      <input type="number" id="rma-qty" value="1" min="1" style="width:70px">
     </div>
   </div>
   <div class="fr">
@@ -8757,11 +8765,15 @@ async function svAddRMA(){
   if(!itemVal){tst('Select a material item','error');return;}
   const [sku,itemName]=itemVal.split('|');
   const now=new Date().toISOString();
+  const userSel=document.getElementById('rma-user');
+  const submittedBy=userSel?.value||CU?.name||'';
+  const submittedEmail=userSel?.options[userSel.selectedIndex]?.dataset?.email||'';
   const rma={
     id:'rma_'+Date.now(),
     created_at:now,
     updated_at:now,
-    submitted_by:CU.name,
+    submitted_by:submittedBy,
+    submitted_by_email:submittedEmail,
     from_location:locVal,
     to_location:toVal,
     item_sku:sku,
@@ -8775,7 +8787,8 @@ async function svAddRMA(){
     status:'At Warehouse'
   };
   const dbRow={
-    submitted_by:rma.submitted_by,from_location:rma.from_location,to_location:rma.to_location,
+    submitted_by:rma.submitted_by,submitted_by_email:rma.submitted_by_email,
+    from_location:rma.from_location,to_location:rma.to_location,
     item_sku:rma.item_sku,item_name:rma.item_name,issue:rma.issue,
     serial_number:rma.serial_number,dom:rma.dom,quantity:rma.quantity,
     submitted_to_vendor:rma.submitted_to_vendor,notes:rma.notes,
