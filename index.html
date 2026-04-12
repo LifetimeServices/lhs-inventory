@@ -2755,6 +2755,7 @@ async function startApp(){
     <div class="page" id="p-rolodex-builders"></div>
     <div class="page" id="p-rolodex-realtors"></div>
     <div class="page" id="p-rolodex-inspectors"></div>
+    <div class="page" id="p-rolodex-property-managers"></div>
     <div class="page" id="p-sales-accounts"></div>
     <div class="page" id="p-account-hub"></div>
     <div class="page" id="p-sales-discounts"></div>
@@ -2778,7 +2779,7 @@ async function startApp(){
   // Restore last visited page, fall back to dashboard
   const _lastPage=localStorage.getItem('lms_current_page')||'dashboard';
   const _validPages=['dashboard','chatter','dispatch','dispatch-board','dispatch-calendar','workorders','closeout',
-    'accounts','customers','properties','business','commercial',
+    'accounts','customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers',
     'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools',
@@ -2799,7 +2800,7 @@ async function startApp(){
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
-  const _acctsPgs=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors'];
+  const _acctsPgs=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
   if(_dispPgs.includes(_restorePage)) renderDispatchNav();
   else if(_invPgs.includes(_restorePage)) renderInvNav();
@@ -2940,13 +2941,14 @@ const INV_NAV=[
   {id:'tools',        l:'Tool Management'},
 ];
 const ACCOUNTS_NAV=[
-  {id:'customers',         l:'Customers'},
-  {id:'properties',        l:'Properties'},
-  {id:'business',          l:'Business'},
-  {id:'commercial',        l:'Commercial'},
-  {id:'rolodex-builders',  l:'Builders'},
-  {id:'rolodex-realtors',  l:'Realtors'},
-  {id:'rolodex-inspectors',l:'Inspectors'},
+  {id:'customers',                  l:'Customers'},
+  {id:'properties',                 l:'Properties'},
+  {id:'business',                   l:'Business'},
+  {id:'commercial',                 l:'Commercial'},
+  {id:'rolodex-builders',           l:'Builders'},
+  {id:'rolodex-realtors',           l:'Realtors'},
+  {id:'rolodex-inspectors',         l:'Inspectors'},
+  {id:'rolodex-property-managers',  l:'Prop. Managers'},
 ];
 
 const SALES_NAV=[
@@ -3226,7 +3228,7 @@ window.addEventListener('popstate',e=>{
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
   const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
-  const accountsPages=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors'];
+  const accountsPages=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-settings'];
   if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
   else if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
@@ -3255,6 +3257,7 @@ function buildPage(id){
     'rolodex-builders':bRolodexBuilders,
     'rolodex-realtors':bRolodexRealtors,
     'rolodex-inspectors':bRolodexInspectors,
+    'rolodex-property-managers':bRolodexPropertyManagers,
     sales:bSales,'sales-crm-dashboard':bCRMDashboard,'sales-leads':bSalesLeads,'sales-opps':bSalesOpps,
     'sales-accounts':bSalesAccountsPage,'account-hub':bAccountHub,
     'sales-estimates':bSalesEstimates,
@@ -26148,63 +26151,405 @@ function propForm(p,saveFn){
 
 // ─── ROLODEX PAGES ────────────────────────────────────────────────────────────
 const _RDX_INP='width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:\'DM Sans\',sans-serif;box-sizing:border-box';
+const _RDX_LBL='display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px';
+const _RDX_SEC='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:16px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--bdr)';
+const _RDX_TYPE_LABELS={builders:'Builder',realtors:'Realtor',inspectors:'Inspector','property-managers':'Property Manager'};
+const _RDX_TYPE_VALS={builders:'builder',realtors:'realtor',inspectors:'inspector','property-managers':'property-manager'};
+const _RDX_INTERACTION_TYPES=['Call','Email','Text','Meeting','Site Visit','Note','Follow-Up'];
+const _RDX_OUTCOMES=['Positive','Neutral','Follow Up Needed','No Answer','Left Voicemail','Not Interested'];
+const _RDX_STATUSES=['Active','Prospect','Inactive'];
 
+// ── Cache key helpers ──────────────────────────────────────────────────────────
+function _rdxCacheKey(key){return`lhs:rdx_${key}`;}
+
+// ── Load contacts from DB if cache empty ──────────────────────────────────────
+function _rdxEnsureLoaded(key){
+  const recs=S.get(_rdxCacheKey(key))||[];
+  if(!recs.length){
+    DB.from('lhs_rolodex').select('*').eq('type',_RDX_TYPE_VALS[key])
+      .order('last_name',{ascending:true})
+      .then(({data})=>{if(data?.length){S.set(_rdxCacheKey(key),data);showPage(`rolodex-${key}`);}})
+      .catch(()=>{});
+  }
+  return recs;
+}
+
+// ── List Page ──────────────────────────────────────────────────────────────────
 function _rdxSearch(key){
-  const q=(document.getElementById(`rdx-${key}-search`)?.value||'').toLowerCase();
-  window[`_rdx_${key}_q`]=q;
+  window[`_rdx_${key}_q`]=(document.getElementById(`rdx-${key}-search`)?.value||'').toLowerCase();
   showPage(`rolodex-${key}`);
 }
 
+function _rdxPage(key,title,subtitle,emptyMsg,extraCols){
+  const q=(window[`_rdx_${key}_q`]||'').toLowerCase();
+  const fStatus=window[`_rdx_${key}_status`]||'';
+  const fRegion=window[`_rdx_${key}_region`]||'';
+  let recs=_rdxEnsureLoaded(key);
+
+  // Filters
+  if(fStatus) recs=recs.filter(r=>(r.account_status||'Active')===fStatus);
+  if(fRegion) recs=recs.filter(r=>r.region===fRegion);
+  if(q) recs=recs.filter(r=>[r.first_name,r.last_name,r.company_name||r.company,r.phone,r.email,r.city,r.state,r.title,r.specialty,r.certification,r.mls_board,r.license_number].filter(Boolean).join(' ').toLowerCase().includes(q));
+
+  const allRecs=S.get(_rdxCacheKey(key))||[];
+  const regions=[...new Set(allRecs.map(r=>r.region).filter(Boolean))].sort();
+  const singLabel=_RDX_TYPE_LABELS[key]||title.replace(/s$/,'');
+
+  const statusBadge=s=>{
+    const c=s==='Active'?'#1B5E20':s==='Prospect'?'#E65100':'#888';
+    const bg=s==='Active'?'#E8F5E9':s==='Prospect'?'#FFF3E0':'#F3F4F6';
+    return`<span style="background:${bg};color:${c};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${s||'Active'}</span>`;
+  };
+
+  return`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="pt" style="margin:0">${title}</div>
+      <div class="ps">${subtitle} &nbsp;·&nbsp; ${recs.length} of ${allRecs.length} contact${allRecs.length===1?'':'s'}</div>
+    </div>
+    <button class="btn btn-n" onclick="_rdxOpenAdd('${key}')">+ Add ${singLabel}</button>
+  </div>
+
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;margin-bottom:16px">
+    <input id="rdx-${key}-search" value="${esc(window[`_rdx_${key}_q`]||'')}" placeholder="🔍 Search name, company, phone…" oninput="_rdxSearch('${key}')"
+      style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;width:220px">
+    <select onchange="window['_rdx_${key}_status']=this.value;showPage('rolodex-${key}')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Statuses</option>
+      ${_RDX_STATUSES.map(s=>`<option value="${s}"${fStatus===s?' selected':''}>${s}</option>`).join('')}
+    </select>
+    ${regions.length?`<select onchange="window['_rdx_${key}_region']=this.value;showPage('rolodex-${key}')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Regions</option>
+      ${regions.map(r=>`<option value="${esc(r)}"${fRegion===r?' selected':''}>${esc(r)}</option>`).join('')}
+    </select>`:''}
+    ${q||fStatus||fRegion?`<button class="btn sm btn-o" onclick="window['_rdx_${key}_q']='';window['_rdx_${key}_status']='';window['_rdx_${key}_region']='';showPage('rolodex-${key}')">✕ Clear</button>`:''}
+    <span style="margin-left:auto;font-size:12px;color:var(--muted)">${recs.length} shown</span>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="tw"><table>
+      <thead><tr>
+        <th>Name</th><th>Company</th><th>Phone</th><th>Email</th><th>Location</th>
+        ${extraCols.map(c=>`<th>${c.label}</th>`).join('')}
+        <th>Status</th><th>Last Contact</th><th></th>
+      </tr></thead>
+      <tbody>${recs.length?recs.map(r=>`<tr style="cursor:pointer" onclick="_rdxOpenProfile('${key}','${r.id}')">
+        <td style="font-weight:600">${esc(((r.first_name||'')+' '+(r.last_name||'')).trim()||'—')}<br>
+          <span style="font-size:11px;color:var(--muted);font-weight:400">${esc(r.title||'')}</span></td>
+        <td style="font-size:13px">${esc(r.company_name||r.company||'—')}</td>
+        <td style="font-size:13px">${r.phone?`<a href="tel:${esc(r.phone)}" onclick="event.stopPropagation()">${esc(r.phone)}</a>`:'—'}</td>
+        <td style="font-size:13px">${r.email?`<a href="mailto:${esc(r.email)}" onclick="event.stopPropagation()">${esc(r.email)}</a>`:'—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc([r.city,r.state].filter(Boolean).join(', ')||'—')}</td>
+        ${extraCols.map(c=>`<td style="font-size:12px;color:var(--muted)">${esc(r[c.field]||'—')}</td>`).join('')}
+        <td>${statusBadge(r.account_status||'Active')}</td>
+        <td style="font-size:12px;color:var(--muted)">${r.last_contact_date||'—'}</td>
+        <td><button class="btn sm btn-o" onclick="event.stopPropagation();_rdxOpenProfile('${key}','${r.id}')">View</button></td>
+      </tr>`).join(''):`<tr><td colspan="${7+extraCols.length}" style="text-align:center;color:var(--muted);padding:40px">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <div style="font-weight:600;margin-bottom:6px">${emptyMsg}</div>
+        <button class="btn btn-n sm" style="margin-top:6px" onclick="_rdxOpenAdd('${key}')">Add First ${singLabel}</button>
+      </td></tr>`}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ── Contact Profile Modal ──────────────────────────────────────────────────────
+let _rdxProfileInteractions={};
+
+async function _rdxOpenProfile(key,id){
+  const r=(S.get(_rdxCacheKey(key))||[]).find(x=>x.id===id);
+  if(!r) return;
+  window._rdxProfileKey=key;
+  window._rdxProfileId=id;
+  window._rdxProfileTab=window._rdxProfileTab||'overview';
+  // Load interactions from DB
+  try{
+    const{data}=await DB.from('lhs_rolodex_interactions').select('*').eq('rolodex_id',id).order('interaction_date',{ascending:false});
+    _rdxProfileInteractions[id]=data||[];
+  }catch{_rdxProfileInteractions[id]=[];}
+  _rdxRenderProfile(key,r);
+}
+
+function _rdxRenderProfile(key,r){
+  if(!r) return;
+  const id=r.id;
+  const tab=window._rdxProfileTab||'overview';
+  const interactions=_rdxProfileInteractions[id]||[];
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.rolodex_id===id||(r.company_name&&w.customer_name&&w.customer_name.toLowerCase().includes((r.company_name||'').toLowerCase())));
+  const name=((r.first_name||'')+' '+(r.last_name||'')).trim()||r.company_name||'Contact';
+
+  const statusColor=r.account_status==='Active'?'#2E7D32':r.account_status==='Prospect'?'#E65100':'#888';
+  const statusBg=r.account_status==='Active'?'#E8F5E9':r.account_status==='Prospect'?'#FFF3E0':'#F3F4F6';
+
+  const typeColor={builders:'#1565C0',realtors:'#6A1B9A',inspectors:'#BF360C','property-managers':'#1B5E20'}[key]||'#555';
+  const typeBg={builders:'#E3F2FD',realtors:'#F3E5F5',inspectors:'#FBE9E7','property-managers':'#E8F5E9'}[key]||'#f5f5f5';
+
+  // Tab content
+  let tabContent='';
+  if(tab==='overview'){
+    const field=(label,val)=>val?`<div><span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${label}</span><div style="font-size:13px;margin-top:2px">${val}</div></div>`:'';
+    tabContent=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px">
+      <div>
+        <div style="${_RDX_SEC}">Contact Info</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${field('Phone',r.phone?`<a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>`:null)}
+          ${field('Mobile',r.mobile?`<a href="tel:${esc(r.mobile)}">${esc(r.mobile)}</a>`:null)}
+          ${field('Email',r.email?`<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`:null)}
+          ${field('Website',r.website?`<a href="${esc(r.website)}" target="_blank">${esc(r.website)}</a>`:null)}
+        </div>
+      </div>
+      <div>
+        <div style="${_RDX_SEC}">Location</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${field('Address',r.address?esc(r.address):null)}
+          ${field('City / State / Zip',[r.city,r.state,r.zip].filter(Boolean).join(', ')||null)}
+          ${field('Region',r.region?esc(r.region):null)}
+          ${field('Territory',r.territory?esc(r.territory):null)}
+        </div>
+      </div>
+    </div>
+    <div style="${_RDX_SEC}">Partnership</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      ${field('Assigned Rep',r.assigned_rep?esc(r.assigned_rep):null)}
+      ${field('Lead Source',r.lead_source?esc(r.lead_source):null)}
+      ${field('Referred By',r.referred_by?esc(r.referred_by):null)}
+    </div>
+    ${(r.contract_start||r.contract_end||r.contract_terms)?`
+    <div style="${_RDX_SEC}">Contract</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px;margin-bottom:16px">
+      ${field('Start Date',r.contract_start?esc(r.contract_start):null)}
+      ${field('End Date',r.contract_end?`<span style="${r.contract_end<new Date().toISOString().slice(0,10)?'color:#B71C1C;font-weight:700':''}">${esc(r.contract_end)}</span>`:null)}
+      ${field('Terms',r.contract_terms?esc(r.contract_terms):null)}
+    </div>`:''}
+    ${(r.license_number||r.license_expiry||r.certification||r.association||r.brokerage||r.specialty||r.mls_board)?`
+    <div style="${_RDX_SEC}">Credentials</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      ${field('License #',r.license_number?esc(r.license_number):null)}
+      ${field('License Expiry',r.license_expiry?esc(r.license_expiry):null)}
+      ${field('Certification',r.certification?esc(r.certification):null)}
+      ${field('Association / MLS',r.association||r.mls_board?esc(r.association||r.mls_board):null)}
+      ${field('Brokerage',r.brokerage?esc(r.brokerage):null)}
+      ${field('Specialty',r.specialty?esc(r.specialty):null)}
+    </div>`:''}
+    ${r.notes?`<div style="${_RDX_SEC}">Notes</div><div style="font-size:13px;color:#444;background:#f8f7f4;border-radius:6px;padding:10px 12px;white-space:pre-wrap">${esc(r.notes)}</div>`:''}`;
+  }
+  else if(tab==='activity'){
+    const iTypeIcon={Call:'📞',Email:'📧',Text:'💬',Meeting:'🤝','Site Visit':'🏠',Note:'📝','Follow-Up':'🔔'};
+    const outcomeColor={Positive:'#2E7D32','No Answer':'#888','Not Interested':'#B71C1C','Follow Up Needed':'#E65100','Left Voicemail':'#555',Neutral:'#555'};
+    tabContent=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:13px;color:var(--muted)">${interactions.length} interaction${interactions.length!==1?'s':''} logged</span>
+      <button class="btn btn-n sm" onclick="_rdxAddInteraction('${key}','${id}')">+ Log Interaction</button>
+    </div>
+    ${interactions.length?interactions.map(i=>`
+    <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--bdr)">
+      <div style="font-size:22px;flex-shrink:0;margin-top:2px">${iTypeIcon[i.interaction_type]||'📋'}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-weight:600;font-size:13px">${esc(i.subject||i.interaction_type||'Interaction')}</span>
+          ${i.outcome?`<span style="font-size:11px;font-weight:600;color:${outcomeColor[i.outcome]||'#555'}">${esc(i.outcome)}</span>`:''}
+          <span style="font-size:11px;color:var(--muted);margin-left:auto">${i.interaction_date||''} · ${esc(i.rep_name||'')}</span>
+        </div>
+        ${i.body?`<div style="font-size:12px;color:#444;white-space:pre-wrap">${esc(i.body)}</div>`:''}
+        ${i.next_follow_up?`<div style="font-size:11px;color:#E65100;margin-top:4px">🔔 Follow up: ${i.next_follow_up}</div>`:''}
+      </div>
+    </div>`).join(''):`<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">📋</div>
+      <div style="font-weight:600;margin-bottom:6px">No interactions logged yet</div>
+      <button class="btn btn-n sm" onclick="_rdxAddInteraction('${key}','${id}')">Log First Interaction</button>
+    </div>`}`;
+  }
+  else if(tab==='jobs'){
+    tabContent=`
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${wos.length} linked work order${wos.length!==1?'s':''}</div>
+    ${wos.length?`<div class="tw"><table>
+      <thead><tr><th>WO #</th><th>Customer</th><th>Division</th><th>Status</th><th>Date</th><th></th></tr></thead>
+      <tbody>${wos.slice(0,20).map(w=>`<tr>
+        <td style="font-weight:600;font-size:12px">#${(w.id||'').slice(-6)}</td>
+        <td style="font-size:12px">${esc(w.customer_name||'—')}</td>
+        <td style="font-size:12px">${esc(w.division||'—')}</td>
+        <td><span style="font-size:11px;background:#EEF2FF;color:#3730A3;padding:2px 7px;border-radius:4px">${esc(w.status||'—')}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${(w.scheduled_date||w.created_at||'').slice(0,10)}</td>
+        <td><button class="btn sm btn-o" onclick="cMod();openWO('${w.id}')">View</button></td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`:`<div style="text-align:center;padding:40px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:8px">🔧</div>
+      <div>No linked work orders found</div>
+    </div>`}`;
+  }
+
+  oMod(name,`
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--bdr)">
+    <div style="width:52px;height:52px;border-radius:50%;background:${typeBg};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">
+      ${{builders:'🏗️',realtors:'🏠',inspectors:'🔍','property-managers':'🏢'}[key]||'👤'}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:18px;font-weight:700;color:var(--navy)">${esc(name)}</div>
+      ${r.company_name||r.company?`<div style="font-size:13px;color:var(--muted);margin-bottom:4px">${esc(r.company_name||r.company||'')}</div>`:''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="background:${typeBg};color:${typeColor};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700">${_RDX_TYPE_LABELS[key]||''}</span>
+        <span style="background:${statusBg};color:${statusColor};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700">${r.account_status||'Active'}</span>
+        ${r.region?`<span style="font-size:11px;color:var(--muted)">📍 ${esc(r.region)}</span>`:''}
+        ${r.assigned_rep?`<span style="font-size:11px;color:var(--muted)">👤 ${esc(r.assigned_rep)}</span>`:''}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+      ${r.phone?`<a href="tel:${esc(r.phone)}" class="btn sm btn-n" style="text-decoration:none">📞 Call</a>`:''}
+      ${r.email?`<a href="mailto:${esc(r.email)}" class="btn sm btn-n" style="text-decoration:none">📧 Email</a>`:''}
+      <button class="btn sm btn-o" onclick="_rdxOpenEditFromProfile('${key}','${id}')">✏️ Edit</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:16px">
+    <button onclick="_rdxSwitchTab('overview','${key}','${id}')" style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='overview'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='overview'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">Overview</button>
+    <button onclick="_rdxSwitchTab('activity','${key}','${id}')" style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='activity'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='activity'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">
+      Activity ${interactions.length?`<span style="background:var(--navy);color:white;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:3px">${interactions.length}</span>`:''}
+    </button>
+    <button onclick="_rdxSwitchTab('jobs','${key}','${id}')" style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${tab==='jobs'?'2px solid var(--navy)':'2px solid transparent'};color:${tab==='jobs'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">
+      Linked Jobs ${wos.length?`<span style="background:#555;color:white;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:3px">${wos.length}</span>`:''}
+    </button>
+  </div>
+
+  <!-- Tab body -->
+  <div style="max-height:420px;overflow-y:auto;padding-right:4px">${tabContent}</div>
+
+  <div style="display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
+    <button class="btn btn-n sm" onclick="_rdxAddInteraction('${key}','${id}')">+ Log Interaction</button>
+    <button class="btn btn-r sm" style="margin-left:auto" onclick="_rdxConfirmDelete('${key}','${id}')">Delete Contact</button>
+    <button class="btn btn-o sm" onclick="cMod()">Close</button>
+  </div>`,'700px');
+}
+
+function _rdxSwitchTab(tab,key,id){
+  window._rdxProfileTab=tab;
+  const r=(S.get(_rdxCacheKey(key))||[]).find(x=>x.id===id);
+  if(r) _rdxRenderProfile(key,r);
+}
+
+function _rdxOpenEditFromProfile(key,id){
+  const r=(S.get(_rdxCacheKey(key))||[]).find(x=>x.id===id);
+  if(!r) return;
+  window[`_rdx_${key}_edit`]=id;
+  _rdxShowForm(key,r);
+}
+
+// ── Add / Edit Form ────────────────────────────────────────────────────────────
 function _rdxOpenAdd(key){
   window[`_rdx_${key}_edit`]=null;
+  window._rdxProfileTab='overview';
   _rdxShowForm(key,{});
 }
 
 function _rdxOpenEdit(key,id){
-  const rec=(S.get(`lhs:rdx_${key}`)||[]).find(x=>x.id===id)||{};
+  const rec=(S.get(_rdxCacheKey(key))||[]).find(x=>x.id===id)||{};
   window[`_rdx_${key}_edit`]=id;
   _rdxShowForm(key,rec);
 }
 
 function _rdxShowForm(key,r){
-  const title={builders:'Builder',realtors:'Realtor',inspectors:'Inspector'}[key];
+  const singLabel=_RDX_TYPE_LABELS[key]||'Contact';
   const isEdit=!!window[`_rdx_${key}_edit`];
-  oMod(`${isEdit?'Edit':'New'} ${title}`,`
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  oMod(`${isEdit?'Edit':'New'} ${singLabel}`,`
+  <div style="overflow-y:auto;max-height:70vh;padding-right:4px">
+  <!-- Basic Info -->
+  <div style="${_RDX_SEC}">Contact Info</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">First Name *</label><br><input id="rdx-fn" value="${esc(r.first_name||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Last Name *</label><br><input id="rdx-ln" value="${esc(r.last_name||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Company / Brokerage</label><br><input id="rdx-co" value="${esc(r.company||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Title / Role</label><br><input id="rdx-title" value="${esc(r.title||'')}" style="${_RDX_INP}" placeholder="${key==='builders'?'e.g. Owner, Project Manager':key==='realtors'?'e.g. Listing Agent, Buyer Agent':'e.g. Certified Inspector'}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Phone</label><br><input id="rdx-ph" value="${esc(r.phone||'')}" style="${_RDX_INP}" type="tel"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Email</label><br><input id="rdx-em" value="${esc(r.email||'')}" style="${_RDX_INP}" type="email"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">City</label><br><input id="rdx-city" value="${esc(r.city||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">State</label><br>
+    <div><label style="${_RDX_LBL}">First Name *</label><input id="rdx-fn" value="${esc(r.first_name||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Last Name *</label><input id="rdx-ln" value="${esc(r.last_name||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Company / Organization</label><input id="rdx-co" value="${esc(r.company_name||r.company||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Title / Role</label><input id="rdx-title" value="${esc(r.title||'')}" style="${_RDX_INP}" placeholder="${key==='builders'?'Owner, Project Manager':key==='realtors'?'Listing Agent, Buyer Agent':key==='inspectors'?'Certified Inspector':'Property Manager'}"></div>
+    <div><label style="${_RDX_LBL}">Phone</label><input id="rdx-ph" value="${esc(r.phone||'')}" style="${_RDX_INP}" type="tel"></div>
+    <div><label style="${_RDX_LBL}">Mobile</label><input id="rdx-mob" value="${esc(r.mobile||'')}" style="${_RDX_INP}" type="tel"></div>
+    <div><label style="${_RDX_LBL}">Email</label><input id="rdx-em" value="${esc(r.email||'')}" style="${_RDX_INP}" type="email"></div>
+    <div><label style="${_RDX_LBL}">Website</label><input id="rdx-web" value="${esc(r.website||'')}" style="${_RDX_INP}" placeholder="https://"></div>
+  </div>
+
+  <!-- Location -->
+  <div style="${_RDX_SEC}">Location</div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">Address</label><input id="rdx-addr" value="${esc(r.address||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">City</label><input id="rdx-city" value="${esc(r.city||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">State</label>
       <select id="rdx-state" style="${_RDX_INP}">
-        <option value="">— State —</option>
+        <option value="">—</option>
         ${ALL_STATES.map(s=>{const code=s.includes(' - ')?s.split(' - ')[0]:s;return`<option value="${code}"${(r.state||'')===code?' selected':''}>${s}</option>`;}).join('')}
       </select>
     </div>
-    ${key==='builders'?`
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">License #</label><br><input id="rdx-lic" value="${esc(r.license_number||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Specialty</label><br><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. Custom Homes, Remodels"></div>
-    `:''}
-    ${key==='realtors'?`
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">License #</label><br><input id="rdx-lic" value="${esc(r.license_number||'')}" style="${_RDX_INP}"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">MLS / Board</label><br><input id="rdx-mls" value="${esc(r.mls_board||'')}" style="${_RDX_INP}" placeholder="e.g. SCWMLS, MLS Heartland"></div>
-    `:''}
+    <div><label style="${_RDX_LBL}">Zip</label><input id="rdx-zip" value="${esc(r.zip||'')}" style="${_RDX_INP}" maxlength="10"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">Region</label>
+      <select id="rdx-region" style="${_RDX_INP}">
+        <option value="">— None —</option>
+        ${Object.keys(REGIONS).map(reg=>`<option value="${esc(reg)}"${r.region===reg?' selected':''}>${esc(reg)}</option>`).join('')}
+      </select>
+    </div>
+    <div><label style="${_RDX_LBL}">Territory</label><input id="rdx-territory" value="${esc(r.territory||'')}" style="${_RDX_INP}"></div>
+  </div>
+
+  <!-- Partnership -->
+  <div style="${_RDX_SEC}">Partnership</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">Account Status</label>
+      <select id="rdx-status" style="${_RDX_INP}">
+        ${_RDX_STATUSES.map(s=>`<option value="${s}"${(r.account_status||'Active')===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div><label style="${_RDX_LBL}">Assigned Rep</label>
+      <select id="rdx-rep" style="${_RDX_INP}">
+        <option value="">— Unassigned —</option>
+        ${users.map(u=>`<option value="${esc(u.name)}"${r.assigned_rep===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div><label style="${_RDX_LBL}">Lead Source</label><input id="rdx-source" value="${esc(r.lead_source||'')}" style="${_RDX_INP}" placeholder="e.g. Referral, Trade Show"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">Referred By</label><input id="rdx-ref" value="${esc(r.referred_by||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Last Contact Date</label><input id="rdx-lastcontact" type="date" value="${esc(r.last_contact_date||'')}" style="${_RDX_INP}"></div>
+  </div>
+
+  <!-- Contract -->
+  <div style="${_RDX_SEC}">Contract / Agreement</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">Contract Start</label><input id="rdx-cstart" type="date" value="${esc(r.contract_start||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Contract End</label><input id="rdx-cend" type="date" value="${esc(r.contract_end||'')}" style="${_RDX_INP}"></div>
+  </div>
+  <div style="margin-bottom:10px"><label style="${_RDX_LBL}">Contract Terms / Details</label>
+    <textarea id="rdx-cterms" style="${_RDX_INP};height:60px;resize:vertical">${esc(r.contract_terms||'')}</textarea>
+  </div>
+
+  <!-- Type-specific credentials -->
+  <div style="${_RDX_SEC}">Credentials</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><label style="${_RDX_LBL}">License #</label><input id="rdx-lic" value="${esc(r.license_number||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">License Expiry</label><input id="rdx-licexp" type="date" value="${esc(r.license_expiry||'')}" style="${_RDX_INP}"></div>
+    ${key==='realtors'||key==='builders'?`
+    <div><label style="${_RDX_LBL}">${key==='realtors'?'MLS / Board':'Certifications'}</label><input id="rdx-assoc" value="${esc(r.association||r.mls_board||r.certifications||'')}" style="${_RDX_INP}" placeholder="${key==='realtors'?'e.g. SCWMLS, NAR':'e.g. NAHB, LEED'}"></div>
+    <div><label style="${_RDX_LBL}">${key==='realtors'?'Brokerage':'Specialty'}</label><input id="rdx-spec" value="${esc(r.brokerage||r.specialty||'')}" style="${_RDX_INP}" placeholder="${key==='realtors'?'e.g. RE/MAX, Keller Williams':'e.g. Custom Homes, Remodels'}"></div>`:''}
     ${key==='inspectors'?`
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Certification</label><br><input id="rdx-cert" value="${esc(r.certification||'')}" style="${_RDX_INP}" placeholder="e.g. NACHI, ASHI, InterNACHI"></div>
-    <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Inspection Types</label><br><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. Radon, Home Inspection"></div>
-    `:''}
+    <div><label style="${_RDX_LBL}">Certification Body</label><input id="rdx-cert" value="${esc(r.certification||'')}" style="${_RDX_INP}" placeholder="e.g. InterNACHI, ASHI"></div>
+    <div><label style="${_RDX_LBL}">Inspection Types</label><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. Radon, Home Inspection"></div>`:''}
+    ${key==='property-managers'?`
+    <div><label style="${_RDX_LBL}">Property Management Co.</label><input id="rdx-pmco" value="${esc(r.association||'')}" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Units Managed</label><input id="rdx-spec" value="${esc(r.specialty||'')}" style="${_RDX_INP}" placeholder="e.g. 200+ residential units"></div>`:''}
   </div>
-  <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
-    <textarea id="rdx-notes" style="${_RDX_INP};height:70px;resize:vertical">${esc(r.notes||'')}</textarea>
+
+  <!-- Notes -->
+  <div style="${_RDX_SEC}">Notes</div>
+  <textarea id="rdx-notes" style="${_RDX_INP};height:80px;resize:vertical;margin-bottom:16px">${esc(r.notes||'')}</textarea>
   </div>
-  <div style="display:flex;gap:8px">
-    <button class="btn btn-n" onclick="_rdxSave('${key}')">Save</button>
+
+  <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--bdr)">
+    <button class="btn btn-n" onclick="_rdxSave('${key}')">💾 Save ${singLabel}</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
-    ${isEdit?`<button class="btn btn-r" style="margin-left:auto" onclick="_rdxDelete('${key}','${window[`_rdx_${key}_edit`]}')">Delete</button>`:''}
-  </div>`);
+    ${isEdit?`<button class="btn btn-r" style="margin-left:auto" onclick="_rdxConfirmDelete('${key}','${window[`_rdx_${key}_edit`]}')">Delete</button>`:''}
+  </div>`,'720px');
 }
 
 async function _rdxSave(key){
@@ -26213,122 +26558,161 @@ async function _rdxSave(key){
   if(!fn&&!ln){tst('Name is required','error');return;}
   const now=new Date().toISOString();
   const base={
-    first_name:fn||null,last_name:ln||null,
-    company:document.getElementById('rdx-co')?.value||null,
-    title:document.getElementById('rdx-title')?.value||null,
-    phone:document.getElementById('rdx-ph')?.value||null,
-    email:document.getElementById('rdx-em')?.value||null,
-    city:document.getElementById('rdx-city')?.value||null,
+    first_name:fn||null, last_name:ln||null,
+    company_name:document.getElementById('rdx-co')?.value?.trim()||null,
+    title:document.getElementById('rdx-title')?.value?.trim()||null,
+    phone:document.getElementById('rdx-ph')?.value?.trim()||null,
+    mobile:document.getElementById('rdx-mob')?.value?.trim()||null,
+    email:document.getElementById('rdx-em')?.value?.trim()||null,
+    website:document.getElementById('rdx-web')?.value?.trim()||null,
+    address:document.getElementById('rdx-addr')?.value?.trim()||null,
+    city:document.getElementById('rdx-city')?.value?.trim()||null,
     state:document.getElementById('rdx-state')?.value||null,
-    notes:document.getElementById('rdx-notes')?.value||null,
-    type:key.slice(0,-1), // 'builder','realtor','inspector'
+    zip:document.getElementById('rdx-zip')?.value?.trim()||null,
+    region:document.getElementById('rdx-region')?.value||null,
+    territory:document.getElementById('rdx-territory')?.value?.trim()||null,
+    account_status:document.getElementById('rdx-status')?.value||'Active',
+    assigned_rep:document.getElementById('rdx-rep')?.value||null,
+    lead_source:document.getElementById('rdx-source')?.value?.trim()||null,
+    referred_by:document.getElementById('rdx-ref')?.value?.trim()||null,
+    last_contact_date:document.getElementById('rdx-lastcontact')?.value||null,
+    contract_start:document.getElementById('rdx-cstart')?.value||null,
+    contract_end:document.getElementById('rdx-cend')?.value||null,
+    contract_terms:document.getElementById('rdx-cterms')?.value?.trim()||null,
+    license_number:document.getElementById('rdx-lic')?.value?.trim()||null,
+    license_expiry:document.getElementById('rdx-licexp')?.value||null,
+    notes:document.getElementById('rdx-notes')?.value?.trim()||null,
+    type:_RDX_TYPE_VALS[key],
     updated_at:now,
   };
-  if(key==='builders'||key==='realtors') base.license_number=document.getElementById('rdx-lic')?.value||null;
-  if(key==='realtors') base.mls_board=document.getElementById('rdx-mls')?.value||null;
-  if(key==='inspectors') base.certification=document.getElementById('rdx-cert')?.value||null;
-  if(key==='builders'||key==='inspectors') base.specialty=document.getElementById('rdx-spec')?.value||null;
+  // Type-specific
+  if(key==='realtors'||key==='builders') base.association=document.getElementById('rdx-assoc')?.value?.trim()||null;
+  if(key==='realtors') base.brokerage=document.getElementById('rdx-spec')?.value?.trim()||null;
+  if(key==='inspectors') base.certification=document.getElementById('rdx-cert')?.value?.trim()||null;
+  if(key==='builders'||key==='inspectors'||key==='property-managers') base.specialty=document.getElementById('rdx-spec')?.value?.trim()||null;
+  if(key==='property-managers') base.association=document.getElementById('rdx-pmco')?.value?.trim()||null;
 
   const editId=window[`_rdx_${key}_edit`];
-  const cacheKey=`lhs:rdx_${key}`;
+  const cacheKey=_rdxCacheKey(key);
   const recs=S.get(cacheKey)||[];
 
   if(editId){
-    // Update
     const idx=recs.findIndex(x=>x.id===editId);
     const updated={...recs[idx],...base,id:editId};
-    if(idx>=0) recs[idx]=updated; S.set(cacheKey,recs);
+    if(idx>=0) recs[idx]=updated;
+    S.set(cacheKey,recs);
     try{await DB.from('lhs_rolodex').update(base).eq('id',editId);}catch(e){console.warn('rdxSave update:',e.message);}
     tst(`${fn} ${ln} updated`,'success');
+    cMod();
+    // Re-open profile with updated data
+    window._rdxProfileTab='overview';
+    _rdxOpenProfile(key,editId);
   }else{
-    // Insert
     base.created_by=CU?.name||'';base.created_at=now;
     let saved=null;
     try{const{data,error}=await DB.from('lhs_rolodex').insert(base).select().single();if(!error&&data)saved=data;}catch(e){console.warn('rdxSave insert:',e.message);}
     const final=saved||{...base,id:'rdx_'+Date.now()};
     recs.unshift(final);S.set(cacheKey,recs);
     tst(`${fn} ${ln} added`,'success');
+    cMod();showPage(`rolodex-${key}`);
   }
-  cMod();
-  showPage(`rolodex-${key}`);
+}
+
+function _rdxConfirmDelete(key,id){
+  if(!confirm('Delete this contact? This cannot be undone.')) return;
+  _rdxDelete(key,id);
 }
 
 async function _rdxDelete(key,id){
-  if(!confirm('Delete this contact?')) return;
-  const cacheKey=`lhs:rdx_${key}`;
-  const recs=(S.get(cacheKey)||[]).filter(x=>x.id!==id);
-  S.set(cacheKey,recs);
+  const cacheKey=_rdxCacheKey(key);
+  S.set(cacheKey,(S.get(cacheKey)||[]).filter(x=>x.id!==id));
   try{await DB.from('lhs_rolodex').delete().eq('id',id);}catch(e){console.warn('rdxDelete:',e.message);}
-  tst('Deleted','success');cMod();
+  tst('Contact deleted','success');cMod();
   showPage(`rolodex-${key}`);
 }
 
-function _rdxPage(key,title,subtitle,emptyMsg,extraCols){
-  const q=(window[`_rdx_${key}_q`]||'').toLowerCase();
-  let recs=S.get(`lhs:rdx_${key}`)||[];
-  // Load from lhs_rolodex table filtered by type, if not cached yet
-  if(!recs.length){
-    const typeVal=key.slice(0,-1); // builders→builder etc
-    DB.from('lhs_rolodex').select('*').eq('type',typeVal).order('last_name',{ascending:true}).then(({data})=>{
-      if(data?.length){S.set(`lhs:rdx_${key}`,data);showPage(`rolodex-${key}`);}
-    }).catch(()=>{});
-  }
-  if(q) recs=recs.filter(r=>[r.first_name,r.last_name,r.company,r.phone,r.email,r.city,r.state,r.title,r.specialty,r.certification,r.mls_board].filter(Boolean).join(' ').toLowerCase().includes(q));
-
-  return`
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-    <div>
-      <div class="pt" style="margin:0">${title}</div>
-      <div class="ps">${subtitle} &nbsp;·&nbsp; ${recs.length} contact${recs.length===1?'':'s'}</div>
+// ── Interaction Log ────────────────────────────────────────────────────────────
+function _rdxAddInteraction(key,rdxId){
+  const today=new Date().toISOString().slice(0,10);
+  oMod('Log Interaction',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div><label style="${_RDX_LBL}">Type *</label>
+      <select id="rdxi-type" style="${_RDX_INP}">
+        ${_RDX_INTERACTION_TYPES.map(t=>`<option>${t}</option>`).join('')}
+      </select>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <input id="rdx-${key}-search" value="${esc(window[`_rdx_${key}_q`]||'')}" placeholder="🔍 Search…" oninput="_rdxSearch('${key}')"
-        style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;width:200px">
-      <button class="btn btn-n" onclick="_rdxOpenAdd('${key}')">+ Add ${title.replace(/s$/,'')}</button>
+    <div><label style="${_RDX_LBL}">Date *</label><input id="rdxi-date" type="date" value="${today}" style="${_RDX_INP}"></div>
+    <div style="grid-column:1/-1"><label style="${_RDX_LBL}">Subject</label><input id="rdxi-subject" placeholder="e.g. Intro call, Follow-up on proposal…" style="${_RDX_INP}"></div>
+    <div><label style="${_RDX_LBL}">Outcome</label>
+      <select id="rdxi-outcome" style="${_RDX_INP}">
+        <option value="">— Select —</option>
+        ${_RDX_OUTCOMES.map(o=>`<option>${o}</option>`).join('')}
+      </select>
     </div>
+    <div><label style="${_RDX_LBL}">Follow-Up Date</label><input id="rdxi-followup" type="date" style="${_RDX_INP}"></div>
   </div>
-
-  <div class="card" style="padding:0;margin-top:12px">
-    <div class="tw"><table>
-      <thead><tr>
-        <th>Name</th>
-        <th>Company</th>
-        <th>Phone</th>
-        <th>Email</th>
-        <th>City / State</th>
-        ${extraCols.map(c=>`<th>${c.label}</th>`).join('')}
-        <th></th>
-      </tr></thead>
-      <tbody>${recs.length?recs.map(r=>`<tr style="cursor:pointer" onclick="_rdxOpenEdit('${key}','${r.id}')">
-        <td style="font-weight:600">${esc((r.first_name||'')+' '+(r.last_name||''))}<br><span style="font-size:11px;color:var(--muted);font-weight:400">${esc(r.title||'')}</span></td>
-        <td style="font-size:13px">${esc(r.company||'—')}</td>
-        <td style="font-size:13px">${r.phone?`<a href="tel:${esc(r.phone)}" onclick="event.stopPropagation()">${esc(r.phone)}</a>`:'—'}</td>
-        <td style="font-size:13px">${r.email?`<a href="mailto:${esc(r.email)}" onclick="event.stopPropagation()">${esc(r.email)}</a>`:'—'}</td>
-        <td style="font-size:13px;color:var(--muted)">${esc([r.city,r.state].filter(Boolean).join(', ')||'—')}</td>
-        ${extraCols.map(c=>`<td style="font-size:13px;color:var(--muted)">${esc(r[c.field]||'—')}</td>`).join('')}
-        <td><button class="btn sm btn-o" onclick="event.stopPropagation();_rdxOpenEdit('${key}','${r.id}')">Edit</button></td>
-      </tr>`).join(''):`<tr><td colspan="${5+extraCols.length+1}" style="text-align:center;color:var(--muted);padding:32px">${emptyMsg}<br><button class="btn btn-n sm" style="margin-top:10px" onclick="_rdxOpenAdd('${key}')">Add First ${title.replace(/s$/,'')}</button></td></tr>`}
-      </tbody>
-    </table></div>
-  </div>`;
+  <div style="margin-bottom:14px"><label style="${_RDX_LBL}">Notes</label>
+    <textarea id="rdxi-body" style="${_RDX_INP};height:90px;resize:vertical" placeholder="What was discussed, next steps, etc."></textarea>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-n" onclick="_rdxSaveInteraction('${key}','${rdxId}')">💾 Save</button>
+    <button class="btn btn-o" onclick="_rdxOpenProfile('${key}','${rdxId}')">Cancel</button>
+  </div>`);
 }
 
+async function _rdxSaveInteraction(key,rdxId){
+  const type=document.getElementById('rdxi-type')?.value;
+  const date=document.getElementById('rdxi-date')?.value;
+  if(!type||!date){tst('Type and date required','error');return;}
+  const now=new Date().toISOString();
+  const rec={
+    id:crypto.randomUUID(),
+    rolodex_id:rdxId,
+    interaction_type:type,
+    subject:document.getElementById('rdxi-subject')?.value?.trim()||null,
+    body:document.getElementById('rdxi-body')?.value?.trim()||null,
+    interaction_date:date,
+    outcome:document.getElementById('rdxi-outcome')?.value||null,
+    next_follow_up:document.getElementById('rdxi-followup')?.value||null,
+    rep_name:CU?.name||'',
+    created_by:CU?.name||'',
+    created_at:now,
+  };
+  try{await DB.from('lhs_rolodex_interactions').insert(rec);}catch(e){console.warn('rdxInteraction insert:',e.message);}
+  // Update local cache + last_contact_date
+  if(!_rdxProfileInteractions[rdxId]) _rdxProfileInteractions[rdxId]=[];
+  _rdxProfileInteractions[rdxId].unshift(rec);
+  // Update last_contact_date on contact record
+  const cacheKey=_rdxCacheKey(key);
+  const recs=S.get(cacheKey)||[];
+  const idx=recs.findIndex(x=>x.id===rdxId);
+  if(idx>=0){recs[idx]={...recs[idx],last_contact_date:date};S.set(cacheKey,recs);}
+  try{await DB.from('lhs_rolodex').update({last_contact_date:date,updated_at:now}).eq('id',rdxId);}catch{}
+  tst('Interaction logged','success');
+  window._rdxProfileTab='activity';
+  _rdxOpenProfile(key,rdxId);
+}
+
+// ── Page builders ──────────────────────────────────────────────────────────────
 function bRolodexBuilders(){
   return _rdxPage('builders','Builders','Home builders and contractors in your network',
     'No builders on file yet.',
     [{label:'License #',field:'license_number'},{label:'Specialty',field:'specialty'}]);
 }
-
 function bRolodexRealtors(){
   return _rdxPage('realtors','Realtors','Real estate agents and brokers in your network',
     'No realtors on file yet.',
     [{label:'License #',field:'license_number'},{label:'MLS / Board',field:'mls_board'}]);
 }
-
 function bRolodexInspectors(){
   return _rdxPage('inspectors','Inspectors','Home and radon inspectors in your network',
     'No inspectors on file yet.',
     [{label:'Certification',field:'certification'},{label:'Specialties',field:'specialty'}]);
+}
+function bRolodexPropertyManagers(){
+  return _rdxPage('property-managers','Property Managers','Property managers in your network',
+    'No property managers on file yet.',
+    [{label:'Company',field:'company_name'},{label:'Units Managed',field:'specialty'}]);
 }
 
 function propStateChange(state){
