@@ -1680,6 +1680,7 @@ const TBL={
   'lhs:recons':'lhs_inventory_recons',
   'lhs:recon_items':'lhs_inventory_recon_items',
   'lhs:inv_adjustments':'lhs_inventory_adjustments',
+  'lhs:state_docs':'lhs_state_docs',
 };
 
 // Normalize a location-stock row: Supabase schema may use qty_on_hand/min_qty/max_qty/bin_shelf
@@ -8657,7 +8658,33 @@ async function svEditRMA(id){
 // ─── INTEGRATIONS ────────────────────────────────────────────────────────────
 
 // ─── ADMIN: REGIONS ──────────────────────────────────────────────────────────
+let _regSubTab=window._regSubTab||'map';
+
 function aRegions(){
+  return`
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:20px">
+    <button onclick="_regTab('map',this)" style="padding:9px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${_regSubTab==='map'?'2px solid var(--navy)':'2px solid transparent'};color:${_regSubTab==='map'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">🗺️ Region Map</button>
+    <button onclick="_regTab('docs',this)" style="padding:9px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:${_regSubTab==='docs'?'2px solid var(--navy)':'2px solid transparent'};color:${_regSubTab==='docs'?'var(--navy)':'var(--muted)'};margin-bottom:-2px">📄 State Documents</button>
+  </div>
+  <div id="reg-sub-body">${_regSubTab==='docs'?aStateDocs():_aRegionMap()}</div>`;
+}
+
+function _regTab(tab,btn){
+  _regSubTab=tab;
+  window._regSubTab=tab;
+  const el=document.getElementById('reg-sub-body');
+  if(!el) return;
+  document.querySelectorAll('#atab .tabs .tab, #reg-sub-body ~ button, [onclick*="_regTab"]').forEach(b=>{
+    b.style.borderBottom='2px solid transparent';
+    b.style.color='var(--muted)';
+  });
+  btn.style.borderBottom='2px solid var(--navy)';
+  btn.style.color='var(--navy)';
+  el.innerHTML=tab==='docs'?aStateDocs():_aRegionMap();
+  if(tab==='map') setTimeout(loadRegionMap,80);
+}
+
+function _aRegionMap(){
   setTimeout(loadRegionMap,80);
   const assignedStates=new Set(Object.values(REGIONS).flatMap(r=>r.states));
   const unassigned=Object.keys(STATE_NAMES).filter(s=>!assignedStates.has(s)).sort();
@@ -8697,6 +8724,273 @@ function aRegions(){
       </div>
     </div>
   </div>`;
+}
+
+// ─── STATE DOCUMENTS ─────────────────────────────────────────────────────────
+const STATE_DOC_TYPES=['Business Registration','State License','State Certification','Annual Report','Insurance Certificate','Contractor Bond','Tax Registration','Other'];
+
+function aStateDocs(){
+  const docs=S.get('lhs:state_docs')||[];
+  const f=window._sdFilter||{};
+  const today=new Date().toISOString().slice(0,10);
+  const soon=new Date();soon.setDate(soon.getDate()+60);
+  const soonStr=soon.toISOString().slice(0,10);
+
+  // Apply filters
+  let shown=docs;
+  if(f.state) shown=shown.filter(d=>d.state===f.state);
+  if(f.type) shown=shown.filter(d=>d.doc_type===f.type);
+  if(f.status){
+    if(f.status==='expired') shown=shown.filter(d=>d.expiry_date&&d.expiry_date<today);
+    else if(f.status==='expiring') shown=shown.filter(d=>d.expiry_date&&d.expiry_date>=today&&d.expiry_date<=soonStr);
+    else if(f.status==='valid') shown=shown.filter(d=>!d.expiry_date||d.expiry_date>soonStr);
+  }
+  if(f.search) shown=shown.filter(d=>(d.doc_name||'').toLowerCase().includes(f.search.toLowerCase())||(STATE_NAMES[d.state]||'').toLowerCase().includes(f.search.toLowerCase()));
+
+  // Sort: expired first, then expiring, then valid, then no expiry
+  shown=[...shown].sort((a,b)=>{
+    const rank=d=>{if(!d.expiry_date) return 3;if(d.expiry_date<today) return 0;if(d.expiry_date<=soonStr) return 1;return 2;};
+    return rank(a)-rank(b)||(a.state||'').localeCompare(b.state||'');
+  });
+
+  // Expiry status helper
+  const expiryStatus=d=>{
+    if(!d.expiry_date) return{icon:'',label:'No expiry',cls:'color:#888'};
+    if(d.expiry_date<today) return{icon:'🔴',label:`Expired ${d.expiry_date}`,cls:'color:#B71C1C;font-weight:700'};
+    if(d.expiry_date<=soonStr){
+      const days=Math.round((new Date(d.expiry_date)-new Date(today))/86400000);
+      return{icon:'🟡',label:`Expires in ${days}d`,cls:'color:#E65100;font-weight:700'};
+    }
+    return{icon:'🟢',label:d.expiry_date,cls:'color:#2E7D32'};
+  };
+
+  // States used in docs for filter dropdown
+  const usedStates=[...new Set(docs.map(d=>d.state).filter(Boolean))].sort();
+
+  // Expiry alert counts
+  const expiredCount=docs.filter(d=>d.expiry_date&&d.expiry_date<today).length;
+  const expiringCount=docs.filter(d=>d.expiry_date&&d.expiry_date>=today&&d.expiry_date<=soonStr).length;
+
+  return`
+  <div class="sh">
+    <h3 style="margin:0">State Documents</h3>
+    <button class="btn btn-n" onclick="oAddStateDoc()">+ Add Document</button>
+  </div>
+
+  ${expiredCount||expiringCount?`<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    ${expiredCount?`<div style="background:#FFEBEE;border:1px solid #EF9A9A;border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">🔴</span>
+      <div><div style="font-weight:700;color:#B71C1C;font-size:14px">${expiredCount} Expired</div><div style="font-size:11px;color:#C62828">Immediate attention required</div></div>
+    </div>`:''}
+    ${expiringCount?`<div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">🟡</span>
+      <div><div style="font-weight:700;color:#E65100;font-size:14px">${expiringCount} Expiring Soon</div><div style="font-size:11px;color:#BF360C">Within 60 days</div></div>
+    </div>`:''}
+  </div>`:''}
+
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;background:#f8f7f4;border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;align-items:center">
+    <span style="font-size:12px;font-weight:600;color:var(--muted)">▾ Filter:</span>
+    <select onchange="_sdF('state',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All States</option>
+      ${usedStates.map(s=>`<option value="${s}"${f.state===s?' selected':''}>${s} — ${STATE_NAMES[s]||s}</option>`).join('')}
+    </select>
+    <select onchange="_sdF('type',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Types</option>
+      ${STATE_DOC_TYPES.map(t=>`<option value="${t}"${f.type===t?' selected':''}>${t}</option>`).join('')}
+    </select>
+    <select onchange="_sdF('status',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+      <option value="">All Statuses</option>
+      <option value="expired"${f.status==='expired'?' selected':''}>🔴 Expired</option>
+      <option value="expiring"${f.status==='expiring'?' selected':''}>🟡 Expiring Soon</option>
+      <option value="valid"${f.status==='valid'?' selected':''}>🟢 Valid</option>
+    </select>
+    <input type="text" placeholder="Search docs…" value="${esc(f.search||'')}" oninput="_sdF('search',this.value)" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;width:160px">
+    ${(f.state||f.type||f.status||f.search)?`<button class="btn sm btn-o" onclick="_sdClear()">✕ Clear</button>`:''}
+    <span style="margin-left:auto;font-size:12px;color:var(--muted)">${shown.length} document${shown.length!==1?'s':''}</span>
+  </div>
+
+  ${shown.length===0?`<div style="text-align:center;padding:60px 20px;color:var(--muted)">
+    <div style="font-size:40px;margin-bottom:12px">📄</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">${docs.length===0?'No documents yet':'No documents match your filters'}</div>
+    <div style="font-size:13px">${docs.length===0?'Click "+ Add Document" to upload your first state document.':'Try adjusting your filters.'}</div>
+    ${docs.length===0?`<button class="btn btn-n" style="margin-top:16px" onclick="oAddStateDoc()">+ Add First Document</button>`:''}
+  </div>`:
+  `<div class="card" style="padding:0;overflow:hidden">
+    <div class="tw" style="margin:0"><table>
+      <thead><tr>
+        <th>State</th>
+        <th>Document Name</th>
+        <th>Type</th>
+        <th>Expiry</th>
+        <th>Region</th>
+        <th>Notes</th>
+        <th style="text-align:center">File</th>
+        <th style="text-align:center">Actions</th>
+      </tr></thead>
+      <tbody>
+      ${shown.map(d=>{
+        const es=expiryStatus(d);
+        const region=Object.entries(REGIONS).find(([,r])=>r.states.includes(d.state))?.[0]||'—';
+        const regionColor=REGIONS[region]?.color||'#888';
+        return`<tr>
+          <td>
+            <span style="font-weight:700;font-size:13px">${d.state||'—'}</span>
+            <div style="font-size:11px;color:var(--muted)">${STATE_NAMES[d.state]||''}</div>
+          </td>
+          <td style="font-weight:600">${esc(d.doc_name||'—')}</td>
+          <td><span style="background:#EEF2FF;color:#3730A3;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${esc(d.doc_type||'—')}</span></td>
+          <td style="font-size:12px;${es.cls}">${es.icon} ${es.label}</td>
+          <td><span style="font-size:11px;font-weight:600;color:${regionColor}">${region}</span></td>
+          <td style="font-size:12px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.notes||'—')}</td>
+          <td style="text-align:center">
+            ${d.file_url?`<a href="${esc(d.file_url)}" target="_blank" class="btn sm btn-n" style="text-decoration:none;font-size:11px">📎 View</a>`:`<span style="color:#ccc;font-size:12px">—</span>`}
+          </td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn sm btn-o" onclick="oEditStateDoc('${d.id}')">Edit</button>
+            <button class="btn sm btn-r" onclick="delStateDoc('${d.id}')">✕</button>
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>
+  </div>`}`;
+}
+
+function _sdF(key,val){
+  if(!window._sdFilter) window._sdFilter={};
+  window._sdFilter[key]=val;
+  const el=document.getElementById('reg-sub-body');
+  if(el) el.innerHTML=aStateDocs();
+}
+function _sdClear(){
+  window._sdFilter={};
+  const el=document.getElementById('reg-sub-body');
+  if(el) el.innerHTML=aStateDocs();
+}
+
+function oAddStateDoc(editId){
+  const doc=editId?(S.get('lhs:state_docs')||[]).find(d=>d.id===editId):null;
+  const title=doc?'Edit State Document':'Add State Document';
+  const allStateOpts=Object.keys(STATE_NAMES).sort().map(s=>`<option value="${s}"${doc?.state===s?' selected':''}>${s} — ${STATE_NAMES[s]}</option>`).join('');
+  oMod(title,`
+    <div class="fr">
+      <div class="fl">
+        <label>State *</label>
+        <select id="sd-state" style="width:100%">
+          <option value="">Select state…</option>
+          ${allStateOpts}
+        </select>
+      </div>
+      <div class="fl">
+        <label>Document Type *</label>
+        <select id="sd-type" style="width:100%">
+          <option value="">Select type…</option>
+          ${STATE_DOC_TYPES.map(t=>`<option value="${t}"${doc?.doc_type===t?' selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fl" style="flex:2">
+        <label>Document Name *</label>
+        <input id="sd-name" placeholder="e.g. Ohio Radon Contractor License" value="${esc(doc?.doc_name||'')}">
+      </div>
+      <div class="fl">
+        <label>Expiry Date</label>
+        <input id="sd-expiry" type="date" value="${esc(doc?.expiry_date||'')}">
+      </div>
+    </div>
+    <div class="fl" style="margin-bottom:12px">
+      <label>Notes</label>
+      <input id="sd-notes" placeholder="License #, issuing agency, renewal info…" value="${esc(doc?.notes||'')}">
+    </div>
+    <div class="fl" style="margin-bottom:16px">
+      <label>📎 Upload File <span style="font-size:11px;color:var(--muted);font-weight:400">(PDF, JPG, PNG — max 20MB)</span></label>
+      <input id="sd-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="padding:8px;border:1px dashed var(--bdr);border-radius:6px;width:100%;cursor:pointer;background:#fafafa">
+      ${doc?.file_url?`<div style="margin-top:6px;font-size:12px;color:#1565C0">Current file: <a href="${esc(doc.file_url)}" target="_blank" style="color:#1565C0">View existing file</a> — upload a new file to replace it</div>`:''}
+    </div>
+    <div class="fl" style="margin-bottom:4px">
+      <label>Or paste file URL <span style="font-size:11px;color:var(--muted);font-weight:400">(Google Drive, Dropbox, etc.)</span></label>
+      <input id="sd-url" placeholder="https://…" value="${esc(doc?.file_url&&!doc.file_url.startsWith('state-docs/')?doc.file_url:'')}">
+    </div>
+    <div class="br2" style="margin-top:18px">
+      <button class="btn btn-n" onclick="svSaveStateDoc('${editId||''}')">💾 Save Document</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>
+  `);
+}
+
+function oEditStateDoc(id){ oAddStateDoc(id); }
+
+async function svSaveStateDoc(editId){
+  const state=document.getElementById('sd-state')?.value?.trim();
+  const type=document.getElementById('sd-type')?.value?.trim();
+  const name=document.getElementById('sd-name')?.value?.trim();
+  const expiry=document.getElementById('sd-expiry')?.value?.trim()||null;
+  const notes=document.getElementById('sd-notes')?.value?.trim()||null;
+  const fileInput=document.getElementById('sd-file');
+  const urlInput=document.getElementById('sd-url')?.value?.trim()||null;
+
+  if(!state){tst('Please select a state','error');return;}
+  if(!type){tst('Please select a document type','error');return;}
+  if(!name){tst('Please enter a document name','error');return;}
+
+  let file_url=urlInput||null;
+
+  // Try Supabase Storage upload if file selected
+  const file=fileInput?.files?.[0];
+  if(file){
+    try{
+      const ext=file.name.split('.').pop();
+      const path=`${state}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const{data:upData,error:upErr}=await DB.storage.from('state-docs').upload(path,file,{cacheControl:'3600',upsert:false});
+      if(upErr) throw upErr;
+      const{data:{publicUrl}}=DB.storage.from('state-docs').getPublicUrl(path);
+      file_url=publicUrl||path;
+      tst('File uploaded ✓','success');
+    }catch(e){
+      console.warn('Storage upload failed:',e?.message);
+      tst(`File upload failed — ${e?.message||'check storage bucket'}. Document saved without file.`,'warning');
+    }
+  }
+
+  // If editing, preserve existing file_url if no new file/url provided
+  if(editId&&!file_url){
+    const existing=(S.get('lhs:state_docs')||[]).find(d=>d.id===editId);
+    if(existing?.file_url) file_url=existing.file_url;
+  }
+
+  const now=new Date().toISOString();
+  if(editId){
+    const docs=S.get('lhs:state_docs')||[];
+    const idx=docs.findIndex(d=>d.id===editId);
+    if(idx!==-1){
+      docs[idx]={...docs[idx],state,doc_type:type,doc_name:name,expiry_date:expiry,notes,file_url,updated_at:now,updated_by:CU?.name||''};
+      S.set('lhs:state_docs',docs);
+      try{await DB.from('lhs_state_docs').update({state,doc_type:type,doc_name:name,expiry_date:expiry,notes,file_url,updated_at:now,updated_by:CU?.name||''}).eq('id',editId);}catch(e){console.warn('state doc update:',e?.message);}
+    }
+    tst('Document updated','success');
+  } else {
+    const doc={id:crypto.randomUUID(),state,doc_type:type,doc_name:name,expiry_date:expiry,notes,file_url,created_at:now,created_by:CU?.name||''};
+    const docs=S.get('lhs:state_docs')||[];
+    docs.push(doc);
+    S.set('lhs:state_docs',docs);
+    try{await DB.from('lhs_state_docs').insert(doc);}catch(e){console.warn('state doc insert:',e?.message);}
+    tst('Document added','success');
+  }
+  cMod();
+  const el=document.getElementById('reg-sub-body');
+  if(el) el.innerHTML=aStateDocs();
+}
+
+async function delStateDoc(id){
+  if(!confirm('Delete this document?')) return;
+  const docs=(S.get('lhs:state_docs')||[]).filter(d=>d.id!==id);
+  S.set('lhs:state_docs',docs);
+  try{await DB.from('lhs_state_docs').delete().eq('id',id);}catch(e){console.warn('state doc delete:',e?.message);}
+  tst('Document removed','info');
+  const el=document.getElementById('reg-sub-body');
+  if(el) el.innerHTML=aStateDocs();
 }
 
 // FIPS code → state abbreviation (US Census standard)
@@ -11547,6 +11841,7 @@ function aTab(tab,btn){
     regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt,security:aSecurityTraining,import:bAdminImport};
   if(fns[tab]) el.innerHTML=fns[tab]();
   if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
+  if(tab==='regions'&&(!window._regSubTab||window._regSubTab==='map')) setTimeout(loadRegionMap,80);
 }
 
 
@@ -13504,10 +13799,13 @@ function printTimesheet(emp, period){
     const punches=(allPunches||[]).filter(p=>p.employee===emp&&p.date===date).sort((a,b)=>(a.punched_at||'').localeCompare(b.punched_at||''));
     const ci=punches.find(p=>p.punch_type==='clock_in');
     const co=[...punches].reverse().find(p=>p.punch_type==='clock_out');
-    const punchStr=ci?`${fmtTime(ci.punched_at)} – ${co?fmtTime(co.punched_at):'active'}`:'';
+    const ciLocFlag=ci&&ci.location_flagged;
+    const coLocFlag=co&&co.location_flagged;
+    const anyLocFlag=punches.some(p=>p.location_flagged);
+    const punchStr=ci?`${fmtTime(ci.punched_at)}${ciLocFlag?' ⚠️':ci.punch_location_status==='ok'?' 📍':''} – ${co?fmtTime(co.punched_at)+(coLocFlag?' ⚠️':co.punch_location_status==='ok'?' 📍':''):'active'}`:'';
     return`<tr style="${!row?'color:#aaa':''}">
       <td>${dayLabel}</td>
-      <td style="text-align:center;color:#555;font-size:10px">${punchStr}</td>
+      <td style="text-align:center;color:#555;font-size:10px" title="${anyLocFlag?'One or more punches missing location data':''}">${punchStr}</td>
       <td class="num">${row?pH(workHrs):'—'}</td>
       <td class="num">${row?pH(meal):'—'}</td>
       <td class="num">${pto>0?pH(pto):'—'}</td>
@@ -19803,15 +20101,25 @@ async function dispClockIn(techName){
   const now=new Date();
   const date=now.toISOString().slice(0,10);
   const ws=typeof prWeekStart==='function'?prWeekStart(date):date;
+  // Capture manager's location (represents office/job-site where action was taken)
+  const geo=await _getGeoPunch();
+  const locationFlagged=geo.status!=='ok';
   const punch={id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
     employee:techName,employee_id:'',punch_type:'clock_in',
-    punched_at:now.toISOString(),date,week_start:ws};
+    punched_at:now.toISOString(),date,week_start:ws,
+    punch_lat:geo.lat,punch_lng:geo.lng,
+    punch_accuracy:geo.accuracy,
+    punch_address:geo.address,
+    punch_location_status:geo.status,
+    location_flagged:locationFlagged,
+    manager_initiated:true,manager_name:CU?.name||''};
   const punches=S.get('lhs:time_punches')||[];
   punches.push(punch);
   S.set('lhs:time_punches',punches);
   try{await DB.from('lhs_time_punches').insert(punch);}catch(e){console.warn('dispClockIn:',e?.message);}
   if(typeof prCalcTimesheetFromPunches==='function') prCalcTimesheetFromPunches(techName,date,ws);
-  tst(`${techName} clocked in`,'success');
+  const locNote=geo.status==='ok'?` 📍`:(` ⚠️ no location`);
+  tst(`${techName} clocked in${locNote}`,'success');
   showPage('dispatch');
 }
 async function dispClockOut(techName){
@@ -19819,15 +20127,24 @@ async function dispClockOut(techName){
   const now=new Date();
   const date=now.toISOString().slice(0,10);
   const ws=typeof prWeekStart==='function'?prWeekStart(date):date;
+  const geo=await _getGeoPunch();
+  const locationFlagged=geo.status!=='ok';
   const punch={id:'pch_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
     employee:techName,employee_id:'',punch_type:'clock_out',
-    punched_at:now.toISOString(),date,week_start:ws};
+    punched_at:now.toISOString(),date,week_start:ws,
+    punch_lat:geo.lat,punch_lng:geo.lng,
+    punch_accuracy:geo.accuracy,
+    punch_address:geo.address,
+    punch_location_status:geo.status,
+    location_flagged:locationFlagged,
+    manager_initiated:true,manager_name:CU?.name||''};
   const punches=S.get('lhs:time_punches')||[];
   punches.push(punch);
   S.set('lhs:time_punches',punches);
   try{await DB.from('lhs_time_punches').insert(punch);}catch(e){console.warn('dispClockOut:',e?.message);}
   if(typeof prCalcTimesheetFromPunches==='function') prCalcTimesheetFromPunches(techName,date,ws);
-  tst(`${techName} clocked out`,'info');
+  const locNote=geo.status==='ok'?` 📍`:(` ⚠️ no location`);
+  tst(`${techName} clocked out${locNote}`,'info');
   showPage('dispatch');
 }
 
@@ -28477,6 +28794,38 @@ function bPayrollDashboard(){
     </div>
   </div>
 
+  <!-- Flagged Punch Locations -->
+  ${(()=>{
+    if(!canApprove) return '';
+    const weekPunches=(S.get('lhs:time_punches')||[]).filter(p=>{
+      if(!p.location_flagged) return false;
+      // Only show punches within the current selected period week
+      const weekEnd=(()=>{const d=new Date(period+'T12:00:00');d.setDate(d.getDate()+6);return d.toISOString().slice(0,10);})();
+      return p.date>=period&&p.date<=weekEnd;
+    });
+    if(!weekPunches.length) return '';
+    const statusLabel={denied:'Location denied',timeout:'Location timed out',unavailable:'Location unavailable'};
+    return`<div style="background:#FFF3E0;border:1px solid #FFB300;border-radius:8px;padding:14px 16px;margin-bottom:20px">
+      <div style="font-weight:700;color:#E65100;margin-bottom:10px;font-size:13px">⚠️ ${weekPunches.length} Punch${weekPunches.length!==1?'es':''} Flagged — Location Unavailable</div>
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">
+        ${weekPunches.sort((a,b)=>a.punched_at.localeCompare(b.punched_at)).map(p=>{
+          const pDate=new Date(p.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+          const pTime=new Date(p.punched_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+          const typeLabel=p.punch_type==='clock_in'?'Clock In':p.punch_type==='clock_out'?'Clock Out':p.punch_type==='meal_start'?'Meal Start':'Meal End';
+          const reason=statusLabel[p.punch_location_status]||'No location data';
+          const mgr=p.manager_initiated?`<span style="font-size:10px;background:#555;color:white;border-radius:3px;padding:1px 5px;margin-left:4px">Mgr: ${esc(p.manager_name||'?')}</span>`:'';
+          return`<div style="display:flex;align-items:center;gap:10px;font-size:12px;background:white;border-radius:6px;padding:7px 10px;border:1px solid #FFE082">
+            <div style="font-weight:600;min-width:130px">${esc(p.employee)}</div>
+            <div style="color:#555;min-width:100px">${pDate}</div>
+            <div style="font-weight:600;color:var(--navy);min-width:70px">${typeLabel}</div>
+            <div style="color:var(--muted);min-width:55px">${pTime}</div>
+            <div style="color:#E65100;flex:1">${reason}${mgr}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
+
   <!-- Employee Table -->
   <div class="card" style="padding:0;overflow:hidden">
     ${shownList.length===0?`<div style="text-align:center;padding:40px;color:var(--muted)">
@@ -29232,6 +29581,53 @@ function cUserMenu(){
   if(menu) menu.style.display='none';
 }
 
+// ── Geo-Punch helper ──────────────────────────────────────────────────
+// Returns {lat, lng, accuracy, address, status}
+// status: 'ok' | 'denied' | 'timeout' | 'unavailable'
+// Always resolves (never rejects) so punches always go through
+async function _getGeoPunch(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){
+      resolve({lat:null,lng:null,accuracy:null,address:null,status:'unavailable'});
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async pos=>{
+        const lat=pos.coords.latitude;
+        const lng=pos.coords.longitude;
+        const accuracy=Math.round(pos.coords.accuracy);
+        let address=null;
+        try{
+          const r=await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+            {headers:{'Accept-Language':'en','User-Agent':'SafeguardLHS/1.0'}}
+          );
+          if(r.ok){
+            const d=await r.json();
+            if(d.address){
+              const a=d.address;
+              const parts=[
+                a.house_number&&a.road?`${a.house_number} ${a.road}`:a.road,
+                a.city||a.town||a.village||a.county,
+                a.state
+              ].filter(Boolean);
+              address=parts.length?parts.join(', '):(d.display_name||null);
+            } else {
+              address=d.display_name||null;
+            }
+          }
+        }catch(e){console.warn('Nominatim reverse geocode failed:',e?.message);}
+        resolve({lat,lng,accuracy,address,status:'ok'});
+      },
+      err=>{
+        const status=err.code===1?'denied':err.code===3?'timeout':'unavailable';
+        resolve({lat:null,lng:null,accuracy:null,address:null,status});
+      },
+      {enableHighAccuracy:true,timeout:8000,maximumAge:30000}
+    );
+  });
+}
+
 function renderPunchArea(){
   const area=document.getElementById('um-punch-area');
   if(!area||!CU) return;
@@ -29260,10 +29656,19 @@ function renderPunchArea(){
 
   area.innerHTML=`
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Today's Punches</div>
-    ${todayPunches.length?`<div style="margin-bottom:8px;max-height:100px;overflow-y:auto">${todayPunches.map(p=>`<div style="font-size:11px;color:#555;display:flex;justify-content:space-between;padding:2px 0">
-      <span>${p.punch_type==='clock_in'?'🟢 Clock In':p.punch_type==='meal_start'?'🟡 Meal Start':p.punch_type==='meal_end'?'🟢 Meal End':'🔴 Clock Out'}</span>
-      <span style="color:var(--muted)">${new Date(p.punched_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
-    </div>`).join('')}</div>`:'<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No punches yet today</div>'}
+    ${todayPunches.length?`<div style="margin-bottom:8px;max-height:130px;overflow-y:auto">${todayPunches.map(p=>{
+      const locOk=p.punch_location_status==='ok';
+      const locMissing=p.punch_location_status&&p.punch_location_status!=='ok';
+      const locIcon=locOk?'📍':locMissing?'⚠️':'';
+      const locTip=locOk&&p.punch_address?p.punch_address:locMissing?'Location unavailable — flagged for review':'';
+      return`<div style="font-size:11px;color:#555;padding:2px 0;border-bottom:1px solid #f0f0f0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span>${p.punch_type==='clock_in'?'🟢 Clock In':p.punch_type==='meal_start'?'🟡 Meal Start':p.punch_type==='meal_end'?'🟢 Meal End':'🔴 Clock Out'}</span>
+          <span style="color:var(--muted);display:flex;gap:4px;align-items:center"><span>${locIcon}</span><span>${new Date(p.punched_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></span>
+        </div>
+        ${locTip?`<div style="font-size:10px;color:${locMissing?'#E65100':'#888'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${locTip}</div>`:''}
+      </div>`;
+    }).join('')}</div>`:'<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No punches yet today</div>'}
     ${totalWorkedMins>0?`<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">Total today: ${totalHrsDisplay}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       ${!isClockedIn&&!isMeal?`<button class="btn sm btn-g" onclick="prPunch('clock_in')">🟢 Clock In</button>`:''}
@@ -29278,11 +29683,21 @@ async function prPunch(type){
   const now=new Date();
   const date=now.toISOString().slice(0,10);
   const weekStart=prWeekStart(date);
+
+  // Capture geo location — always continues regardless of result
+  const geo=await _getGeoPunch();
+  const locationFlagged=geo.status!=='ok';
+
   const punch={
     id:crypto.randomUUID(),
     employee:CU.name,
-    punch_type:type, punched_at:now.toISOString(),
-    date, week_start:weekStart
+    punch_type:type,punched_at:now.toISOString(),
+    date,week_start:weekStart,
+    punch_lat:geo.lat,punch_lng:geo.lng,
+    punch_accuracy:geo.accuracy,
+    punch_address:geo.address,
+    punch_location_status:geo.status,
+    location_flagged:locationFlagged
   };
   const punches=S.get('lhs:time_punches')||[];
   punches.push(punch);
@@ -29293,7 +29708,11 @@ async function prPunch(type){
   prCalcTimesheetFromPunches(CU.name, date, weekStart);
 
   const labels={'clock_in':'Clocked in','meal_start':'Meal break started','meal_end':'Back from meal','clock_out':'Clocked out'};
-  tst(labels[type]||type,'success');
+  if(geo.status==='ok'){
+    tst(`${labels[type]||type} 📍 ${geo.address||'Location captured'}`,'success');
+  } else {
+    tst(`${labels[type]||type} — ⚠️ Location unavailable, flagged for review`,'warning');
+  }
   renderPunchArea();
 }
 
