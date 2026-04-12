@@ -2092,6 +2092,11 @@ function rebuildLists(){
     const name=(d.name||'').trim();
     if(name&&d.code&&!DIV_CODES[name]) DIV_CODES[name]=d.code;
   });
+  // Reapply saved dispatch order so rebuildLists() never wipes a pinned arrangement
+  try{
+    const _so=JSON.parse(localStorage.getItem('lms_disp_order')||'null');
+    if(_so) DIVS.sort((a,b)=>(_so[a]??99)-(_so[b]??99));
+  }catch{}
 }
 
 // ── LOCATION EXTRAS (vehicle fields not yet in Supabase schema) ───────────────
