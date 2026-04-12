@@ -1784,9 +1784,10 @@ async function warmCache(){
     ];
     const woLoad=(async()=>{
       try{
-        // Load most recent 3000 WOs in a single query — no pagination waterfall
+        // Load all WOs — ServiceTitan imports have 2024 created_at but current appointments,
+        // so a hard row cap would exclude them. Supabase handles this fine as a single query.
         const{data,error}=await DB.from(WO_TBL).select('*')
-          .order('created_at',{ascending:false,nullsFirst:false}).limit(3000);
+          .order('created_at',{ascending:false,nullsFirst:false}).limit(15000);
         if(!error&&data&&data.length) S.set('lhs:work_orders',data);
       }catch(e){console.warn('WO load failed:',e.message);}
     })();
@@ -19858,10 +19859,10 @@ function renderDispBoard(){
 
   // Add appointments to relevant divisions (apts only — tech rows are owned by home division only)
   // Do NOT gate on filteredWOIds — appointments whose WO wasn't loaded (e.g. old ServiceTitan
-  // imports outside the 3000-row cap) would otherwise be invisible even when utilization % shows them.
+  // imports outside the load cap) would otherwise be invisible even when utilization % shows them.
   allApts.filter(a=>dates.includes(a.scheduled_date)&&a.status!=='Cancelled').forEach(apt=>{
     const wo=allWOs.find(w=>w.id===apt.wo_id);
-    if(!wo) return; // can't determine division without WO — skip division count only
+    if(!wo) return; // WO still not loaded — division grouping skipped, tech row handles it
     // Normalize to canonical DIVS name to prevent duplicate rows from casing/whitespace differences
     const canonDiv=DIVS.find(d=>d.trim().toLowerCase()===(wo.division||'').trim().toLowerCase())||(wo.division||'').trim();
     if(!divGroups[canonDiv]) divGroups[canonDiv]={apts:[],techs:new Set()};
@@ -22041,7 +22042,19 @@ function _addAnotherWOFromEst(estId,oppId,custName){
 
 // ── OPEN WORK ORDER DETAIL ────────────────────────────────────────────────────
 async function openWO(woId){
-  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  let wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  if(!wo){
+    // Not in local cache — fetch directly from DB (handles WOs outside the load cap)
+    try{
+      const{data}=await DB.from('lhs_work_orders').select('*').eq('id',woId).single();
+      if(data){
+        wo=data;
+        const wos=S.get('lhs:work_orders')||[];
+        wos.unshift(data);
+        S.set('lhs:work_orders',wos);
+      }
+    }catch(e){}
+  }
   if(!wo){tst('Work order not found','error');return}
   const apts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===woId);
   const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.wo_id===woId);
