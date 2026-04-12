@@ -1723,6 +1723,29 @@ async function warmCache(){
     const ON_DEMAND_TBLS=['lhs_customers','lhs_wo_photos','lhs_audit_log'];
     // lhs_work_orders uses paginated load to handle large post-import datasets
     const WO_TBL='lhs_work_orders';
+    // Row limits for high-volume tables — fetch only recent N rows to stay fast
+    const ROW_LIMITS={
+      'lhs_notifications':150,'lhs_messages':500,'lhs_documents':300,
+      'lhs_wo_notes':3000,'lhs_wo_audit':3000,'lhs_activities':1000,
+      'lhs_time_punches':3000,'lhs_timesheets':1000,'lhs_job_time_entries':1000,
+      'lhs_acct_bank_txns':1000,'lhs_acct_journal':1000,
+      'lhs_compliance_reports':200,'lhs_mk_events':500,'lhs_mk_drip':200,
+      'lhs_permits':500,'lhs_receipts':500,'lhs_tester_deployments':500,
+      'lhs_cross_checks':1000,'lhs_alpha_results':1000,'lhs_crm_cross_checks':500,
+    };
+    // Tables only needed for specific modules — load in background after fast tables finish
+    const LAZY_TBLS=[
+      'lhs_notifications','lhs_messages','lhs_documents','lhs_wo_notes','lhs_wo_audit',
+      'lhs_activities','lhs_time_punches','lhs_timesheets','lhs_job_time_entries',
+      'lhs_acct_bank_txns','lhs_acct_journal','lhs_acct_bills','lhs_acct_invoices','lhs_acct_coa',
+      'lhs_compliance_reports','lhs_mk_events','lhs_mk_drip','lhs_mk_campaigns','lhs_mk_settings',
+      'lhs_permits','lhs_receipts','lhs_tester_deployments','lhs_cross_checks','lhs_crm_cross_checks',
+      'lhs_alpha_results','lhs_training_assignments','lhs_role_permissions','lhs_onboarding_plans',
+      'lhs_onboarding_templates','lhs_ops_documents','lhs_ops_assignments','lhs_wlm_exposures',
+      'lhs_calendar_events','lhs_grey_blocks','lhs_tool_audit','lhs_scheduled_reports',
+      'lhs_custom_reports','lhs_inventory_adjustments','lhs_inventory_recons','lhs_inventory_recon_items',
+      'lhs_state_docs','lhs_hr_state_settings','lhs_time_off_requests','lhs_acct_bank_accounts',
+    ];
     const woLoad=(async()=>{
       try{
         const pgSize=1000;
@@ -1749,26 +1772,21 @@ async function warmCache(){
       }catch(e){console.warn('WO load failed:',e.message);}
     })();
 
-    const loads=Object.entries(TBL).map(async([k,tbl])=>{
-      if(ON_DEMAND_TBLS.includes(tbl)) return; // skip — loaded on demand with pagination
-      if(tbl===WO_TBL) return; // handled above with pagination
+    const _loadTbl=async([k,tbl])=>{
+      if(ON_DEMAND_TBLS.includes(tbl)) return;
+      if(tbl===WO_TBL) return;
       try{
         let query=DB.from(tbl).select('*');
-        // Only order by created_at for tables that have it
-        // Tables that use last_updated instead of created_at, or have neither
-        // Tables that use last_updated (van/location stock, PO lines, etc.)
         const lastUpdTbls=['lhs_wo_sequence','lhs_van_inventory','lhs_location_stock'];
-        // lhs_estimates uses updated_at (not last_updated)
         const updatedAtTbls=['lhs_estimates'];
-        // Tables with no ordering column at all — just select *
         const noSortTbls=['lhs_wo_materials','lhs_properties','lhs_po_lines','lhs_mk_settings','lhs_training_assignments','lhs_role_permissions','lhs_testers','lhs_rmas'];
-        if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:true,nullsFirst:true}).limit(5000);
-        else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:true,nullsFirst:true}).limit(5000);
-        else if(noSortTbls.includes(tbl)) { /* no ordering */ }
-        else query=query.order('created_at',{ascending:true});
+        const lim=ROW_LIMITS[tbl]||null;
+        if(lastUpdTbls.includes(tbl)) query=query.order('last_updated',{ascending:false,nullsFirst:false}).limit(lim||5000);
+        else if(updatedAtTbls.includes(tbl)) query=query.order('updated_at',{ascending:false,nullsFirst:false}).limit(lim||5000);
+        else if(noSortTbls.includes(tbl)) {if(lim) query=query.limit(lim);}
+        else{query=query.order('created_at',{ascending:false,nullsFirst:false});if(lim) query=query.limit(lim);}
         const{data,error}=await query;
         if(!error&&data&&data.length>0){
-          // For estimates: merge Supabase rows with any locally-created ones whose insert failed
           if(tbl==='lhs_estimates'){
             const local=S.get(k)||[];
             const localOnly=local.filter(l=>!data.find(d=>d.id===l.id));
@@ -1778,8 +1796,15 @@ async function warmCache(){
           }
         }
       }catch(e){console.warn('Failed to load',tbl,e.message);}
-    });
-    await Promise.all([...loads, woLoad]);
+    };
+    // Fast tables: block startup on these (core app functionality)
+    const fastEntries=Object.entries(TBL).filter(([,tbl])=>!LAZY_TBLS.includes(tbl));
+    // Lazy tables: start immediately but don't block — fire-and-forget after fast path
+    const lazyEntries=Object.entries(TBL).filter(([,tbl])=>LAZY_TBLS.includes(tbl));
+    const fastLoads=fastEntries.map(_loadTbl);
+    await Promise.all([...fastLoads, woLoad]);
+    // Kick off lazy tables without blocking the rest of warmCache
+    Promise.all(lazyEntries.map(_loadTbl)).catch(()=>{});
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
@@ -2679,7 +2704,7 @@ async function startApp(){
   const _hasCachedData=!!(S.get('lhs:users')?.length&&S.get('lhs:work_orders')?.length);
   const _cacheTs=parseInt(localStorage.getItem('lhs_cache_ts')||'0');
   const _cacheAgeMs=Date.now()-_cacheTs;
-  const _cacheValid=_hasCachedData&&_cacheAgeMs<24*60*60*1000; // treat stale if >24h
+  const _cacheValid=_hasCachedData&&_cacheAgeMs<48*60*60*1000; // treat stale if >48h
 
   if(_cacheValid){
     // ── FAST PATH: render from cache, sync in background ──────────────────
