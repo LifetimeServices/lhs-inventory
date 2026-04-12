@@ -6592,31 +6592,10 @@ async function delCalDevice(id){
   try{await dbDelete('lhs:cal_devices',id);}catch(e){console.warn('delCalDevice:',e?.message);}
   cMod();tst('Device deleted','success');showPage('testers');
 }
-// One-time sync: push any localStorage-only testers up to Supabase
-async function syncTestersToCloud(){
-  const ts=S.get('lhs:ts')||[];
-  if(!ts.length) return;
-  let synced=0;
-  for(const t of ts){
-    if(t._supaId) continue; // already has a Supabase UUID
-    try{
-      // Check if already in Supabase by tester_id
-      const{data}=await DB.from('lhs_testers').select('id').eq('tester_id',t.id).limit(1);
-      if(data&&data[0]){t._supaId=data[0].id;continue;} // already there
-      const dbRow={
-        tester_id:t.id,tester_type:t.type||null,serial_number:t.serial||null,
-        status:t.status||'At Warehouse',vehicle:t.vehicle||null,
-        customer:t.customer||null,address:t.address||null,
-        drop_date:t.dropDate||null,created_at:t.created_at||new Date().toISOString()
-      };
-      const saved=await dbInsert('lhs:ts',dbRow);
-      if(saved){t._supaId=saved.id;synced++;}
-    }catch(e){console.warn('syncTesters:',e.message);}
-  }
-  if(synced>0){S.set('lhs:ts',ts);console.log(`Synced ${synced} tester(s) to Supabase`);}
-}
-// Run tester sync in background on page load (silent)
-(async()=>{try{await syncTestersToCloud();}catch{}})();
+// syncTestersToCloud is intentionally removed — warmCache now loads all
+// tester data fresh from Supabase on every login. Running a background
+// sync from stale localStorage was causing duplicate/corrupt UUID records
+// to be inserted into lhs_testers on every page load.
 
 function oAddTest(){
   oMod('Add Tester',`<div class="fr">
