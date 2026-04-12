@@ -1767,8 +1767,7 @@ async function warmCache(){
       'lhs_transfers','lhs_rmas','lhs_vendors',
       'lhs_permits','lhs_receipts','lhs_tester_deployments','lhs_testers',
       'lhs_inventory_adjustments','lhs_inventory_recons','lhs_inventory_recon_items',
-      // ── WO detail tables (loaded on demand when a WO is opened) ──────────
-      'lhs_wo_materials','lhs_wo_tags','lhs_appointment_techs',
+      // ── WO detail tables moved back to fast — needed immediately when a WO opens ──
       // ── HR / compliance ───────────────────────────────────────────────────
       'lhs_cross_checks','lhs_crm_cross_checks','lhs_alpha_results',
       'lhs_training_assignments','lhs_role_permissions','lhs_onboarding_plans',
@@ -1840,8 +1839,9 @@ async function warmCache(){
     const lazyEntries=Object.entries(TBL).filter(([,tbl])=>LAZY_TBLS.includes(tbl));
     const fastLoads=fastEntries.map(_loadTbl);
     await Promise.all([...fastLoads, woLoad]);
-    // Kick off lazy tables without blocking the rest of warmCache
-    Promise.all(lazyEntries.map(_loadTbl)).catch(()=>{});
+    // Kick off lazy tables after a 4s delay so foreground actions aren't starved
+    // Browser has ~6 connections per host — firing 40+ at once blocks user interactions
+    setTimeout(()=>{ Promise.all(lazyEntries.map(_loadTbl)).catch(()=>{}); }, 4000);
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
