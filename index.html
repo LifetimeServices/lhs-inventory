@@ -457,6 +457,18 @@ function getDivJobDuration(divName,jobType){
 }
 function getDivDuration(divName){ return getDivJobDuration(divName,''); }
 
+// ── R2 STORAGE HELPERS ───────────────────────────────────────────────────────
+const R2_URL='https://lhs-r2-proxy.george-a3e.workers.dev';
+async function r2Upload(path,file){
+  const res=await fetch(`${R2_URL}/${path}`,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}});
+  if(!res.ok) throw new Error(`R2 upload failed: ${res.status}`);
+  return `${R2_URL}/${path}`;
+}
+async function r2Delete(path){
+  if(!path) return;
+  await fetch(`${R2_URL}/${path}`,{method:'DELETE'}).catch(()=>{});
+}
+
 // ── PHOTO LABEL HELPERS ───────────────────────────────────────────────────────
 function getPhotoLabels(){return S.get('lhs:photo_labels')||{};}
 function getPhotoLabelsFor(div,jobType){
@@ -2135,10 +2147,7 @@ async function uploadPropertyAttachment(propId,inputEl){
     const path=`property-attachments/${propId}/${Date.now()}_${safeName}`;
     let fileUrl='';
     try{
-      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
-      if(upErr) throw new Error(upErr.message);
-      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
-      fileUrl=urlData?.publicUrl||'';
+      fileUrl=await r2Upload(path,file);
     }catch(e){console.warn('Property upload error:',e.message);tst(`Failed to upload ${file.name}`,'error');continue;}
     try{
       const docRow={name:file.name,file_name:file.name,file_url:fileUrl,file_type:file.type,type:(file.name.split('.').pop()||'').toLowerCase(),category:'property',related_id:propId,related_type:'property',storage_path:path,created_by:CU?.name||''};
@@ -2152,7 +2161,7 @@ async function uploadPropertyAttachment(propId,inputEl){
 async function deletePropertyAttachment(docId,storagePath,propId){
   if(!confirm('Delete this attachment? This cannot be undone.')) return;
   try{
-    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await r2Delete(storagePath);
     await DB.from('lhs_documents').delete().eq('id',docId);
     tst('Attachment deleted','info');
     openProperty(propId);
@@ -2172,10 +2181,7 @@ async function uploadWOAttachment(woId,inputEl){
     const path=`wo-attachments/${woId}/${Date.now()}_${safeName}`;
     let fileUrl='';
     try{
-      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
-      if(upErr) throw new Error(upErr.message);
-      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
-      fileUrl=urlData?.publicUrl||'';
+      fileUrl=await r2Upload(path,file);
     }catch(e){console.warn('WO attachment upload failed:',e.message);continue;}
     try{
       await DB.from('lhs_documents').insert({
@@ -2195,7 +2201,7 @@ async function uploadWOAttachment(woId,inputEl){
 async function deleteWOAttachment(docId,storagePath,woId){
   if(!confirm('Delete this attachment? This cannot be undone.')) return;
   try{
-    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await r2Delete(storagePath);
     await DB.from('lhs_documents').delete().eq('id',docId);
     tst('Attachment deleted','success');
     openWO(woId);
@@ -5860,10 +5866,7 @@ async function uploadVehicleDoc(locId,locIdx,docType,inputEl){
     const path=`vehicle-docs/${locId}/${docType}/${Date.now()}_${safeName}`;
     let fileUrl='';
     try{
-      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(path,file,{upsert:false,contentType:file.type});
-      if(upErr) throw new Error(upErr.message);
-      const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
-      fileUrl=urlData?.publicUrl||'';
+      fileUrl=await r2Upload(path,file);
     }catch(e){console.warn('Vehicle doc upload:',e.message);tst(`Failed to upload ${file.name}`,'error');continue;}
     try{
       await DB.from('lhs_documents').insert({
@@ -5882,7 +5885,7 @@ async function uploadVehicleDoc(locId,locIdx,docType,inputEl){
 async function deleteVehicleDoc(docId,storagePath,locId,locIdx){
   if(!confirm('Delete this document? This cannot be undone.')) return;
   try{
-    if(storagePath) await DB.storage.from('lhs-photos').remove([storagePath]);
+    await r2Delete(storagePath);
     await DB.from('lhs_documents').delete().eq('id',docId);
     tst('Document deleted','info');
     await refreshVehicleDocSections(locId,locIdx);
