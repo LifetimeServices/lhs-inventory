@@ -36348,10 +36348,85 @@ let _pbEditSvcId=null;
 let _pbFormTab='details';
 // In-memory materials list for current service being edited
 let _pbSvcMaterials=[];
+let _pbStatePrices=[];
+
+// ── State-price helpers ───────────────────────────────────────────────────────
+function getServicePrice(svc,state){
+  if(state&&svc.state_prices){
+    const sp=typeof svc.state_prices==='string'?JSON.parse(svc.state_prices):svc.state_prices;
+    if(sp&&sp[state]) return{price:sp[state].price??svc.price??0,hours:sp[state].hours??svc.hours??0};
+  }
+  return{price:svc.price??0,hours:svc.hours??0};
+}
+function pbStatePricesObj(){
+  const obj={};
+  _pbStatePrices.forEach(r=>{if(r.state) obj[r.state]={price:r.price??null,hours:r.hours??null};});
+  return obj;
+}
+function pbUpdateSpCount(){
+  const el=document.getElementById('pbf-sp-count');
+  if(el) el.textContent=_pbStatePrices.filter(r=>r.state).length||0;
+}
+function pbAddStatePriceRow(){
+  _pbStatePrices.push({state:'',price:null,hours:null});
+  pbRenderStatePrices();
+}
+function pbRemoveStatePriceRow(i){
+  _pbStatePrices.splice(i,1);
+  pbRenderStatePrices();
+}
+function pbRenderStatePrices(){
+  const el=document.getElementById('pbf-sp-list');
+  if(!el) return;
+  const basePrice=parseFloat(document.getElementById('pbs-price')?.value)||0;
+  const baseHours=parseFloat(document.getElementById('pbs-hours')?.value)||0;
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Base (no state match): <strong>$${basePrice.toFixed(2)}</strong> · <strong>${baseHours}h</strong></div>
+    <div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:10px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f8f7f4;border-bottom:1px solid var(--bdr)">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy)">State</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy);width:130px">Price ($)</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy);width:110px">Est. Hours</th>
+          <th style="width:36px"></th>
+        </tr></thead>
+        <tbody>
+          ${_pbStatePrices.length?_pbStatePrices.map((row,i)=>`
+            <tr style="${i>0?'border-top:1px solid var(--bdr)':''}">
+              <td style="padding:6px 10px">
+                <select onchange="_pbStatePrices[${i}].state=this.value" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;width:100%">
+                  <option value="">— State —</option>
+                  ${ALL_STATES.map(st=>{const code=st.includes(' - ')?st.split(' - ')[0]:st;return`<option value="${code}"${row.state===code?' selected':''}>${esc(st)}</option>`;}).join('')}
+                </select>
+              </td>
+              <td style="padding:6px 8px">
+                <input type="number" value="${row.price??''}" step="0.01" min="0" placeholder="${basePrice.toFixed(2)}"
+                  onchange="_pbStatePrices[${i}].price=parseFloat(this.value)||0"
+                  style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;text-align:right;font-size:13px">
+              </td>
+              <td style="padding:6px 8px">
+                <input type="number" value="${row.hours??''}" step="0.5" min="0" placeholder="${baseHours}"
+                  onchange="_pbStatePrices[${i}].hours=parseFloat(this.value)||0"
+                  style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;text-align:right;font-size:13px">
+              </td>
+              <td style="padding:6px 4px;text-align:center">
+                <button onclick="pbRemoveStatePriceRow(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:2px 6px">×</button>
+              </td>
+            </tr>`).join(''):
+            `<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--muted);font-size:13px">No state-specific pricing — base price used for all states.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-o sm" onclick="pbAddStatePriceRow()">+ Add State</button>`;
+  pbUpdateSpCount();
+}
 
 function pbServiceForm(s){
   _pbFormTab='details';
   _pbSvcMaterials=Array.isArray(s.materials)?[...s.materials]:(s.materials?JSON.parse(s.materials):[]);
+  // Load existing state prices into editable array
+  const spRaw=s.state_prices?(typeof s.state_prices==='string'?JSON.parse(s.state_prices):s.state_prices):{};
+  _pbStatePrices=Object.entries(spRaw).map(([state,v])=>({state,price:v.price??null,hours:v.hours??null}));
   const cats=_C['lhs:pb_categories']||[];
   const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
   return`<div style="min-width:600px;max-width:720px">
@@ -36359,6 +36434,7 @@ function pbServiceForm(s){
   <div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:16px">
     <button id="pbf-tab-details" onclick="pbFormSetTab('details')" style="padding:9px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid var(--navy);color:var(--navy);margin-bottom:-2px">Details</button>
     <button id="pbf-tab-materials" onclick="pbFormSetTab('materials')" style="padding:9px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;color:var(--muted);margin-bottom:-2px">Materials <span id="pbf-mat-count" style="font-size:11px;background:#e3f2fd;color:#1565C0;border-radius:10px;padding:1px 7px;margin-left:4px">${_pbSvcMaterials.length||0}</span></button>
+    <button id="pbf-tab-pricing" onclick="pbFormSetTab('pricing')" style="padding:9px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;color:var(--muted);margin-bottom:-2px">State Pricing <span id="pbf-sp-count" style="font-size:11px;background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:1px 7px;margin-left:4px">${_pbStatePrices.filter(r=>r.state).length||0}</span></button>
   </div>
   <!-- DETAILS TAB -->
   <div id="pbf-details">
@@ -36423,6 +36499,11 @@ function pbServiceForm(s){
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Search and add inventory items below. Each row has its own search. Click <strong>+ Add Item</strong> to add more rows.</div>
     <div id="pbf-mat-list"></div>
   </div>
+  <!-- STATE PRICING TAB (hidden by default) -->
+  <div id="pbf-pricing" style="display:none">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Set a different price and/or hours for specific states. When a sales rep picks a state on an estimate, the matching price is used automatically. States not listed fall back to the base price on the Details tab.</div>
+    <div id="pbf-sp-list"></div>
+  </div>
   <!-- Actions (always visible) -->
   <div class="br2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
     <button class="btn btn-n" onclick="pbSaveService()">Save Service</button>
@@ -36436,11 +36517,14 @@ function pbFormSetTab(tab){
   _pbFormTab=tab;
   document.getElementById('pbf-details').style.display=tab==='details'?'':'none';
   document.getElementById('pbf-materials').style.display=tab==='materials'?'':'none';
-  ['details','materials'].forEach(t=>{
+  const spEl=document.getElementById('pbf-pricing');
+  if(spEl) spEl.style.display=tab==='pricing'?'':'none';
+  ['details','materials','pricing'].forEach(t=>{
     const b=document.getElementById('pbf-tab-'+t);
     if(b){b.style.borderBottomColor=t===tab?'var(--navy)':'transparent';b.style.color=t===tab?'var(--navy)':'var(--muted)';}
   });
   if(tab==='materials') pbRenderMatList();
+  if(tab==='pricing') pbRenderStatePrices();
 }
 
 // ── PRICEBOOK MATERIALS — transfer-style row system ───────────────────────────
@@ -36599,6 +36683,7 @@ async function pbSaveService(){
     allow_membership_discounts:document.getElementById('pbs-memb')?.checked||false,
     is_labor:document.getElementById('pbs-labor')?.checked||false,
     materials:_pbSvcMaterials,
+    state_prices:pbStatePricesObj(),
     last_updated:new Date().toISOString(),
   };
   if(_pbEditSvcId){
@@ -40449,12 +40534,13 @@ function renderCRMEstimates(){
 function pbServicesForEstimate(division,state,region){
   const all=(_C['lhs:pb_services']||S.get('lhs:pb_services')||[]).filter(s=>s.is_active!==false);
   const m=(a,b)=>!a||(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
-  return all.filter(s=>m(s.division,division)&&m(s.region,region)&&m(s.state,state))
+  // State is now used for pricing only — not for filtering services out.
+  // Division and region still narrow the list.
+  return all.filter(s=>m(s.division,division)&&m(s.region,region))
     .sort((a,b)=>{
-      // More specific services surface first
-      const scoreA=(a.division?1:0)+(a.region?1:0)+(a.state?1:0);
-      const scoreB=(b.division?1:0)+(b.region?1:0)+(b.state?1:0);
-      return scoreB-scoreA;
+      const scoreA=(a.division?1:0)+(a.region?1:0);
+      const scoreB=(b.division?1:0)+(b.region?1:0);
+      return scoreB-scoreA||(a.name||'').localeCompare(b.name||'');
     });
 }
 
@@ -40492,14 +40578,20 @@ function estRefreshPbPanel(){
   panel.innerHTML=svcs.map(s=>{
     const mats=Array.isArray(s.materials)?s.materials:(s.materials?JSON.parse(s.materials):[]);
     const descLines=(s.description||'').split('\n').map(l=>l.trim()).filter(l=>l&&/^[•\-]/.test(l));
-    const scopeTags=[s.division,s.region,s.state].filter(Boolean);
+    const scopeTags=[s.division,s.region].filter(Boolean);
+    const sp=getServicePrice(s,state);
+    const stateRate=state&&sp.price!==s.price;
     return`<div style="border:1px solid var(--bdr);border-radius:8px;padding:11px 14px;margin-bottom:8px;background:white;display:flex;gap:12px;align-items:flex-start">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
           ${s.code?`<span style="font-size:10px;font-family:monospace;background:#e8f0fe;color:#1a56db;padding:1px 7px;border-radius:5px;font-weight:700">${esc(s.code)}</span>`:''}
           <span style="font-weight:700;font-size:13px">${esc(s.name)}</span>
-          <span style="font-size:12px;font-weight:700;color:var(--navy);margin-left:auto">$${Number(s.price||0).toLocaleString('en-US',{minimumFractionDigits:2})}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--navy);margin-left:auto">
+            $${Number(sp.price||0).toLocaleString('en-US',{minimumFractionDigits:2})}
+            ${stateRate?`<span style="font-size:10px;font-weight:400;color:var(--teal);margin-left:4px">${state} rate</span>`:''}
+          </span>
         </div>
+        ${sp.hours?`<div style="font-size:11px;color:var(--muted);margin-bottom:3px">${sp.hours}h est.</div>`:''}
         ${scopeTags.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${scopeTags.map(t=>`<span style="font-size:10px;background:#f0f4f9;color:var(--muted);border-radius:10px;padding:1px 7px">${esc(t)}</span>`).join('')}</div>`:''}
         ${descLines.length?`<div style="font-size:11px;color:#555;line-height:1.5">${descLines.slice(0,3).map(l=>`<span style="display:block">${esc(l)}</span>`).join('')}${descLines.length>3?`<span style="color:var(--muted)">+${descLines.length-3} more…</span>`:''}</div>`:''}
         ${mats.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">📦 ${mats.length} material${mats.length!==1?'s':''} linked</div>`:''}
@@ -40518,6 +40610,8 @@ function estAddFromPricebook(svcId){
   if(!window._estLines[pkg]) window._estLines[pkg]=[];
   // Build bullets from description
   const descLines=(s.description||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const _estState=estGetScopeState();
+  const _sp=getServicePrice(s,_estState);
   window._estLines[pkg].push({
     label:s.name||(s.code||''),
     code:s.code||'',
@@ -40526,7 +40620,8 @@ function estAddFromPricebook(svcId){
     type:s.is_labor?'Labor':'Material',
     qty:1,
     cost:0,
-    price:s.price||0,
+    price:_sp.price||0,
+    hours:_sp.hours||0,
     pricebook_id:s.id,
     tier:pkg==='custom'?undefined:pkg,
   });
