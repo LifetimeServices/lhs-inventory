@@ -323,10 +323,12 @@ const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
         <input id="gsearch" placeholder="&#128269; Search customers, work orders, addresses..."
           autocomplete="off"
           style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;
-          padding:5px 16px;color:white;font-size:13px;width:100%;box-sizing:border-box;
+          padding:5px 36px 5px 16px;color:white;font-size:13px;width:100%;box-sizing:border-box;
           font-family:'DM Sans',sans-serif;outline:none"
-          oninput="globalSearch(this.value)"
+          oninput="globalSearch(this.value);document.getElementById('gsearch-clear').style.display=this.value?'flex':'none';"
           onblur="setTimeout(()=>document.getElementById('gsresults').style.display='none',200)">
+        <button id="gsearch-clear" onclick="document.getElementById('gsearch').value='';globalSearch('');document.getElementById('gsearch-clear').style.display='none';document.getElementById('gsearch').focus();"
+          style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.25);border:none;color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;align-items:center;justify-content:center;font-size:12px;line-height:1;padding:0">×</button>
         <div id="gsresults" style="display:none;position:absolute;top:34px;left:0;width:360px;
           background:var(--white);border-radius:10px;box-shadow:var(--shlg);z-index:200;max-height:300px;overflow-y:auto"></div>
       </div>
