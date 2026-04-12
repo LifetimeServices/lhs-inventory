@@ -20303,6 +20303,9 @@ async function dispPinAll(){
     if(_dispRegion&&_dispRegion!=='all') _dispPinned['__region__']=_dispRegion;
     else delete _dispPinned['__region__'];
     try{localStorage.setItem('lms_disp_pin',JSON.stringify(_dispPinned));}catch{}
+    // Also save current DIVS order so it persists after refresh
+    const order={};DIVS.forEach((d,i)=>{order[d]=i;});
+    try{localStorage.setItem('lms_disp_order',JSON.stringify(order));}catch{}
     const regionMsg=_dispRegion&&_dispRegion!=='all'?` (${_dispRegion} region)`:'';
     tst(`Division order pinned as your default${regionMsg}`,'success');
   }
@@ -21202,8 +21205,8 @@ function bWorkOrders(){
         return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
       });
     }
-    // Imported WOs have no appointments — fall back to completed_at or invoice_date
-    var d=(w.completed_at||w.invoice_date||'').substring(0,10);
+    // Imported WOs have no appointments — fall back through multiple date fields
+    var d=(w.completed_at||w.invoice_date||w.created_at||'').substring(0,10);
     if(!d) return true;
     return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
   });
