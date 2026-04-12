@@ -1782,7 +1782,10 @@ async function warmCache(){
       'lhs_wlm_exposures','lhs_calendar_events','lhs_grey_blocks',
       'lhs_scheduled_reports','lhs_custom_reports',
     ];
-    // Load WOs — awaited so tag-map code below doesn't overwrite with [] before data arrives
+    // Load WOs — awaited so downstream code always sees a populated cache.
+    // Clear any stale/poisoned [] from a previous failed load so S.get never returns empty array.
+    try{localStorage.removeItem('lhs:work_orders');}catch{}
+    delete _C['lhs:work_orders'];
     try{
       const{data,error}=await DB.from(WO_TBL).select('*')
         .order('created_at',{ascending:false,nullsFirst:false}).limit(15000);
@@ -1828,7 +1831,7 @@ async function warmCache(){
     // Lazy tables: start immediately but don't block — fire-and-forget after fast path
     const lazyEntries=Object.entries(TBL).filter(([,tbl])=>LAZY_TBLS.includes(tbl));
     const fastLoads=fastEntries.map(_loadTbl);
-    await Promise.all([...fastLoads, woLoad]);
+    await Promise.all(fastLoads);
     // Kick off lazy tables after a 4s delay so foreground actions aren't starved
     // Browser has ~6 connections per host — firing 40+ at once blocks user interactions
     setTimeout(()=>{ Promise.all(lazyEntries.map(_loadTbl)).catch(()=>{}); }, 4000);
@@ -3192,8 +3195,48 @@ function fixDispBoardHeight(){
   const wrap=document.getElementById('disp-wrap');
   if(!tb||!wrap) return;
   wrap.style.height=(window.innerHeight-tb.offsetHeight)+'px';
+  // After every board render: check for appointment blocks whose WO isn't in cache.
+  // If any are missing, fetch them from Supabase and re-render once to correct colors.
+  setTimeout(_fetchMissingDispWOs, 50);
 }
 window.addEventListener('resize',()=>{if(document.getElementById('disp-wrap')) fixDispBoardHeight();});
+
+// Fetch WO records for any dispatch block whose WO isn't in the local cache.
+// Runs silently after board renders — corrects blue "unknown" blocks to their proper color.
+let _dispWOFetchInFlight=false;
+async function _fetchMissingDispWOs(){
+  if(_dispWOFetchInFlight) return;
+  const allWOs=S.get('lhs:work_orders')||[];
+  const woIdSet=new Set(allWOs.map(w=>w.id));
+  // Collect wo_ids referenced by visible dispatch blocks
+  const missingIds=[...new Set(
+    [...document.querySelectorAll('[data-wo-id]')]
+      .map(el=>el.getAttribute('data-wo-id'))
+      .filter(id=>id&&!woIdSet.has(id))
+  )];
+  if(!missingIds.length) return;
+  _dispWOFetchInFlight=true;
+  try{
+    const{data}=await DB.from('lhs_work_orders').select('*').in('id',missingIds);
+    if(data&&data.length){
+      const wos=S.get('lhs:work_orders')||[];
+      let added=0;
+      data.forEach(w=>{if(!wos.find(x=>x.id===w.id)){wos.unshift(w);added++;}});
+      if(added){
+        S.set('lhs:work_orders',wos);
+        // Re-render the board now that WOs are available — colors will be correct
+        const pg=document.getElementById('p-dispatch-board')||document.getElementById('p-dispatch');
+        if(pg&&pg.classList.contains('active')){
+          pg.innerHTML=buildPage('dispatch-board');
+          const tb2=document.querySelector('.tb');
+          const wrap2=document.getElementById('disp-wrap');
+          if(tb2&&wrap2) wrap2.style.height=(window.innerHeight-tb2.offsetHeight)+'px';
+        }
+      }
+    }
+  }catch(e){console.warn('_fetchMissingDispWOs:',e?.message);}
+  finally{_dispWOFetchInFlight=false;}
+}
 
 // Van Stock — fetch directly from Supabase and re-render page
 async function refreshVanInvPage(){
@@ -20006,6 +20049,7 @@ function renderDispBoard(){
         const statusAlpha=techStatus?.arrived_at?'ff':techStatus?.dispatched_at?'cc':'99';
 
         return`<div draggable="true"
+          data-apt-id="${apt.id}" data-wo-id="${wo.id}" data-tech="${techName}"
           ondragstart="dispDragStart(event,'${apt.id}','${wo.id}','${techName}')"
           ondragend="dispDragEnd(event)"
           onclick="openWO('${wo.id}')"
@@ -21204,29 +21248,37 @@ function bWorkOrders(){
   if(_wf.tech){
     const allAptTechs=S.get('lhs:apt_techs')||[];
     const allApts=S.get('lhs:appointments')||[];
+    // Pre-build a set of WO IDs that have this tech via ANY path (fast O(n) lookup)
+    const techWoIds=new Set();
+    // Path A: apt_tech has wo_id directly
+    allAptTechs.filter(t=>t.tech_name===_wf.tech&&t.wo_id).forEach(t=>techWoIds.add(t.wo_id));
+    // Path B: apt_tech.appointment_id → appointment.wo_id
+    const techAptIds=new Set(allAptTechs.filter(t=>t.tech_name===_wf.tech&&t.appointment_id).map(t=>t.appointment_id));
+    allApts.filter(a=>techAptIds.has(a.id)&&a.wo_id).forEach(a=>techWoIds.add(a.wo_id));
     filtered=filtered.filter(w=>{
-      // Check direct tech assignment on WO (covers imported WOs without appointment records)
+      // Check direct tech assignment fields on WO (covers imported WOs without apt_tech records)
       if(w.assigned_to===_wf.tech||w.technician===_wf.tech||w.tech_name===_wf.tech) return true;
       if(Array.isArray(w.technicians)&&w.technicians.includes(_wf.tech)) return true;
-      // Also check appointment-level tech assignments
-      const woAptIds=new Set(allApts.filter(a=>a.wo_id===w.id).map(a=>a.id));
-      return allAptTechs.some(t=>t.tech_name===_wf.tech&&
-        (t.wo_id===w.id||woAptIds.has(t.appointment_id)));
+      return techWoIds.has(w.id);
     });
   }
-  if(_wf.date_from||_wf.date_to) filtered=filtered.filter(w=>{
-    const woApts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===w.id);
-    if(woApts.length){
-      return woApts.some(a=>{
-        const d=a.scheduled_date||'';
-        return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
-      });
-    }
-    // Imported WOs have no appointments — fall back through multiple date fields
-    var d=(w.completed_at||w.invoice_date||w.created_at||'').substring(0,10);
-    if(!d) return true;
-    return(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
-  });
+  if(_wf.date_from||_wf.date_to){
+    // Pre-build apt lookup by wo_id for performance
+    const _allApts2=S.get('lhs:appointments')||[];
+    const _allAptTechs2=_wf.tech?(S.get('lhs:apt_techs')||[]):[];
+    const inRange=d=>d&&(!_wf.date_from||d>=_wf.date_from)&&(!_wf.date_to||d<=_wf.date_to);
+    filtered=filtered.filter(w=>{
+      // Check appointments linked via wo_id (native WOs)
+      const woApts=_allApts2.filter(a=>a.wo_id===w.id);
+      if(woApts.length) return woApts.some(a=>inRange(a.scheduled_date||''));
+      // For imported WOs: check the WO's own scheduled_date field if present
+      if(w.scheduled_date&&inRange(w.scheduled_date.substring(0,10))) return true;
+      // Fall back through completion/invoice/creation date
+      const d=(w.completed_at||w.invoice_date||w.created_at||'').substring(0,10);
+      if(!d) return true;  // no date — keep to avoid hiding data
+      return inRange(d);
+    });
+  }
   if(_wf.search){
     const q=_wf.search.toLowerCase();
     const qDigits=_wf.search.replace(/\D/g,'');
