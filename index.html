@@ -8962,7 +8962,7 @@ function oAddStateDoc(editId){
     </div>
     <div class="fl" style="margin-bottom:4px">
       <label>Or paste file URL <span style="font-size:11px;color:var(--muted);font-weight:400">(Google Drive, Dropbox, etc.)</span></label>
-      <input id="sd-url" placeholder="https://…" value="${esc(doc?.file_url&&!doc.file_url.startsWith('state-docs/')?doc.file_url:'')}">
+      <input id="sd-url" placeholder="https://…" value="${esc(doc?.file_url&&!doc.file_url.startsWith('lhs-state-docs/')?doc.file_url:'')}">
     </div>
     <div class="br2" style="margin-top:18px">
       <button class="btn btn-n" onclick="svSaveStateDoc('${editId||''}')">💾 Save Document</button>
@@ -8994,9 +8994,9 @@ async function svSaveStateDoc(editId){
     try{
       const ext=file.name.split('.').pop();
       const path=`${state}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-      const{data:upData,error:upErr}=await DB.storage.from('state-docs').upload(path,file,{cacheControl:'3600',upsert:false});
+      const{data:upData,error:upErr}=await DB.storage.from('lhs-state-docs').upload(path,file,{cacheControl:'3600',upsert:false});
       if(upErr) throw upErr;
-      const{data:{publicUrl}}=DB.storage.from('state-docs').getPublicUrl(path);
+      const{data:{publicUrl}}=DB.storage.from('lhs-state-docs').getPublicUrl(path);
       file_url=publicUrl||path;
       tst('File uploaded ✓','success');
     }catch(e){
