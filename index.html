@@ -1737,10 +1737,8 @@ async function warmCache(){
     const WO_TBL='lhs_work_orders';
     // Row limits for high-volume tables — fetch only recent N rows to stay fast
     const ROW_LIMITS={
-      // Fast tables — cap to keep cold-load snappy
       'lhs_appointments':2000,'lhs_payments':1000,'lhs_estimates':1000,
       'lhs_tasks':500,'lhs_leads':2000,'lhs_opportunities':2000,'lhs_items':5000,
-      // Lazy tables
       'lhs_notifications':150,'lhs_messages':500,'lhs_documents':300,
       'lhs_wo_notes':3000,'lhs_wo_audit':3000,'lhs_activities':1000,
       'lhs_time_punches':3000,'lhs_timesheets':1000,'lhs_job_time_entries':1000,
@@ -1749,44 +1747,10 @@ async function warmCache(){
       'lhs_permits':500,'lhs_receipts':500,'lhs_tester_deployments':500,
       'lhs_cross_checks':1000,'lhs_alpha_results':1000,'lhs_crm_cross_checks':500,
     };
-    // FAST (blocking): tables needed to render any page the user might land on
-    // LAZY (delayed): heavy/infrequently-used tables that load quietly in background
-    // Core CRM tables (leads, opps, estimates, payments, tasks) are FAST so navigating
-    // to those sections immediately after login shows real data, not empty cache.
-    const LAZY_TBLS=[
-      // ── Inventory / purchasing — only needed in inv sections ──────────────
-      'lhs_items',
-      'lhs_location_stock','lhs_van_inventory','lhs_purchase_orders','lhs_po_lines',
-      'lhs_transfers','lhs_rmas','lhs_vendors',
-      'lhs_permits','lhs_receipts','lhs_tester_deployments','lhs_testers',
-      'lhs_inventory_adjustments','lhs_inventory_recons','lhs_inventory_recon_items',
-      'lhs_discounts','lhs_fees','lhs_tax_settings',
-      'lhs_properties','lhs_territories',
-      'lhs_business_accounts','lhs_commercial_accounts',
-      'lhs_pb_services','lhs_pb_categories','lhs_calibration_devices',
-      'lhs_accounting_codes',
-      // ── Communications / activity ──────────────────────────────────────────
-      'lhs_notifications','lhs_messages','lhs_documents','lhs_wo_notes','lhs_wo_audit',
-      'lhs_activities','lhs_time_punches','lhs_timesheets','lhs_job_time_entries',
-      // ── Accounting ────────────────────────────────────────────────────────
-      'lhs_acct_bank_txns','lhs_acct_journal','lhs_acct_bills','lhs_acct_invoices','lhs_acct_coa',
-      'lhs_acct_bank_accounts',
-      // ── Marketing ─────────────────────────────────────────────────────────
-      'lhs_compliance_reports','lhs_mk_events','lhs_mk_drip','lhs_mk_campaigns','lhs_mk_settings',
-      // ── HR / compliance ───────────────────────────────────────────────────
-      'lhs_cross_checks','lhs_crm_cross_checks','lhs_alpha_results',
-      'lhs_training_assignments','lhs_role_permissions','lhs_onboarding_plans',
-      'lhs_onboarding_templates','lhs_ops_documents','lhs_ops_assignments',
-      'lhs_time_off_requests','lhs_hr_state_settings','lhs_state_docs',
-      'lhs_tool_audit','lhs_tools','lhs_tech_audit','lhs_wo_creation_audit',
-      // ── Admin / config ────────────────────────────────────────────────────
-      'lhs_wlm_exposures','lhs_calendar_events','lhs_grey_blocks',
-      'lhs_scheduled_reports','lhs_custom_reports',
-    ];
+    // Clear entire in-memory cache so every login gets fresh data from Supabase only.
+    // We do NOT depend on localStorage for correctness — it may be stale, over-quota, or corrupt.
+    Object.keys(_C).filter(k=>k.startsWith('lhs:')).forEach(k=>delete _C[k]);
     // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
-    // DO NOT clear localStorage here — stale-while-revalidate relies on it for fast initial render.
-    // Only clear the in-memory slot so the fresh fetch always wins over any mid-session stale value.
-    delete _C['lhs:work_orders'];
     try{
       const WO_PAGE=1000;
       // Step 1: lightweight count so we know exactly how many pages to fire
@@ -1841,24 +1805,9 @@ async function warmCache(){
         }
       }catch(e){console.warn('Failed to load',tbl,e.message);}
     };
-    // Fast tables: block startup on these (core app functionality)
-    const fastEntries=Object.entries(TBL).filter(([,tbl])=>!LAZY_TBLS.includes(tbl));
-    // Lazy tables: start immediately but don't block — fire-and-forget after fast path
-    const lazyEntries=Object.entries(TBL).filter(([,tbl])=>LAZY_TBLS.includes(tbl));
-    const fastLoads=fastEntries.map(_loadTbl);
-    await Promise.all(fastLoads);
-    // Kick off lazy tables after a 2s delay so foreground actions aren't starved.
-    // When done, re-render the active page so any lazy data that just arrived is visible.
-    setTimeout(async()=>{
-      try{ await Promise.all(lazyEntries.map(_loadTbl)); }catch{}
-      // Re-render active page with fresh lazy data (only if no modal is open)
-      if(!CU) return;
-      if(document.getElementById('mod')?.style.display==='flex') return;
-      const activePg=document.querySelector('.page.active');
-      if(!activePg) return;
-      const pgId=activePg.id?.replace(/^p-/,'');
-      if(pgId){try{const fresh=buildPage(pgId);if(fresh) activePg.innerHTML=fresh;}catch{}}
-    }, 2000);
+    // Load ALL tables in parallel — no fast/lazy split.
+    // Everything fires simultaneously so total load time = slowest single request, not sum of all.
+    await Promise.all(Object.entries(TBL).map(_loadTbl));
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
@@ -2753,27 +2702,11 @@ async function startApp(){
   const _urEl=document.getElementById('ur');
   if(_urEl){_urEl.textContent=_dispRole;if(CU.role==='Creator')_urEl.title='👑 Creator Mode Active';}
 
-  // ── Stale-while-revalidate ─────────────────────────────────────────────────
-  // If we have cached data from a previous session, render immediately and
-  // sync Supabase in the background. Only block on a full load when the cache
-  // is cold (first login or localStorage was cleared).
-  const _hasCachedData=!!(S.get('lhs:users')?.length&&S.get('lhs:work_orders')?.length);
-  const _cacheTs=parseInt(localStorage.getItem('lhs_cache_ts')||'0');
-  const _cacheAgeMs=Date.now()-_cacheTs;
-  const _cacheValid=_hasCachedData&&_cacheAgeMs<48*60*60*1000; // treat stale if >48h
-
-  if(_cacheValid){
-    // ── FAST PATH: render from cache, sync in background ──────────────────
-    // (fall through to the rest of startApp immediately — no spinner)
-    _bgSync(); // fire-and-forget
-    _syncTemplatesFromDB(); // fire-and-forget
-  } else {
-    // ── COLD PATH: first load or stale cache — block with spinner ─────────
-    document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading LHS data…</div></div>';
-    await warmCache();
-    await _syncTemplatesFromDB();
-    localStorage.setItem('lhs_cache_ts',Date.now());
-  }
+  // Always load fresh from Supabase on every login — no stale cache dependency.
+  // Everything loads in parallel so total time = slowest single table, not sum of all.
+  document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading data…</div></div>';
+  await warmCache();
+  await _syncTemplatesFromDB();
   // Load dispatch pins from Supabase user row (overrides localStorage so pins sync across devices)
   if(CU?.dispatch_pins&&Object.keys(CU.dispatch_pins).length>0){
     _dispPinned=CU.dispatch_pins;
