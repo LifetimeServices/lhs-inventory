@@ -11760,16 +11760,12 @@ async function svOpsDoc(){
   const fileInput=g('opsd-file');
   if(fileInput&&fileInput.files&&fileInput.files[0]){
     const f=fileInput.files[0];
-    // Try Supabase Storage upload
+    // Upload to R2 via Worker proxy
     try{
       const path=`ops/${Date.now()}_${f.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-      const{data,error}=await DB.storage.from('lhs-operations').upload(path,f,{upsert:true});
-      if(!error&&data){
-        const{data:pub}=DB.storage.from('lhs-operations').getPublicUrl(path);
-        fileUrl=pub?.publicUrl||fileUrl;
-      }
+      fileUrl=await r2Upload(path,f);
     }catch(e){
-      tst('File saved as link — storage bucket not configured yet','info');
+      tst('File upload failed — check connection','error');
     }
   }
 
@@ -23266,35 +23262,24 @@ async function compressImage(file,maxDim=1280,quality=0.82){
 }
 
 // ── CENTRAL FILE UPLOAD UTILITY ───────────────────────────────────────────────
-// Use this for EVERY file upload in the app — photos, receipts, packing slips, docs.
-// Compresses images, tries Supabase Storage, falls back to compressed base64.
-// All fallback base64 is ≤ ~600 KB so it stays under Supabase's 2 MB API limit.
-//
+// Compresses images, uploads to R2 via Worker proxy, falls back to base64.
 //   path   = storage path e.g. 'receipts/rec_123.jpg'
-//   bucket = storage bucket (default 'lhs-uploads')
 //   Returns: { url, storagePath, storageBucket, fileSize, isStorage }
 //
 async function lhsUploadFile(file, path, bucket='lhs-uploads'){
   if(!file) return{url:'',storagePath:null,storageBucket:null,fileSize:0,isStorage:false};
   const isPDF=file.type==='application/pdf'||file.name?.toLowerCase().endsWith('.pdf');
-  // Compress images to ≤1280px JPEG — keeps base64 well under 2 MB API limit
   let blob=file;
   if(!isPDF&&file.type.startsWith('image/')){
     try{blob=await compressImage(file);}catch(e){blob=file;}
   }
-  // 1. Try Supabase Storage (fastest, stores URL only — no size limit)
+  // 1. Try R2 via Worker proxy
   let url='',storagePath=null,storageBucket=null,isStorage=false;
   try{
-    const{error}=await DB.storage.from(bucket).upload(path,blob,{
-      upsert:true,contentType:isPDF?'application/pdf':'image/jpeg'
-    });
-    if(!error){
-      const{data:ud}=DB.storage.from(bucket).getPublicUrl(path);
-      url=ud?.publicUrl||'';
-      storagePath=path;storageBucket=bucket;isStorage=true;
-    }
-  }catch(e){console.warn('lhsUploadFile storage:',e.message);}
-  // 2. Fallback: compressed base64 (~200–600 KB for images, raw for PDFs)
+    url=await r2Upload(path,blob);
+    storagePath=path;storageBucket='r2';isStorage=true;
+  }catch(e){console.warn('lhsUploadFile r2:',e.message);}
+  // 2. Fallback: compressed base64
   if(!url){
     url=await new Promise(res=>{
       const r=new FileReader();
@@ -23323,23 +23308,12 @@ async function aptUploadPhotos(aptId,woId,input){
     const storagePath=`photos/${woId}/${aptId}/${ts}_${safeName}`;
     let photoUrl=null,storagePath2=null,bucket=null;
 
-    // 1. Try Supabase Storage
+    // 1. Try R2 via Worker proxy
     try{
-      console.log('[Photo] Uploading to storage bucket lhs-photos, path:',storagePath);
-      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(
-        storagePath,compressed,{cacheControl:'31536000',upsert:true,contentType:'image/jpeg'});
-      if(upErr){
-        console.error('[Photo] Storage upload error:',upErr.message,upErr);
-        tst('Storage error: '+upErr.message,'warning');
-      } else {
-        const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(storagePath);
-        photoUrl=urlData?.publicUrl;
-        storagePath2=storagePath;bucket='lhs-photos';usedStorage=true;
-        console.log('[Photo] Storage upload OK, url:',photoUrl);
-      }
+      photoUrl=await r2Upload(storagePath,compressed);
+      storagePath2=storagePath;bucket='r2';usedStorage=true;
     }catch(e){
-      console.error('[Photo] Storage exception:',e.message);
-      tst('Storage error: '+e.message,'warning');
+      console.warn('[Photo] R2 upload failed:',e.message);
     }
 
     // 2. Fallback to base64 if storage failed
@@ -23410,16 +23384,11 @@ async function woPhotoUpload(woId,labelId,labelText,input){
     const compressed=await compressImage(file);
     const photoId='wph_'+Date.now()+'_'+Math.random().toString(36).slice(2);
     let url='';
-    // Try Supabase Storage first
+    // Try R2 via Worker proxy
     try{
       const path=`wo-photos/${woId}/${photoId}.jpg`;
-      const{data:upData,error:upErr}=await DB.storage.from('lhs-photos').upload(
-        path,compressed,{upsert:true,contentType:'image/jpeg'});
-      if(!upErr&&upData){
-        const{data:urlData}=DB.storage.from('lhs-photos').getPublicUrl(path);
-        url=urlData?.publicUrl||'';
-      }
-    }catch{}
+      url=await r2Upload(path,compressed);
+    }catch(e){console.warn('woPhotoUpload r2:',e.message);}
     // Compressed base64 fallback (~200–600 KB)
     if(!url){
       url=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(compressed);});
