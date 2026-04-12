@@ -19820,19 +19820,15 @@ function renderDispBoard(){
   const allWOs=S.get('lhs:work_orders')||[];
   let greyBlocks=S.get('lhs:grey_blocks')||[];
 
-  // Filter by region — also exclude Cancelled WOs from the board
-  const filteredWOs=(_dispRegion==='all'?allWOs:
-    allWOs.filter(w=>{
-      const raw=(w.customer_state||'').trim();
-      if(!raw) return true; // no state = show in all regions
-      const state=raw.length<=3?raw.toUpperCase():raw.toUpperCase().slice(0,2);
-      return REGIONS[_dispRegion]?.states.includes(state);
-    })).filter(w=>w.status!=='Cancelled').filter(w=>{
-      if(_dispTerritory==='all') return true;
-      const terr=(S.get('lhs:territories')||[]).find(t=>t.id===_dispTerritory);
-      if(!terr) return true;
-      return w.territory===terr.name;
-    });
+  // Region filter controls which TECHS are shown — NOT which WOs appear.
+  // All non-cancelled WOs are eligible to show appointments on the board
+  // so that utilization % and appointment blocks are always consistent.
+  const filteredWOs=allWOs.filter(w=>w.status!=='Cancelled').filter(w=>{
+    if(_dispTerritory==='all') return true;
+    const terr=(S.get('lhs:territories')||[]).find(t=>t.id===_dispTerritory);
+    if(!terr) return true;
+    return w.territory===terr.name;
+  });
   const filteredWOIds=new Set(filteredWOs.map(w=>w.id));
 
   // Group techs by division
