@@ -1756,17 +1756,20 @@ async function warmCache(){
       // Step 1: lightweight count so we know exactly how many pages to fire
       const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
       const pages=count?Math.ceil(count/WO_PAGE):1;
-      // Step 2: fire all page requests in parallel — browser queues them across 6 connections
-      const pageReqs=Array.from({length:pages},(_,i)=>
-        DB.from(WO_TBL).select('*')
-          .order('created_at',{ascending:false,nullsFirst:false})
-          .range(i*WO_PAGE,(i+1)*WO_PAGE-1)
-      );
-      const results=await Promise.all(pageReqs);
-      // Step 3: merge pages in order (already sorted by created_at desc per page)
+      // Step 2: fetch pages in small concurrent batches to avoid overwhelming Supabase
+      const BATCH=4; // max simultaneous requests
       let allWOData=[];
-      for(const{data,error} of results){
-        if(!error&&data) allWOData=allWOData.concat(data);
+      for(let i=0;i<pages;i+=BATCH){
+        const batchIdxs=Array.from({length:Math.min(BATCH,pages-i)},(_,j)=>i+j);
+        const batchResults=await Promise.all(batchIdxs.map(idx=>
+          DB.from(WO_TBL).select('*')
+            .order('created_at',{ascending:false,nullsFirst:false})
+            .range(idx*WO_PAGE,(idx+1)*WO_PAGE-1)
+        ));
+        for(const{data,error} of batchResults){
+          if(!error&&data) allWOData=allWOData.concat(data);
+          else if(error) console.warn('WO page error:',error.message);
+        }
       }
       if(allWOData.length){
         S.set('lhs:work_orders',allWOData);

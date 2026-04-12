@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CRM Preview — Safeguard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── EXACT COPY FROM index.html ── */
+:root{--navy:#0f1f3d;--navym:#1a2f52;--navyl:#243a63;--teal:#3abfbf;--teall:#5dd0d0;
+--white:#fff;--red:#d94040;--green:#2d8c4e;--amber:#d97c20;
+--text:#1a1a2e;--muted:#6b7280;--bdr:#e2e0db;--surf:#fafaf8;
+--sh:0 2px 12px rgba(15,31,61,.10);--shlg:0 8px 32px rgba(15,31,61,.18);--r:10px;--rl:16px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-height:100vh}
+/* TOP NAV */
+.tb{background:var(--navy);display:flex;flex-direction:column;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tb-row1{height:56px;display:flex;align-items:center;padding:0 20px;gap:12px}
+.tb-row2{display:flex;align-items:center;padding:2px 20px 4px;gap:8px;border-top:1px solid rgba(255,255,255,.08)}
+.tbl{color:var(--teal);font-size:15px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.tbl span{color:rgba(255,255,255,.5);font-weight:300}
+.tbn{display:flex;gap:2px;flex:1;overflow-x:auto}
+.nb{padding:6px 10px;border-radius:6px;border:none;background:transparent;
+  color:rgba(255,255,255,.6);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s}
+.nb:hover{background:rgba(255,255,255,.08);color:var(--white)}
+.nb.active{background:rgba(58,191,191,.18);color:var(--teal)}
+.nb-back{color:var(--teal);border:1px solid rgba(58,191,191,.3)}
+.nb-back:hover{background:rgba(58,191,191,.15)}
+.tbr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.up{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:20px;
+  padding:5px 14px;color:rgba(255,255,255,.8);font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.lo{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);
+  border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif}
+/* MAIN */
+.main{flex:1;padding:28px;max-width:1400px;margin:0 auto;width:100%}
+.page{display:none}.page.active{display:block}
+.pt{font-size:22px;font-weight:700;color:var(--navy);margin-bottom:6px}
+.ps{font-size:14px;color:var(--muted);margin-bottom:24px}
+/* CARDS */
+.card{background:var(--white);border-radius:var(--rl);padding:24px;box-shadow:var(--sh);margin-bottom:20px}
+.ct{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px}
+/* STAT CARDS */
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.sc{background:var(--white);border-radius:var(--rl);padding:20px 22px;box-shadow:var(--sh);border-left:4px solid transparent}
+.sc.n{border-left-color:var(--navy)}.sc.g{border-left-color:var(--teal)}
+.sc.gr{border-left-color:var(--green)}.sc.r{border-left-color:var(--red)}.sc.a{border-left-color:var(--amber)}
+.sl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+.sv{font-size:32px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.ss{font-size:12px;color:var(--muted);margin-top:4px}
+/* TABLE */
+.tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bdr)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--navy);color:rgba(255,255,255,.85);padding:10px 14px;text-align:left;
+  font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#faf9f6}
+/* BADGES */
+.bx{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600}
+.bg{background:#dcfce7;color:#15803d}.br{background:#fee2e2;color:#b91c1c}
+.ba{background:#fef3c7;color:#b45309}.bb{background:#dbeafe;color:#1d4ed8}
+.bgr{background:#f3f4f6;color:#6b7280}.bn{background:#e0e7f5;color:var(--navy)}
+/* FORM */
+.fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}
+.fl label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.fl input,.fl select,.fl textarea{width:100%;padding:10px 13px;border:1.5px solid var(--bdr);border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--surf);transition:border-color .15s}
+.fl input:focus,.fl select:focus,.fl textarea:focus{outline:none;border-color:var(--navy)}
+/* BUTTONS */
+.btn{padding:9px 20px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.02em}
+.btn-n{background:var(--navy);color:var(--teal)}.btn-n:hover{background:var(--navyl)}
+.btn-g{background:var(--teal);color:var(--navy)}.btn-g:hover{background:var(--teall)}
+.btn-o{background:transparent;border:1.5px solid var(--bdr);color:var(--text)}
+.btn-o:hover{border-color:var(--navy);color:var(--navy)}
+.btn-r{background:var(--red);color:var(--white)}
+.sm{padding:6px 12px;font-size:12px}
+.br2{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:4px;margin-bottom:20px;width:fit-content}
+.tab{padding:8px 18px;border-radius:7px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .15s}
+.tab.active{background:var(--navy);color:var(--teal)}
+/* SECTION HDR */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.sh h3{font-size:16px;font-weight:600;color:var(--navy)}
+/* TWO COL */
+.tc{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+/* INTEGRATIONS */
+.ic{border:1.5px solid var(--bdr);border-radius:var(--r);padding:18px}
+.ic.on2{border-color:#86efac;background:#f0fdf4}.ic.off2{border-color:var(--bdr);background:var(--surf)}
+.in2{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.is2{font-size:12px;font-weight:600}.is2.on{color:var(--green)}.is2.off{color:var(--red)}
+.id2{font-size:13px;color:var(--muted);margin:8px 0}
+/* PROGRESS */
+.prog{height:6px;background:#e8e4db;border-radius:3px;overflow:hidden;margin-top:5px}
+.prog-f{height:100%;border-radius:3px}
+/* KANBAN */
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;margin-bottom:20px}
+.kb-col{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--rl);padding:14px;min-width:175px;flex:0 0 175px}
+.kb-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.kb-val{font-size:12px;font-weight:700;color:var(--navy)}
+.kb-card{background:white;border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid var(--bdr);cursor:pointer;box-shadow:var(--sh)}
+.kb-card:hover{box-shadow:0 4px 16px rgba(15,31,61,.15)}
+.kname{font-weight:700;font-size:12px;color:var(--navy);margin-bottom:3px}
+.kval{font-size:13px;font-weight:700;color:var(--teal);margin-bottom:4px}
+.kmeta{font-size:11px;color:var(--muted)}
+.kbar{height:3px;border-radius:2px;background:#e2e0db;margin-top:8px}
+.kfill{height:100%;border-radius:2px}
+/* TIMELINE */
+.tl-row{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--bdr)}
+.tl-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+/* FOLLOW-UP ITEMS */
+.fup{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r);border:1px solid var(--bdr);background:white;margin-bottom:8px;box-shadow:var(--sh)}
+.fup.ov{border-color:#fca5a5;background:#fff5f5}
+.fup.td{border-color:#86efac;background:#f0fdf4}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+/* SECTION LABEL */
+.sec-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#eef2fa;padding:8px 12px;border-radius:8px;margin:16px 0 12px}
+/* SCORE BADGE */
+.score{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.s-hot{background:#fee2e2;color:#b91c1c}
+.s-warm{background:#fef3c7;color:#b45309}
+.s-cold{background:#dbeafe;color:#1d4ed8}
+/* VIEW TOGGLE */
+.vt{display:flex;gap:2px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:3px}
+.vtb{padding:5px 13px;border-radius:6px;border:none;background:transparent;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);font-family:'DM Sans',sans-serif}
+.vtb.active{background:var(--navy);color:var(--teal)}
+</style>
+</head>
+<body>
+
+<!-- ── TOP NAV (exact structure from index.html) ── -->
+<div class="tb">
+  <div class="tb-row1">
+    <div class="tbl">LIFE<span>TIME</span></div>
+    <div class="tbr">
+      <div class="up">👤 Jake Booth</div>
+      <button class="lo">Log Out</button>
+    </div>
+  </div>
+  <div class="tb-row2">
+    <div class="tbn" id="tnav">
+      <button class="nb nb-back">← Main Menu</button>
+      <span style="color:rgba(255,255,255,.2);margin:0 2px">|</span>
+      <button class="nb active" onclick="showPage('dashboard',this)">Dashboard</button>
+      <button class="nb" onclick="showPage('leads',this)">Leads</button>
+      <button class="nb" onclick="showPage('accounts',this)">Accounts</button>
+      <button class="nb" onclick="showPage('opps',this)">Opportunities</button>
+      <button class="nb" onclick="showPage('activities',this)">Activities</button>
+      <button class="nb" onclick="showPage('followups',this)">Follow Ups</button>
+      <button class="nb" onclick="showPage('email',this)">Email Sync</button>
+      <button class="nb">Estimates</button>
+      <button class="nb">Pricebook</button>
+      <button class="nb">Marketing</button>
+      <button class="nb">Settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ═══════════════════════════════════════════
+  1. CRM DASHBOARD
+═══════════════════════════════════════════ -->
+<div id="pg-dashboard" class="page active">
+  <div class="pt">CRM Dashboard</div>
+  <div class="ps">Real-time overview of your sales pipeline and activity</div>
+
+  <div class="sg">
+    <div class="sc n"><div class="sl">Active Leads</div><div class="sv">47</div><div class="ss">▲ 8 new this week</div></div>
+    <div class="sc g"><div class="sl">Pipeline Value</div><div class="sv">$284K</div><div class="ss">▲ $32K vs last month</div></div>
+    <div class="sc gr"><div class="sl">Won This Month</div><div class="sv">$61.2K</div><div class="ss">▲ 23% vs last month</div></div>
+    <div class="sc a"><div class="sl">Conversion Rate</div><div class="sv">34%</div><div class="ss">▼ 2pts vs last month</div></div>
+    <div class="sc r"><div class="sl">Overdue Follow-ups</div><div class="sv">3</div><div class="ss">Requires attention</div></div>
+  </div>
+
+  <div class="tc" style="margin-bottom:20px">
+    <div class="card">
+      <div class="ct">Pipeline by Stage</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">Prospect</span><span style="font-size:12px;color:var(--muted)">$42K &nbsp;·&nbsp; 14 opps</span></div><div class="prog"><div class="prog-f" style="width:15%;background:var(--teal)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">Site Visit</span><span style="font-size:12px;color:var(--muted)">$68K &nbsp;·&nbsp; 9 opps</span></div><div class="prog"><div class="prog-f" style="width:24%;background:#2980b9"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">Estimate Sent</span><span style="font-size:12px;color:var(--muted)">$94.5K &nbsp;·&nbsp; 11 opps</span></div><div class="prog"><div class="prog-f" style="width:33%;background:var(--amber)"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">Negotiation</span><span style="font-size:12px;color:var(--muted)">$58K &nbsp;·&nbsp; 6 opps</span></div><div class="prog"><div class="prog-f" style="width:20%;background:#e67e22"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600">Won</span><span style="font-size:12px;color:var(--muted)">$22K &nbsp;·&nbsp; 7 opps</span></div><div class="prog"><div class="prog-f" style="width:8%;background:var(--green)"></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="ct" style="margin:0">Today's Queue</div>
+        <span class="bx br">3 Overdue</span>
+      </div>
+      <div class="fup ov">
+        <div class="dot" style="background:var(--red)"></div>
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Call back — Maria Garcia</div><div style="font-size:12px;color:var(--muted)">Due: Yesterday &nbsp;·&nbsp; Prospect</div></div>
+        <button class="btn btn-o sm">Log</button>
+      </div>
+      <div class="fup ov">
+        <div class="dot" style="background:var(--red)"></div>
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Send estimate — Johnson Property</div><div style="font-size:12px;color:var(--muted)">Due: 2 days ago &nbsp;·&nbsp; Estimate Sent</div></div>
+        <button class="btn btn-o sm">Log</button>
+      </div>
+      <div class="fup td">
+        <div class="dot" style="background:var(--green)"></div>
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Site visit — 4420 Oak Drive</div><div style="font-size:12px;color:var(--muted)">Today 2:00 PM &nbsp;·&nbsp; Site Visit</div></div>
+        <button class="btn btn-o sm">Log</button>
+      </div>
+      <div class="fup">
+        <div class="dot" style="background:var(--amber)"></div>
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Follow up — Thomas Reed</div><div style="font-size:12px;color:var(--muted)">Tomorrow &nbsp;·&nbsp; New Lead</div></div>
+        <button class="btn btn-o sm">Log</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Recent Activity Feed</div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#dbeafe">📞</div>
+      <div style="flex:1"><div style="font-weight:600">Call — Left voicemail</div><div style="font-size:12px;color:var(--muted)">Sarah K. &nbsp;·&nbsp; Maria Garcia &nbsp;·&nbsp; <span class="bx bgr">Left Voicemail</span></div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap">10 min ago</div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#f3e5f5">✉️</div>
+      <div style="flex:1"><div style="font-weight:600">Email — Estimate follow-up sent</div><div style="font-size:12px;color:var(--muted)">Jake R. &nbsp;·&nbsp; Reed Office Park &nbsp;·&nbsp; <span class="bx bgr">Sent Estimate</span></div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap">1 hr ago</div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#dcfce7">🏠</div>
+      <div style="flex:1"><div style="font-weight:600">Site Visit — Inspection complete</div><div style="font-size:12px;color:var(--muted)">Mike T. &nbsp;·&nbsp; 4420 Oak Drive &nbsp;·&nbsp; <span class="bx bgr">Scheduled Follow-up</span></div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap">2 hrs ago</div>
+    </div>
+    <div class="tl-row" style="border:none">
+      <div class="tl-icon" style="background:#fef3c7">💬</div>
+      <div style="flex:1"><div style="font-weight:600">Text — Replied with schedule</div><div style="font-size:12px;color:var(--muted)">Sarah K. &nbsp;·&nbsp; Thomas Reed &nbsp;·&nbsp; <span class="bx bgr">Connected</span></div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap">3 hrs ago</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  2. LEADS
+═══════════════════════════════════════════ -->
+<div id="pg-leads" class="page">
+  <div class="pt">Leads</div>
+  <div class="ps">All inbound and outbound leads &nbsp;·&nbsp; Scored by engagement and completeness</div>
+
+  <div class="sh">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All (47)</button>
+      <button class="btn btn-o sm">New (12)</button>
+      <button class="btn btn-o sm">Contacted (18)</button>
+      <button class="btn btn-o sm">Qualified (9)</button>
+      <button class="btn btn-o sm">Converted (6)</button>
+      <button class="btn btn-o sm">Unqualified (2)</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="vt">
+        <button class="vtb active">≡ List</button>
+        <button class="vtb">▦ Kanban</button>
+      </div>
+      <button class="btn btn-n">+ New Lead</button>
+    </div>
+  </div>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Score</th><th>Name</th><th>Phone / Email</th><th>Source</th><th>Division</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Est. Value</th><th>Next Follow-up</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr style="cursor:pointer">
+          <td><div class="score s-hot">87</div></td>
+          <td><div style="font-weight:700">Maria Garcia</div><div style="font-size:11px;color:var(--muted)">Garcia &amp; Sons</div></td>
+          <td><div>(305) 555-0192</div><div style="color:var(--muted);font-size:12px">maria@garcia.com</div></td>
+          <td><div style="font-weight:600">Web Form</div><div style="color:var(--muted);font-size:12px">Google Ads</div></td>
+          <td><span class="bx bn">Pest Control</span></td>
+          <td>Sarah K.</td>
+          <td><span class="bx bn">Contacted</span></td>
+          <td style="font-weight:700;color:var(--red)">🔥 Hot</td>
+          <td style="font-weight:700">$4,200</td>
+          <td style="color:var(--red);font-weight:700">Today</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div class="score s-hot">72</div></td>
+          <td><div style="font-weight:700">Thomas Reed</div><div style="font-size:11px;color:var(--muted)">Reed Properties</div></td>
+          <td><div>(786) 555-0341</div><div style="color:var(--muted);font-size:12px">t.reed@email.com</div></td>
+          <td><div style="font-weight:600">Referral</div><div style="color:var(--muted);font-size:12px">Customer Ref.</div></td>
+          <td><span class="bx bn">Termite</span></td>
+          <td>Jake R.</td>
+          <td><span class="bx bg">Qualified</span></td>
+          <td style="font-weight:700;color:var(--red)">🔥 Hot</td>
+          <td style="font-weight:700">$8,500</td>
+          <td>Tomorrow</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div class="score s-warm">54</div></td>
+          <td><div style="font-weight:700">Lisa Thornton</div></td>
+          <td><div>(954) 555-0087</div><div style="color:var(--muted);font-size:12px">lisa.t@gmail.com</div></td>
+          <td><div style="font-weight:600">Google</div><div style="color:var(--muted);font-size:12px">Organic</div></td>
+          <td><span class="bx bn">Lawn</span></td>
+          <td>Mike T.</td>
+          <td><span class="bx ba">New</span></td>
+          <td>Normal</td>
+          <td style="font-weight:700">$1,200</td>
+          <td style="color:var(--muted)">Apr 10</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div class="score s-cold">21</div></td>
+          <td><div style="font-weight:700">David Park</div><div style="font-size:11px;color:var(--muted)">Park Mgmt LLC</div></td>
+          <td><div>(561) 555-0229</div><div style="color:var(--muted);font-size:12px">dpark@parkmgmt.com</div></td>
+          <td><div style="font-weight:600">Trade Show</div><div style="color:var(--muted);font-size:12px">NPMA 2025</div></td>
+          <td><span class="bx bn">Commercial</span></td>
+          <td style="color:var(--muted)">Unassigned</td>
+          <td><span class="bx ba">New</span></td>
+          <td style="color:var(--muted)">❄ Cold</td>
+          <td style="font-weight:700">$12,000</td>
+          <td style="color:var(--muted)">—</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:12px;padding:12px 16px;background:#eef2fa;border-radius:10px;font-size:13px;color:var(--muted)">
+    <strong style="color:var(--navy)">Lead Score</strong> is auto-calculated: contact completeness (+20), activity engagement (+5 per contact), estimated value (+30 max), assigned rep (+10), follow-up scheduled (+15). &nbsp;
+    <span style="color:var(--red);font-weight:600">🔥 Hot 70+</span> &nbsp;·&nbsp;
+    <span style="color:#b45309;font-weight:600">Warm 40–69</span> &nbsp;·&nbsp;
+    <span style="color:#1d4ed8;font-weight:600">❄ Cold &lt;40</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  3. ACCOUNTS
+═══════════════════════════════════════════ -->
+<div id="pg-accounts" class="page">
+  <div class="pt">Accounts</div>
+  <div class="ps">Customer accounts — linked leads, opportunities, activities, and revenue</div>
+
+  <div class="sh">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All (124)</button>
+      <button class="btn btn-o sm">Active (98)</button>
+      <button class="btn btn-o sm">Residential</button>
+      <button class="btn btn-o sm">Commercial</button>
+      <button class="btn btn-o sm">HOA / Multi-Unit</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input placeholder="Search accounts..." style="padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;width:220px">
+      <button class="btn btn-n">+ New Account</button>
+    </div>
+  </div>
+
+  <div class="tw" style="margin-bottom:20px">
+    <table>
+      <thead><tr><th>Account</th><th>Type</th><th>Owner</th><th>Phone</th><th>Location</th><th>Open Opps</th><th>Total Revenue</th><th>Last Activity</th><th>Health</th><th></th></tr></thead>
+      <tbody>
+        <tr style="cursor:pointer">
+          <td><div style="font-weight:700">Garcia &amp; Sons</div><div style="font-size:11px;color:var(--muted)">Residential Home</div></td>
+          <td><span class="bx bb">Residential</span></td><td>Sarah K.</td><td>(305) 555-0192</td><td style="color:var(--muted)">Miami, FL</td>
+          <td style="text-align:center;font-weight:700;color:var(--teal)">2</td>
+          <td style="font-weight:700">$18,400</td><td style="color:var(--muted)">2 days ago</td>
+          <td><span class="bx bg">High</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div style="font-weight:700">Reed Properties</div><div style="font-size:11px;color:var(--muted)">Reed Properties LLC</div></td>
+          <td><span class="bx bn">Commercial</span></td><td>Jake R.</td><td>(786) 555-0341</td><td style="color:var(--muted)">Doral, FL</td>
+          <td style="text-align:center;font-weight:700;color:var(--teal)">1</td>
+          <td style="font-weight:700">$42,000</td><td style="color:var(--muted)">1 week ago</td>
+          <td><span class="bx ba">Medium</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div style="font-weight:700">Sunset HOA</div><div style="font-size:11px;color:var(--muted)">Sunset Lakes Community</div></td>
+          <td><span class="bx bg">HOA</span></td><td>Mike T.</td><td>(954) 555-0102</td><td style="color:var(--muted)">Pembroke Pines, FL</td>
+          <td style="text-align:center;color:var(--muted)">0</td>
+          <td style="font-weight:700">$76,000</td><td style="color:var(--muted)">3 days ago</td>
+          <td><span class="bx bg">High</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr style="cursor:pointer">
+          <td><div style="font-weight:700">Park Management</div><div style="font-size:11px;color:var(--muted)">Park Management LLC</div></td>
+          <td><span class="bx bn">Commercial</span></td><td style="color:var(--muted)">Unassigned</td><td>(561) 555-0229</td><td style="color:var(--muted)">Boca Raton, FL</td>
+          <td style="text-align:center;font-weight:700;color:var(--teal)">3</td>
+          <td style="font-weight:700;color:var(--muted)">$0</td><td style="color:var(--muted)">Never</td>
+          <td><span class="bx br">Low</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sec-lbl">Account Detail — opens when you click Open</div>
+  <div class="tc">
+    <div class="card">
+      <div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:4px">Garcia &amp; Sons</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Residential &nbsp;·&nbsp; Customer since Jan 2024</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin-bottom:16px">
+        <span style="color:var(--muted);font-weight:600">Owner</span><span>Sarah K.</span>
+        <span style="color:var(--muted);font-weight:600">Phone</span><span>(305) 555-0192</span>
+        <span style="color:var(--muted);font-weight:600">Email</span><span>maria@garcia.com</span>
+        <span style="color:var(--muted);font-weight:600">Address</span><span>14220 SW 88th St, Miami, FL 33186</span>
+        <span style="color:var(--muted);font-weight:600">Division</span><span><span class="bx bn">Pest Control</span></span>
+      </div>
+      <div class="br2">
+        <button class="btn btn-o sm">📞 Call</button>
+        <button class="btn btn-o sm">✉️ Email</button>
+        <button class="btn btn-n sm">+ New Opportunity</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0">
+      <div class="card">
+        <div class="ct">Related Opportunities (2)</div>
+        <div style="font-size:13px;line-height:2">
+          Quarterly Service Renewal &nbsp;·&nbsp; <strong>$2,400</strong> &nbsp;·&nbsp; <span class="bx ba">Negotiation</span><br>
+          Annual Termite Bond &nbsp;·&nbsp; <strong>$1,200</strong> &nbsp;·&nbsp; <span class="bx bb">Estimate Sent</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ct">Recent Activity</div>
+        <div style="font-size:13px;line-height:2.1">
+          📞 Call — Left voicemail &nbsp;<span style="color:var(--muted)">(2 days ago)</span><br>
+          ✉️ Email — Estimate sent &nbsp;<span style="color:var(--muted)">(5 days ago)</span><br>
+          🏠 Site Visit — Inspection &nbsp;<span style="color:var(--muted)">(Jan 15)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  4. OPPORTUNITIES — KANBAN
+═══════════════════════════════════════════ -->
+<div id="pg-opps" class="page">
+  <div class="pt">Opportunities</div>
+  <div class="ps">Active sales pipeline &nbsp;·&nbsp; Drag cards between stages or click to open</div>
+
+  <div class="sh">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="vt">
+        <button class="vtb active">▦ Kanban</button>
+        <button class="vtb">≡ List</button>
+      </div>
+      <select style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white">
+        <option>All Divisions</option><option>Pest Control</option><option>Termite</option><option>Lawn</option>
+      </select>
+      <select style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white">
+        <option>All Reps</option><option>Sarah K.</option><option>Jake R.</option><option>Mike T.</option>
+      </select>
+    </div>
+    <button class="btn btn-n">+ New Opportunity</button>
+  </div>
+
+  <div class="kanban">
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Prospect (4)</span><span class="kb-val">$42K</span></div>
+      <div class="kb-card">
+        <div class="kname">Thornton — Lawn Service</div>
+        <div class="kval">$1,200</div>
+        <div class="kmeta">Lisa Thornton &nbsp;·&nbsp; May 1</div>
+        <div class="kbar"><div class="kfill" style="width:20%;background:var(--teal)"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">20%</div>
+      </div>
+      <div class="kb-card">
+        <div class="kname">Park Mgmt Portfolio</div>
+        <div class="kval">$12,000</div>
+        <div class="kmeta">Park Mgmt LLC &nbsp;·&nbsp; Jun 15</div>
+        <div class="kbar"><div class="kfill" style="width:15%;background:var(--teal)"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">15%</div>
+      </div>
+      <button style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>
+
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Site Visit (3)</span><span class="kb-val">$68K</span></div>
+      <div class="kb-card">
+        <div class="kname">Garcia Quarterly</div>
+        <div class="kval">$2,400</div>
+        <div class="kmeta">Maria Garcia &nbsp;·&nbsp; Apr 20 &nbsp;·&nbsp; Sarah K.</div>
+        <div class="kbar"><div class="kfill" style="width:40%;background:#2980b9"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">40%</div>
+      </div>
+      <div class="kb-card">
+        <div class="kname">HOA Renewal Bundle</div>
+        <div class="kval">$24,000</div>
+        <div class="kmeta">Sunset HOA &nbsp;·&nbsp; Apr 30 &nbsp;·&nbsp; Mike T.</div>
+        <div class="kbar"><div class="kfill" style="width:35%;background:#2980b9"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">35%</div>
+      </div>
+      <button style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>
+
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Estimate Sent (5)</span><span class="kb-val">$94K</span></div>
+      <div class="kb-card">
+        <div class="kname">Reed Office Park</div>
+        <div class="kval">$18,000</div>
+        <div class="kmeta">Reed Properties &nbsp;·&nbsp; Apr 25 &nbsp;·&nbsp; Jake R.</div>
+        <div class="kbar"><div class="kfill" style="width:55%;background:var(--amber)"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">55%</div>
+      </div>
+      <div class="kb-card">
+        <div class="kname">Garcia Termite Bond</div>
+        <div class="kval">$1,200</div>
+        <div class="kmeta">Maria Garcia &nbsp;·&nbsp; Apr 18 &nbsp;·&nbsp; Sarah K.</div>
+        <div class="kbar"><div class="kfill" style="width:60%;background:var(--amber)"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">60%</div>
+      </div>
+      <button style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>
+
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Negotiation (2)</span><span class="kb-val">$58K</span></div>
+      <div class="kb-card">
+        <div class="kname">Commercial District Ph.1</div>
+        <div class="kval">$48,000</div>
+        <div class="kmeta">Park Mgmt &nbsp;·&nbsp; Apr 10 &nbsp;·&nbsp; Jake R.</div>
+        <div class="kbar"><div class="kfill" style="width:75%;background:#e67e22"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">75%</div>
+      </div>
+      <button style="width:100%;padding:8px;border:1.5px dashed var(--bdr);border-radius:8px;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add</button>
+    </div>
+
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Won (3)</span><span class="kb-val">$22K</span></div>
+      <div class="kb-card" style="border-color:#86efac">
+        <div class="kname">Garcia — Annual Plan</div>
+        <div class="kval" style="color:var(--green)">$4,200</div>
+        <div class="kmeta">Maria Garcia &nbsp;·&nbsp; Closed &nbsp;·&nbsp; Sarah K.</div>
+        <div class="kbar"><div class="kfill" style="width:100%;background:var(--green)"></div></div>
+        <div class="kmeta" style="text-align:right;margin-top:3px">100%</div>
+      </div>
+    </div>
+
+    <div class="kb-col">
+      <div class="kb-hdr"><span>Lost (1)</span><span class="kb-val">—</span></div>
+      <div class="kb-card" style="opacity:.55">
+        <div class="kname">Northside Apts</div>
+        <div class="kval" style="color:var(--muted)">$8,000</div>
+        <div class="kmeta">Northside LLC &nbsp;·&nbsp; Closed</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Forecast Summary</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:var(--teal)">$284K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Total Pipeline</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#2980b9">$194K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Best Case</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--navy)">$122K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Commit</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--green)">$61K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Won (MTD)</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--amber)">$98K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Weighted</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  5. ACTIVITIES
+═══════════════════════════════════════════ -->
+<div id="pg-activities" class="page">
+  <div class="pt">Activities</div>
+  <div class="ps">All logged sales activities — calls, emails, texts, visits, demos</div>
+
+  <div class="sh">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All</button>
+      <button class="btn btn-o sm">📞 Calls</button>
+      <button class="btn btn-o sm">✉️ Emails</button>
+      <button class="btn btn-o sm">💬 Texts</button>
+      <button class="btn btn-o sm">🏠 Visits</button>
+      <button class="btn btn-o sm">🖥 Demos</button>
+    </div>
+    <button class="btn btn-n">+ Log Activity</button>
+  </div>
+
+  <div class="card" style="background:#f0f4ff;border:1px solid #c8d8f8">
+    <div class="ct">Log New Activity</div>
+    <div class="fr">
+      <div class="fl"><label>Activity Type</label><select><option>📞 Call</option><option>✉️ Email</option><option>💬 Text</option><option>🏠 Visit</option><option>🖥 Demo</option><option>📋 Note</option></select></div>
+      <div class="fl"><label>Subject / Brief</label><input placeholder="What happened?"></div>
+      <div class="fl"><label>Outcome</label><select><option>— Select —</option><option>Connected</option><option>Left Voicemail</option><option>No Answer</option><option>Scheduled Follow-up</option><option>Sent Estimate</option></select></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Related Lead / Opportunity</label><select><option>— Select —</option><option>Maria Garcia (Lead)</option><option>Thomas Reed (Lead)</option><option>Reed Office Park (Opp)</option></select></div>
+      <div class="fl"><label>Date &amp; Time</label><input type="datetime-local"></div>
+      <div class="fl"><label>Next Action Date</label><input type="date"></div>
+    </div>
+    <div class="fr">
+      <div class="fl" style="grid-column:span 3"><label>Notes</label><textarea rows="2" placeholder="What was discussed, what's the status, what's next..."></textarea></div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n">Save Activity</button>
+      <button class="btn btn-o">Cancel</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Activity Timeline</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Today — April 7, 2026</div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#dbeafe">📞</div>
+      <div style="flex:1"><div style="font-weight:600">Call — Left voicemail</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Sarah K. &nbsp;·&nbsp; Maria Garcia &nbsp;·&nbsp; <span class="bx bgr">Left Voicemail</span></div><div style="font-size:13px;margin-top:4px">Called to follow up on estimate. No answer, left VM asking to call back.</div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:12px">10:32 AM</div>
+    </div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#f3e5f5">✉️</div>
+      <div style="flex:1"><div style="font-weight:600">Email — Estimate follow-up sent</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Jake R. &nbsp;·&nbsp; Reed Office Park &nbsp;·&nbsp; <span class="bx bgr">Sent Estimate</span></div><div style="font-size:13px;margin-top:4px">Sent revised estimate with 10% multi-unit discount applied.</div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:12px">9:15 AM</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 10px">Yesterday — April 6, 2026</div>
+    <div class="tl-row">
+      <div class="tl-icon" style="background:#dcfce7">🏠</div>
+      <div style="flex:1"><div style="font-weight:600">Site Visit — Inspection complete</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Mike T. &nbsp;·&nbsp; Sunset HOA Renewal &nbsp;·&nbsp; <span class="bx bgr">Scheduled Follow-up</span></div><div style="font-size:13px;margin-top:4px">Walked all 3 buildings. Recommended quarterly service + termite bond.</div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:12px">2:00 PM</div>
+    </div>
+    <div class="tl-row" style="border:none">
+      <div class="tl-icon" style="background:#fef3c7">💬</div>
+      <div style="flex:1"><div style="font-weight:600">Text — Replied with schedule</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Sarah K. &nbsp;·&nbsp; Thomas Reed &nbsp;·&nbsp; <span class="bx bgr">Connected</span></div><div style="font-size:13px;margin-top:4px">Customer asked for Thursday afternoon. Confirmed 2pm.</div></div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:12px">11:05 AM</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  6. FOLLOW-UPS
+═══════════════════════════════════════════ -->
+<div id="pg-followups" class="page">
+  <div class="pt">Follow-up Queue</div>
+  <div class="ps">Scheduled follow-ups sorted by urgency — overdue first</div>
+
+  <div class="sg">
+    <div class="sc r"><div class="sl">Overdue</div><div class="sv">3</div><div class="ss">Requires immediate action</div></div>
+    <div class="sc g"><div class="sl">Due Today</div><div class="sv">5</div><div class="ss">Scheduled for today</div></div>
+    <div class="sc n"><div class="sl">This Week</div><div class="sv">12</div><div class="ss">Mon–Fri</div></div>
+    <div class="sc a"><div class="sl">Total Scheduled</div><div class="sv">28</div><div class="ss">All open follow-ups</div></div>
+  </div>
+
+  <div class="sec-lbl">🚨 Overdue (3)</div>
+  <div class="fup ov">
+    <div class="dot" style="background:var(--red)"></div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Maria Garcia — Call Back</div>
+      <div style="font-size:12px;color:var(--muted)">Quarterly Renewal &nbsp;·&nbsp; Due: <strong style="color:var(--red)">Apr 5</strong> &nbsp;·&nbsp; Sarah K. &nbsp;·&nbsp; $2,400</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">Log Activity</button>
+      <button class="btn btn-o sm">Reschedule</button>
+      <button class="btn btn-o sm">Skip</button>
+    </div>
+  </div>
+  <div class="fup ov">
+    <div class="dot" style="background:var(--red)"></div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Johnson Property — Send Estimate</div>
+      <div style="font-size:12px;color:var(--muted)">Site Inspection &nbsp;·&nbsp; Due: <strong style="color:var(--red)">Apr 4</strong> &nbsp;·&nbsp; Jake R. &nbsp;·&nbsp; $6,800</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">Log Activity</button>
+      <button class="btn btn-o sm">Reschedule</button>
+      <button class="btn btn-o sm">Skip</button>
+    </div>
+  </div>
+  <div class="fup ov">
+    <div class="dot" style="background:var(--red)"></div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Riverside Apts — Follow-up Email</div>
+      <div style="font-size:12px;color:var(--muted)">HOA Proposal &nbsp;·&nbsp; Due: <strong style="color:var(--red)">Apr 3</strong> &nbsp;·&nbsp; Mike T. &nbsp;·&nbsp; $18,000</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">Log Activity</button>
+      <button class="btn btn-o sm">Reschedule</button>
+      <button class="btn btn-o sm">Skip</button>
+    </div>
+  </div>
+
+  <div class="sec-lbl">📅 Due Today (5)</div>
+  <div class="fup td">
+    <div class="dot" style="background:var(--green)"></div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Thomas Reed — Site Visit 2:00 PM</div>
+      <div style="font-size:12px;color:var(--muted)">Termite Bond &nbsp;·&nbsp; Jake R. &nbsp;·&nbsp; $8,500</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">Log Activity</button>
+      <button class="btn btn-o sm">Reschedule</button>
+    </div>
+  </div>
+  <div class="fup td">
+    <div class="dot" style="background:var(--green)"></div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Sunset HOA — Renewal Call</div>
+      <div style="font-size:12px;color:var(--muted)">HOA Quarterly &nbsp;·&nbsp; Mike T. &nbsp;·&nbsp; $24,000</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">Log Activity</button>
+      <button class="btn btn-o sm">Reschedule</button>
+    </div>
+  </div>
+
+  <div class="sec-lbl">📆 This Week (12)</div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Lead / Account</th><th>Action</th><th>Opportunity</th><th>Due</th><th>Assigned</th><th>Value</th><th></th></tr></thead>
+      <tbody>
+        <tr><td style="font-weight:700">Lisa Thornton</td><td>Send Quote</td><td style="color:var(--muted)">Lawn Service</td><td>Apr 8</td><td>Mike T.</td><td style="font-weight:700">$1,200</td><td><button class="btn btn-n sm">Log</button></td></tr>
+        <tr><td style="font-weight:700">Park Mgmt LLC</td><td>Discovery Call</td><td style="color:var(--muted)">Portfolio Review</td><td>Apr 9</td><td>Jake R.</td><td style="font-weight:700">$12,000</td><td><button class="btn btn-n sm">Log</button></td></tr>
+        <tr><td style="font-weight:700">Garcia &amp; Sons</td><td>Confirm Schedule</td><td style="color:var(--muted)">Annual Plan</td><td>Apr 10</td><td>Sarah K.</td><td style="font-weight:700">$4,200</td><td><button class="btn btn-n sm">Log</button></td></tr>
+        <tr><td style="font-weight:700">New Prospect</td><td>Initial Call</td><td style="color:var(--muted)">(New Lead)</td><td>Apr 11</td><td style="color:var(--muted)">Unassigned</td><td style="color:var(--muted)">—</td><td><button class="btn btn-n sm">Log</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  7. EMAIL SYNC
+═══════════════════════════════════════════ -->
+<div id="pg-email" class="page">
+  <div class="pt">Email Sync</div>
+  <div class="ps">Connect Gmail or Outlook — emails auto-link to matching leads and opportunities</div>
+
+  <div class="tc" style="margin-bottom:20px">
+    <div class="ic on2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:28px">📧</div>
+        <div>
+          <div class="in2">Gmail</div>
+          <div class="is2 on">● Connected</div>
+        </div>
+      </div>
+      <div class="id2">jbooth@safeguard.com &nbsp;·&nbsp; Last synced 2 min ago<br>Syncing: Sent + Received &nbsp;·&nbsp; Auto-linking: ON</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-o sm">⟳ Sync Now</button>
+        <button class="btn btn-r sm">Disconnect</button>
+      </div>
+    </div>
+    <div class="ic off2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:28px">📨</div>
+        <div>
+          <div class="in2">Microsoft Outlook / Exchange</div>
+          <div class="is2 off">● Not Connected</div>
+        </div>
+      </div>
+      <div class="id2">Connect your work email to auto-log emails on leads and opportunities</div>
+      <button class="btn btn-n sm">Connect Outlook</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="ct">Sync Settings</div>
+    <div class="tc">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:12px">What to sync</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Sent emails</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Received emails</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Calendar events / meetings</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" style="width:auto"> Email open &amp; click tracking</label>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:12px">Auto-linking rules</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Match emails to leads by email address</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Match emails to opportunities by contact</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked style="width:auto"> Create activity log entry for each email</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" style="width:auto"> Notify rep when lead replies</label>
+        </div>
+      </div>
+    </div>
+    <div class="br2"><button class="btn btn-n">Save Settings</button></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="ct" style="margin:0">Email Templates</div>
+      <button class="btn btn-n sm">+ New Template</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:var(--r);background:var(--surf)">
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Initial Follow-up</div><div style="font-size:12px;color:var(--muted)">Thanks for reaching out — {{first_name}}!</div></div>
+        <span class="bx bgr">Used 34×</span><button class="btn btn-o sm">Edit</button><button class="btn btn-n sm">Use</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:var(--r);background:var(--surf)">
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Estimate Delivery</div><div style="font-size:12px;color:var(--muted)">Your personalized estimate is ready — {{company}}</div></div>
+        <span class="bx bgr">Used 28×</span><button class="btn btn-o sm">Edit</button><button class="btn btn-n sm">Use</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:var(--r);background:var(--surf)">
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Post-Visit Thank You</div><div style="font-size:12px;color:var(--muted)">Great meeting you today, {{first_name}}</div></div>
+        <span class="bx bgr">Used 19×</span><button class="btn btn-o sm">Edit</button><button class="btn btn-n sm">Use</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:var(--r);background:var(--surf)">
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Renewal Reminder</div><div style="font-size:12px;color:var(--muted)">Time to renew your service plan, {{first_name}}</div></div>
+        <span class="bx bgr">Used 42×</span><button class="btn btn-o sm">Edit</button><button class="btn btn-n sm">Use</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--bdr);border-radius:var(--r);background:var(--surf)">
+        <div style="flex:1"><div style="font-weight:600;font-size:13px">Win-Back — 90 Days</div><div style="font-size:12px;color:var(--muted)">We miss you! Special offer inside</div></div>
+        <span class="bx bgr">Used 7×</span><button class="btn btn-o sm">Edit</button><button class="btn btn-n sm">Use</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="ct" style="margin:0">Recent Synced Emails</div>
+      <input placeholder="Search emails..." style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;width:200px;background:var(--surf)">
+    </div>
+    <div>
+      <div class="tl-row">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--teal);color:var(--navy);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">M</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">
+            <span style="font-weight:700;font-size:13px">Maria Garcia</span>
+            <span class="bx bg" style="font-size:10px">↓ Received</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">1 hr ago</span>
+          </div>
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">Re: Your estimate for quarterly pest control</div>
+          <div style="font-size:12px;color:var(--muted)">Hi, thanks for the estimate. Can we schedule for next week instead? My husband...</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--teal)">🔗 Maria Garcia (Lead)</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--navy);color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">J</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">
+            <span style="font-weight:700;font-size:13px">You → Maria Garcia</span>
+            <span class="bx bb" style="font-size:10px">↑ Sent</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">3 hrs ago</span>
+          </div>
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">Your personalized estimate is ready — Garcia &amp; Sons</div>
+          <div style="font-size:12px;color:var(--muted)">Hi Maria, attached is your personalized estimate for quarterly pest control...</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--teal)">🔗 Maria Garcia (Lead)</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--teal);color:var(--navy);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">T</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">
+            <span style="font-weight:700;font-size:13px">Thomas Reed</span>
+            <span class="bx bg" style="font-size:10px">↓ Received</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">Yesterday</span>
+          </div>
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">Site visit confirmation</div>
+          <div style="font-size:12px;color:var(--muted)">Confirmed for Thursday 2pm. Please bring the termite inspection report...</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--teal)">🔗 Reed Properties (Opp)</div>
+        </div>
+      </div>
+      <div class="tl-row" style="border:none">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--navy);color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">J</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">
+            <span style="font-weight:700;font-size:13px">You → Thomas Reed</span>
+            <span class="bx bb" style="font-size:10px">↑ Sent</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">Apr 5</span>
+          </div>
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">Thanks for reaching out — Thomas!</div>
+          <div style="font-size:12px;color:var(--muted)">Hi Thomas, thanks for contacting Safeguard. I wanted to reach out quickly...</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--teal)">🔗 Thomas Reed (Lead)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<script>
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nb:not(.nb-back)').forEach(b => b.classList.remove('active'));
+  const pg = document.getElementById('pg-' + id);
+  if (pg) pg.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+</script>
+</body>
+</html>

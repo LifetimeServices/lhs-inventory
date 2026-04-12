@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marketing Module Preview — Lifetime Home Services</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0f1f3d;--navym:#1a2f52;--navyl:#243a63;--teal:#3abfbf;--teall:#5dd0d0;
+--white:#fff;--red:#d94040;--green:#2d8c4e;--amber:#d97c20;
+--text:#1a1a2e;--muted:#6b7280;--bdr:#e2e0db;--surf:#fafaf8;
+--sh:0 2px 12px rgba(15,31,61,.10);--shlg:0 8px 32px rgba(15,31,61,.18);--r:10px;--rl:16px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-height:100vh}
+.tb{background:var(--navy);display:flex;flex-direction:column;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tb-row1{height:56px;display:flex;align-items:center;padding:0 20px;gap:12px}
+.tb-row2{display:flex;align-items:center;padding:2px 20px 4px;gap:4px;border-top:1px solid rgba(255,255,255,.08);overflow-x:auto}
+.tbl{color:var(--teal);font-size:15px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.tbl span{color:rgba(255,255,255,.5);font-weight:300}
+.nb{padding:6px 11px;border-radius:6px;border:none;background:transparent;
+  color:rgba(255,255,255,.6);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap}
+.nb.active{background:rgba(58,191,191,.18);color:var(--teal)}
+.tbr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.up{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:20px;
+  padding:5px 14px;color:rgba(255,255,255,.8);font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.lo{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);
+  border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif}
+.main{padding:28px;max-width:1400px;margin:0 auto;width:100%}
+.page{margin-bottom:60px}
+.pt{font-size:22px;font-weight:700;color:var(--navy);margin-bottom:6px}
+.ps{font-size:14px;color:var(--muted);margin-bottom:24px}
+.card{background:var(--white);border-radius:var(--rl);padding:24px;box-shadow:var(--sh);margin-bottom:20px}
+.ct{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:24px}
+.sc{background:var(--white);border-radius:var(--rl);padding:20px 22px;box-shadow:var(--sh);border-left:4px solid transparent}
+.sc.n{border-left-color:var(--navy)}.sc.g{border-left-color:var(--teal)}
+.sc.gr{border-left-color:var(--green)}.sc.r{border-left-color:var(--red)}.sc.a{border-left-color:var(--amber)}.sc.p{border-left-color:#8b5cf6}
+.sl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+.sv{font-size:30px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.ss{font-size:12px;color:var(--muted);margin-top:4px}
+.up-arrow{color:var(--green);font-weight:700}.dn-arrow{color:var(--red);font-weight:700}
+.tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--bdr)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--navy);color:rgba(255,255,255,.85);padding:10px 14px;text-align:left;
+  font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#faf9f6}
+.bx{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600}
+.bg{background:#dcfce7;color:#15803d}.br{background:#fee2e2;color:#b91c1c}
+.ba{background:#fef3c7;color:#b45309}.bb{background:#dbeafe;color:#1d4ed8}
+.bgr{background:#f3f4f6;color:#6b7280}.bn{background:#e0e7f5;color:var(--navy)}
+.bp{background:#f3e8ff;color:#7c3aed}
+.btn{padding:9px 20px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.02em}
+.btn-n{background:var(--navy);color:var(--teal)}.btn-g{background:var(--teal);color:var(--navy)}
+.btn-o{background:transparent;border:1.5px solid var(--bdr);color:var(--text)}
+.btn-r{background:var(--red);color:var(--white)}
+.sm{padding:6px 12px;font-size:12px}
+.br2{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.tc{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.tc3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+.fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px}
+.fl label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.fl input,.fl select,.fl textarea{width:100%;padding:10px 13px;border:1.5px solid var(--bdr);border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--surf)}
+.prog{height:6px;background:#e8e4db;border-radius:3px;overflow:hidden}
+.prog-f{height:100%;border-radius:3px}
+.sec-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#eef2fa;padding:8px 14px;border-radius:8px;margin:20px 0 14px}
+.ic{border:1.5px solid var(--bdr);border-radius:var(--r);padding:18px}
+.ic.on2{border-color:#86efac;background:#f0fdf4}.ic.off2{border-color:var(--bdr);background:var(--surf)}
+.in2{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.is2{font-size:12px;font-weight:600}.is2.on{color:var(--green)}.is2.off{color:var(--red)}
+.id2{font-size:13px;color:var(--muted);margin:8px 0}
+/* platform icon circles */
+.plt{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+/* drip sequence builder */
+.seq-step{display:flex;align-items:flex-start;gap:0;margin-bottom:0}
+.seq-line{display:flex;flex-direction:column;align-items:center;gap:0;margin-right:16px}
+.seq-dot{width:14px;height:14px;border-radius:50%;background:var(--navy);flex-shrink:0;margin-top:14px}
+.seq-bar{width:2px;background:#d1d5db;flex:1;min-height:32px}
+.seq-card{background:white;border:1.5px solid var(--bdr);border-radius:12px;padding:14px 16px;flex:1;margin-bottom:8px;box-shadow:var(--sh)}
+.seq-card.trigger{border-color:var(--teal);background:#f0fdfb}
+.seq-card.goal{border-color:var(--green);background:#f0fdf4}
+.seq-delay{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+.seq-title{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px}
+.seq-sub{font-size:12px;color:var(--muted)}
+.seq-metrics{display:flex;gap:16px;margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)}
+.seq-metric-val{color:var(--navy);font-size:12px}
+/* bar chart */
+.bar-wrap{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bar-label{font-size:12px;font-weight:600;color:var(--navy);width:120px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{flex:1;height:10px;background:#e8e4db;border-radius:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px}
+.bar-val{font-size:12px;font-weight:700;color:var(--navy);width:60px;text-align:right;flex-shrink:0}
+/* ROI color */
+.roi-hot{color:var(--green);font-weight:700}
+.roi-warm{color:var(--amber);font-weight:700}
+.roi-cold{color:var(--red);font-weight:700}
+/* platform overview cards */
+.plat-card{background:white;border-radius:14px;padding:20px;box-shadow:var(--sh);border:1px solid var(--bdr);display:flex;flex-direction:column;gap:12px}
+.plat-header{display:flex;align-items:center;gap:10px}
+.plat-name{font-weight:700;font-size:14px;color:var(--navy)}
+.plat-status{font-size:11px;color:var(--green);font-weight:600}
+.plat-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.plat-metric{background:var(--surf);border-radius:8px;padding:8px 10px}
+.pm-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px}
+.pm-val{font-size:16px;font-weight:700;color:var(--navy)}
+.pm-delta{font-size:11px;font-weight:600}
+/* alert card */
+.alert-card{border-radius:10px;padding:12px 16px;display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;border:1px solid}
+.alert-card.warn{background:#fffbeb;border-color:#fde68a}
+.alert-card.info{background:#eff6ff;border-color:#bfdbfe}
+.alert-card.danger{background:#fef2f2;border-color:#fecaca}
+.alert-icon{font-size:18px;margin-top:1px;flex-shrink:0}
+.alert-title{font-weight:700;font-size:13px;color:var(--navy);margin-bottom:2px}
+.alert-msg{font-size:12px;color:var(--muted)}
+/* ga4 chart bars */
+.ga-bar-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.ga-ch-label{font-size:12px;font-weight:600;color:var(--text);width:130px;flex-shrink:0}
+.ga-bar-track{flex:1;height:8px;background:#e8e4db;border-radius:4px;overflow:hidden}
+.ga-bar-fill{height:100%;border-radius:4px}
+.ga-ch-val{font-size:12px;font-weight:700;color:var(--navy);width:50px;text-align:right;flex-shrink:0}
+.ga-ch-pct{font-size:11px;color:var(--muted);width:35px;text-align:right;flex-shrink:0}
+/* divider */
+hr{border:none;border-top:2px solid var(--bdr);margin:40px 0}
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<div class="tb">
+  <div class="tb-row1">
+    <div class="tbl">LIFETIME <span>HOME SERVICES</span></div>
+    <div class="tbr">
+      <div class="up">👤 Jake Booth</div>
+      <button class="lo">Log Out</button>
+    </div>
+  </div>
+  <div class="tb-row2">
+    <button class="nb">← Main Menu</button>
+    <button class="nb">CRM Dashboard</button>
+    <button class="nb">Leads</button>
+    <button class="nb">Accounts</button>
+    <button class="nb">Opportunities</button>
+    <button class="nb active">Marketing</button>
+    <button class="nb">Activities</button>
+    <button class="nb">Follow Ups</button>
+    <button class="nb">Email Sync</button>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ═══════════════════════════════════════════
+  MARKETING MODULE — INNER TABS
+═══════════════════════════════════════════ -->
+<div style="display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:28px;background:white;padding:0 20px;border-radius:16px 16px 0 0;box-shadow:var(--sh);overflow-x:auto;white-space:nowrap">
+  <div style="padding:13px 18px;font-size:13px;font-weight:700;border-bottom:3px solid var(--navy);color:var(--navy);margin-bottom:-2px;cursor:pointer">Overview</div>
+  <div style="padding:13px 18px;font-size:13px;font-weight:500;border-bottom:3px solid transparent;color:var(--muted);cursor:pointer">Campaigns</div>
+  <div style="padding:13px 18px;font-size:13px;font-weight:500;border-bottom:3px solid transparent;color:var(--muted);cursor:pointer">Social Media</div>
+  <div style="padding:13px 18px;font-size:13px;font-weight:500;border-bottom:3px solid transparent;color:var(--muted);cursor:pointer">Website &amp; Analytics</div>
+  <div style="padding:13px 18px;font-size:13px;font-weight:500;border-bottom:3px solid transparent;color:var(--muted);cursor:pointer">Events &amp; Shows</div>
+  <div style="padding:13px 18px;font-size:13px;font-weight:500;border-bottom:3px solid transparent;color:var(--muted);cursor:pointer">Email Drip</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+  1. OVERVIEW
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Marketing Overview</div>
+  <div class="ps">Real-time summary across all channels, campaigns, and marketing activity &nbsp;·&nbsp; Last 30 days</div>
+
+  <!-- KPI ROW -->
+  <div class="sg" style="grid-template-columns:repeat(6,1fr)">
+    <div class="sc n"><div class="sl">Active Campaigns</div><div class="sv">8</div><div class="ss"><span class="up-arrow">↑ 2</span> vs last month</div></div>
+    <div class="sc g"><div class="sl">Leads Generated</div><div class="sv">142</div><div class="ss"><span class="up-arrow">↑ 18%</span> vs last month</div></div>
+    <div class="sc gr"><div class="sl">Marketing Spend</div><div class="sv">$4.2K</div><div class="ss"><span class="dn-arrow">↑ $400</span> budget on track</div></div>
+    <div class="sc a"><div class="sl">Cost Per Lead</div><div class="sv">$29</div><div class="ss"><span class="up-arrow">↓ $4</span> vs last month</div></div>
+    <div class="sc r"><div class="sl">Social Reach</div><div class="sv">28K</div><div class="ss"><span class="up-arrow">↑ 12%</span> across platforms</div></div>
+    <div class="sc p"><div class="sl">Website Sessions</div><div class="sv">3,841</div><div class="ss"><span class="up-arrow">↑ 9%</span> vs last month</div></div>
+  </div>
+
+  <!-- ALERTS -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="ct">⚡ Alerts &amp; Attention Needed</div>
+    <div class="alert-card danger">
+      <div class="alert-icon">🔴</div>
+      <div><div class="alert-title">Google Ads — Termite Campaign over budget</div>
+      <div class="alert-msg">Spent $1,840 of $1,500 budget this month. Pause or increase cap to avoid charge.</div></div>
+      <button class="btn btn-r sm" style="margin-left:auto;flex-shrink:0">Review</button>
+    </div>
+    <div class="alert-card warn">
+      <div class="alert-icon">⚠️</div>
+      <div><div class="alert-title">Spring Home Show — Follow-ups not started</div>
+      <div class="alert-msg">47 leads collected April 5–6. Only 3 have been contacted. Start email drip or assign reps.</div></div>
+      <button class="btn btn-n sm" style="margin-left:auto;flex-shrink:0">Start Drip</button>
+    </div>
+    <div class="alert-card info">
+      <div class="alert-icon">ℹ️</div>
+      <div><div class="alert-title">Google Business Profile — 4 unanswered reviews</div>
+      <div class="alert-msg">You have 4 new reviews in the last 7 days without a response. Responding improves local ranking.</div></div>
+      <button class="btn btn-o sm" style="margin-left:auto;flex-shrink:0">View Reviews</button>
+    </div>
+  </div>
+
+  <!-- TWO COLUMN: Channel Performance + Upcoming -->
+  <div class="tc" style="margin-bottom:20px">
+    <div class="card">
+      <div class="ct">Leads by Channel — Last 30 Days</div>
+      <div class="bar-wrap"><div class="bar-label">Google Ads</div><div class="bar-track"><div class="bar-fill" style="width:82%;background:var(--teal)"></div></div><div class="bar-val">48 leads</div></div>
+      <div class="bar-wrap"><div class="bar-label">Facebook/Instagram</div><div class="bar-track"><div class="bar-fill" style="width:55%;background:#3b82f6"></div></div><div class="bar-val">32 leads</div></div>
+      <div class="bar-wrap"><div class="bar-label">Home Show</div><div class="bar-track"><div class="bar-fill" style="width:50%;background:var(--amber)"></div></div><div class="bar-val">29 leads</div></div>
+      <div class="bar-wrap"><div class="bar-label">Referral</div><div class="bar-track"><div class="bar-fill" style="width:34%;background:var(--green)"></div></div><div class="bar-val">20 leads</div></div>
+      <div class="bar-wrap"><div class="bar-label">Nextdoor</div><div class="bar-track"><div class="bar-fill" style="width:20%;background:#8b5cf6"></div></div><div class="bar-val">12 leads</div></div>
+      <div class="bar-wrap"><div class="bar-label">Direct Mail</div><div class="bar-track"><div class="bar-fill" style="width:10%;background:var(--red)"></div></div><div class="bar-val">7 leads</div></div>
+      <div style="border-top:1px solid var(--bdr);margin-top:12px;padding-top:12px;display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--muted)">Total</span>
+        <span style="font-size:14px;font-weight:700;color:var(--navy)">148 leads &nbsp;·&nbsp; avg CPL $28.40</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Marketing Spend vs. Budget</div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Google Ads</span><span style="font-size:13px">$1,840 / $1,500 <span class="bx br">Over</span></span></div>
+        <div class="prog" style="margin-bottom:14px"><div class="prog-f" style="width:100%;background:var(--red)"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Facebook Ads</span><span style="font-size:13px">$780 / $1,000 <span class="bx bg">On Track</span></span></div>
+        <div class="prog" style="margin-bottom:14px"><div class="prog-f" style="width:78%;background:var(--teal)"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;font-weight:600">Direct Mail</span><span style="font-size:13px">$1,200 / $1,200 <span class="bx ba">Complete</span></span></div>
+        <div class="prog"><div class="prog-f" style="width:100%;background:var(--amber)"></div></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Upcoming Events</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr)">
+          <div style="background:#fef3c7;border-radius:8px;padding:6px 10px;text-align:center;min-width:42px"><div style="font-size:14px;font-weight:700;color:#92400e">Apr</div><div style="font-size:20px;font-weight:700;color:#b45309">19</div></div>
+          <div><div style="font-weight:700;font-size:13px">Broward County Home Expo</div><div style="font-size:12px;color:var(--muted)">Fort Lauderdale Convention Ctr &nbsp;·&nbsp; Booth #44</div></div>
+          <button class="btn btn-o sm" style="margin-left:auto;flex-shrink:0">View</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <div style="background:#dbeafe;border-radius:8px;padding:6px 10px;text-align:center;min-width:42px"><div style="font-size:14px;font-weight:700;color:#1e40af">May</div><div style="font-size:20px;font-weight:700;color:#1d4ed8">3</div></div>
+          <div><div style="font-weight:700;font-size:13px">NPMA Southeast Trade Show</div><div style="font-size:12px;color:var(--muted)">Atlanta, GA &nbsp;·&nbsp; Registration confirmed</div></div>
+          <button class="btn btn-o sm" style="margin-left:auto;flex-shrink:0">View</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════
+  2. CAMPAIGNS
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Campaigns</div>
+  <div class="ps">Monitor all active and past marketing campaigns — spend, leads, CPL, and ROI</div>
+
+  <div class="sh">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-n sm">All (14)</button>
+      <button class="btn btn-o sm">🟢 Active (8)</button>
+      <button class="btn btn-o sm">⏸ Paused (3)</button>
+      <button class="btn btn-o sm">⬛ Ended (3)</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select style="padding:7px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
+        <option>Last 30 Days</option><option>This Quarter</option><option>Custom Range</option>
+      </select>
+      <button class="btn btn-n">+ New Campaign</button>
+    </div>
+  </div>
+
+  <!-- CAMPAIGN TABLE -->
+  <div class="tw" style="margin-bottom:20px">
+    <table>
+      <thead>
+        <tr>
+          <th>Campaign</th><th>Status</th><th>Channel</th><th>Budget</th><th>Spend</th>
+          <th>Impressions</th><th>Clicks</th><th>CTR</th><th>Leads</th><th>CPL</th>
+          <th>Revenue</th><th>ROI</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div style="font-weight:700">Termite Season — Google Ads</div><div style="font-size:11px;color:var(--muted)">Mar 1 – Apr 30</div></td>
+          <td><span class="bx br">Over Budget</span></td>
+          <td><span class="bx bb">Google Ads</span></td>
+          <td>$1,500</td><td style="color:var(--red);font-weight:700">$1,840</td>
+          <td>42,800</td><td>1,284</td><td>3.0%</td>
+          <td style="font-weight:700;color:var(--teal)">48</td>
+          <td>$38</td>
+          <td style="font-weight:700">$14,400</td>
+          <td class="roi-hot">683%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Spring Lawn — Facebook/IG</div><div style="font-size:11px;color:var(--muted)">Mar 15 – May 15</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx" style="background:#e0f2fe;color:#0369a1">Facebook</span></td>
+          <td>$1,000</td><td>$780</td>
+          <td>86,200</td><td>2,100</td><td>2.4%</td>
+          <td style="font-weight:700;color:var(--teal)">32</td>
+          <td>$24</td>
+          <td style="font-weight:700">$9,600</td>
+          <td class="roi-hot">1,131%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Home Show Spring 2026</div><div style="font-size:11px;color:var(--muted)">Apr 5–6 · Event</div></td>
+          <td><span class="bx ba">Follow-ups Pending</span></td>
+          <td><span class="bx ba">Home Show</span></td>
+          <td>$2,800</td><td>$2,800</td>
+          <td>—</td><td>—</td><td>—</td>
+          <td style="font-weight:700;color:var(--teal)">47</td>
+          <td>$60</td>
+          <td style="font-weight:700;color:var(--muted)">$0 (tracking)</td>
+          <td class="roi-cold">0%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Nextdoor Sponsored Posts</div><div style="font-size:11px;color:var(--muted)">Ongoing</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx bp">Nextdoor</span></td>
+          <td>$400/mo</td><td>$400</td>
+          <td>18,400</td><td>312</td><td>1.7%</td>
+          <td style="font-weight:700;color:var(--teal)">12</td>
+          <td>$33</td>
+          <td style="font-weight:700">$3,600</td>
+          <td class="roi-hot">800%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Door Hangers — Miami-Dade Q1</div><div style="font-size:11px;color:var(--muted)">Feb 1 – Mar 31</div></td>
+          <td><span class="bx bgr">Ended</span></td>
+          <td><span class="bx bgr">Direct Mail</span></td>
+          <td>$1,200</td><td>$1,200</td>
+          <td>5,000</td><td>—</td><td>—</td>
+          <td style="font-weight:700;color:var(--teal)">18</td>
+          <td>$67</td>
+          <td style="font-weight:700">$5,400</td>
+          <td class="roi-warm">350%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Pest Control — Google Local</div><div style="font-size:11px;color:var(--muted)">Ongoing</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx bb">Google LSA</span></td>
+          <td>$600/mo</td><td>$580</td>
+          <td>—</td><td>—</td><td>—</td>
+          <td style="font-weight:700;color:var(--teal)">22</td>
+          <td>$26</td>
+          <td style="font-weight:700">$8,800</td>
+          <td class="roi-hot">1,417%</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ATTRIBUTION SUMMARY -->
+  <div class="card">
+    <div class="ct">Attribution Summary — All Active Campaigns</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:var(--teal)">179</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Total Leads</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--navy)">$8.6K</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Total Spend</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--green)">$41,800</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Revenue Generated</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--amber)">$48</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Avg. CPL</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:var(--green)">386%</div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Blended ROI</div></div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════
+  3. SOCIAL MEDIA
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Social Media</div>
+  <div class="ps">Track followers, reach, engagement, and content performance across all platforms</div>
+
+  <!-- PLATFORM OVERVIEW CARDS -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px">
+
+    <div class="plat-card">
+      <div class="plat-header">
+        <div class="plt" style="background:#e7f3ff">📘</div>
+        <div><div class="plat-name">Facebook</div><div class="plat-status">● Connected</div></div>
+      </div>
+      <div class="plat-metrics">
+        <div class="plat-metric"><div class="pm-label">Followers</div><div class="pm-val">4,821</div><div class="pm-delta up-arrow">↑ 43</div></div>
+        <div class="plat-metric"><div class="pm-label">Reach</div><div class="pm-val">12.4K</div><div class="pm-delta up-arrow">↑ 18%</div></div>
+        <div class="plat-metric"><div class="pm-label">Engagement</div><div class="pm-val">4.2%</div><div class="pm-delta up-arrow">↑ 0.3%</div></div>
+        <div class="plat-metric"><div class="pm-label">Posts</div><div class="pm-val">14</div><div class="pm-delta" style="color:var(--muted)">this month</div></div>
+      </div>
+    </div>
+
+    <div class="plat-card">
+      <div class="plat-header">
+        <div class="plt" style="background:#fce4ec">📸</div>
+        <div><div class="plat-name">Instagram</div><div class="plat-status">● Connected</div></div>
+      </div>
+      <div class="plat-metrics">
+        <div class="plat-metric"><div class="pm-label">Followers</div><div class="pm-val">2,304</div><div class="pm-delta up-arrow">↑ 87</div></div>
+        <div class="plat-metric"><div class="pm-label">Reach</div><div class="pm-val">8,900</div><div class="pm-delta up-arrow">↑ 22%</div></div>
+        <div class="plat-metric"><div class="pm-label">Engagement</div><div class="pm-val">6.8%</div><div class="pm-delta up-arrow">↑ 1.1%</div></div>
+        <div class="plat-metric"><div class="pm-label">Posts</div><div class="pm-val">18</div><div class="pm-delta" style="color:var(--muted)">this month</div></div>
+      </div>
+    </div>
+
+    <div class="plat-card">
+      <div class="plat-header">
+        <div class="plt" style="background:#e8f5e9">📍</div>
+        <div><div class="plat-name">Google Profile</div><div class="plat-status">● Connected</div></div>
+      </div>
+      <div class="plat-metrics">
+        <div class="plat-metric"><div class="pm-label">Views</div><div class="pm-val">3,241</div><div class="pm-delta up-arrow">↑ 9%</div></div>
+        <div class="plat-metric"><div class="pm-label">⭐ Rating</div><div class="pm-val">4.8</div><div class="pm-delta" style="color:var(--muted)">214 reviews</div></div>
+        <div class="plat-metric"><div class="pm-label">Calls</div><div class="pm-val">128</div><div class="pm-delta up-arrow">↑ 14%</div></div>
+        <div class="plat-metric"><div class="pm-label">Directions</div><div class="pm-val">86</div><div class="pm-delta up-arrow">↑ 7%</div></div>
+      </div>
+    </div>
+
+    <div class="plat-card">
+      <div class="plat-header">
+        <div class="plt" style="background:#f3e8ff">🏘</div>
+        <div><div class="plat-name">Nextdoor</div><div class="plat-status">● Connected</div></div>
+      </div>
+      <div class="plat-metrics">
+        <div class="plat-metric"><div class="pm-label">Impressions</div><div class="pm-val">18.4K</div><div class="pm-delta up-arrow">↑ 31%</div></div>
+        <div class="plat-metric"><div class="pm-label">Reach</div><div class="pm-val">6,200</div><div class="pm-delta up-arrow">↑ 18%</div></div>
+        <div class="plat-metric"><div class="pm-label">Clicks</div><div class="pm-val">312</div><div class="pm-delta up-arrow">↑ 24%</div></div>
+        <div class="plat-metric"><div class="pm-label">Recommends</div><div class="pm-val">47</div><div class="pm-delta up-arrow">↑ 6</div></div>
+      </div>
+    </div>
+
+    <div class="plat-card">
+      <div class="plat-header">
+        <div class="plt" style="background:#e0f2fe">💼</div>
+        <div><div class="plat-name">LinkedIn</div><div class="plat-status" style="color:var(--muted)">● Not Connected</div></div>
+      </div>
+      <div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">
+        <div style="font-size:24px;margin-bottom:8px">🔗</div>
+        Connect your LinkedIn page to track B2B and HOA reach
+      </div>
+      <button class="btn btn-o sm" style="width:100%">Connect LinkedIn</button>
+    </div>
+
+  </div>
+
+  <div class="tc" style="margin-bottom:20px">
+    <!-- TOP POSTS -->
+    <div class="card">
+      <div class="ct">Top Posts This Month</div>
+      <div class="tw" style="border:none">
+        <table>
+          <thead><tr><th>Post</th><th>Platform</th><th>Reach</th><th>Engagements</th><th>Rate</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:40px;background:#dcfce7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🐛</div>
+                  <div><div style="font-weight:600;font-size:12px">Before/After — Termite Treatment</div><div style="font-size:11px;color:var(--muted)">Apr 3</div></div>
+                </div>
+              </td>
+              <td>📸 IG</td><td>4,280</td><td>418</td><td style="font-weight:700;color:var(--green)">9.8%</td>
+            </tr>
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:40px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🌿</div>
+                  <div><div style="font-weight:600;font-size:12px">Spring Lawn Tips — 5 Things to Do Now</div><div style="font-size:11px;color:var(--muted)">Apr 1</div></div>
+                </div>
+              </td>
+              <td>📘 FB</td><td>3,140</td><td>284</td><td style="font-weight:700;color:var(--green)">9.0%</td>
+            </tr>
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:40px;background:#dbeafe;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">⭐</div>
+                  <div><div style="font-weight:600;font-size:12px">Customer Review Highlight — 5 Stars</div><div style="font-size:11px;color:var(--muted)">Apr 5</div></div>
+                </div>
+              </td>
+              <td>📘 FB</td><td>2,890</td><td>201</td><td style="font-weight:700;color:var(--amber)">7.0%</td>
+            </tr>
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:40px;background:#f3e8ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🏘</div>
+                  <div><div style="font-weight:600;font-size:12px">Nextdoor — Spring Mosquito Promo</div><div style="font-size:11px;color:var(--muted)">Apr 7</div></div>
+                </div>
+              </td>
+              <td>🏘 Nextdoor</td><td>2,100</td><td>138</td><td style="font-weight:700;color:var(--amber)">6.6%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="br2"><button class="btn btn-n sm">+ Schedule Post</button><button class="btn btn-o sm">Content Calendar</button></div>
+    </div>
+
+    <!-- REVIEWS & REPUTATION -->
+    <div class="card">
+      <div class="ct">Reviews &amp; Reputation</div>
+      <div style="display:flex;align-items:center;gap:20px;padding:16px;background:var(--surf);border-radius:12px;margin-bottom:16px">
+        <div style="text-align:center">
+          <div style="font-size:42px;font-weight:700;color:var(--navy)">4.8</div>
+          <div style="color:#f59e0b;font-size:18px">★★★★★</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">214 reviews</div>
+        </div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:12px;width:14px">5★</span><div class="prog" style="flex:1"><div class="prog-f" style="width:82%;background:#f59e0b"></div></div><span style="font-size:12px;color:var(--muted)">176</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:12px;width:14px">4★</span><div class="prog" style="flex:1"><div class="prog-f" style="width:12%;background:#f59e0b"></div></div><span style="font-size:12px;color:var(--muted)">26</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:12px;width:14px">3★</span><div class="prog" style="flex:1"><div class="prog-f" style="width:4%;background:var(--amber)"></div></div><span style="font-size:12px;color:var(--muted)">8</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:12px;width:14px">2★</span><div class="prog" style="flex:1"><div class="prog-f" style="width:1%;background:var(--red)"></div></div><span style="font-size:12px;color:var(--muted)">2</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;width:14px">1★</span><div class="prog" style="flex:1"><div class="prog-f" style="width:1%;background:var(--red)"></div></div><span style="font-size:12px;color:var(--muted)">2</span></div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Recent — Needs Response (4)</div>
+      <div style="padding:10px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:700;font-size:13px">John M. ★★★★★</span><span style="font-size:11px;color:var(--muted)">2 days ago · Google</span></div>
+        <div style="font-size:13px;color:var(--text)">Technician was on time, professional, and explained everything. Great service!</div>
+        <button class="btn btn-n sm" style="margin-top:8px">Reply</button>
+      </div>
+      <div style="padding:10px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:700;font-size:13px">Sandra K. ★★★☆☆</span><span style="font-size:11px;color:var(--muted)">3 days ago · Google</span></div>
+        <div style="font-size:13px;color:var(--text)">Service was good but took 2 calls to get a callback. Could be more responsive.</div>
+        <button class="btn btn-r sm" style="margin-top:8px">Reply (Urgent)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════
+  4. WEBSITE & ANALYTICS (GA4)
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Website &amp; Analytics</div>
+  <div class="ps">Google Analytics 4 — traffic, sources, top pages, and conversion events</div>
+
+  <!-- GA4 CONNECT BANNER (if connected, shows metrics) -->
+  <div class="card" style="background:linear-gradient(135deg,#0f1f3d,#1a3a5c);color:white;margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:32px">📊</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:4px">Google Analytics 4 — Connected</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.6)">Property: LHS Main Website (ID: 318-402-8821) &nbsp;·&nbsp; Last sync: 2 min ago</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-o sm" style="border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.8)">⟳ Sync Now</button>
+        <button class="btn sm" style="background:var(--teal);color:var(--navy)">View in GA4 ↗</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="sg" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
+    <div class="sc n"><div class="sl">Sessions</div><div class="sv">3,841</div><div class="ss"><span class="up-arrow">↑ 9%</span> vs last month</div></div>
+    <div class="sc g"><div class="sl">New Users</div><div class="sv">2,614</div><div class="ss"><span class="up-arrow">↑ 11%</span> vs last month</div></div>
+    <div class="sc gr"><div class="sl">Engagement Rate</div><div class="sv">62%</div><div class="ss"><span class="up-arrow">↑ 4pts</span> vs last month</div></div>
+    <div class="sc a"><div class="sl">Avg. Duration</div><div class="sv">2:41</div><div class="ss"><span class="up-arrow">↑ 18s</span> vs last month</div></div>
+    <div class="sc r"><div class="sl">Conversions</div><div class="sv">184</div><div class="ss"><span class="up-arrow">↑ 22%</span> vs last month</div></div>
+  </div>
+
+  <div class="tc" style="margin-bottom:20px">
+    <!-- TRAFFIC SOURCES -->
+    <div class="card">
+      <div class="ct">Traffic by Channel</div>
+      <div class="ga-bar-row">
+        <div class="ga-ch-label">🔍 Organic Search</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:72%;background:var(--teal)"></div></div>
+        <div class="ga-ch-val">2,765</div><div class="ga-ch-pct" style="color:var(--muted)">72%</div>
+      </div>
+      <div class="ga-bar-row">
+        <div class="ga-ch-label">💰 Paid Search</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:12%;background:var(--amber)"></div></div>
+        <div class="ga-ch-val">461</div><div class="ga-ch-pct" style="color:var(--muted)">12%</div>
+      </div>
+      <div class="ga-bar-row">
+        <div class="ga-ch-label">🔗 Direct</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:8%;background:var(--navy)"></div></div>
+        <div class="ga-ch-val">307</div><div class="ga-ch-pct" style="color:var(--muted)">8%</div>
+      </div>
+      <div class="ga-bar-row">
+        <div class="ga-ch-label">📱 Social</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:5%;background:#3b82f6"></div></div>
+        <div class="ga-ch-val">192</div><div class="ga-ch-pct" style="color:var(--muted)">5%</div>
+      </div>
+      <div class="ga-bar-row">
+        <div class="ga-ch-label">📧 Email</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:2%;background:var(--green)"></div></div>
+        <div class="ga-ch-val">77</div><div class="ga-ch-pct" style="color:var(--muted)">2%</div>
+      </div>
+      <div class="ga-bar-row" style="margin-bottom:0">
+        <div class="ga-ch-label">🔀 Referral</div>
+        <div class="ga-bar-track"><div class="ga-bar-fill" style="width:1%;background:#8b5cf6"></div></div>
+        <div class="ga-ch-val">39</div><div class="ga-ch-pct" style="color:var(--muted)">1%</div>
+      </div>
+      <div style="border-top:1px solid var(--bdr);margin-top:14px;padding-top:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
+          <div><div style="font-size:14px;font-weight:700;color:var(--navy)">Mobile</div><div style="font-size:12px;color:var(--muted)">61%</div></div>
+          <div><div style="font-size:14px;font-weight:700;color:var(--navy)">Desktop</div><div style="font-size:12px;color:var(--muted)">35%</div></div>
+          <div><div style="font-size:14px;font-weight:700;color:var(--navy)">Tablet</div><div style="font-size:12px;color:var(--muted)">4%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP PAGES & CONVERSIONS -->
+    <div style="display:flex;flex-direction:column;gap:0">
+      <div class="card">
+        <div class="ct">Top Pages</div>
+        <div class="tw" style="border:none">
+          <table>
+            <thead><tr><th>Page</th><th>Views</th><th>Dur.</th><th>Conv.</th></tr></thead>
+            <tbody>
+              <tr><td><div style="font-weight:600">/pest-control</div><div style="font-size:11px;color:var(--muted)">Pest Control Services</div></td><td>842</td><td>3:12</td><td style="font-weight:700;color:var(--green)">48</td></tr>
+              <tr><td><div style="font-weight:600">/get-quote</div><div style="font-size:11px;color:var(--muted)">Free Quote Form</div></td><td>614</td><td>2:04</td><td style="font-weight:700;color:var(--green)">71</td></tr>
+              <tr><td><div style="font-weight:600">/termite-treatment</div><div style="font-size:11px;color:var(--muted)">Termite Services</div></td><td>521</td><td>3:48</td><td style="font-weight:700;color:var(--green)">32</td></tr>
+              <tr><td><div style="font-weight:600">/lawn-care</div><div style="font-size:11px;color:var(--muted)">Lawn &amp; Landscaping</div></td><td>398</td><td>2:31</td><td style="font-weight:700;color:var(--green)">19</td></tr>
+              <tr><td><div style="font-weight:600">/</div><div style="font-size:11px;color:var(--muted)">Homepage</div></td><td>3,841</td><td>1:22</td><td style="font-weight:700;color:var(--green)">14</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="ct">Conversion Events</div>
+        <div class="tw" style="border:none">
+          <table>
+            <thead><tr><th>Event</th><th>Count</th><th>Rate</th></tr></thead>
+            <tbody>
+              <tr><td>📞 Phone Call Click</td><td style="font-weight:700">84</td><td style="color:var(--green);font-weight:600">2.2%</td></tr>
+              <tr><td>📝 Quote Form Submit</td><td style="font-weight:700">71</td><td style="color:var(--green);font-weight:600">1.8%</td></tr>
+              <tr><td>💬 Live Chat Start</td><td style="font-weight:700">18</td><td style="color:var(--amber);font-weight:600">0.5%</td></tr>
+              <tr><td>📅 Appointment Click</td><td style="font-weight:700">11</td><td style="color:var(--muted);font-weight:600">0.3%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GA4 SETTINGS -->
+  <div class="card" style="background:var(--surf);border:1px solid var(--bdr)">
+    <div class="ct">GA4 Settings &amp; Integration</div>
+    <div class="fr">
+      <div class="fl"><label>GA4 Property ID</label><input value="318-402-8821" style="background:white"></div>
+      <div class="fl"><label>Service Account</label><input value="lhs-analytics@lhs-prod.iam.gserviceaccount.com" style="background:white"></div>
+      <div class="fl"><label>Sync Frequency</label><select style="background:white"><option>Every 15 minutes</option><option>Every hour</option><option>Daily</option></select></div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n">Save Settings</button>
+      <button class="btn btn-o">Test Connection</button>
+      <button class="btn btn-r sm">Disconnect</button>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════
+  5. EVENTS & TRADE SHOWS
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Events &amp; Trade Shows</div>
+  <div class="ps">Track home shows, trade shows, and community events — costs, leads, and ROI</div>
+
+  <!-- KPI ROW -->
+  <div class="sg" style="grid-template-columns:repeat(5,1fr)">
+    <div class="sc n"><div class="sl">Events This Year</div><div class="sv">6</div><div class="ss">3 upcoming, 3 past</div></div>
+    <div class="sc g"><div class="sl">Total Leads</div><div class="sv">214</div><div class="ss">from all events</div></div>
+    <div class="sc a"><div class="sl">Total Spend</div><div class="sv">$18.4K</div><div class="ss">booths + travel + materials</div></div>
+    <div class="sc gr"><div class="sl">Revenue Closed</div><div class="sv">$42K</div><div class="ss">from event leads</div></div>
+    <div class="sc r"><div class="sl">Blended ROI</div><div class="sv">128%</div><div class="ss">across all events</div></div>
+  </div>
+
+  <div class="sh">
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">All Events</button>
+      <button class="btn btn-o sm">📅 Upcoming</button>
+      <button class="btn btn-o sm">✅ Past</button>
+      <button class="btn btn-o sm">📈 ROI Summary</button>
+    </div>
+    <button class="btn btn-n">+ Add Event</button>
+  </div>
+
+  <!-- EVENTS TABLE -->
+  <div class="tw" style="margin-bottom:20px">
+    <table>
+      <thead>
+        <tr>
+          <th>Event</th><th>Type</th><th>Date</th><th>Location</th>
+          <th>Total Cost</th><th>Leads</th><th>Qual.</th><th>CPL</th>
+          <th>Pipeline</th><th>Revenue</th><th>ROI</th><th>Follow-up</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div style="font-weight:700">Spring Home Expo — Broward</div><div style="font-size:11px;color:var(--muted)">Apr 5–6, 2026</div></td>
+          <td><span class="bx ba">Home Show</span></td>
+          <td>Apr 5–6</td><td style="color:var(--muted)">Fort Lauderdale, FL</td>
+          <td style="font-weight:600">$2,800</td>
+          <td style="font-weight:700;color:var(--teal)">47</td><td>31</td><td>$60</td>
+          <td style="font-weight:700">$62,000</td>
+          <td style="color:var(--muted)">Tracking…</td>
+          <td class="roi-cold">—</td>
+          <td><span class="bx ba">In Progress</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">NPMA Southeast Conference</div><div style="font-size:11px;color:var(--muted)">Feb 14–15, 2026</div></td>
+          <td><span class="bx bb">Trade Show</span></td>
+          <td>Feb 14–15</td><td style="color:var(--muted)">Orlando, FL</td>
+          <td style="font-weight:600">$4,200</td>
+          <td style="font-weight:700;color:var(--teal)">38</td><td>22</td><td>$111</td>
+          <td style="font-weight:700">$44,000</td>
+          <td style="font-weight:700;color:var(--green)">$18,400</td>
+          <td class="roi-warm">338%</td>
+          <td><span class="bx bg">Won 8 / 22</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Boca Home &amp; Garden Show</div><div style="font-size:11px;color:var(--muted)">Jan 18–19, 2026</div></td>
+          <td><span class="bx ba">Home Show</span></td>
+          <td>Jan 18–19</td><td style="color:var(--muted)">Boca Raton, FL</td>
+          <td style="font-weight:600">$3,100</td>
+          <td style="font-weight:700;color:var(--teal)">62</td><td>41</td><td>$50</td>
+          <td style="font-weight:700">$82,000</td>
+          <td style="font-weight:700;color:var(--green)">$24,000</td>
+          <td class="roi-hot">674%</td>
+          <td><span class="bx bg">Won 14 / 41</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Broward County Home Expo</div><div style="font-size:11px;color:var(--muted)">Apr 19–20, 2026 · Upcoming</div></td>
+          <td><span class="bx ba">Home Show</span></td>
+          <td>Apr 19–20</td><td style="color:var(--muted)">Fort Lauderdale, FL</td>
+          <td style="font-weight:600">$2,600</td>
+          <td style="color:var(--muted)">—</td><td>—</td><td>—</td>
+          <td style="color:var(--muted)">—</td>
+          <td style="color:var(--muted)">—</td>
+          <td style="color:var(--muted)">—</td>
+          <td><span class="bx bb">Upcoming</span></td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ADD EVENT FORM PREVIEW -->
+  <div class="sec-lbl">📋 Add / Edit Event Record</div>
+  <div class="card">
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Event Information</div>
+    <div class="fr">
+      <div class="fl"><label>Event Name</label><input placeholder="e.g. Spring Home Expo 2026"></div>
+      <div class="fl"><label>Event Type</label><select><option>Home Show</option><option>Trade Show</option><option>Community Fair</option><option>Sponsorship</option><option>Networking</option></select></div>
+      <div class="fl"><label>Start Date</label><input type="date"></div>
+      <div class="fl"><label>End Date</label><input type="date"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Venue / Location</label><input placeholder="Convention center name"></div>
+      <div class="fl"><label>City, State</label><input placeholder="Fort Lauderdale, FL"></div>
+      <div class="fl"><label>Assigned Staff</label><select><option>Sarah K.</option><option>Jake R.</option><option>Mike T.</option></select></div>
+      <div class="fl"><label>Linked Campaign</label><select><option>— None —</option><option>Spring Home Show 2026</option></select></div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin:16px 0 12px;padding-top:12px;border-top:1px solid var(--bdr)">Cost Breakdown</div>
+    <div class="fr">
+      <div class="fl"><label>Booth / Registration Fee</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Travel &amp; Mileage</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Lodging</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Marketing Materials</label><input type="number" placeholder="$0"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Giveaways / Promo Items</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Staff Hours × Rate</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Shipping / Freight</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label style="color:var(--navy)">Total Event Cost (auto)</label><input value="$0" style="font-weight:700;background:#f0fdf4;border-color:#86efac" readonly></div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin:16px 0 12px;padding-top:12px;border-top:1px solid var(--bdr)">Results (fill in after event)</div>
+    <div class="fr">
+      <div class="fl"><label>Leads Collected</label><input type="number" placeholder="0"></div>
+      <div class="fl"><label>Qualified Leads</label><input type="number" placeholder="0"></div>
+      <div class="fl"><label>Est. Pipeline Value</label><input type="number" placeholder="$0"></div>
+      <div class="fl"><label>Revenue Closed (to date)</label><input type="number" placeholder="$0 — update over time"></div>
+    </div>
+
+    <div class="br2">
+      <button class="btn btn-n">Save Event</button>
+      <button class="btn btn-o">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════
+  6. EMAIL DRIP CAMPAIGNS
+═══════════════════════════════════════════ -->
+<div class="page">
+  <div class="pt">Email Drip Campaigns</div>
+  <div class="ps">Automated email sequences triggered by lead actions, time, or stage changes</div>
+
+  <!-- KPI ROW -->
+  <div class="sg" style="grid-template-columns:repeat(5,1fr)">
+    <div class="sc n"><div class="sl">Active Sequences</div><div class="sv">4</div><div class="ss">2 paused, 1 draft</div></div>
+    <div class="sc g"><div class="sl">Active Contacts</div><div class="sv">381</div><div class="ss">currently enrolled</div></div>
+    <div class="sc gr"><div class="sl">Emails Sent (MTD)</div><div class="sv">1,842</div><div class="ss">across all sequences</div></div>
+    <div class="sc a"><div class="sl">Avg. Open Rate</div><div class="sv">38%</div><div class="ss">industry avg: 22%</div></div>
+    <div class="sc p"><div class="sl">Conversions</div><div class="sv">47</div><div class="ss">booked / replied / won</div></div>
+  </div>
+
+  <div class="sh" style="margin-bottom:0">
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-n sm">All Campaigns (7)</button>
+      <button class="btn btn-o sm">▶ Active (4)</button>
+      <button class="btn btn-o sm">⏸ Paused (2)</button>
+      <button class="btn btn-o sm">📝 Draft (1)</button>
+    </div>
+    <button class="btn btn-n">+ New Drip Campaign</button>
+  </div>
+
+  <!-- CAMPAIGN TABLE -->
+  <div class="tw" style="margin:16px 0 24px">
+    <table>
+      <thead>
+        <tr>
+          <th>Campaign Name</th><th>Status</th><th>Trigger</th><th>Steps</th>
+          <th>Active</th><th>Sent</th><th>Open Rate</th><th>Click Rate</th>
+          <th>Replies</th><th>Unsubs</th><th>Conv.</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div style="font-weight:700">New Lead Welcome — Pest Control</div><div style="font-size:11px;color:var(--muted)">Goal: Book inspection</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx bn">New Lead</span></td>
+          <td style="text-align:center;font-weight:700">5</td>
+          <td style="font-weight:700;color:var(--teal)">142</td>
+          <td>1,084</td>
+          <td style="font-weight:700;color:var(--green)">41%</td>
+          <td style="font-weight:700">8.2%</td>
+          <td>38</td><td style="color:var(--muted)">4</td>
+          <td style="font-weight:700;color:var(--green)">22</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Post-Estimate Follow-up</div><div style="font-size:11px;color:var(--muted)">Goal: Estimate accepted</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx bb">Estimate Sent</span></td>
+          <td style="text-align:center;font-weight:700">4</td>
+          <td style="font-weight:700;color:var(--teal)">88</td>
+          <td>482</td>
+          <td style="font-weight:700;color:var(--green)">36%</td>
+          <td style="font-weight:700">6.4%</td>
+          <td>14</td><td style="color:var(--muted)">2</td>
+          <td style="font-weight:700;color:var(--green)">11</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Post-Service Review Request</div><div style="font-size:11px;color:var(--muted)">Goal: Google review + upsell</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx bg">Service Complete</span></td>
+          <td style="text-align:center;font-weight:700">3</td>
+          <td style="font-weight:700;color:var(--teal)">94</td>
+          <td>218</td>
+          <td style="font-weight:700;color:var(--green)">44%</td>
+          <td style="font-weight:700">11.2%</td>
+          <td>22</td><td style="color:var(--muted)">1</td>
+          <td style="font-weight:700;color:var(--green)">14</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Re-engagement — No Contact 30 Days</div><div style="font-size:11px;color:var(--muted)">Goal: Reply or book</div></td>
+          <td><span class="bx bg">Active</span></td>
+          <td><span class="bx ba">No Contact</span></td>
+          <td style="text-align:center;font-weight:700">3</td>
+          <td style="font-weight:700;color:var(--teal)">57</td>
+          <td>124</td>
+          <td style="font-weight:700;color:var(--amber)">24%</td>
+          <td style="font-weight:700">3.1%</td>
+          <td>4</td><td style="color:var(--muted)">3</td>
+          <td style="font-weight:700;color:var(--green)">3</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+        <tr>
+          <td><div style="font-weight:700">Home Show Lead Nurture</div><div style="font-size:11px;color:var(--muted)">Goal: Book inspection within 14 days</div></td>
+          <td><span class="bx ba">Paused</span></td>
+          <td><span class="bx ba">Manual Enroll</span></td>
+          <td style="text-align:center;font-weight:700">6</td>
+          <td style="font-weight:700;color:var(--muted)">0</td>
+          <td>284</td>
+          <td style="font-weight:700;color:var(--green)">39%</td>
+          <td style="font-weight:700">7.8%</td>
+          <td>18</td><td style="color:var(--muted)">5</td>
+          <td style="font-weight:700;color:var(--muted)">—</td>
+          <td><button class="btn btn-n sm">Open</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SEQUENCE BUILDER PREVIEW -->
+  <div class="sec-lbl">🔁 Sequence Builder — "New Lead Welcome — Pest Control"</div>
+  <div class="tc">
+    <div>
+      <!-- TRIGGER -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot" style="background:var(--teal)"></div><div class="seq-bar"></div></div>
+        <div class="seq-card trigger" style="flex:1">
+          <div class="seq-delay">⚡ Trigger</div>
+          <div class="seq-title">New Lead Created</div>
+          <div class="seq-sub">Any new lead — all divisions &nbsp;·&nbsp; Auto-enrolls immediately</div>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <span class="bx bn">Division: All</span>
+            <span class="bx bn">Source: Any</span>
+            <span class="bx bg">Exit: Books Appointment</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 1 -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot"></div><div class="seq-bar"></div></div>
+        <div class="seq-card" style="flex:1">
+          <div class="seq-delay">📧 Step 1 — Immediately</div>
+          <div class="seq-title">Welcome — We Got Your Request</div>
+          <div class="seq-sub">Subject: "{{first_name}}, we'll be in touch shortly!"</div>
+          <div class="seq-metrics">
+            <div><div>Sent</div><div class="seq-metric-val">842</div></div>
+            <div><div>Opens</div><div class="seq-metric-val" style="color:var(--green)">521 (61.9%)</div></div>
+            <div><div>Clicks</div><div class="seq-metric-val">103 (12.2%)</div></div>
+            <div><div>Replies</div><div class="seq-metric-val">14</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot"></div><div class="seq-bar"></div></div>
+        <div class="seq-card" style="flex:1">
+          <div class="seq-delay">📧 Step 2 — Wait 2 Days</div>
+          <div class="seq-title">Quick Question About Your Home</div>
+          <div class="seq-sub">Subject: "{{first_name}}, do you have any of these pest issues?"</div>
+          <div class="seq-metrics">
+            <div><div>Sent</div><div class="seq-metric-val">718</div></div>
+            <div><div>Opens</div><div class="seq-metric-val" style="color:var(--amber)">301 (41.9%)</div></div>
+            <div><div>Clicks</div><div class="seq-metric-val">67 (9.3%)</div></div>
+            <div><div>Replies</div><div class="seq-metric-val">22</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot"></div><div class="seq-bar"></div></div>
+        <div class="seq-card" style="flex:1">
+          <div class="seq-delay">📧 Step 3 — Wait 5 Days</div>
+          <div class="seq-title">Here's What Your Neighbors Are Saying</div>
+          <div class="seq-sub">Subject: "Your neighbors trust Lifetime — here's why"</div>
+          <div class="seq-metrics">
+            <div><div>Sent</div><div class="seq-metric-val">602</div></div>
+            <div><div>Opens</div><div class="seq-metric-val" style="color:var(--amber)">198 (32.9%)</div></div>
+            <div><div>Clicks</div><div class="seq-metric-val">44 (7.3%)</div></div>
+            <div><div>Replies</div><div class="seq-metric-val">8</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot"></div><div class="seq-bar"></div></div>
+        <div class="seq-card" style="flex:1">
+          <div class="seq-delay">📧 Step 4 — Wait 4 Days</div>
+          <div class="seq-title">Special Offer — This Week Only</div>
+          <div class="seq-sub">Subject: "{{first_name}}, 10% off your first service — expires Friday"</div>
+          <div class="seq-metrics">
+            <div><div>Sent</div><div class="seq-metric-val">441</div></div>
+            <div><div>Opens</div><div class="seq-metric-val" style="color:var(--amber)">145 (32.9%)</div></div>
+            <div><div>Clicks</div><div class="seq-metric-val">38 (8.6%)</div></div>
+            <div><div>Replies</div><div class="seq-metric-val">11</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 5 -->
+      <div class="seq-step">
+        <div class="seq-line"><div class="seq-dot"></div><div class="seq-bar"></div></div>
+        <div class="seq-card" style="flex:1">
+          <div class="seq-delay">📧 Step 5 — Wait 7 Days</div>
+          <div class="seq-title">Last Attempt — Let's Talk</div>
+          <div class="seq-sub">Subject: "Still there, {{first_name}}? We're here when you're ready."</div>
+          <div class="seq-metrics">
+            <div><div>Sent</div><div class="seq-metric-val">302</div></div>
+            <div><div>Opens</div><div class="seq-metric-val" style="color:var(--muted)">87 (28.8%)</div></div>
+            <div><div>Clicks</div><div class="seq-metric-val">21 (7.0%)</div></div>
+            <div><div>Replies</div><div class="seq-metric-val">6</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- + ADD STEP -->
+      <div style="margin-left:30px">
+        <button style="width:100%;padding:10px;border:1.5px dashed var(--bdr);border-radius:10px;background:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Add Step</button>
+      </div>
+
+      <!-- GOAL -->
+      <div class="seq-step" style="margin-top:12px">
+        <div class="seq-line"><div class="seq-dot" style="background:var(--green)"></div></div>
+        <div class="seq-card goal" style="flex:1">
+          <div class="seq-delay">🎯 Goal — Exit Condition</div>
+          <div class="seq-title">Contact Books Appointment</div>
+          <div class="seq-sub">Exits sequence automatically when appointment is booked or lead is converted</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: SEQUENCE STATS + SETTINGS -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Sequence Performance</div>
+        <div class="sg" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0">
+          <div class="sc n" style="padding:14px 16px"><div class="sl">Enrolled (All Time)</div><div class="sv" style="font-size:24px">842</div></div>
+          <div class="sc gr" style="padding:14px 16px"><div class="sl">Converted</div><div class="sv" style="font-size:24px;color:var(--green)">22</div></div>
+          <div class="sc a" style="padding:14px 16px"><div class="sl">Active Now</div><div class="sv" style="font-size:24px">142</div></div>
+          <div class="sc g" style="padding:14px 16px"><div class="sl">Conv. Rate</div><div class="sv" style="font-size:24px">2.6%</div></div>
+        </div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px"><span style="color:var(--muted)">Avg. Open Rate</span><span style="font-weight:700;color:var(--green)">38.1%</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px"><span style="color:var(--muted)">Avg. Click Rate</span><span style="font-weight:700">8.7%</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px"><span style="color:var(--muted)">Total Replies</span><span style="font-weight:700">61</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--muted)">Unsubscribes</span><span style="font-weight:700;color:var(--muted)">15 (0.4%)</span></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Sequence Settings</div>
+        <div class="fl" style="margin-bottom:10px"><label>Campaign Name</label><input value="New Lead Welcome — Pest Control"></div>
+        <div class="fl" style="margin-bottom:10px"><label>Status</label><select><option>Active</option><option>Paused</option><option>Draft</option></select></div>
+        <div class="fl" style="margin-bottom:10px"><label>Trigger</label><select><option>New Lead Created</option><option>Estimate Sent</option><option>Service Completed</option><option>No Contact 30 Days</option><option>Manual Enrollment</option></select></div>
+        <div class="fl" style="margin-bottom:10px"><label>Division Filter</label><select><option>All Divisions</option><option>Pest Control</option><option>Termite</option><option>Lawn</option></select></div>
+        <div class="fl" style="margin-bottom:16px"><label>Goal / Exit Condition</label><select><option>Books Appointment</option><option>Lead Converted</option><option>Estimate Accepted</option><option>Manual Exit</option></select></div>
+        <div class="br2" style="margin-top:0">
+          <button class="btn btn-n sm">Save Settings</button>
+          <button class="btn btn-o sm">⏸ Pause</button>
+          <button class="btn btn-r sm">Delete</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="ct">Enrolled Contacts (142 active)</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Showing most recent 4</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr)">
+          <div style="width:32px;height:32px;border-radius:50%;background:#e0e7f5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--navy);flex-shrink:0">MG</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:13px">Maria Garcia</div><div style="font-size:11px;color:var(--muted)">Step 3 of 5 &nbsp;·&nbsp; Opened step 2</div></div>
+          <span class="bx bg" style="font-size:10px">Active</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr)">
+          <div style="width:32px;height:32px;border-radius:50%;background:#e0e7f5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--navy);flex-shrink:0">TR</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:13px">Thomas Reed</div><div style="font-size:11px;color:var(--muted)">Step 1 of 5 &nbsp;·&nbsp; Enrolled today</div></div>
+          <span class="bx ba" style="font-size:10px">New</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr)">
+          <div style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--green);flex-shrink:0">LT</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:13px">Lisa Thornton</div><div style="font-size:11px;color:var(--muted)">Converted &nbsp;·&nbsp; Booked Apr 9</div></div>
+          <span class="bx bg" style="font-size:10px">✓ Won</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <div style="width:32px;height:32px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--red);flex-shrink:0">DP</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:13px">David Park</div><div style="font-size:11px;color:var(--muted)">Step 5 of 5 &nbsp;·&nbsp; No opens</div></div>
+          <span class="bx br" style="font-size:10px">At Risk</span>
+        </div>
+        <div style="margin-top:12px"><button class="btn btn-o sm" style="width:100%">View All 142 Contacts</button></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end email drip page -->
+
+</div><!-- end main -->
+</body>
+</html>
