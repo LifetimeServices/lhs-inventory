@@ -17551,6 +17551,15 @@ function stMigrateOpen(){
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-estimates" checked> Estimates</label>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-appointments" checked> Appointments</label>
       </div>
+      <div style="background:var(--bg3,#f8fafc);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600">
+          <input type="checkbox" id="stm-test-mode" checked onchange="document.getElementById('stm-test-note').style.display=this.checked?'block':'none'">
+          Test Mode — first 5 jobs only
+        </label>
+        <div id="stm-test-note" style="margin-top:6px;font-size:12px;color:var(--muted);padding-left:22px">
+          Pulls only the 5 most recent jobs so you can verify linking and photos before running the full migration. Uncheck to run everything.
+        </div>
+      </div>
       <div id="stm-progress" style="display:none;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
           <span id="stm-status">Starting...</span><span id="stm-pct">0%</span>
@@ -17628,6 +17637,8 @@ async function stMigrate(){
   const doInvoices=document.getElementById('stm-invoices')?.checked;
   const doEstimates=document.getElementById('stm-estimates')?.checked;
   const doAppts=document.getElementById('stm-appointments')?.checked;
+  const testMode=document.getElementById('stm-test-mode')?.checked;
+  const TEST_LIMIT=5;
   const tid=S.get('lhs:st_tenant_id')||'1951433246';
   const BASE='https://api.servicetitan.io';
   try{
@@ -17661,9 +17672,21 @@ async function stMigrate(){
     // ── JOBS ───────────────────────────────────────────────────
     let jobs=[];
     if(doJobs||doPhotos){
-      log('Fetching jobs...');prog(27,'Fetching jobs...');
-      jobs=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/jobs`,log);
-      log(`✓ ${jobs.length} jobs fetched`);
+      if(testMode){
+        log(`TEST MODE — fetching first ${TEST_LIMIT} jobs only...`);prog(27,'Fetching test jobs...');
+        const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${TEST_LIMIT}`);
+        jobs=(d.data||d.items||d||[]).slice(0,TEST_LIMIT);
+        log(`✓ ${jobs.length} jobs fetched for test`);
+        log('');
+        log('── Test Job IDs ──────────────────');
+        jobs.forEach((j,i)=>log(`  ${i+1}. Job #${j.jobNumber||j.id} — ${j.jobType?.name||'Unknown type'} — ${j.status||'?'} — Customer ID ${j.customerId}`));
+        log('──────────────────────────────────');
+        log('');
+      }else{
+        log('Fetching all jobs...');prog(27,'Fetching jobs...');
+        jobs=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/jobs`,log);
+        log(`✓ ${jobs.length} jobs fetched`);
+      }
     }
     if(doJobs&&jobs.length){
       prog(35,'Saving job history...');log('Saving job history...');
