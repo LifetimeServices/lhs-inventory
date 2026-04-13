@@ -17827,29 +17827,21 @@ async function stSyncOneCustomer(stCustId){
         }catch(e){/*skip*/}
       };
       try{
-        // Try /photos endpoint first (ST mobile app photos)
+        // ST photos are stored under the media API (hover shows "View Media", filenames contain _cdv_photo_)
         let allAtts=[];
-        try{
-          const photoData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/photos`);
-          const pl=photoData.data||photoData.items||(Array.isArray(photoData)?photoData:[]);
-          log(`  Job ${j.id}: ${pl.length} photos (photos endpoint)`);
-          allAtts.push(...pl.map(p=>({...p,url:p.url||p.photoUrl||p.imageUrl,filename:p.filename||p.name||`photo_${p.id}.jpg`,addedOn:p.createdOn||p.addedOn})));
-        }catch(e){/*try attachments fallback*/}
-        // Try job-level attachments
-        try{const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);const attList=attData.data||attData.items||(Array.isArray(attData)?attData:[]);if(attList.length)allAtts.push(...attList);}catch(e){}
-        // Try global attachments endpoint filtered by jobId
-        try{
-          const gAtt=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/attachments?jobId=${j.id}&pageSize=50`);
-          const gList=gAtt.data||gAtt.items||(Array.isArray(gAtt)?gAtt:[]);
-          if(gList.length){log(`  Job ${j.id}: ${gList.length} global attachments`);allAtts.push(...gList);}
-        }catch(e){}
-        // Try files endpoint
-        try{
-          const fData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/files`);
-          const fList=fData.data||fData.items||(Array.isArray(fData)?fData:[]);
-          if(fList.length){log(`  Job ${j.id}: ${fList.length} files`);allAtts.push(...fList.map(f=>({...f,url:f.url||f.downloadUrl||f.fileUrl})));}
-        }catch(e){}
-        log(`  Job ${j.id}: ${allAtts.length} total photo/attachment items`);
+        const tryPhotoEndpoint=async(url,label)=>{
+          try{
+            const d=await _stApiFetch(token,url);
+            const list=d.data||d.items||d.media||d.photos||(Array.isArray(d)?d:[]);
+            if(list.length){log(`  Job ${j.id}: ${list.length} items (${label})`);allAtts.push(...list);}
+          }catch(e){/*endpoint not available*/}
+        };
+        await tryPhotoEndpoint(`${BASE}/media/v2/tenant/${tid}/photos?jobId=${j.id}&pageSize=100`,'media/photos');
+        await tryPhotoEndpoint(`${BASE}/media/v2/tenant/${tid}/media?jobId=${j.id}&pageSize=100`,'media/media');
+        await tryPhotoEndpoint(`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/photos`,'jpm/photos');
+        await tryPhotoEndpoint(`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`,'jpm/attachments');
+        await tryPhotoEndpoint(`${BASE}/jpm/v2/tenant/${tid}/attachments?jobId=${j.id}&pageSize=100`,'jpm/attachments?jobId');
+        log(`  Job ${j.id}: ${allAtts.length} total media items`);
         for(const att of allAtts){
           const src=att.url||att.downloadUrl||att.publicUrl||null;
           if(!src)continue;
