@@ -17849,6 +17849,24 @@ async function stSyncOneCustomer(stCustId){
           await uploadSTPhoto(src,fname,m);
         }
       }catch(e){/*no media endpoint*/}
+      // Try appointment-level attachments
+      try{
+        const ad2=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/appointments?jobId=${j.id}&pageSize=50`);
+        const aptIds=(ad2.data||ad2.items||[]).map(a=>a.id);
+        for(const aptId of aptIds){
+          try{
+            const aptAtt=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/appointments/${aptId}/attachments`);
+            const aptAtts=aptAtt.data||aptAtt.items||(Array.isArray(aptAtt)?aptAtt:[]);
+            if(aptAtts.length)log(`  Appointment ${aptId}: ${aptAtts.length} attachments`);
+            for(const att of aptAtts){
+              const src=att.url||att.downloadUrl||att.publicUrl||null;
+              if(!src)continue;
+              const fname=att.filename||att.name||`st_apt_${att.id||Date.now()}.jpg`;
+              await uploadSTPhoto(src,fname,att);
+            }
+          }catch(e){/*skip apt*/}
+        }
+      }catch(e){/*no apt attachments*/}
     }
     log(`\n✅ Done — ${custName}:`);
     log(`   ${jobsSaved} work orders`);
