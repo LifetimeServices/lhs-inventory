@@ -28534,22 +28534,23 @@ function globalSearch(q){
   clearTimeout(_gsTimer);
   _gsTimer=setTimeout(()=>_gsAsync(q),200);
 }
-function _gsRender(q,supaCustomers){
+function _gsRender(q,supaCustomers,supaWOs){
   const res=document.getElementById('gsresults');
   if(!res) return;
   const ql=q.toLowerCase();
   const results=[];
-  // Work orders from cache
-  (S.get('lhs:work_orders')||[]).filter(w=>
+  // Work orders — Supabase results first (covers historical/imported), then cache
+  const seenWoIds=new Set();
+  (supaWOs||[]).forEach(w=>{seenWoIds.add(w.id);results.push({type:'WO',icon:'&#128203;',
+    title:w.wo_number,sub:`${w.customer_name||''} — ${w.division||w.status||''}`,
+    action:`openWO('${w.id}')`});});
+  (S.get('lhs:work_orders')||[]).filter(w=>!seenWoIds.has(w.id)&&(
     w.wo_number?.toLowerCase().includes(ql)||
-    w.customer_name?.toLowerCase().includes(ql)||
-    w.division?.toLowerCase().includes(ql)
-  ).slice(0,4).forEach(w=>results.push({
-    type:'WO',icon:'&#128203;',
+    w.customer_name?.toLowerCase().includes(ql))
+  ).slice(0,3).forEach(w=>results.push({type:'WO',icon:'&#128203;',
     title:w.wo_number,sub:`${w.customer_name} — ${w.division}`,
-    action:`openWO('${w.id}')`
-  }));
-  // Customers — Supabase results first, then any local cache hits not already included
+    action:`openWO('${w.id}')`}));
+  // Customers — Supabase results first (relevance-sorted), then any local cache hits not already included
   const seenIds=new Set();
   supaCustomers.forEach(c=>{
     seenIds.add(c.id);
@@ -28596,21 +28597,30 @@ function _gsRender(q,supaCustomers){
 }
 async function _gsAsync(q){
   try{
-    const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
-    const clauses=words.flatMap(w=>[
-      `first_name.ilike.%${w}%`,
-      `last_name.ilike.%${w}%`,
-      `company.ilike.%${w}%`,
-      `phone.ilike.%${w}%`
+    const words=[...new Set(q.trim().split(/\s+/).filter(w=>w.length>0))];
+    const custClauses=words.flatMap(w=>[
+      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+      `company.ilike.%${w}%`,`phone.ilike.%${w}%`
     ]);
-    const{data}=await DB.from('lhs_customers')
-      .select('id,first_name,last_name,company,phone,city,state')
-      .or(clauses.join(','))
-      .order('last_name',{ascending:true})
-      .range(0,4);
-    // Only update if the search box still has the same query
+    const woClauses=words.flatMap(w=>[
+      `customer_name.ilike.%${w}%`,`wo_number.ilike.%${w}%`
+    ]);
+    const[custRes,woRes]=await Promise.all([
+      DB.from('lhs_customers').select('id,first_name,last_name,company,phone,city,state')
+        .or(custClauses.join(',')).range(0,19),
+      DB.from('lhs_work_orders').select('id,wo_number,customer_name,division,status,st_job_id')
+        .or(woClauses.join(',')).limit(5)
+    ]);
     const cur=(document.getElementById('gsearch')?.value||'').trim();
-    if(cur===q.trim()) _gsRender(q,data||[]);
+    if(cur!==q.trim()) return;
+    // Sort customers by relevance — how many query words match full name
+    const ql=q.toLowerCase();
+    const score=c=>{
+      const full=`${c.first_name||''} ${c.last_name||''}`.toLowerCase();
+      return words.filter(w=>full.includes(w.toLowerCase())).length;
+    };
+    const sorted=(custRes.data||[]).sort((a,b)=>score(b)-score(a)).slice(0,5);
+    _gsRender(q,sorted,woRes.data||[]);
   }catch{}
 }
 
