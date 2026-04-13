@@ -17688,9 +17688,18 @@ async function stMigrate(){
     // ── PHOTOS ─────────────────────────────────────────────────
     if(doPhotos&&jobs.length){
       log('Fetching & uploading photos to Cloudflare...');prog(57,'Uploading photos...');
+      // Build st_job_id → wo_id lookup map from existing work orders
+      log('  Building work order lookup map...');
+      const woMap={};
+      try{
+        const{data:wos}=await DB.from('lhs_wos').select('id,st_job_id').not('st_job_id','is',null);
+        if(wos)wos.forEach(w=>{if(w.st_job_id)woMap[String(w.st_job_id)]=w.id;});
+        log(`  Mapped ${Object.keys(woMap).length} existing work orders by ST job ID`);
+      }catch(e){log(`  WO map warn: ${e.message}`);}
       let photoCount=0;
       for(let ji=0;ji<jobs.length;ji++){
         const job=jobs[ji];
+        const matchedWoId=woMap[String(job.id)]||null;
         try{
           const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`);
           const atts=(attData.data||attData||[]).filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test((a.filename||a.url||'')));
@@ -17706,6 +17715,7 @@ async function stMigrate(){
               const up=await lhsUploadFile(file,path);
               if(up?.url){
                 await DB.from('lhs_wo_photos').insert({
+                  wo_id:matchedWoId,
                   st_job_id:String(job.id),st_customer_id:job.customerId?String(job.customerId):null,
                   url:up.url,caption:att.caption||fname,source:'ServiceTitan',
                   created_at:att.addedOn||new Date().toISOString()
