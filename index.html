@@ -17827,10 +17827,19 @@ async function stSyncOneCustomer(stCustId){
         }catch(e){/*skip*/}
       };
       try{
+        // Try /photos endpoint first (ST mobile app photos)
+        let allAtts=[];
+        try{
+          const photoData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/photos`);
+          const pl=photoData.data||photoData.items||(Array.isArray(photoData)?photoData:[]);
+          log(`  Job ${j.id}: ${pl.length} photos (photos endpoint)`);
+          allAtts.push(...pl.map(p=>({...p,url:p.url||p.photoUrl||p.imageUrl,filename:p.filename||p.name||`photo_${p.id}.jpg`,addedOn:p.createdOn||p.addedOn})));
+        }catch(e){/*try attachments fallback*/}
+        // Also try attachments endpoint
         const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);
-        log(`  Job ${j.id} attachments raw keys: ${Object.keys(attData||{}).join(',')}`);
-        const allAtts=attData.data||attData.items||attData.attachments||attData.result||(Array.isArray(attData)?attData:[]);
-        log(`  Job ${j.id}: ${allAtts.length} attachments`);
+        const attList=attData.data||attData.items||(Array.isArray(attData)?attData:[]);
+        if(attList.length)allAtts.push(...attList);
+        log(`  Job ${j.id}: ${allAtts.length} total photo/attachment items`);
         for(const att of allAtts){
           const src=att.url||att.downloadUrl||att.publicUrl||null;
           if(!src)continue;
