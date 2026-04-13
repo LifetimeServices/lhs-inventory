@@ -39544,6 +39544,7 @@ async function svAddLead(){
   const finalCust=savedCust||{...newCust,id:'cust_'+Date.now()};
   const custs=S.get('lhs:customers')||[];
   custs.unshift(finalCust);
+  S.set('lhs:customers',custs);
   _C['lhs:customers']=custs;
 
   // Back-link lead → customer
