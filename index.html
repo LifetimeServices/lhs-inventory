@@ -6482,13 +6482,18 @@ function bCalLog(){
               </td>
               ${years.map(y=>{
                 const val=dates[y]||'';
+                const lcYear=d.last_calibrated?(new Date(d.last_calibrated+'T00:00:00').getFullYear()):null;
+                const dueYear=d.cal_due?(new Date(d.cal_due+'T00:00:00').getFullYear()):null;
+                const autoVal=!val&&lcYear===y?d.last_calibrated:(!val&&dueYear===y?d.cal_due:'');
+                const isDue=!val&&dueYear===y&&lcYear!==y;
+                const displayVal=val||autoVal;
                 const isCur=y===curY;
                 return`<td style="padding:0;background:${isCur?(isSent?'#fffde7':isInactive?'#fff0f0':'#f0faf0'):(isSent?'#fffde7':isInactive?'#fff9f9':'white')};border-right:1px solid var(--bdr)">
-                  <input type="text" value="${esc(val)}" placeholder="—"
-                    title="Click to enter calibration date for ${y}"
+                  <input type="text" value="${esc(displayVal)}" placeholder="—"
+                    title="${isDue?'Cal due — click to confirm calibration date':'Click to enter calibration date for '+y}"
                     onfocus="this.style.outline='2px solid var(--teal)';this.style.background='#fffde7'"
                     onblur="this.style.outline='';this.style.background='';svCalDate('${d.id}',${y},this.value)"
-                    style="width:100%;min-height:42px;border:none;text-align:center;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;cursor:text;box-sizing:border-box;padding:6px 4px;color:${val?'var(--navy)':'#ccc'};font-weight:${val?'600':'400'}">
+                    style="width:100%;min-height:42px;border:none;text-align:center;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;cursor:text;box-sizing:border-box;padding:6px 4px;color:${val?'var(--navy)':autoVal?(isDue?'#e65100':'#5d3900'):'#ccc'};font-weight:${displayVal?'600':'400'};${isDue?'font-style:italic;':''}">
                 </td>`;
               }).join('')}
             </tr>`;
