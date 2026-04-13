@@ -12328,7 +12328,7 @@ function oAddUser(){
     </select></div>
     <div class="fl"><label>Manager</label><select id="au7">
       <option value="">— No Manager —</option>
-      ${users.filter(u=>['God View','Admin','Director','Regional Manager','Operations Manager'].includes(u.role)).map(u=>`<option>${u.name}</option>`).join('')}
+      ${users.filter(u=>['Creator','God View','Admin','Director','Regional Director','Regional Manager','Operations Manager'].includes(u.role)).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option>${u.name}</option>`).join('')}
     </select></div>
   </div>
   <div class="fr">
@@ -12451,7 +12451,7 @@ async function svAddUser(){
 }
 function oEditUser(i){
   const users=S.get('lhs:users')||USERS;const u=users[i];
-  const mgrs=(S.get('lhs:users')||USERS).filter(x=>['God View','Admin','Director','Regional Manager','Operations Manager'].includes(x.role));
+  const mgrs=(S.get('lhs:users')||USERS).filter(x=>['Creator','God View','Admin','Director','Regional Director','Regional Manager','Operations Manager'].includes(x.role)).sort((a,b)=>a.name.localeCompare(b.name));
   oMod('Edit: '+u.name,`<div class="fr">
     <div class="fl"><label>Full Name</label><input id="eu0" value="${u.name}"></div>
     <div class="fl"><label>Email</label><input id="eu1" value="${u.email}"></div>
