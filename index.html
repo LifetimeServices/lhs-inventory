@@ -17835,10 +17835,20 @@ async function stSyncOneCustomer(stCustId){
           log(`  Job ${j.id}: ${pl.length} photos (photos endpoint)`);
           allAtts.push(...pl.map(p=>({...p,url:p.url||p.photoUrl||p.imageUrl,filename:p.filename||p.name||`photo_${p.id}.jpg`,addedOn:p.createdOn||p.addedOn})));
         }catch(e){/*try attachments fallback*/}
-        // Also try attachments endpoint
-        const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);
-        const attList=attData.data||attData.items||(Array.isArray(attData)?attData:[]);
-        if(attList.length)allAtts.push(...attList);
+        // Try job-level attachments
+        try{const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);const attList=attData.data||attData.items||(Array.isArray(attData)?attData:[]);if(attList.length)allAtts.push(...attList);}catch(e){}
+        // Try global attachments endpoint filtered by jobId
+        try{
+          const gAtt=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/attachments?jobId=${j.id}&pageSize=50`);
+          const gList=gAtt.data||gAtt.items||(Array.isArray(gAtt)?gAtt:[]);
+          if(gList.length){log(`  Job ${j.id}: ${gList.length} global attachments`);allAtts.push(...gList);}
+        }catch(e){}
+        // Try files endpoint
+        try{
+          const fData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/files`);
+          const fList=fData.data||fData.items||(Array.isArray(fData)?fData:[]);
+          if(fList.length){log(`  Job ${j.id}: ${fList.length} files`);allAtts.push(...fList.map(f=>({...f,url:f.url||f.downloadUrl||f.fileUrl})));}
+        }catch(e){}
         log(`  Job ${j.id}: ${allAtts.length} total photo/attachment items`);
         for(const att of allAtts){
           const src=att.url||att.downloadUrl||att.publicUrl||null;
