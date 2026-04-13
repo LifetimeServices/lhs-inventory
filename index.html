@@ -17741,7 +17741,8 @@ async function stMigrate(){
           for(const att of atts){
             try{
               const src=att.url||att.downloadUrl;
-              const imgR=await fetch(src);
+              const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
+              const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
               if(!imgR.ok)continue;
               const blob=await imgR.blob();
               const fname=att.filename||`st_${att.id||Date.now()}.jpg`;
