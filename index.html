@@ -6546,6 +6546,14 @@ function _calDevForm(d,saveFn){
       </select>
     </div>
   </div>
+  <div class="fr">
+    <div class="fl"><label>Last Calibrated</label>
+      <input type="date" id="cdf-lc" value="${d.last_calibrated||''}" onchange="(function(){const lc=document.getElementById('cdf-lc').value;if(!lc)return;const d=new Date(lc+'T00:00:00');d.setFullYear(d.getFullYear()+1);document.getElementById('cdf-due').value=d.toISOString().slice(0,10);})()">
+    </div>
+    <div class="fl"><label>Cal Due (auto — 1 yr)</label>
+      <input type="date" id="cdf-due" value="${d.cal_due||''}" style="background:var(--surf)">
+    </div>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="${saveFn}">💾 Save</button>
     ${d.id?`<button class="btn btn-g" onclick="delCalDevice('${d.id}')">🗑 Delete</button>`:''}
@@ -6568,6 +6576,7 @@ async function svAddCalDevice(){
     purchase_date:v('cdf-pd')||null,purchase_price:parseFloat(v('cdf-pp'))||null,
     calibration_cost:parseFloat(v('cdf-cc'))||null,status:v('cdf-sts')||'Active',
     region:v('cdf-reg')||null,state:v('cdf-sta')||null,
+    last_calibrated:v('cdf-lc')||null,cal_due:v('cdf-due')||null,
     calibration_dates:{},created_at:now,updated_at:now};
   let saved=null;
   try{saved=await dbInsert('lhs:cal_devices',dev);}catch(e){console.warn('svAddCalDevice:',e?.message);}
@@ -6584,7 +6593,8 @@ async function svEditCalDevice(id){
   const upd={crm_id:v('cdf-crm'),serial_number:v('cdf-sn'),
     purchase_date:v('cdf-pd')||null,purchase_price:parseFloat(v('cdf-pp'))||null,
     calibration_cost:parseFloat(v('cdf-cc'))||null,status:v('cdf-sts')||'Active',
-    region:v('cdf-reg')||null,state:v('cdf-sta')||null,updated_at:now};
+    region:v('cdf-reg')||null,state:v('cdf-sta')||null,
+    last_calibrated:v('cdf-lc')||null,cal_due:v('cdf-due')||null,updated_at:now};
   devs[idx]={...devs[idx],...upd};S.set('lhs:cal_devices',devs);
   try{await dbUpdate('lhs:cal_devices',id,upd);}catch(e){console.warn('svEditCalDevice:',e?.message);}
   cMod();tst('Device updated','success');showPage('testers');
@@ -6640,6 +6650,19 @@ async function svTest(){
   if(saved) t._supaId=saved.id; // store real UUID for future updates
   else tst('Saved locally — Supabase sync failed','error');
   const ts=S.get('lhs:ts')||[];ts.push(t);S.set('lhs:ts',ts);
+  // Auto-create matching Calibration Log device if not already present
+  const existingDevs=S.get('lhs:cal_devices')||[];
+  const alreadyExists=existingDevs.find(d=>d.crm_id===t.id||(t.serial&&d.serial_number===t.serial));
+  if(!alreadyExists){
+    const now2=new Date().toISOString();
+    const calDev={crm_id:t.id,serial_number:t.serial||null,status:'Active',
+      region:null,state:null,purchase_date:null,purchase_price:null,
+      calibration_cost:null,last_calibrated:null,cal_due:null,
+      calibration_dates:{},created_at:now2,updated_at:now2};
+    const calSaved=await dbInsert('lhs:cal_devices',calDev);
+    const final=calSaved||{...calDev,id:'cd_'+Date.now()};
+    existingDevs.push(final);S.set('lhs:cal_devices',existingDevs);
+  }
   cMod();if(saved) tst(`${t.id} added`,'success');showPage('testers');
 }
 async function delTest(i){
