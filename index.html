@@ -6342,30 +6342,34 @@ function _bTestTracker(){
   const activeDep=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&['At Customer','At Customer / Needs Pick-Up','With Technician','Waiting to Deploy','In Transit'].includes(x.status));
   const activeWarehouse=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&(x.status==='At Warehouse'||x.status==='At Office'));
   const inactiveCount=allTs.filter(t=>t.active===false||t.active==='Inactive').length;
-  return`<div class="sh"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-    ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
-    <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
+  return`<div style="margin-bottom:16px">
+  <!-- Row 1: Stat cards -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    ${[['Electronic','bb'],['Charcoal','bn'],['At Office','bg']].map(([l,c])=>`
+    <div style="background:var(--white);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center;min-width:90px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">${l}</div>
       <div style="font-size:24px;font-weight:700;font-family:'DM Sans',sans-serif;color:var(--navy)">
-        ${l==='At Warehouse'?activeWarehouse.length:activeDep.filter(x=>x.type===l).length}
-      </div><div style="font-size:11px;color:var(--muted)">${l==='At Warehouse'?'Available':'Cust/Transit'}</div>
+        ${l==='At Office'?activeWarehouse.length:activeDep.filter(x=>x.type===l).length}
+      </div><div style="font-size:11px;color:var(--muted)">${l==='At Office'?'Available':'Cust/Transit'}</div>
     </div>`).join('')}
-    ${inactiveCount>0?`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center">
+    ${inactiveCount>0?`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;text-align:center;min-width:90px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase">Inactive</div>
       <div style="font-size:24px;font-weight:700;font-family:'DM Sans',sans-serif;color:var(--muted)">${inactiveCount}</div>
       <div style="font-size:11px;color:var(--muted)">Retired</div>
     </div>`:''}
   </div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+  <!-- Row 2: Action buttons + view toggle -->
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button>
     <button class="btn btn-o" onclick="oImportTesters()">📥 Import CSV</button>
-    <div style="display:flex;border:1px solid var(--bdr);border-radius:7px;overflow:hidden;margin-left:4px">
-      <button onclick="window._testerView='table';showPage('testers')" style="padding:6px 14px;border:none;background:${(window._testerView||'table')==='table'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='table'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">☰ Table</button>
-      <button onclick="window._testerView='kanban';showPage('testers')" style="padding:6px 14px;border:none;border-left:1px solid var(--bdr);background:${(window._testerView||'table')==='kanban'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='kanban'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">⬛ Kanban</button>
-    </div>
     ${inactiveCount>0?`<button class="btn btn-o sm" onclick="window._testShowInactive=!window._testShowInactive;showPage('testers')">${showInactive?'Hide Inactive':'Show Inactive ('+inactiveCount+')'}</button>`:''}
+    <div style="display:flex;border:1px solid var(--bdr);border-radius:7px;overflow:hidden;margin-left:auto">
+      <button onclick="window._testerView='table';showPage('testers')" style="padding:6px 16px;border:none;background:${(window._testerView||'table')==='table'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='table'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">☰ Table</button>
+      <button onclick="window._testerView='kanban';showPage('testers')" style="padding:6px 16px;border:none;border-left:1px solid var(--bdr);background:${(window._testerView||'table')==='kanban'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='kanban'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">⬛ Kanban</button>
+    </div>
   </div>
-  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
+  <!-- Row 3: Filters -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <select onchange="window._testerFDiv=this.value;showPage('testers')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
       <option value="">All Divisions</option>
       <option value="Brookfield Warehouse"${(window._testerFDiv||'')==='Brookfield Warehouse'?' selected':''}>Brookfield Warehouse</option>
@@ -6388,7 +6392,8 @@ function _bTestTracker(){
       <option value="Lost / Unknown"${(window._testerFSts||'')==='Lost / Unknown'?' selected':''}>Lost / Unknown</option>
     </select>
     ${(window._testerFDiv||window._testerFType||window._testerFSts)?`<button class="btn btn-o sm" onclick="window._testerFDiv='';window._testerFType='';window._testerFSts='';showPage('testers')">✕ Clear</button>`:''}
-  </div></div>
+  </div>
+  </div>
   ${(()=>{
     const fDiv=window._testerFDiv||'';
     const fType=window._testerFType||'';
