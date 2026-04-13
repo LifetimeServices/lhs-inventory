@@ -12312,7 +12312,7 @@ function oAddUser(){
   </div><div class="fr">
     <div class="fl"><label>Password</label><input id="au2" placeholder="Set a password"></div>
     <div class="fl"><label>Role</label><select id="au3">
-      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'&&r!=='God View').map(r=>`<option>${r}</option>`).join('')}
     </select></div>
   </div><div class="fr">
     <div class="fl"><label>Primary Division</label><select id="au4">
