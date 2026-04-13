@@ -17710,22 +17710,66 @@ async function stMigrate(){
     }
     if(doJobs&&jobs.length){
       prog(35,'Saving job history...');log('Saving job history...');
+      // Build st_customer_id → customer record lookup from lhs_customers
+      log('  Loading customer map...');
+      const custMap={};
+      try{
+        let cp=0;
+        while(true){
+          const{data:custs}=await DB.from('lhs_customers')
+            .select('id,first_name,last_name,phone,email,address,city,state,zip,st_customer_id')
+            .not('st_customer_id','is',null)
+            .range(cp*1000,(cp+1)*1000-1);
+          if(!custs||!custs.length) break;
+          custs.forEach(c=>{if(c.st_customer_id) custMap[c.st_customer_id]={id:c.id,name:`${c.first_name||''} ${c.last_name||''}`.trim(),phone:c.phone,email:c.email,address:c.address,city:c.city,state:c.state,zip:c.zip};});
+          if(custs.length<1000) break;
+          cp++;
+        }
+        log(`  ${Object.keys(custMap).length} customers loaded`);
+      }catch(e){log(`  Customer map warn: ${e.message}`);}
+
       let saved=0;
       for(let i=0;i<jobs.length;i+=100){
-        const chunk=jobs.slice(i,i+100).map(j=>({
-          st_job_id:String(j.id),st_customer_id:j.customerId?String(j.customerId):null,
-          job_number:j.jobNumber||null,job_type:j.jobType?.name||null,status:j.status||null,
-          summary:j.summary||null,total:j.total||0,
-          scheduled_on:j.scheduledOn||null,completed_on:j.completedOn||null,
-          technician_name:(j.assignments||[]).map(a=>a.technician?.name||'').filter(Boolean).join(', ')||null,
-          location_address:j.location?.address?`${j.location.address.street||''} ${j.location.address.city||''} ${j.location.address.state||''}`.trim():null,
-          raw:JSON.stringify(j),imported_at:new Date().toISOString()
-        }));
-        try{await DB.from('lhs_st_jobs').upsert(chunk,{onConflict:'st_job_id'});saved+=chunk.length;}
-        catch(e){log(`  Jobs batch warn: ${e.message}`);}
+        const chunk=jobs.slice(i,i+100).map(j=>{
+          const stCustId=j.customerId?String(j.customerId):null;
+          const cust=stCustId?custMap[stCustId]:null;
+          const addr=j.location?.address||{};
+          const scheduledDate=j.scheduledOn||j.completedOn||j.createdOn||null;
+          const woYear=scheduledDate?parseInt(scheduledDate.slice(0,4)):new Date().getFullYear();
+          const stStatus=(j.status||'').toLowerCase();
+          let lhsStatus='Completed';
+          if(stStatus==='scheduled'||stStatus==='dispatched') lhsStatus='Scheduled';
+          if(stStatus==='canceled'||stStatus==='cancelled') lhsStatus='Cancelled';
+          if(stStatus==='inprogress'||stStatus==='in_progress') lhsStatus='In Progress';
+          return{
+            st_job_id:String(j.id),
+            wo_number:`ST-${j.jobNumber||j.id}`,
+            wo_year:woYear,
+            customer_id:cust?.id||null,
+            customer_name:cust?.name||null,
+            customer_phone:cust?.phone||null,
+            customer_email:cust?.email||null,
+            customer_address:addr.street||cust?.address||null,
+            customer_city:addr.city||cust?.city||null,
+            customer_state:addr.state||cust?.state||null,
+            customer_zip:addr.zip||cust?.zip||null,
+            division:'',
+            job_type:j.jobType?.name||j.type?.name||null,
+            description:j.summary||null,
+            status:lhsStatus,
+            total_price:j.total||0,
+            total_paid:0,
+            material_cost:0,
+            created_by:'ServiceTitan Import',
+            created_at:j.createdOn||new Date().toISOString(),
+            updated_at:new Date().toISOString(),
+          };
+        });
+        const{error:jobErr}=await DB.from('lhs_work_orders').upsert(chunk,{onConflict:'st_job_id'});
+        if(jobErr){log(`  Jobs batch error: ${jobErr.message}`);}else{saved+=chunk.length;}
         prog(35+Math.round((i/jobs.length)*20),'Saving jobs...');
       }
-      log(`✓ ${saved}/${jobs.length} jobs saved\n`);prog(55,'Jobs done');
+      log(`✓ ${saved}/${jobs.length} jobs saved to work orders\n`);prog(55,'Jobs done');
     }
 
     // ── PHOTOS ─────────────────────────────────────────────────
@@ -17735,7 +17779,7 @@ async function stMigrate(){
       log('  Building work order lookup map...');
       const woMap={};
       try{
-        const{data:wos}=await DB.from('lhs_wos').select('id,st_job_id').not('st_job_id','is',null);
+        const{data:wos}=await DB.from('lhs_work_orders').select('id,st_job_id').not('st_job_id','is',null);
         if(wos)wos.forEach(w=>{if(w.st_job_id)woMap[String(w.st_job_id)]=w.id;});
         log(`  Mapped ${Object.keys(woMap).length} existing work orders by ST job ID`);
       }catch(e){log(`  WO map warn: ${e.message}`);}
@@ -21696,7 +21740,10 @@ async function delGreyBlock(id,deleteGroup=false){
 
 // ── WORK ORDERS ──────────────────────────────────────────────────────────────
 function bWorkOrders(){
-  const wos=S.get('lhs:work_orders')||[];
+  const _cached=S.get('lhs:work_orders')||[];
+  const _extra=window._woSearchExtra||[];
+  const _extraNew=_extra.filter(r=>!_cached.find(w=>w.id===r.id));
+  const wos=[..._cached,..._extraNew];
   const role=CU?.role||'';
   const canCreate=['God View','Admin','Director','Regional Manager','Operations Manager','Dispatcher','Sales Rep'].includes(role);
   const _wf=window._woFilters||{};
@@ -27721,8 +27768,14 @@ async function custLoadPage(){
     const to=from+_CUST_PAGE_SIZE-1;
     let query=DB.from('lhs_customers').select('*',{count:'exact'});
     if(q){
-      // Search across name, phone, email, city, address
-      query=query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,address.ilike.%${q}%,city.ilike.%${q}%,company.ilike.%${q}%`);
+      // Split into words so "James Sebastian" matches first_name=James AND last_name=Sebastian
+      const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
+      const clauses=words.flatMap(w=>[
+        `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+        `email.ilike.%${w}%`,`phone.ilike.%${w}%`,
+        `address.ilike.%${w}%`,`city.ilike.%${w}%`,`company.ilike.%${w}%`
+      ]);
+      query=query.or(clauses.join(','));
     }
     query=query.order('last_name',{ascending:true}).range(from,to);
     const{data,error,count}=await query;
@@ -28570,6 +28623,21 @@ function oEditItem(itemId){
       <input type="number" id="ei-max" value="${esc(item.max||0)}" min="0">
     </div>
   </div>
+  <div style="margin:12px 0 4px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Bulk Pricing</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;font-size:11px;font-weight:600;color:var(--muted);padding:0 2px;margin-bottom:4px">
+      <span>MIN QTY (units)</span><span>COST PER UNIT $</span><span></span>
+    </div>
+    <div id="ei-bulk-rows">
+      ${(item.bulk_pricing||[]).map(bp=>`
+      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center">
+        <input type="number" class="ei-bulk-qty" value="${bp.min_qty||''}" min="1" placeholder="e.g. 10" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <input type="number" class="ei-bulk-cost" step="0.01" value="${(bp.cost||0).toFixed(2)}" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1">×</button>
+      </div>`).join('')}
+    </div>
+    <button type="button" onclick="addBulkRow()" class="btn btn-o sm" style="margin-top:4px">+ Add Row</button>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="svEditItem()">Save Changes</button>
     <button class="btn btn-r sm" onclick="delItem('${esc(itemId)}')">Delete</button>
@@ -28577,6 +28645,18 @@ function oEditItem(itemId){
   </div>`);
   // Set title safely via textContent — no HTML parsing, handles any special characters
   document.getElementById('mt').textContent=`Edit: ${item.name}`;
+}
+
+function addBulkRow(){
+  const container=document.getElementById('ei-bulk-rows');
+  if(!container) return;
+  const row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML=`
+    <input type="number" class="ei-bulk-qty" min="1" placeholder="e.g. 10" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    <input type="number" class="ei-bulk-cost" step="0.01" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1">×</button>`;
+  container.appendChild(row);
 }
 
 async function svEditItem(){
@@ -28602,11 +28682,16 @@ async function svEditItem(){
   item.customer_cost=parseFloat(v('ei-custcost'))||0;
   item.min=parseInt(v('ei-min'))||0;
   item.max=parseInt(v('ei-max'))||0;
+  item.bulk_pricing=[...document.querySelectorAll('#ei-bulk-rows > div')].map(row=>({
+    min_qty:parseInt(row.querySelector('.ei-bulk-qty')?.value)||0,
+    cost:parseFloat(row.querySelector('.ei-bulk-cost')?.value)||0
+  })).filter(bp=>bp.min_qty>0);
   S.set('lhs:items',items);
   if(item.id){
     await dbUpdate('lhs:items',item.id,{
       sku:item.sku,name:item.name,division:item.division,unit:item.unit,
-      vendor:item.vendor,cost:item.cost,customer_cost:item.customer_cost||0,min:item.min,max:item.max
+      vendor:item.vendor,cost:item.cost,customer_cost:item.customer_cost||0,
+      min:item.min,max:item.max,bulk_pricing:item.bulk_pricing
     });
   } else {
     // Item has no Supabase id — insert it now and store the returned id
@@ -42929,19 +43014,45 @@ function setWOFilter(key,val){
   window._woFilters[key]=val;
   showPage('workorders');
 }
-function applyWOFilters(){
+async function applyWOFilters(){
   // Search button — reads all inputs fresh, no staging needed
   const g=id=>{const e=document.getElementById(id);return e?e.value:'';};
   const prev=window._woFilters||{};
-  window._woFilters={
+  const searchTerm=g('wof-search');
+  // Clear date filters when a text search is entered — historical records shouldn't be date-gated
+  if(searchTerm){
+    const dfEl=document.getElementById('wof-datefrom');
+    const dtEl=document.getElementById('wof-dateto');
+    if(dfEl) dfEl.value='';
+    if(dtEl) dtEl.value='';
+  }
+  const newFilters={
     status:    prev.status||'',
     division:  g('wof-div'),
     job_type:  g('wof-type'),
     tech:      g('wof-tech'),
-    date_from: g('wof-datefrom'),
-    date_to:   g('wof-dateto'),
-    search:    g('wof-search'),
+    date_from: searchTerm?'':g('wof-datefrom'),
+    date_to:   searchTerm?'':g('wof-dateto'),
+    search:    searchTerm,
   };
+  window._woFilters=newFilters;
+  // When a search term is present, also query Supabase directly so historical
+  // records beyond the 5000-row cache are findable (e.g. ST-imported jobs)
+  if(newFilters.search){
+    try{
+      const words=[...new Set(newFilters.search.trim().split(/\s+/).filter(w=>w.length>0))];
+      const clauses=words.flatMap(w=>[
+        `customer_name.ilike.%${w}%`,
+        `wo_number.ilike.%${w}%`,
+        `customer_address.ilike.%${w}%`,
+        `customer_city.ilike.%${w}%`,
+      ]);
+      const{data}=await DB.from('lhs_work_orders').or(clauses.join(',')).limit(200);
+      window._woSearchExtra=data||[];
+    }catch(e){window._woSearchExtra=[];}
+  }else{
+    window._woSearchExtra=[];
+  }
   showPage('workorders');
 }
 function clearWOFilters(){
