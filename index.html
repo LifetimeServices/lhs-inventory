@@ -17783,7 +17783,7 @@ async function stSyncOneCustomer(stCustId){
         log(`  Job ${j.id}: ${nl.length} notes found`);
         for(const n of nl){
           const txt=n.text||n.body||n.content||'';if(!txt)continue;
-          const{error:nErr}=await DB.from('lhs_wo_notes').insert({wo_id:woId,note_text:txt,
+          const{error:nErr}=await DB.from('lhs_wo_notes').insert({wo_id:woId,note_text:txt,content:txt,
             created_by:n.createdBy?.name||'ServiceTitan',is_internal:false,note_type:'ServiceTitan',
             created_at:n.createdOn||new Date().toISOString()});
           if(!nErr)notesSaved++;else log(`    Note error: ${nErr.message}`);
@@ -17813,27 +17813,42 @@ async function stSyncOneCustomer(stCustId){
         }
       }catch(e){log(`  Appointments error job ${j.id}: ${e.message}`);}
 
-      // Photos
+      // Photos — try job attachments endpoint, then job images endpoint
+      const uploadSTPhoto=async(src,fname,attObj)=>{
+        try{
+          const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
+          const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
+          if(!imgR.ok){log(`    Photo fetch ${imgR.status}: ${fname}`);return;}
+          const blob=await imgR.blob();
+          const up=await lhsUploadFile(new File([blob],fname,{type:blob.type||'image/jpeg'}),`st-migration/${stCustId}/${j.id}/${fname}`);
+          if(up?.url){await DB.from('lhs_wo_photos').insert({wo_id:woId,st_job_id:stJobId,
+            st_customer_id:String(stCustId),url:up.url,caption:attObj.caption||fname,
+            source:'ServiceTitan',created_at:attObj.addedOn||new Date().toISOString()});photosSaved++;}
+        }catch(e){/*skip*/}
+      };
       try{
         const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);
-        const allAtts=attData.data||attData.items||attData||[];
-        log(`  Job ${j.id}: ${allAtts.length} attachments found`);
-        const atts=allAtts.filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test(a.filename||a.url||''));
-        for(const att of atts){
-          try{
-            const src=att.url||att.downloadUrl;
-            const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
-            const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
-            if(!imgR.ok){log(`    Photo fetch ${imgR.status}: ${att.filename||src.slice(-30)}`);continue;}
-            const blob=await imgR.blob();
-            const fname=att.filename||`st_${att.id||Date.now()}.jpg`;
-            const up=await lhsUploadFile(new File([blob],fname,{type:blob.type||'image/jpeg'}),`st-migration/${stCustId}/${j.id}/${fname}`);
-            if(up?.url){await DB.from('lhs_wo_photos').insert({wo_id:woId,st_job_id:stJobId,
-              st_customer_id:String(stCustId),url:up.url,caption:att.caption||fname,
-              source:'ServiceTitan',created_at:att.addedOn||new Date().toISOString()});photosSaved++;}
-          }catch(e){/*skip photo*/}
+        const allAtts=attData.data||attData.items||(Array.isArray(attData)?attData:[]);
+        log(`  Job ${j.id}: ${allAtts.length} attachments`);
+        for(const att of allAtts){
+          const src=att.url||att.downloadUrl||att.publicUrl||null;
+          if(!src)continue;
+          const fname=att.filename||att.name||`st_${att.id||Date.now()}.jpg`;
+          await uploadSTPhoto(src,fname,att);
         }
-      }catch(e){/*no attachments*/}
+      }catch(e){log(`  Attachments error job ${j.id}: ${e.message}`);}
+      // Also try /media endpoint as fallback
+      try{
+        const medData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/media`);
+        const medList=medData.data||medData.items||(Array.isArray(medData)?medData:[]);
+        if(medList.length)log(`  Job ${j.id}: ${medList.length} media items`);
+        for(const m of medList){
+          const src=m.url||m.downloadUrl||m.publicUrl||null;
+          if(!src)continue;
+          const fname=m.filename||m.name||`st_media_${m.id||Date.now()}.jpg`;
+          await uploadSTPhoto(src,fname,m);
+        }
+      }catch(e){/*no media endpoint*/}
     }
     log(`\n✅ Done — ${custName}:`);
     log(`   ${jobsSaved} work orders`);
