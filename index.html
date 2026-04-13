@@ -1831,6 +1831,8 @@ async function warmCache(){
             type:r.tester_type||r.type||null,
             serial:r.serial_number||r.serial||null,
             status:r.status||'At Warehouse',
+            division:r.division||null,
+            notes:r.notes||null,
             vehicle:r.vehicle||null,
             customer:r.customer||null,
             address:r.address||null,
@@ -6336,9 +6338,9 @@ function _bTestTracker(){
   const showInactive=window._testShowInactive||false;
   // Active = active field is not explicitly false
   const ts=showInactive?allTs:allTs.filter(t=>t.active!==false&&t.active!=='Inactive');
-  const tc=s=>s==='At Customer'?'bb':s==='In Transit'?'ba':s==='At Warehouse'?'bg':'bgr';
-  const activeDep=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&['At Customer','In Transit'].includes(x.status));
-  const activeWarehouse=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&x.status==='At Warehouse');
+  const tc=s=>{if(s==='At Office'||s==='At Warehouse')return 'bg';if(s==='With Technician')return 'bb';if(s==='Waiting to Deploy')return 'ba';if(s==='At Customer / Needs Pick-Up'||s==='At Customer')return 'ba';if(s==='In Calibration')return 'bb';if(s==='Lost / Unknown'||s==='Lost')return 'bgr';return 'bn';};
+  const activeDep=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&['At Customer','At Customer / Needs Pick-Up','With Technician','Waiting to Deploy','In Transit'].includes(x.status));
+  const activeWarehouse=allTs.filter(x=>x.active!==false&&x.active!=='Inactive'&&(x.status==='At Warehouse'||x.status==='At Office'));
   const inactiveCount=allTs.filter(t=>t.active===false||t.active==='Inactive').length;
   return`<div class="sh"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
     ${[['Electronic','bb'],['Charcoal','bn'],['At Warehouse','bg']].map(([l,c])=>`
@@ -6357,14 +6359,52 @@ function _bTestTracker(){
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <button class="btn btn-n" onclick="oAddTest()">+ Add Tester</button>
     <button class="btn btn-o" onclick="oImportTesters()">📥 Import CSV</button>
+    <div style="display:flex;border:1px solid var(--bdr);border-radius:7px;overflow:hidden;margin-left:4px">
+      <button onclick="window._testerView='table';showPage('testers')" style="padding:6px 14px;border:none;background:${(window._testerView||'table')==='table'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='table'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">☰ Table</button>
+      <button onclick="window._testerView='kanban';showPage('testers')" style="padding:6px 14px;border:none;border-left:1px solid var(--bdr);background:${(window._testerView||'table')==='kanban'?'var(--navy)':'var(--white)'};color:${(window._testerView||'table')==='kanban'?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">⬛ Kanban</button>
+    </div>
     ${inactiveCount>0?`<button class="btn btn-o sm" onclick="window._testShowInactive=!window._testShowInactive;showPage('testers')">${showInactive?'Hide Inactive':'Show Inactive ('+inactiveCount+')'}</button>`:''}
+  </div>
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
+    <select onchange="window._testerFDiv=this.value;showPage('testers')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+      <option value="">All Divisions</option>
+      <option value="Brookfield Warehouse"${(window._testerFDiv||'')==='Brookfield Warehouse'?' selected':''}>Brookfield Warehouse</option>
+      <option value="Green Bay Warehouse"${(window._testerFDiv||'')==='Green Bay Warehouse'?' selected':''}>Green Bay Warehouse</option>
+      <option value="Colorado Warehouse"${(window._testerFDiv||'')==='Colorado Warehouse'?' selected':''}>Colorado Warehouse</option>
+      <option value="Commercial"${(window._testerFDiv||'')==='Commercial'?' selected':''}>Commercial</option>
+    </select>
+    <select onchange="window._testerFType=this.value;showPage('testers')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+      <option value="">All Types</option>
+      <option value="Electronic"${(window._testerFType||'')==='Electronic'?' selected':''}>Electronic</option>
+      <option value="Charcoal"${(window._testerFType||'')==='Charcoal'?' selected':''}>Charcoal</option>
+    </select>
+    <select onchange="window._testerFSts=this.value;showPage('testers')" style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit">
+      <option value="">All Statuses</option>
+      <option value="At Office"${(window._testerFSts||'')==='At Office'?' selected':''}>At Office</option>
+      <option value="With Technician"${(window._testerFSts||'')==='With Technician'?' selected':''}>With Technician</option>
+      <option value="Waiting to Deploy"${(window._testerFSts||'')==='Waiting to Deploy'?' selected':''}>Waiting to Deploy</option>
+      <option value="At Customer / Needs Pick-Up"${(window._testerFSts||'')==='At Customer / Needs Pick-Up'?' selected':''}>At Customer / Needs Pick-Up</option>
+      <option value="In Calibration"${(window._testerFSts||'')==='In Calibration'?' selected':''}>In Calibration</option>
+      <option value="Lost / Unknown"${(window._testerFSts||'')==='Lost / Unknown'?' selected':''}>Lost / Unknown</option>
+    </select>
+    ${(window._testerFDiv||window._testerFType||window._testerFSts)?`<button class="btn btn-o sm" onclick="window._testerFDiv='';window._testerFType='';window._testerFSts='';showPage('testers')">✕ Clear</button>`:''}
   </div></div>
-  <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>ID</th><th>Type</th><th>Serial</th><th>Status</th><th>QA</th><th>Active</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
-  <tbody>${ts.length?ts.map((t,i)=>{const realI=allTs.indexOf(t);
+  ${(()=>{
+    const fDiv=window._testerFDiv||'';
+    const fType=window._testerFType||'';
+    const fSts=window._testerFSts||'';
+    let filtered=ts;
+    if(fDiv) filtered=filtered.filter(t=>(t.division||'')=== fDiv);
+    if(fType) filtered=filtered.filter(t=>(t.type||'')===fType);
+    if(fSts) filtered=filtered.filter(t=>(t.status||'')===fSts);
+    if((window._testerView||'table')==='kanban') return _bTesterKanban(filtered,allTs);
+    return `<div class="card" style="padding:0"><div class="tw"><table>
+  <thead><tr><th>ID</th><th>Division</th><th>Type</th><th>Serial</th><th>Status</th><th>QA</th><th>Active</th><th>Vehicle</th><th>Customer</th><th>Drop Date</th><th></th></tr></thead>
+  <tbody>${filtered.length?filtered.map((t)=>{const realI=allTs.indexOf(t);
     const qaFlag=t.type==='Electronic'?_xcGetDeviceFlag(t.id):null;
     return`<tr style="opacity:${t.active===false||t.active==='Inactive'?0.55:1}${qaFlag&&qaFlag.flag==='needs_cal'?';background:#fff5f5':''}">
     <td style="font-family:'DM Sans',sans-serif;font-weight:700;color:var(--navy)">${t.id}</td>
+    <td style="font-size:12px;color:var(--muted)">${esc(t.division||'—')}</td>
     <td>${bx(t.type,t.type==='Electronic'?'bb':'bn')}</td>
     <td style="font-family:'DM Sans',sans-serif;font-size:12px">${t.serial||'—'}</td>
     <td>${bx(t.status,tc(t.status))}</td>
@@ -6377,8 +6417,8 @@ function _bTestTracker(){
       <button class="btn sm btn-o" onclick="oUpdTest(${realI})">Update</button>
       <button class="btn sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="delTest(${realI})">Delete</button>
     </td>
-  </tr>`;}).join(''):`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">No testers found</td></tr>`}
-  </tbody></table></div></div>`;
+  </tr>`;}).join(''):`<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">No testers found</td></tr>`}
+  </tbody></table></div></div>`;})()}
 }
 
 // ─── CALIBRATION LOG ─────────────────────────────────────────────────────────
@@ -6626,19 +6666,37 @@ function oAddTest(){
     <div class="fl"><label>Type</label><select id="at1"><option>Electronic</option><option>Charcoal</option></select></div>
     <div class="fl"><label>Serial</label><input id="at2" placeholder="SN-XX-000"></div>
   </div><div class="fr">
-    <div class="fl"><label>Status</label><select id="at3"><option>At Warehouse</option><option>At Customer</option><option>In Transit</option></select></div>
+    <div class="fl"><label>Division</label><select id="at-div">
+      <option value="">— Select Division —</option>
+      <option>Brookfield Warehouse</option>
+      <option>Green Bay Warehouse</option>
+      <option>Colorado Warehouse</option>
+      <option>Commercial</option>
+    </select></div>
+    <div class="fl"><label>Status</label><select id="at3">
+      <option>At Office</option>
+      <option>With Technician</option>
+      <option>Waiting to Deploy</option>
+      <option>At Customer / Needs Pick-Up</option>
+      <option>In Calibration</option>
+      <option>Lost / Unknown</option>
+    </select></div>
+    <div class="fl"><label>Active</label><select id="at-active"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+  </div><div class="fr">
     <div class="fl"><label>Vehicle</label><select id="at4"><option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option>${x}</option>`).join('')}</select></div>
+    <div class="fl"><label>Customer</label><input id="at6" placeholder="Last, First"></div>
     <div class="fl"><label>Drop Date</label><input type="date" id="at5" value="${td()}"></div>
   </div><div class="fr">
-    <div class="fl"><label>Customer</label><input id="at6" placeholder="Last, First"></div>
-    <div class="fl"><label>Address</label><input id="at7"></div>
-    <div class="fl"><label>Active</label><select id="at-active"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+    <div class="fl" style="flex:1"><label>Address</label><input id="at7"></div>
+  </div><div class="fr">
+    <div class="fl" style="flex:1"><label>Notes</label><textarea id="at-notes" rows="2" style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical" placeholder="e.g. FOR DUKE &amp; PAT HOHLSTEIN FOR 4/15. TONY PICKING UP ON 4/20"></textarea></div>
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svTest()">Add</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
 }
 async function svTest(){
   const activeVal=v('at-active')||'Active';
   const t={id:v('at0'),type:v('at1'),serial:v('at2'),status:v('at3'),vehicle:v('at4'),
+    division:v('at-div')||null,notes:v('at-notes')||null,
     customer:v('at6'),address:v('at7'),dropDate:v('at5'),active:activeVal!=='Inactive',created_at:new Date().toISOString()};
   if(!t.id){tst('ID required','error');return}
   // Save to Supabase — map local field names to DB column names
@@ -6646,7 +6704,9 @@ async function svTest(){
     tester_id:t.id,
     tester_type:t.type||null,
     serial_number:t.serial||null,
-    status:t.status||'At Warehouse',
+    status:t.status||'At Office',
+    division:t.division||null,
+    notes:t.notes||null,
     vehicle:t.vehicle||null,
     customer:t.customer||null,
     address:t.address||null,
@@ -6731,14 +6791,20 @@ function oUpdTest(i){
     <div class="fl"><label>Serial #</label><input id="ut-serial" value="${esc(t.serial||'')}" placeholder="SN-XX-000"></div>
   </div>
   <div class="fr">
-    <div class="fl"><label>Status</label><select id="ut0">
-      <option${t.status==='At Customer'?' selected':''}>At Customer</option>
-      <option${t.status==='In Transit'?' selected':''}>In Transit</option>
-      <option${t.status==='At Warehouse'?' selected':''}>At Warehouse</option>
-      <option${t.status==='Lost'?' selected':''}>Lost</option>
+    <div class="fl"><label>Division</label><select id="ut-div">
+      <option value="">— Select Division —</option>
+      <option${(t.division||'')==='Brookfield Warehouse'?' selected':''}>Brookfield Warehouse</option>
+      <option${(t.division||'')==='Green Bay Warehouse'?' selected':''}>Green Bay Warehouse</option>
+      <option${(t.division||'')==='Colorado Warehouse'?' selected':''}>Colorado Warehouse</option>
+      <option${(t.division||'')==='Commercial'?' selected':''}>Commercial</option>
     </select></div>
-    <div class="fl"><label>Vehicle</label><select id="ut1">
-      <option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option${t.vehicle===x?' selected':''}>${x}</option>`).join('')}
+    <div class="fl"><label>Status</label><select id="ut0">
+      <option${(t.status==='At Office'||t.status==='At Warehouse')?' selected':''}>At Office</option>
+      <option${t.status==='With Technician'?' selected':''}>With Technician</option>
+      <option${t.status==='Waiting to Deploy'?' selected':''}>Waiting to Deploy</option>
+      <option${(t.status==='At Customer / Needs Pick-Up'||t.status==='At Customer'||t.status==='In Transit')?' selected':''}>At Customer / Needs Pick-Up</option>
+      <option${t.status==='In Calibration'?' selected':''}>In Calibration</option>
+      <option${(t.status==='Lost / Unknown'||t.status==='Lost')?' selected':''}>Lost / Unknown</option>
     </select></div>
     <div class="fl"><label>Active</label><select id="ut-active">
       <option value="Active"${t.active!==false&&t.active!=='Inactive'?' selected':''}>Active</option>
@@ -6746,8 +6812,17 @@ function oUpdTest(i){
     </select></div>
   </div>
   <div class="fr">
+    <div class="fl"><label>Vehicle</label><select id="ut1">
+      <option value="">&#8212; None &#8212;</option>${VH.map(x=>`<option${t.vehicle===x?' selected':''}>${x}</option>`).join('')}
+    </select></div>
     <div class="fl"><label>Customer</label><input id="ut2" value="${esc(t.customer||'')}"></div>
-    <div class="fl"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
+    <div class="fl"><label>Drop Date</label><input type="date" id="ut-drop" value="${esc(t.dropDate||'')}"></div>
+  </div>
+  <div class="fr">
+    <div class="fl" style="flex:1"><label>Address</label><input id="ut3" value="${esc(t.address||'')}"></div>
+  </div>
+  <div class="fr">
+    <div class="fl" style="flex:1"><label>Notes</label><textarea id="ut-notes" rows="2" style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical">${esc(t.notes||'')}</textarea></div>
   </div>
   <div class="br2"><button class="btn btn-n" onclick="svUpdTest(${i})">Save</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>
   ${histHTML}`);
@@ -6758,9 +6833,10 @@ async function svUpdTest(i){
   const activeVal=v('ut-active')||'Active';
   const newId=v('ut-id').trim()||t.id;
   t.id=newId;t.type=v('ut-type');t.serial=v('ut-serial').trim()||null;
-  t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');t.active=activeVal!=='Inactive';
+  t.division=v('ut-div')||null;t.notes=v('ut-notes')||null;
+  t.status=v('ut0');t.vehicle=v('ut1');t.customer=v('ut2');t.address=v('ut3');t.dropDate=v('ut-drop')||t.dropDate||null;t.active=activeVal!=='Inactive';
   S.set('lhs:ts',ts);
-  const updates={tester_id:t.id,tester_type:t.type,serial_number:t.serial||null,status:t.status,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,active:t.active,updated_at:new Date().toISOString()};
+  const updates={tester_id:t.id,tester_type:t.type,serial_number:t.serial||null,status:t.status,division:t.division||null,notes:t.notes||null,vehicle:t.vehicle||null,customer:t.customer||null,address:t.address||null,drop_date:t.dropDate||null,active:t.active,updated_at:new Date().toISOString()};
   try{
     // Use _supaId (real UUID primary key) if available — handles records where tester_id was wrong
     let q=DB.from('lhs_testers').update(updates);
@@ -8456,12 +8532,56 @@ async function delRadonQA(id){
   tst('Record deleted','info');showPage('testers');
 }
 
+// ─── TESTER KANBAN VIEW ───────────────────────────────────────────────────────
+function _bTesterKanban(testers,allTs){
+  const COLS=[
+    {key:'At Office',label:'At Office',color:'#1b5e20',bg:'#e8f5e9'},
+    {key:'With Technician',label:'With Technician',color:'#1565c0',bg:'#e3f2fd'},
+    {key:'Waiting to Deploy',label:'Waiting to Deploy',color:'#e65100',bg:'#fff3e0'},
+    {key:'At Customer / Needs Pick-Up',label:'At Customer / Needs Pick-Up',color:'#6a1b9a',bg:'#f3e5f5'},
+    {key:'In Calibration',label:'In Calibration',color:'#004d40',bg:'#e0f2f1'},
+    {key:'Lost / Unknown',label:'Lost / Unknown',color:'#b71c1c',bg:'#ffebee'},
+  ];
+  // also bucket legacy status values
+  const bucket=s=>{
+    if(s==='At Warehouse')return 'At Office';
+    if(s==='At Customer'||s==='In Transit')return 'At Customer / Needs Pick-Up';
+    if(s==='Lost')return 'Lost / Unknown';
+    return s;
+  };
+  const cols=COLS.map(c=>({...c,items:testers.filter(t=>bucket(t.status||'')=== c.key)}));
+  const colHTML=cols.map(c=>`
+    <div style="flex:0 0 240px;min-width:220px;max-width:260px">
+      <div style="background:${c.bg};border-radius:8px 8px 0 0;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:700;font-size:13px;color:${c.color}">${c.label}</span>
+        <span style="background:${c.color};color:#fff;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700">${c.items.length}</span>
+      </div>
+      <div style="background:#f8f9fa;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;min-height:120px;padding:8px;display:flex;flex-direction:column;gap:8px">
+        ${c.items.length?c.items.map(t=>{
+          const realI=allTs.indexOf(t);
+          const qaFlag=t.type==='Electronic'?_xcGetDeviceFlag(t.id):null;
+          return`<div style="background:#fff;border-radius:7px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border:1px solid #e8e8e8;cursor:pointer" onclick="oUpdTest(${realI})">
+            <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:3px">${esc(t.id)}</div>
+            ${t.division?`<div style="font-size:11px;color:#6b7280;margin-bottom:4px">📍 ${esc(t.division)}</div>`:''}
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">S/N: ${esc(t.serial||'—')}</div>
+            ${t.vehicle?`<div style="font-size:11px;color:#374151;margin-bottom:3px">🚗 ${esc(t.vehicle)}</div>`:''}
+            ${t.customer?`<div style="font-size:11px;color:#374151;font-weight:500;margin-bottom:3px">👤 ${esc(t.customer)}</div>`:''}
+            ${t.notes?`<div style="font-size:11px;color:#374151;margin-top:5px;padding-top:5px;border-top:1px solid #f0f0f0;line-height:1.4">${esc(t.notes)}</div>`:''}
+            ${t.dropDate?`<div style="font-size:10px;color:var(--muted);margin-top:4px">📅 ${t.dropDate}</div>`:''}
+            ${qaFlag?`<div style="margin-top:5px">${qaFlag.badge}</div>`:''}
+          </div>`;
+        }).join(''):`<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px">No testers</div>`}
+      </div>
+    </div>`).join('');
+  return`<div style="overflow-x:auto;padding-bottom:12px"><div style="display:flex;gap:12px;min-width:max-content;padding:4px 2px">${colHTML}</div></div>`;
+}
+
 // ─── TESTER CSV IMPORT ───────────────────────────────────────────────────────
 function oImportTesters(){
   oMod('Import Testers from CSV',`
   <div style="background:#f0f4ff;border:1px solid #c5d3f7;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
     <div style="font-weight:600;margin-bottom:6px">📋 Required CSV columns (first row must be headers):</div>
-    <div style="font-family:monospace;font-size:12px;color:var(--navy)">tester_id, type, serial, status, active</div>
+    <div style="font-family:monospace;font-size:12px;color:var(--navy)">tester_id, type, serial, status, active, division, notes</div>
     <div style="color:var(--muted);margin-top:6px;font-size:12px">
       • <b>tester_id</b>: e.g. CRM-0001 (required)<br>
       • <b>type</b>: Electronic or Charcoal (required)<br>
@@ -8486,7 +8606,7 @@ function oImportTesters(){
 }
 
 function downloadTesterTemplate(){
-  const csv='tester_id,type,serial,status,active\nCRM-0001,Electronic,SN-EL-001,At Warehouse,true\nCRM-0002,Charcoal,SN-CH-001,At Warehouse,true';
+  const csv='tester_id,type,serial,status,active,division,notes\nCRM-0001,Electronic,SN-EL-001,At Office,true,Brookfield Warehouse,\nCRM-0002,Charcoal,SN-CH-001,At Office,true,Green Bay Warehouse,';
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download='tester_import_template.csv';a.click();
@@ -8502,9 +8622,11 @@ function _parseTesterCSV(text){
   const serialIdx=headers.indexOf('serial');
   const statusIdx=headers.indexOf('status');
   const activeIdx=headers.indexOf('active');
+  const divIdx=headers.indexOf('division');
+  const notesIdx=headers.indexOf('notes');
   if(idIdx<0||typeIdx<0) return{rows:[],errors:['CSV must have "tester_id" and "type" columns.']};
   const VALID_TYPES=['Electronic','Charcoal'];
-  const VALID_STATUS=['At Warehouse','At Customer','In Transit','Lost'];
+  const VALID_STATUS=['At Office','At Warehouse','With Technician','Waiting to Deploy','At Customer / Needs Pick-Up','At Customer','In Calibration','Lost / Unknown','In Transit','Lost'];
   const rows=[];const errors=[];
   for(let i=1;i<lines.length;i++){
     const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
@@ -8516,7 +8638,9 @@ function _parseTesterCSV(text){
     const status=VALID_STATUS.includes(rawStatus)?rawStatus:'At Warehouse';
     const rawActive=activeIdx>=0?(cols[activeIdx]||'').trim().toLowerCase():'true';
     const active=rawActive!=='false'&&rawActive!=='0'&&rawActive!=='no';
-    rows.push({id:tid,type:typ||'Electronic',serial:serialIdx>=0?(cols[serialIdx]||'').trim()||null:null,status,active});
+    const division=divIdx>=0?(cols[divIdx]||'').trim()||null:null;
+    const notes=notesIdx>=0?(cols[notesIdx]||'').trim()||null:null;
+    rows.push({id:tid,type:typ||'Electronic',serial:serialIdx>=0?(cols[serialIdx]||'').trim()||null:null,status,active,division,notes});
   }
   return{rows,errors};
 }
@@ -8584,16 +8708,29 @@ async function importTesterCSV(){
   const now=new Date().toISOString();
   let ok=0,fail=0;
   const localTs=S.get('lhs:ts')||[];
+  const existingDevs=S.get('lhs:cal_devices')||[];
   for(const r of rows){
-    const dbRow={tester_id:r.id,tester_type:r.type,serial_number:r.serial||null,status:r.status,active:r.active,created_at:now};
+    const dbRow={tester_id:r.id,tester_type:r.type,serial_number:r.serial||null,status:r.status,division:r.division||null,notes:r.notes||null,active:r.active,created_at:now};
     try{
       const{data,error}=await DB.from('lhs_testers').insert(dbRow).select().single();
       if(error) throw new Error(error.message);
-      localTs.push({_supaId:data.id,id:r.id,type:r.type,serial:r.serial||null,status:r.status,active:r.active,created_at:now});
+      localTs.push({_supaId:data.id,id:r.id,type:r.type,serial:r.serial||null,status:r.status,division:r.division||null,notes:r.notes||null,active:r.active,created_at:now});
       ok++;
+      // Auto-create matching Calibration Log device if not already present
+      const alreadyExists=existingDevs.find(d=>d.crm_id===r.id||(r.serial&&d.serial_number===r.serial));
+      if(!alreadyExists){
+        const calDev={crm_id:r.id,serial_number:r.serial||null,status:'Active',
+          region:null,state:null,purchase_date:null,purchase_price:null,
+          calibration_cost:null,last_calibrated:null,cal_due:null,
+          calibration_dates:{},created_at:now,updated_at:now};
+        const calSaved=await dbInsert('lhs:cal_devices',calDev).catch(()=>null);
+        const finalCal=calSaved||{...calDev,id:'cd_'+Date.now()+'_'+r.id};
+        existingDevs.push(finalCal);
+      }
     }catch(e){console.warn('Import row failed:',r.id,e.message);fail++;}
   }
   S.set('lhs:ts',localTs);
+  S.set('lhs:cal_devices',existingDevs);
   window._testerImportRows=[];
   cMod();
   tst(`Imported ${ok} tester${ok!==1?'s':''}${fail?` (${fail} failed — check console)`:''}`,'success');
@@ -17775,6 +17912,10 @@ async function stSyncOneCustomer(stCustId){
       const wos=S.get('lhs:work_orders')||[];const wi=wos.findIndex(w=>w.st_job_id===stJobId);
       if(wi>=0)wos[wi]={...wos[wi],...woRow,id:woId};else wos.unshift({...woRow,id:woId});
       S.set('lhs:work_orders',wos);
+
+      // Clear existing ST-imported data before re-inserting (prevents duplicates on re-sync)
+      await DB.from('lhs_appointments').delete().eq('wo_id',woId).eq('created_by','ServiceTitan Import').catch(()=>{});
+      await DB.from('lhs_wo_notes').delete().eq('wo_id',woId).eq('note_type','ServiceTitan').catch(()=>{});
 
       // Notes
       try{
