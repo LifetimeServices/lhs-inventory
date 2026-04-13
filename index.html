@@ -36503,6 +36503,8 @@ async function _acctLoad(){
       }
     }catch(e){console.warn('_acctLoad fetch:',e.message);}
   }
+  // Exclude ServiceTitan-imported customers — they are work order customers, not CRM accounts
+  customers=customers.filter(c=>!c.st_customer_id);
   const opps=S.get('lhs:opportunities')||[];
   const activities=S.get('lhs:activities')||[];
   const leads=S.get('lhs:leads')||[];
