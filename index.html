@@ -1948,7 +1948,7 @@ async function warmCache(){
       const{data:asRows}=await DB.from('lhs_app_settings').select('key,value');
       if(asRows&&asRows.length){
         // groq/endpoint use S.set (read via S.get); dtc/imx use localStorage directly (read via localStorage.getItem)
-        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint',brevo_api_key:'lhs:brevo_api_key',brevo_sender_email:'lhs:brevo_sender_email',brevo_sender_name:'lhs:brevo_sender_name',st_client_id:'lhs:st_client_id',st_client_secret:'lhs:st_client_secret',st_tenant_id:'lhs:st_tenant_id'};
+        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint',brevo_api_key:'lhs:brevo_api_key',brevo_sender_email:'lhs:brevo_sender_email',brevo_sender_name:'lhs:brevo_sender_name',st_app_key:'lhs:st_app_key',st_client_id:'lhs:st_client_id',st_client_secret:'lhs:st_client_secret',st_tenant_id:'lhs:st_tenant_id'};
         const lsKeyMap={dtc_key:'lhs:dtc_key',dtc_sub:'lhs:dtc_sub',imx_acct:'lhs:imx_acct',imx_key:'lhs:imx_key'};
         asRows.forEach(r=>{
           if(sKeyMap[r.key]) S.set(sKeyMap[r.key],r.value);
@@ -10447,14 +10447,19 @@ function bInt(){
         </div>
       </div>
       <div class="id2">One-time migration of all ServiceTitan data into LHS — customers, job history, notes, appointments, payments, and photos. Photos are uploaded to Cloudflare permanently and no longer depend on ServiceTitan.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         <div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client ID (Application Key)</div>
-          <input id="st-client-id" type="password" value="${esc(S.get('lhs:st_client_id')||'')}" placeholder="Application Key from ST Developer Portal" autocomplete="off"
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Application Key <span style="color:var(--teal)">(ST-App-Key header)</span></div>
+          <input id="st-app-key" type="password" value="${esc(S.get('lhs:st_app_key')||'')}" placeholder="Application Key from app details page" autocomplete="off"
             style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
         </div>
         <div>
-          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client Secret</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client ID <span style="color:var(--teal)">(OAuth — from View Connections)</span></div>
+          <input id="st-client-id" type="password" value="${esc(S.get('lhs:st_client_id')||'')}" placeholder="Client ID from View Connections" autocomplete="off"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client Secret <span style="color:var(--teal)">(OAuth — from View Connections)</span></div>
           <input id="st-client-secret" type="password" value="${esc(S.get('lhs:st_client_secret')||'')}" placeholder="Client Secret from View Connections" autocomplete="off"
             style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
         </div>
@@ -17520,14 +17525,17 @@ function saveGroqKey(){
   showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
 }
 function saveSTCredentials(){
+  const appKey=(document.getElementById('st-app-key')?.value||'').trim();
   const cid=(document.getElementById('st-client-id')?.value||'').trim();
   const csec=(document.getElementById('st-client-secret')?.value||'').trim();
   const tid=(document.getElementById('st-tenant-id')?.value||'').trim();
-  if(!cid||!csec||!tid){tst('All three fields are required','error');return;}
+  if(!appKey||!cid||!csec||!tid){tst('All four fields are required','error');return;}
+  S.set('lhs:st_app_key',appKey);
   S.set('lhs:st_client_id',cid);
   S.set('lhs:st_client_secret',csec);
   S.set('lhs:st_tenant_id',tid);
   try{
+    DB.from('lhs_app_settings').upsert({key:'st_app_key',value:appKey},{onConflict:'key'}).then(()=>{}).catch(()=>{});
     DB.from('lhs_app_settings').upsert({key:'st_client_id',value:cid},{onConflict:'key'}).then(()=>{}).catch(()=>{});
     DB.from('lhs_app_settings').upsert({key:'st_client_secret',value:csec},{onConflict:'key'}).then(()=>{}).catch(()=>{});
     DB.from('lhs_app_settings').upsert({key:'st_tenant_id',value:tid},{onConflict:'key'}).then(()=>{}).catch(()=>{});
@@ -17594,10 +17602,10 @@ async function _stGetToken(){
 }
 
 async function _stApiFetch(token,url){
-  const cid=S.get('lhs:st_client_id')||'';
+  const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
   // Route through proxy — replace https://api.servicetitan.io with proxy path
   const proxyUrl=url.replace('https://api.servicetitan.io',`${ST_PROXY}/st-api`);
-  const resp=await fetch(proxyUrl,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':cid}});
+  const resp=await fetch(proxyUrl,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
   if(resp.status===404)return{data:[]};
   if(!resp.ok){const t=await resp.text();throw new Error(`ST API ${resp.status}: ${t.slice(0,100)}`);}
   return resp.json();
