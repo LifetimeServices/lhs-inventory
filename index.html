@@ -17780,23 +17780,26 @@ async function stSyncOneCustomer(stCustId){
       try{
         const nd=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/notes`);
         const nl=(nd.data||nd.items||nd||[]);
+        log(`  Job ${j.id}: ${nl.length} notes found`);
         for(const n of nl){
           const txt=n.text||n.body||n.content||'';if(!txt)continue;
           const{error:nErr}=await DB.from('lhs_wo_notes').insert({wo_id:woId,note_text:txt,
             created_by:n.createdBy?.name||'ServiceTitan',is_internal:false,note_type:'ServiceTitan',
             created_at:n.createdOn||new Date().toISOString()});
-          if(!nErr)notesSaved++;
+          if(!nErr)notesSaved++;else log(`    Note error: ${nErr.message}`);
         }
-      }catch(e){/*no notes endpoint*/}
+      }catch(e){log(`  Notes error job ${j.id}: ${e.message}`);}
 
-      // Appointments (embedded in job data)
+      // Appointments — fetch via separate endpoint (not embedded in job list)
       try{
-        const aptList=j.appointments||[];
+        const ad=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/appointments?jobId=${j.id}&pageSize=50`);
+        const aptList=ad.data||ad.items||[];
+        log(`  Job ${j.id}: ${aptList.length} appointments found`);
         for(const a of aptList){
-          const aptDate=a.scheduledDate||a.start||null;
+          const aptDate=a.start||a.scheduledDate||null;
           const aptRow={wo_id:woId,scheduled_date:aptDate?aptDate.slice(0,10):null,
             scheduled_time:aptDate&&aptDate.length>10?aptDate.slice(11,16):null,
-            estimated_duration:a.estimatedDuration||60,
+            estimated_duration:a.duration||a.estimatedDuration||60,
             status:a.status==='Done'?'Completed':(a.status||'Completed'),
             created_by:'ServiceTitan Import',created_at:a.createdOn||new Date().toISOString()};
           const{data:savedApt,error:aErr}=await DB.from('lhs_appointments').insert(aptRow).select().single();
@@ -17806,20 +17809,22 @@ async function stSyncOneCustomer(stCustId){
               await DB.from('lhs_apt_techs').insert({appointment_id:savedApt.id,wo_id:woId,
                 tech_name:t.name||'Unknown',status:'Completed',created_at:new Date().toISOString()}).catch(()=>{});
             }
-          }
+          }else if(aErr){log(`    Apt error: ${aErr.message}`);}
         }
-      }catch(e){/*skip*/}
+      }catch(e){log(`  Appointments error job ${j.id}: ${e.message}`);}
 
       // Photos
       try{
         const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);
-        const atts=(attData.data||attData||[]).filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test(a.filename||a.url||''));
+        const allAtts=attData.data||attData.items||attData||[];
+        log(`  Job ${j.id}: ${allAtts.length} attachments found`);
+        const atts=allAtts.filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test(a.filename||a.url||''));
         for(const att of atts){
           try{
             const src=att.url||att.downloadUrl;
             const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
             const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
-            if(!imgR.ok)continue;
+            if(!imgR.ok){log(`    Photo fetch ${imgR.status}: ${att.filename||src.slice(-30)}`);continue;}
             const blob=await imgR.blob();
             const fname=att.filename||`st_${att.id||Date.now()}.jpg`;
             const up=await lhsUploadFile(new File([blob],fname,{type:blob.type||'image/jpeg'}),`st-migration/${stCustId}/${j.id}/${fname}`);
