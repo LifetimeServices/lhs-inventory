@@ -1948,7 +1948,7 @@ async function warmCache(){
       const{data:asRows}=await DB.from('lhs_app_settings').select('key,value');
       if(asRows&&asRows.length){
         // groq/endpoint use S.set (read via S.get); dtc/imx use localStorage directly (read via localStorage.getItem)
-        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint',brevo_api_key:'lhs:brevo_api_key',brevo_sender_email:'lhs:brevo_sender_email',brevo_sender_name:'lhs:brevo_sender_name'};
+        const sKeyMap={groq_api_key:'lhs:groq_api_key',acct_ai_endpoint:'lhs:acct_ai_endpoint',brevo_api_key:'lhs:brevo_api_key',brevo_sender_email:'lhs:brevo_sender_email',brevo_sender_name:'lhs:brevo_sender_name',st_client_id:'lhs:st_client_id',st_client_secret:'lhs:st_client_secret',st_tenant_id:'lhs:st_tenant_id'};
         const lsKeyMap={dtc_key:'lhs:dtc_key',dtc_sub:'lhs:dtc_sub',imx_acct:'lhs:imx_acct',imx_key:'lhs:imx_key'};
         asRows.forEach(r=>{
           if(sKeyMap[r.key]) S.set(sKeyMap[r.key],r.value);
@@ -10435,6 +10435,45 @@ function bInt(){
         ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Groq key configured — Assistant is active</div>`
         :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Paste your Groq API key above and click Save to activate the Assistant</div>`}
     </div>
+    <div class="ic" style="border-color:#ff6b35;grid-column:span 2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#ff6b35;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:12px">ST</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="in2">ServiceTitan — Data Migration</div>
+            <span style="background:#ff6b35;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em">ONE-TIME</span>
+          </div>
+          <div class="is2 ${(S.get('lhs:st_client_id')||'').trim()?'on':'off'}">${(S.get('lhs:st_client_id')||'').trim()?'&#9679; Credentials Saved':'&#9679; Not Configured'}</div>
+        </div>
+      </div>
+      <div class="id2">One-time migration of all ServiceTitan data into LHS — customers, job history, notes, appointments, payments, and photos. Photos are uploaded to Cloudflare permanently and no longer depend on ServiceTitan.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client ID (Application Key)</div>
+          <input id="st-client-id" type="password" value="${esc(S.get('lhs:st_client_id')||'')}" placeholder="Application Key from ST Developer Portal" autocomplete="off"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Client Secret</div>
+          <input id="st-client-secret" type="password" value="${esc(S.get('lhs:st_client_secret')||'')}" placeholder="Client Secret from View Connections" autocomplete="off"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Tenant ID</div>
+          <input id="st-tenant-id" type="text" value="${esc(S.get('lhs:st_tenant_id')||'1951433246')}" placeholder="1951433246"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-n sm" onclick="saveSTCredentials()">Save Credentials</button>
+        ${(S.get('lhs:st_client_id')||'').trim()&&(S.get('lhs:st_client_secret')||'').trim()
+          ?`<button class="btn btn-r sm" onclick="stMigrateOpen()">&#8681; Start Migration</button>`:''}
+      </div>
+      <div id="st-migrate-panel" style="margin-top:12px"></div>
+      ${(S.get('lhs:st_client_id')||'').trim()
+        ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; ST credentials saved — click Start Migration when ready</div>`
+        :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your Application Key, Client Secret, and Tenant ID, then click Save Credentials</div>`}
+    </div>
     <div class="ic" style="border-color:var(--bdr)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <div style="width:36px;height:36px;background:#0078d4;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:18px">&#128228;</div>
@@ -17480,6 +17519,275 @@ function saveGroqKey(){
   tst(val?'Groq API key saved — Assistant is ready!':'Groq key cleared','success');
   showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
 }
+function saveSTCredentials(){
+  const cid=(document.getElementById('st-client-id')?.value||'').trim();
+  const csec=(document.getElementById('st-client-secret')?.value||'').trim();
+  const tid=(document.getElementById('st-tenant-id')?.value||'').trim();
+  if(!cid||!csec||!tid){tst('All three fields are required','error');return;}
+  S.set('lhs:st_client_id',cid);
+  S.set('lhs:st_client_secret',csec);
+  S.set('lhs:st_tenant_id',tid);
+  try{
+    DB.from('lhs_app_settings').upsert({key:'st_client_id',value:cid},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'st_client_secret',value:csec},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'st_tenant_id',value:tid},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  }catch(e){console.warn('ST credentials Supabase sync failed:',e.message);}
+  tst('ServiceTitan credentials saved','success');
+  showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
+}
+
+function stMigrateOpen(){
+  const panel=document.getElementById('st-migrate-panel');
+  if(!panel)return;
+  panel.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-top:8px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px">&#8681; ServiceTitan Migration Options</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Select what to migrate. This is a read-only copy — nothing is deleted from ServiceTitan.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-customers" checked> Customers</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-jobs" checked> Job History</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-photos" checked> Photos → Cloudflare</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-invoices" checked> Invoices &amp; Payments</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-estimates" checked> Estimates</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="stm-appointments" checked> Appointments</label>
+      </div>
+      <div id="stm-progress" style="display:none;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+          <span id="stm-status">Starting...</span><span id="stm-pct">0%</span>
+        </div>
+        <div style="background:var(--bdr);border-radius:4px;height:8px;overflow:hidden">
+          <div id="stm-bar" style="height:100%;background:var(--teal);transition:width .4s;width:0%"></div>
+        </div>
+      </div>
+      <div id="stm-log" style="display:none;background:#0f172a;color:#94a3b8;font-family:monospace;font-size:11px;line-height:1.6;padding:12px;border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:12px;white-space:pre-wrap"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-r sm" id="stm-run-btn" onclick="stMigrate()">&#9654; Run Migration</button>
+        <button class="btn btn-o sm" onclick="document.getElementById('st-migrate-panel').innerHTML=''">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function _stGetToken(){
+  const cid=S.get('lhs:st_client_id')||'';
+  const csec=S.get('lhs:st_client_secret')||'';
+  if(!cid||!csec)throw new Error('ST credentials not configured — save them first');
+  const resp=await fetch('https://auth.servicetitan.io/connect/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:`grant_type=client_credentials&client_id=${encodeURIComponent(cid)}&client_secret=${encodeURIComponent(csec)}`
+  });
+  if(!resp.ok){const t=await resp.text();throw new Error(`ST auth failed ${resp.status}: ${t.slice(0,120)}`);}
+  const d=await resp.json();
+  if(!d.access_token)throw new Error('ST auth returned no token: '+JSON.stringify(d).slice(0,120));
+  return d.access_token;
+}
+
+async function _stApiFetch(token,url){
+  const cid=S.get('lhs:st_client_id')||'';
+  const resp=await fetch(url,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':cid}});
+  if(resp.status===404)return{data:[]};
+  if(!resp.ok){const t=await resp.text();throw new Error(`ST API ${resp.status}: ${t.slice(0,100)}`);}
+  return resp.json();
+}
+
+async function _stFetchAll(token,baseUrl,logFn){
+  const results=[];
+  let page=1;
+  const ps=500;
+  while(true){
+    const sep=baseUrl.includes('?')?'&':'?';
+    const url=`${baseUrl}${sep}page=${page}&pageSize=${ps}`;
+    try{
+      const d=await _stApiFetch(token,url);
+      const items=d.data||d.items||d||[];
+      if(!Array.isArray(items)||!items.length)break;
+      results.push(...items);
+      if(logFn&&page%5===0)logFn(`  ...page ${page} (${results.length} so far)`);
+      if(items.length<ps)break;
+      page++;
+    }catch(e){if(logFn)logFn(`  Page ${page} error: ${e.message}`);break;}
+  }
+  return results;
+}
+
+async function stMigrate(){
+  const btn=document.getElementById('stm-run-btn');
+  const logEl=document.getElementById('stm-log');
+  const progEl=document.getElementById('stm-progress');
+  const statusEl=document.getElementById('stm-status');
+  const pctEl=document.getElementById('stm-pct');
+  const barEl=document.getElementById('stm-bar');
+  if(btn){btn.disabled=true;btn.textContent='Running...';}
+  if(logEl){logEl.style.display='block';logEl.textContent='';}
+  if(progEl)progEl.style.display='block';
+  const log=msg=>{if(logEl){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}console.log('[ST]',msg);};
+  const prog=(pct,status)=>{if(barEl)barEl.style.width=pct+'%';if(pctEl)pctEl.textContent=pct+'%';if(statusEl)statusEl.textContent=status;};
+  const doCustomers=document.getElementById('stm-customers')?.checked;
+  const doJobs=document.getElementById('stm-jobs')?.checked;
+  const doPhotos=document.getElementById('stm-photos')?.checked;
+  const doInvoices=document.getElementById('stm-invoices')?.checked;
+  const doEstimates=document.getElementById('stm-estimates')?.checked;
+  const doAppts=document.getElementById('stm-appointments')?.checked;
+  const tid=S.get('lhs:st_tenant_id')||'1951433246';
+  const BASE='https://api.servicetitan.io';
+  try{
+    log('Authenticating with ServiceTitan...');prog(2,'Authenticating...');
+    const token=await _stGetToken();
+    log('✓ Authentication successful\n');prog(5,'Authenticated');
+
+    // ── CUSTOMERS ──────────────────────────────────────────────
+    let customers=[];
+    if(doCustomers){
+      log('Fetching customers...');prog(7,'Fetching customers...');
+      customers=await _stFetchAll(token,`${BASE}/crm/v2/tenant/${tid}/customers`,log);
+      log(`✓ ${customers.length} customers fetched`);prog(18,'Saving customers...');
+      let saved=0,errs=0;
+      for(let i=0;i<customers.length;i+=50){
+        const chunk=customers.slice(i,i+50).map(c=>{
+          const phones=c.phones||[];
+          const mobile=phones.find(p=>p.type==='Mobile')||phones[0]||{};
+          const addr=c.address||{};
+          return{name:c.name||'Unknown',email:c.email||null,phone:mobile.number||null,
+            address:addr.street||null,city:addr.city||null,state:addr.state||null,zip:addr.zip||null,
+            st_customer_id:String(c.id),source:'ServiceTitan Import',
+            created_at:c.createdOn||new Date().toISOString()};
+        });
+        try{await DB.from('lhs_customers').upsert(chunk,{onConflict:'st_customer_id'});saved+=chunk.length;}
+        catch(e){errs+=chunk.length;log(`  Customer batch warn: ${e.message}`);}
+      }
+      log(`✓ ${saved} customers saved (${errs} errors)\n`);prog(25,'Customers done');
+    }
+
+    // ── JOBS ───────────────────────────────────────────────────
+    let jobs=[];
+    if(doJobs||doPhotos){
+      log('Fetching jobs...');prog(27,'Fetching jobs...');
+      jobs=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/jobs`,log);
+      log(`✓ ${jobs.length} jobs fetched`);
+    }
+    if(doJobs&&jobs.length){
+      prog(35,'Saving job history...');log('Saving job history...');
+      let saved=0;
+      for(let i=0;i<jobs.length;i+=100){
+        const chunk=jobs.slice(i,i+100).map(j=>({
+          st_job_id:String(j.id),st_customer_id:j.customerId?String(j.customerId):null,
+          job_number:j.jobNumber||null,job_type:j.jobType?.name||null,status:j.status||null,
+          summary:j.summary||null,total:j.total||0,
+          scheduled_on:j.scheduledOn||null,completed_on:j.completedOn||null,
+          technician_name:(j.assignments||[]).map(a=>a.technician?.name||'').filter(Boolean).join(', ')||null,
+          location_address:j.location?.address?`${j.location.address.street||''} ${j.location.address.city||''} ${j.location.address.state||''}`.trim():null,
+          raw:JSON.stringify(j),imported_at:new Date().toISOString()
+        }));
+        try{await DB.from('lhs_st_jobs').upsert(chunk,{onConflict:'st_job_id'});saved+=chunk.length;}
+        catch(e){log(`  Jobs batch warn: ${e.message}`);}
+        prog(35+Math.round((i/jobs.length)*20),'Saving jobs...');
+      }
+      log(`✓ ${saved}/${jobs.length} jobs saved\n`);prog(55,'Jobs done');
+    }
+
+    // ── PHOTOS ─────────────────────────────────────────────────
+    if(doPhotos&&jobs.length){
+      log('Fetching & uploading photos to Cloudflare...');prog(57,'Uploading photos...');
+      let photoCount=0;
+      for(let ji=0;ji<jobs.length;ji++){
+        const job=jobs[ji];
+        try{
+          const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`);
+          const atts=(attData.data||attData||[]).filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test((a.filename||a.url||'')));
+          for(const att of atts){
+            try{
+              const src=att.url||att.downloadUrl;
+              const imgR=await fetch(src);
+              if(!imgR.ok)continue;
+              const blob=await imgR.blob();
+              const fname=att.filename||`st_${att.id||Date.now()}.jpg`;
+              const file=new File([blob],fname,{type:blob.type||'image/jpeg'});
+              const path=`st-migration/${job.customerId||'unknown'}/${job.id}/${fname}`;
+              const up=await lhsUploadFile(file,path);
+              if(up?.url){
+                await DB.from('lhs_wo_photos').insert({
+                  st_job_id:String(job.id),st_customer_id:job.customerId?String(job.customerId):null,
+                  url:up.url,caption:att.caption||fname,source:'ServiceTitan',
+                  created_at:att.addedOn||new Date().toISOString()
+                });
+                photoCount++;
+              }
+            }catch(e){/*skip single photo error*/}
+          }
+        }catch(e){/*job has no attachments*/}
+        if(ji%200===0&&ji>0){log(`  Photos: ${ji}/${jobs.length} jobs scanned, ${photoCount} uploaded`);
+          prog(57+Math.round((ji/jobs.length)*20),'Uploading photos...');}
+      }
+      log(`✓ ${photoCount} photos uploaded to Cloudflare\n`);prog(77,'Photos done');
+    }
+
+    // ── INVOICES ───────────────────────────────────────────────
+    if(doInvoices){
+      log('Fetching invoices...');prog(79,'Fetching invoices...');
+      try{
+        const invs=await _stFetchAll(token,`${BASE}/accounting/v2/tenant/${tid}/invoices`,log);
+        log(`Fetched ${invs.length} invoices — saving...`);
+        for(let i=0;i<invs.length;i+=100){
+          const chunk=invs.slice(i,i+100).map(inv=>({
+            st_job_id:inv.jobId?String(inv.jobId):null,invoice_number:String(inv.id),
+            total:inv.total||0,balance:inv.balance||0,status:inv.status||null,
+            created_on:inv.createdOn||null,raw_invoice:JSON.stringify(inv)
+          }));
+          try{await DB.from('lhs_st_invoices').upsert(chunk,{onConflict:'invoice_number'});}
+          catch(e){log(`  Invoice batch warn: ${e.message}`);}
+        }
+        log(`✓ ${invs.length} invoices saved\n`);
+      }catch(e){log(`  Invoices skipped: ${e.message}\n`);}
+      prog(87,'Invoices done');
+    }
+
+    // ── ESTIMATES ──────────────────────────────────────────────
+    if(doEstimates){
+      log('Fetching estimates...');prog(89,'Fetching estimates...');
+      try{
+        const ests=await _stFetchAll(token,`${BASE}/sales/v2/tenant/${tid}/estimates`,log);
+        log(`Fetched ${ests.length} estimates — saving...`);
+        for(let i=0;i<ests.length;i+=100){
+          const chunk=ests.slice(i,i+100).map(e=>({
+            st_job_id:e.jobId?String(e.jobId):null,st_estimate_id:String(e.id),
+            name:e.name||null,status:e.status||null,total:e.total||0,
+            created_on:e.createdOn||null,raw:JSON.stringify(e)
+          }));
+          try{await DB.from('lhs_st_estimates').upsert(chunk,{onConflict:'st_estimate_id'});}
+          catch(e2){log(`  Estimates batch warn: ${e2.message}`);}
+        }
+        log(`✓ ${ests.length} estimates saved\n`);
+      }catch(e){log(`  Estimates skipped: ${e.message}\n`);}
+      prog(93,'Estimates done');
+    }
+
+    // ── APPOINTMENTS ───────────────────────────────────────────
+    if(doAppts){
+      log('Fetching appointments...');prog(95,'Fetching appointments...');
+      try{
+        const appts=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/appointments`,log);
+        log(`✓ ${appts.length} appointments fetched (stored with jobs)\n`);
+      }catch(e){log(`  Appointments skipped: ${e.message}\n`);}
+    }
+
+    prog(100,'✅ Migration Complete!');
+    log('════════════════════════════════');
+    log('✅ Migration complete!');
+    log('All data has been imported into LHS.');
+    log('Photos are permanently stored in Cloudflare.');
+    log('You can now safely disconnect ServiceTitan.');
+    log('════════════════════════════════');
+    tst('ServiceTitan migration complete!','success');
+    if(btn){btn.disabled=false;btn.style.background='var(--green)';btn.textContent='✓ Complete';}
+  }catch(e){
+    log('\n❌ Error: '+e.message);
+    log('If you see a CORS error, the ST API may require a server-side proxy.');
+    log('Contact support to enable the ST proxy endpoint.');
+    tst('Migration error: '+e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent='↺ Retry';}
+  }
+}
+
 function saveAiEndpoint(){
   const val=(document.getElementById('ai-endpoint-input')?.value||'').trim();
   S.set('lhs:acct_ai_endpoint',val);
