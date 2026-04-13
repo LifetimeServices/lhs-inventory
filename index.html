@@ -17576,11 +17576,13 @@ function stMigrateOpen(){
     </div>`;
 }
 
+const ST_PROXY='https://lhs-r2-proxy.george-a3e.workers.dev';
+
 async function _stGetToken(){
   const cid=S.get('lhs:st_client_id')||'';
   const csec=S.get('lhs:st_client_secret')||'';
   if(!cid||!csec)throw new Error('ST credentials not configured — save them first');
-  const resp=await fetch('https://auth.servicetitan.io/connect/token',{
+  const resp=await fetch(`${ST_PROXY}/st-auth`,{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body:`grant_type=client_credentials&client_id=${encodeURIComponent(cid)}&client_secret=${encodeURIComponent(csec)}`
@@ -17593,7 +17595,9 @@ async function _stGetToken(){
 
 async function _stApiFetch(token,url){
   const cid=S.get('lhs:st_client_id')||'';
-  const resp=await fetch(url,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':cid}});
+  // Route through proxy — replace https://api.servicetitan.io with proxy path
+  const proxyUrl=url.replace('https://api.servicetitan.io',`${ST_PROXY}/st-api`);
+  const resp=await fetch(proxyUrl,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':cid}});
   if(resp.status===404)return{data:[]};
   if(!resp.ok){const t=await resp.text();throw new Error(`ST API ${resp.status}: ${t.slice(0,100)}`);}
   return resp.json();
