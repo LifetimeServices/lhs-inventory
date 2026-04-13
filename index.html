@@ -43304,16 +43304,22 @@ async function applyWOFilters(){
   if(newFilters.search){
     try{
       const words=[...new Set(newFilters.search.trim().split(/\s+/).filter(w=>w.length>0))];
-      const clauses=words.flatMap(w=>[
-        `customer_name.ilike.%${w}%`,
-        `wo_number.ilike.%${w}%`,
-        `customer_address.ilike.%${w}%`,
-        `customer_city.ilike.%${w}%`,
-      ]);
-      const{data,error}=await DB.from('lhs_work_orders').or(clauses.join(',')).limit(200);
-      console.log('[WO Search] clauses:',clauses.join(','));
-      console.log('[WO Search] results:',data?.length,'error:',error?.message);
-      if(data?.length) console.log('[WO Search] first result:',JSON.stringify(data[0]));
+      const fullTerm=newFilters.search.trim();
+      // Try direct ilike on customer_name first (most reliable for name searches)
+      let{data,error}=await DB.from('lhs_work_orders').select('*')
+        .ilike('customer_name',`%${fullTerm}%`).limit(200);
+      console.log('[WO Search] ilike customer_name "%'+fullTerm+'%": results=',data?.length,'error=',error?.message);
+      // If no results, try word-by-word OR across all fields
+      if(!data?.length){
+        const clauses=words.flatMap(w=>[
+          `customer_name.ilike.*${w}*`,`wo_number.ilike.*${w}*`,
+          `customer_address.ilike.*${w}*`,`customer_city.ilike.*${w}*`,
+        ]);
+        const r2=await DB.from('lhs_work_orders').select('*').or(clauses.join(',')).limit(200);
+        console.log('[WO Search] or-clauses results=',r2.data?.length,'error=',r2.error?.message);
+        data=r2.data||[];
+      }
+      if(data?.length) console.log('[WO Search] first result:',JSON.stringify(data[0]).slice(0,200));
       window._woSearchExtra=data||[];
     }catch(e){console.error('[WO Search] exception:',e.message);window._woSearchExtra=[];}
   }else{
