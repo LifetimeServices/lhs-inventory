@@ -43310,9 +43310,12 @@ async function applyWOFilters(){
         `customer_address.ilike.%${w}%`,
         `customer_city.ilike.%${w}%`,
       ]);
-      const{data}=await DB.from('lhs_work_orders').or(clauses.join(',')).limit(200);
+      const{data,error}=await DB.from('lhs_work_orders').or(clauses.join(',')).limit(200);
+      console.log('[WO Search] clauses:',clauses.join(','));
+      console.log('[WO Search] results:',data?.length,'error:',error?.message);
+      if(data?.length) console.log('[WO Search] first result:',JSON.stringify(data[0]));
       window._woSearchExtra=data||[];
-    }catch(e){window._woSearchExtra=[];}
+    }catch(e){console.error('[WO Search] exception:',e.message);window._woSearchExtra=[];}
   }else{
     window._woSearchExtra=[];
   }
