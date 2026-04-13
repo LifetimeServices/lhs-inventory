@@ -17584,6 +17584,16 @@ function stMigrateOpen(){
   const panel=document.getElementById('st-migrate-panel');
   if(!panel)return;
   panel.innerHTML=`
+    <div style="background:#eff6ff;border:1px solid #3b82f6;border-radius:10px;padding:14px;margin-top:8px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1d4ed8">&#128269; Single Customer Deep Sync</div>
+      <div style="font-size:12px;color:#374151;margin-bottom:10px">Search by name to pull one customer's complete history — customer record, jobs, notes, appointments &amp; photos.</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="stm-cust-search" placeholder="e.g. James Sebastian" style="flex:1;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <button class="btn btn-n sm" onclick="stSearchCustomer()">Search ST</button>
+      </div>
+      <div id="stm-cust-results" style="margin-bottom:8px"></div>
+      <div id="stm-single-log" style="display:none;background:#0f172a;color:#94a3b8;font-family:monospace;font-size:11px;line-height:1.6;padding:12px;border-radius:8px;max-height:180px;overflow-y:auto;white-space:pre-wrap"></div>
+    </div>
     <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-top:8px">
       <div style="font-weight:600;font-size:14px;margin-bottom:8px">&#8681; ServiceTitan Migration Options</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Select what to migrate. This is a read-only copy — nothing is deleted from ServiceTitan.</div>
@@ -17665,6 +17675,152 @@ async function _stFetchAll(token,baseUrl,logFn){
     }catch(e){if(logFn)logFn(`  Page ${page} error: ${e.message}`);break;}
   }
   return results;
+}
+
+async function stSearchCustomer(){
+  const q=(document.getElementById('stm-cust-search')?.value||'').trim();
+  if(!q){tst('Enter a name to search','error');return;}
+  const res=document.getElementById('stm-cust-results');
+  if(res)res.innerHTML='<span style="font-size:12px;color:var(--muted)">Searching ServiceTitan...</span>';
+  try{
+    const token=await _stGetToken();
+    const tid=S.get('lhs:st_tenant_id')||'1951433246';
+    const data=await _stApiFetch(token,`https://api.servicetitan.io/crm/v2/tenant/${tid}/customers?name=${encodeURIComponent(q)}&pageSize=10`);
+    const custs=(data.data||data.items||[]);
+    if(!custs.length){if(res)res.innerHTML='<span style="font-size:12px;color:var(--red)">No customers found in ServiceTitan</span>';return;}
+    if(res)res.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:6px">${custs.length} result(s) — click Sync to pull their full history:</div>`+
+      custs.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;padding:4px 0;border-bottom:1px solid var(--bdr)">
+        <button class="btn btn-n sm" style="flex-shrink:0" onclick="stSyncOneCustomer('${c.id}',${JSON.stringify(c.name||'')})">Sync</button>
+        <span style="font-size:13px;font-weight:600">${esc(c.name||'?')}</span>
+        <span style="font-size:11px;color:var(--muted)">${[c.address?.street,c.address?.city].filter(Boolean).join(', ')}</span>
+      </div>`).join('');
+  }catch(e){if(res)res.innerHTML=`<span style="font-size:12px;color:var(--red)">Error: ${e.message}</span>`;}
+}
+
+async function stSyncOneCustomer(stCustId,custName){
+  const logEl=document.getElementById('stm-single-log');
+  if(logEl){logEl.style.display='block';logEl.textContent='';}
+  const log=msg=>{if(logEl){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}console.log('[ST-Single]',msg);};
+  try{
+    const token=await _stGetToken();
+    const tid=S.get('lhs:st_tenant_id')||'1951433246';
+    const BASE='https://api.servicetitan.io';
+    log(`Deep sync: ${custName} (ST ID: ${stCustId})`);
+
+    // 1. Fetch & upsert customer
+    log('Fetching customer record...');
+    const cd=await _stApiFetch(token,`${BASE}/crm/v2/tenant/${tid}/customers/${stCustId}`);
+    const phones=cd.phones||[];
+    const mobile=phones.find(p=>p.type==='Mobile')||phones[0]||{};
+    const addr=cd.address||{};
+    const nameParts=(cd.name||'Unknown').trim().split(' ');
+    const custRow={first_name:nameParts[0]||'Unknown',last_name:nameParts.slice(1).join(' ')||'',
+      email:cd.email||null,phone:mobile.number||null,
+      address:addr.street||null,city:addr.city||null,state:addr.state||null,zip:addr.zip||null,
+      st_customer_id:String(stCustId),source:'ServiceTitan',
+      created_at:cd.createdOn||new Date().toISOString()};
+    const{error:custErr}=await DB.from('lhs_customers').upsert(custRow,{onConflict:'st_customer_id'});
+    if(custErr)log(`  Customer warn: ${custErr.message}`);
+    else log(`✓ Customer upserted: ${custRow.first_name} ${custRow.last_name}`);
+    const{data:lhsCust}=await DB.from('lhs_customers').select('id').eq('st_customer_id',String(stCustId)).single();
+    const lhsCustId=lhsCust?.id||null;
+    if(lhsCustId){const custs=S.get('lhs:customers')||[];const ci=custs.findIndex(c=>c.st_customer_id===String(stCustId));if(ci>=0)custs[ci]={...custs[ci],...custRow,id:lhsCustId};else custs.push({...custRow,id:lhsCustId});S.set('lhs:customers',custs);}
+
+    // 2. Fetch all jobs for this customer
+    log('Fetching jobs...');
+    const jobs=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?customerId=${stCustId}`,log);
+    log(`✓ ${jobs.length} jobs found`);
+    let jobsSaved=0,notesSaved=0,photosSaved=0,aptsSaved=0;
+
+    for(const j of jobs){
+      const stJobId=String(j.id);
+      const jAddr=j.location?.address||{};
+      const scheduledDate=j.scheduledOn||j.completedOn||j.createdOn||null;
+      const woYear=scheduledDate?parseInt(scheduledDate.slice(0,4)):new Date().getFullYear();
+      const stSt=(j.status||'').toLowerCase();
+      let lhsStatus='Completed';
+      if(stSt==='scheduled'||stSt==='dispatched')lhsStatus='Scheduled';
+      if(stSt==='canceled'||stSt==='cancelled')lhsStatus='Cancelled';
+      if(stSt==='inprogress'||stSt==='in_progress')lhsStatus='In Progress';
+      const woRow={st_job_id:stJobId,wo_number:`ST-${j.jobNumber||j.id}`,wo_year:woYear,
+        customer_id:lhsCustId,customer_name:`${custRow.first_name} ${custRow.last_name}`.trim(),
+        customer_phone:custRow.phone,customer_email:custRow.email,
+        customer_address:jAddr.street||custRow.address||null,customer_city:jAddr.city||custRow.city||null,
+        customer_state:jAddr.state||custRow.state||null,customer_zip:jAddr.zip||custRow.zip||null,
+        division:'',job_type:j.jobType?.name||j.type?.name||null,description:j.summary||null,
+        status:lhsStatus,total_price:j.total||0,total_paid:0,material_cost:0,
+        created_by:'ServiceTitan Import',created_at:j.createdOn||new Date().toISOString(),updated_at:new Date().toISOString()};
+      const{error:woErr}=await DB.from('lhs_work_orders').upsert(woRow,{onConflict:'st_job_id'});
+      if(woErr){log(`  Job ${stJobId} error: ${woErr.message}`);continue;}
+      jobsSaved++;
+      const{data:savedWO}=await DB.from('lhs_work_orders').select('id').eq('st_job_id',stJobId).single();
+      const woId=savedWO?.id||null;
+      if(!woId)continue;
+      const wos=S.get('lhs:work_orders')||[];const wi=wos.findIndex(w=>w.st_job_id===stJobId);
+      if(wi>=0)wos[wi]={...wos[wi],...woRow,id:woId};else wos.unshift({...woRow,id:woId});
+      S.set('lhs:work_orders',wos);
+
+      // Notes
+      try{
+        const nd=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/notes`);
+        const nl=(nd.data||nd.items||nd||[]);
+        for(const n of nl){
+          const txt=n.text||n.body||n.content||'';if(!txt)continue;
+          const{error:nErr}=await DB.from('lhs_wo_notes').insert({wo_id:woId,note_text:txt,
+            created_by:n.createdBy?.name||'ServiceTitan',is_internal:false,note_type:'ServiceTitan',
+            created_at:n.createdOn||new Date().toISOString()});
+          if(!nErr)notesSaved++;
+        }
+      }catch(e){/*no notes endpoint*/}
+
+      // Appointments (embedded in job data)
+      try{
+        const aptList=j.appointments||[];
+        for(const a of aptList){
+          const aptDate=a.scheduledDate||a.start||null;
+          const aptRow={wo_id:woId,scheduled_date:aptDate?aptDate.slice(0,10):null,
+            scheduled_time:aptDate&&aptDate.length>10?aptDate.slice(11,16):null,
+            estimated_duration:a.estimatedDuration||60,
+            status:a.status==='Done'?'Completed':(a.status||'Completed'),
+            created_by:'ServiceTitan Import',created_at:a.createdOn||new Date().toISOString()};
+          const{data:savedApt,error:aErr}=await DB.from('lhs_appointments').insert(aptRow).select().single();
+          if(!aErr&&savedApt){
+            aptsSaved++;
+            for(const t of(a.technicians||[])){
+              await DB.from('lhs_apt_techs').insert({appointment_id:savedApt.id,wo_id:woId,
+                tech_name:t.name||'Unknown',status:'Completed',created_at:new Date().toISOString()}).catch(()=>{});
+            }
+          }
+        }
+      }catch(e){/*skip*/}
+
+      // Photos
+      try{
+        const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${j.id}/attachments`);
+        const atts=(attData.data||attData||[]).filter(a=>(a.url||a.downloadUrl)&&/\.(jpg|jpeg|png|gif|webp)/i.test(a.filename||a.url||''));
+        for(const att of atts){
+          try{
+            const src=att.url||att.downloadUrl;
+            const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
+            const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
+            if(!imgR.ok)continue;
+            const blob=await imgR.blob();
+            const fname=att.filename||`st_${att.id||Date.now()}.jpg`;
+            const up=await lhsUploadFile(new File([blob],fname,{type:blob.type||'image/jpeg'}),`st-migration/${stCustId}/${j.id}/${fname}`);
+            if(up?.url){await DB.from('lhs_wo_photos').insert({wo_id:woId,st_job_id:stJobId,
+              st_customer_id:String(stCustId),url:up.url,caption:att.caption||fname,
+              source:'ServiceTitan',created_at:att.addedOn||new Date().toISOString()});photosSaved++;}
+          }catch(e){/*skip photo*/}
+        }
+      }catch(e){/*no attachments*/}
+    }
+    log(`\n✅ Done — ${custName}:`);
+    log(`   ${jobsSaved} work orders`);
+    log(`   ${aptsSaved} appointments`);
+    log(`   ${notesSaved} notes`);
+    log(`   ${photosSaved} photos`);
+    tst(`${custName} — deep sync complete`,'success');
+  }catch(e){log(`\n❌ Error: ${e.message}`);tst('Sync error: '+e.message,'error');}
 }
 
 async function stMigrate(){
