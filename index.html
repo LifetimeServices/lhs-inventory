@@ -1755,11 +1755,13 @@ async function warmCache(){
     // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
     try{
       const WO_PAGE=1000;
-      // Step 1: lightweight count so we know exactly how many pages to fire
+      const WO_MAX=5000; // Cap at 5000 most recent — older WOs searchable via WO page Supabase query
+      // Step 1: lightweight count
       const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
-      const pages=count?Math.ceil(count/WO_PAGE):1;
-      // Step 2: fetch pages in small concurrent batches to avoid overwhelming Supabase
-      const BATCH=4; // max simultaneous requests
+      const totalToLoad=Math.min(count||0,WO_MAX);
+      const pages=Math.ceil(totalToLoad/WO_PAGE);
+      // Step 2: fetch pages in small concurrent batches
+      const BATCH=4;
       let allWOData=[];
       for(let i=0;i<pages;i+=BATCH){
         const batchIdxs=Array.from({length:Math.min(BATCH,pages-i)},(_,j)=>i+j);
@@ -17673,7 +17675,10 @@ async function stMigrate(){
           const phones=c.phones||[];
           const mobile=phones.find(p=>p.type==='Mobile')||phones[0]||{};
           const addr=c.address||{};
-          return{name:c.name||'Unknown',email:c.email||null,phone:mobile.number||null,
+          const nameParts=(c.name||'Unknown').trim().split(' ');
+          const firstName=nameParts[0]||'Unknown';
+          const lastName=nameParts.slice(1).join(' ')||'';
+          return{first_name:firstName,last_name:lastName,email:c.email||null,phone:mobile.number||null,
             address:addr.street||null,city:addr.city||null,state:addr.state||null,zip:addr.zip||null,
             st_customer_id:String(c.id),source:'ServiceTitan Import',
             created_at:c.createdOn||new Date().toISOString()};
