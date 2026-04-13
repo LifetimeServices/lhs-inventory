@@ -17661,18 +17661,32 @@ async function _stFetchAll(token,baseUrl,logFn){
   const results=[];
   let page=1;
   const ps=500;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   while(true){
     const sep=baseUrl.includes('?')?'&':'?';
     const url=`${baseUrl}${sep}page=${page}&pageSize=${ps}`;
-    try{
-      const d=await _stApiFetch(token,url);
-      const items=d.data||d.items||d||[];
-      if(!Array.isArray(items)||!items.length)break;
-      results.push(...items);
-      if(logFn&&page%5===0)logFn(`  ...page ${page} (${results.length} so far)`);
-      if(items.length<ps)break;
-      page++;
-    }catch(e){if(logFn)logFn(`  Page ${page} error: ${e.message}`);break;}
+    let items=null;
+    for(let attempt=1;attempt<=4;attempt++){
+      try{
+        const d=await _stApiFetch(token,url);
+        items=d.data||d.items||d||[];
+        if(!Array.isArray(items))items=[];
+        break; // success
+      }catch(e){
+        const msg=e.message||'';
+        const isRateLimit=msg.includes('429')||msg.includes('rate')||msg.includes('throttl');
+        const wait=isRateLimit?attempt*8000:attempt*2000;
+        if(logFn)logFn(`  Page ${page} attempt ${attempt} error: ${msg.slice(0,60)} — retrying in ${wait/1000}s`);
+        if(attempt<4)await sleep(wait);
+        else{if(logFn)logFn(`  Page ${page} failed after 4 attempts — skipping`);items=[];}
+      }
+    }
+    if(!items||!items.length)break;
+    results.push(...items);
+    if(logFn&&page%5===0)logFn(`  ...page ${page} (${results.length} so far)`);
+    if(items.length<ps)break;
+    page++;
+    await sleep(300); // small pause between pages to avoid rate limits
   }
   return results;
 }
