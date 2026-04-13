@@ -1810,9 +1810,12 @@ async function warmCache(){
         }
       }catch(e){console.warn('Failed to load',tbl,e.message);}
     };
-    // Load ALL tables in parallel — no fast/lazy split.
-    // Everything fires simultaneously so total load time = slowest single request, not sum of all.
-    await Promise.all(Object.entries(TBL).map(_loadTbl));
+    // Load tables in batches of 12 to avoid overwhelming Supabase with 60+ simultaneous requests.
+    const tblEntries=Object.entries(TBL);
+    const TBL_BATCH=12;
+    for(let i=0;i<tblEntries.length;i+=TBL_BATCH){
+      await Promise.all(tblEntries.slice(i,i+TBL_BATCH).map(_loadTbl));
+    }
     // Normalize lhs_testers rows — Supabase column names differ from local field names
     try{
       const rawTs=S.get('lhs:ts')||[];
