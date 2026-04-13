@@ -2714,10 +2714,9 @@ async function startApp(){
   document.getElementById('ls').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('un').textContent=CU.name.split(' ')[0];
-  // Creator shows as ADMIN to all — including themselves (stealth). Subtle title tooltip reveals true role.
-  const _dispRole=CU.role==='Creator'||CU.role==='God View'?'ADMIN':CU.role.toUpperCase().replace(/ /g,'_');
+  const _dispRole=(CU.role==='Creator'||CU.role==='God View')?'GOD VIEW':CU.role.toUpperCase().replace(/ /g,'_');
   const _urEl=document.getElementById('ur');
-  if(_urEl){_urEl.textContent=_dispRole;if(CU.role==='Creator')_urEl.title='👑 Creator Mode Active';}
+  if(_urEl){_urEl.textContent=_dispRole;}
 
   // Always load fresh from Supabase on every login — no stale cache dependency.
   // Everything loads in parallel so total time = slowest single table, not sum of all.
@@ -12312,7 +12311,7 @@ function oAddUser(){
   </div><div class="fr">
     <div class="fl"><label>Password</label><input id="au2" placeholder="Set a password"></div>
     <div class="fl"><label>Role</label><select id="au3">
-      ${ROLES.filter(r=>r!=='Creator'&&r!=='God View').map(r=>`<option>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'&&(r!=='God View'||(CU?.role==='Creator'||CU?.role==='God View'))).map(r=>`<option>${r}</option>`).join('')}
     </select></div>
   </div><div class="fr">
     <div class="fl"><label>Primary Division</label><select id="au4">
@@ -32130,7 +32129,7 @@ function _hrEmployeeForm(u, saveFn){
     <div><label>Work Email <span style="color:var(--red)">*</span></label><input id="hef-email" value="${esc(u.email||'')}"></div>
     <div><label>Job Title</label><input id="hef-title" value="${esc(u.title||'')}"></div>
     <div><label>Role / Access Level</label><select id="hef-role">
-      ${ROLES.filter(r=>r!=='Creator'||CU?.role==='Creator').map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
+      ${ROLES.filter(r=>r!=='Creator'&&(r!=='God View'||(CU?.role==='Creator'||CU?.role==='God View'))).map(r=>`<option${u.role===r?' selected':''}>${r}</option>`).join('')}
     </select></div>
     <div><label>Employment Type</label><select id="hef-emptype">
       <option value="">—</option>
