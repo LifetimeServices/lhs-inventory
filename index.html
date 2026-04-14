@@ -42412,15 +42412,17 @@ async function svEstimate(){
   if(!existingEsts.find(x=>x.id===final.id)){
     existingEsts.unshift(final);S.set('lhs:estimates',existingEsts);
   }
-  // Update linked opportunity stage to Estimate Sent
+  // Update linked opportunity stage to Estimate Sent (uses updateOppStage to also sync lead status)
   const oppId=document.getElementById('est-opp')?.value;
   if(oppId){
     const opps=S.get('lhs:opportunities')||[];
     const o=opps.find(x=>x.id===oppId);
     if(o&&(o.stage==='Prospect'||o.stage==='Site Visit')){
-      o.stage='Estimate Sent';o.estimated_value=grand;o.updated_at=new Date().toISOString();
+      // Update estimated_value separately then run full stage update (which syncs lead status)
+      o.estimated_value=grand;o.updated_at=new Date().toISOString();
       S.set('lhs:opportunities',opps);
-      try{await dbUpdate('lhs:opportunities',oppId,{stage:'Estimate Sent',estimated_value:grand});}catch{}
+      try{await dbUpdate('lhs:opportunities',oppId,{estimated_value:grand});}catch{}
+      await updateOppStage(oppId,'Estimate Sent').catch(()=>{});
     }
   }
   cMod();
