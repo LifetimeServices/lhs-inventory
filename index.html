@@ -3050,19 +3050,29 @@ function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-crm
 function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
 
 const ACCT_NAV=[
-  {id:'acct-dashboard', l:'&#128200; Dashboard'},
-  {id:'acct-division',  l:'&#128200; P&amp;L'},
-  {id:'acct-invoices',  l:'&#128203; Invoices'},
-  {id:'acct-ar',        l:'&#128198; AR Aging'},
-  {id:'acct-ap',        l:'&#128179; Payables'},
-  {id:'acct-coa',       l:'&#128218; Chart of Accounts'},
-  {id:'acct-journal',   l:'&#128221; Journal'},
-  {id:'acct-bank',      l:'&#127974; Bank'},
-  {id:'acct-receipts',  l:'&#129518; Receipts'},
-  {id:'acct-settings',  l:'&#9881;&#65039; Settings'},
+  {id:'acct-dashboard', l:'&#128200; Dashboard',   perm:'tab_acct_dash'},
+  {id:'acct-division',  l:'&#128200; P&amp;L',     perm:'tab_acct_division'},
+  {id:'acct-invoices',  l:'&#128203; Invoices',    perm:'tab_invoices'},
+  {id:'acct-ar',        l:'&#128198; AR Aging',    perm:'tab_ar'},
+  {id:'acct-ap',        l:'&#128179; Payables',    perm:'tab_ap'},
+  {id:'acct-coa',       l:'&#128218; Chart of Accounts', perm:'tab_coa'},
+  {id:'acct-journal',   l:'&#128221; Journal',     perm:'tab_journal'},
+  {id:'acct-bank',      l:'&#127974; Bank',        perm:'tab_bank'},
+  {id:'acct-receipts',  l:'&#129518; Receipts',    perm:'tab_receipts'},
+  {id:'acct-settings',  l:'&#9881;&#65039; Settings', perm:'tab_acct_settings'},
 ];
 
-function renderAcctNav(){ _renderSubNav('accounting', ACCT_NAV, 'acct-dashboard'); }
+function renderAcctNav(){
+  // Filter tabs based on granular tab permissions — only check if role_permissions record exists for this role
+  const rolePermsArr=S.get('lhs:role_permissions')||[];
+  const roleRec=rolePermsArr.find(r=>r.role===(CU?.role||''));
+  const hasTabPerms=roleRec?.perms?.accounting&&Object.keys(roleRec.perms.accounting).some(k=>k.startsWith('tab_'));
+  const filtered=hasTabPerms
+    ? ACCT_NAV.filter(n=>CU?.role==='Creator'||CU?.role==='God View'||hasPerm('accounting',n.perm))
+    : ACCT_NAV; // no tab perms configured yet → show all (backward compat)
+  const first=filtered[0]?.id||'acct-dashboard';
+  _renderSubNav('accounting', filtered, first);
+}
 
 function buildNav(){ renderMainNav(); setTimeout(updateNavArrows,100); }
 
