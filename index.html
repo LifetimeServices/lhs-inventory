@@ -10183,7 +10183,10 @@ function renderPhotoLabelsAdmin(){
         </tr></thead>
         <tbody>${rowsHTML}</tbody>
       </table>
-      <button class="btn btn-n sm" style="margin-top:10px" onclick="addPhotoLabelRow('${esc(key)}')">+ Add Photo Label</button>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-n sm" onclick="addPhotoLabelRow('${esc(key)}')">+ Add Photo Label</button>
+        <button class="btn sm" style="background:var(--green);color:white;border-color:var(--green)" onclick="savePhotoLabels(getPhotoLabels());tst('Saved ✓','success')">💾 Save</button>
+      </div>
     </div>`;
   };
 
