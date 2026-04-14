@@ -493,17 +493,20 @@ function addPhotoLabelRow(key){
   map[key].push({id:'pl_'+Date.now()+'_'+Math.random().toString(36).slice(2),label:'',order:map[key].length});
   savePhotoLabels(map);
   g('atab').innerHTML=aWOSettings();
+  tst('Row added — type a label and click away to save','info');
 }
 function removePhotoLabelRow(key,idx){
   const map=getPhotoLabels();
   if(map[key]) map[key].splice(idx,1);
   savePhotoLabels(map);
   g('atab').innerHTML=aWOSettings();
+  tst('Photo label removed ✓','success');
 }
 function updatePhotoLabelRow(key,idx,val){
   const map=getPhotoLabels();
   if(map[key]&&map[key][idx]!==undefined) map[key][idx].label=val;
   savePhotoLabels(map);
+  tst('Photo label saved ✓','success');
 }
 function movePhotoLabelRow(key,idx,dir){
   const map=getPhotoLabels();
