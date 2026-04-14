@@ -36961,6 +36961,12 @@ function _fupQueueLoad(){
 let _acctFilter='All';
 let _acctSearch='';
 let _acctOpenId=null;
+let _acctSort={field:'name',dir:1};
+function _sortAcct(field){
+  if(_acctSort.field===field) _acctSort.dir*=-1;
+  else {_acctSort={field,dir:1};}
+  _acctLoad();
+}
 
 function bSalesAccountsPage(){
   setTimeout(_acctLoad,0);
@@ -37035,6 +37041,31 @@ async function _acctLoad(){
     return`${Math.round(days/30)}mo ago`;
   };
 
+  // Sort filtered accounts
+  filtered=[...filtered].sort((a,b)=>{
+    const f=_acctSort.field,d=_acctSort.dir;
+    const nameA=((a.first_name||'')+(a.last_name?' '+a.last_name:'')).trim()||a.name||'';
+    const nameB=((b.first_name||'')+(b.last_name?' '+b.last_name:'')).trim()||b.name||'';
+    if(f==='name') return d*nameA.localeCompare(nameB);
+    if(f==='type') return d*typeFor(a).localeCompare(typeFor(b));
+    if(f==='owner') return d*(a.assigned_to||'').localeCompare(b.assigned_to||'');
+    if(f==='phone') return d*(a.phone||'').localeCompare(b.phone||'');
+    if(f==='location') return d*([a.city,a.state].filter(Boolean).join(', ')).localeCompare([b.city,b.state].filter(Boolean).join(', '));
+    if(f==='opps') return d*(opps.filter(o=>o.customer_id===a.id&&o.stage!=='Lost'&&o.stage!=='Won').length - opps.filter(o=>o.customer_id===b.id&&o.stage!=='Lost'&&o.stage!=='Won').length);
+    if(f==='revenue') return d*(opps.filter(o=>o.customer_id===a.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0) - opps.filter(o=>o.customer_id===b.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0));
+    if(f==='activity'){
+      const acA=activities.filter(x=>x.customer_id===a.id);const acB=activities.filter(x=>x.customer_id===b.id);
+      const tA=acA.length?Math.max(...acA.map(x=>new Date(x.created_at||0))):0;
+      const tB=acB.length?Math.max(...acB.map(x=>new Date(x.created_at||0))):0;
+      return d*(tA-tB);
+    }
+    if(f==='health') return d*healthFor(a).localeCompare(healthFor(b));
+    return 0;
+  });
+
+  const _aArr=f=>_acctSort.field===f?(_acctSort.dir===1?' ▲':' ▼'):' ⇅';
+  const _aSH=(f,label,extra='')=>`<th onclick="_sortAcct('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap;${extra}">${label}<span style="color:var(--teal);font-size:10px">${_aArr(f)}</span></th>`;
+
   const tableRows=filtered.map(c=>{
     const cOpps=opps.filter(o=>o.customer_id===c.id&&o.stage!=='Lost'&&o.stage!=='Won');
     const totalRev=opps.filter(o=>o.customer_id===c.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0);
@@ -37074,7 +37105,7 @@ async function _acctLoad(){
   </div>
   <div class="card" style="padding:0;margin-bottom:${_acctOpenId?'20px':'0'}">
     <div class="tw" style="margin:0"><table>
-      <thead><tr><th>Account</th><th>Type</th><th>Owner</th><th>Phone</th><th>Location</th><th style="text-align:center">Open Opps</th><th>Total Revenue</th><th>Last Activity</th><th>Health</th><th></th></tr></thead>
+      <thead><tr>${_aSH('name','Account')}${_aSH('type','Type')}${_aSH('owner','Owner')}${_aSH('phone','Phone')}${_aSH('location','Location')}${_aSH('opps','Open Opps','text-align:center')}${_aSH('revenue','Total Revenue')}${_aSH('activity','Last Activity')}${_aSH('health','Health')}<th></th></tr></thead>
       <tbody>${tableRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No accounts found.</td></tr>'}</tbody>
     </table></div>
   </div>
@@ -37553,6 +37584,13 @@ function bSalesLeads(){
 
 // ── OPPORTUNITIES PAGE ────────────────────────────────────────────────────────
 let _oppView='kanban';
+let _oppSort={field:'value',dir:-1};
+function _sortOpp(field){
+  if(_oppSort.field===field) _oppSort.dir*=-1;
+  else {_oppSort={field,dir:1};}
+  const el=document.getElementById('opp-view-content');
+  if(el) el.innerHTML=renderCRMPipeline();
+}
 let _oppDivFilter='';
 let _oppRepFilter='';
 
@@ -38996,6 +39034,14 @@ function _refreshActTimeline(){
 }
 
 let _leadView='list';
+let _leadSort={field:'score',dir:-1}; // default: score descending
+function _sortLeads(field){
+  if(_leadSort.field===field) _leadSort.dir*=-1;
+  else {_leadSort={field,dir:1};}
+  const leads=(S.get('lhs:leads')||[]);
+  const el=document.getElementById('leads-list');
+  if(el) el.innerHTML=renderCRMLeadsTable(leads);
+}
 function renderCRMLeads(){
   const leads=(S.get('lhs:leads')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const ss=getSalesSettings();
@@ -39080,8 +39126,24 @@ function renderCRMLeadsTable(leads){
   const priColor=p=>p==='Hot'?'var(--red)':p==='Cold'?'var(--muted)':p==='Urgent'?'var(--gold,#c9a84c)':'inherit';
   const priIcon=p=>p==='Hot'?'🔥 ':p==='Cold'?'❄ ':p==='Urgent'?'⚡ ':'';
   const scoreRing=(s)=>{const cls=s>=70?'background:#fee2e2;color:#b91c1c':s>=40?'background:#fef3c7;color:#b45309':'background:#dbeafe;color:#1d4ed8';return`<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;${cls}">${s}</div>`;};
+  const sArr=f=>_leadSort.field===f?(_leadSort.dir===1?' ▲':' ▼'):' ⇅';
+  const sh=(f,label)=>`<th onclick="_sortLeads('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}<span style="color:var(--teal);font-size:10px">${sArr(f)}</span></th>`;
+  // Sort leads
+  const sorted=[...leads].sort((a,b)=>{
+    const f=_leadSort.field,d=_leadSort.dir;
+    if(f==='score') return d*(calcLeadScore(b)-calcLeadScore(a));
+    if(f==='name') return d*((a.first_name||'')+(a.last_name||'')).localeCompare((b.first_name||'')+(b.last_name||''));
+    if(f==='source') return d*(a.source_category||a.source||'').localeCompare(b.source_category||b.source||'');
+    if(f==='division') return d*(a.division||'').localeCompare(b.division||'');
+    if(f==='assigned') return d*(a.assigned_to||'').localeCompare(b.assigned_to||'');
+    if(f==='status') return d*(a.status||'').localeCompare(b.status||'');
+    if(f==='priority') return d*(a.priority||'Normal').localeCompare(b.priority||'Normal');
+    if(f==='value') return d*((a.estimated_value||0)-(b.estimated_value||0));
+    if(f==='followup') return d*(new Date(a.next_followup_at||0)-new Date(b.next_followup_at||0));
+    return 0;
+  });
   return`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Score</th><th>Name</th><th>Phone / Email</th><th>Source</th><th>Division</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Est. Value</th><th>Next Follow-up</th><th></th></tr></thead>
+  <thead><tr>${sh('score','Score')}${sh('name','Name')}<th>Phone / Email</th>${sh('source','Source')}${sh('division','Division')}${sh('assigned','Assigned')}${sh('status','Status')}${sh('priority','Priority')}${sh('value','Est. Value')}${sh('followup','Next Follow-up')}<th></th></tr></thead>
   <tbody>${leads.map(l=>{const sc=calcLeadScore(l);return`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
     <td>${scoreRing(sc)}</td>
     <td>
@@ -39112,12 +39174,29 @@ function renderCRMLeadsTable(leads){
 }
 
 function renderCRMPipeline(){
-  const allOpps=(S.get('lhs:opportunities')||[]).sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0));
+  const allOpps=S.get('lhs:opportunities')||[];
   const _forcedRep=_getOppVisibleFilter();
-  const opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter)&&(!_forcedRep||o.assigned_to===_forcedRep));
+  let opps=allOpps.filter(o=>(!_oppDivFilter||o.division===_oppDivFilter)&&(!_oppRepFilter||o.assigned_to===_oppRepFilter)&&(!_forcedRep||o.assigned_to===_forcedRep));
   const ss=getSalesSettings();
   const stages=ss.opp_stages||OPP_STAGES;
   const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
+  const custs=S.get('lhs:customers')||[];
+  const custName=o=>{const c=custs.find(x=>x.id===o.customer_id);return c?((c.first_name||'')+' '+(c.last_name||'')).trim():''};
+  // Sort
+  const oArr=f=>_oppSort.field===f?(_oppSort.dir===1?' ▲':' ▼'):' ⇅';
+  const oSH=(f,label)=>`<th onclick="_sortOpp('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}<span style="color:var(--teal);font-size:10px">${oArr(f)}</span></th>`;
+  opps=[...opps].sort((a,b)=>{
+    const f=_oppSort.field,d=_oppSort.dir;
+    if(f==='name') return d*(a.name||'').localeCompare(b.name||'');
+    if(f==='customer') return d*custName(a).localeCompare(custName(b));
+    if(f==='division') return d*(a.division||'').localeCompare(b.division||'');
+    if(f==='stage') return d*(a.stage||'').localeCompare(b.stage||'');
+    if(f==='prob') return d*((a.probability||0)-(b.probability||0));
+    if(f==='value') return d*((a.estimated_value||0)-(b.estimated_value||0));
+    if(f==='close') return d*(new Date(a.close_date||0)-new Date(b.close_date||0));
+    if(f==='assigned') return d*(a.assigned_to||'').localeCompare(b.assigned_to||'');
+    return 0;
+  });
   return`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     ${stages.map(s=>{
       const cnt=opps.filter(o=>o.stage===s).length;
@@ -39130,10 +39209,10 @@ function renderCRMPipeline(){
   </div>
   ${!opps.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No opportunities yet.</div>'
   :`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Name</th><th>Customer</th><th>Division</th><th>Stage</th><th>%</th><th>Est. Value</th><th>Close Date</th><th>Assigned</th><th></th></tr></thead>
+  <thead><tr>${oSH('name','Name')}${oSH('customer','Customer')}${oSH('division','Division')}${oSH('stage','Stage')}${oSH('prob','%')}${oSH('value','Est. Value')}${oSH('close','Close Date')}${oSH('assigned','Assigned')}<th></th></tr></thead>
   <tbody>${opps.map(o=>`<tr style="cursor:pointer" onclick="openOpportunity('${o.id}')">
     <td style="font-weight:600">${o.name}</td>
-    <td style="font-size:12px;color:var(--muted)">${(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)?.first_name||''} ${(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)?.last_name||''}</td>
+    <td style="font-size:12px;color:var(--muted)">${esc(custName(o))}</td>
     <td>${bx(o.division||'—')}</td>
     <td>${bx(o.stage||'Prospect',stageColor(o.stage))}</td>
     <td style="font-family:'DM Sans',sans-serif">${o.probability||0}%</td>
