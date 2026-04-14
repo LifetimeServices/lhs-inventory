@@ -23814,6 +23814,22 @@ async function oAptDetail(aptId, woId){
     </div>
   </details>
 
+  <!-- ── INTAKE FORM ── -->
+  ${(()=>{
+    const _wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+    if(!_wo) return'';
+    const _div=_wo.division||'';
+    const _cust=(S.get('lhs:customers')||[]).find(c=>c.id===_wo.customer_id);
+    const _state=_cust?.state||'';
+    return`<details id="aptd-intakesec" style="margin-bottom:12px;border:1px solid var(--bdr);border-radius:8px" onToggle="if(this.open)_iOpenForWO('${woId}','${_wo.customer_id||''}','${_state}','${esc(_div)}')">
+      <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px">
+        <span style="font-size:14px">&#9654;</span> Intake Form
+        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">${esc(_div)}</span>
+      </summary>
+      <div id="wo-intake-body" style="min-height:36px"></div>
+    </details>`;
+  })()}
+
   <!-- ── COLLECT PAYMENT ── -->
   ${(()=>{
     const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
@@ -29948,6 +29964,53 @@ async function _doCloseoutWO(woId,createInvoice){
   const wo=wos.find(w=>w.id===woId);
   if(wo){wo.status='Closed with Dispatch';wo.closed_at=now;wo.closed_by=CU?.name||'';S.set('lhs:work_orders',wos);}
   await dbUpdate('lhs:work_orders',woId,{status:'Closed with Dispatch',closed_at:now,closed_by:CU?.name||''});
+  // ── Radon WL auto-calculation on close ──────────────────────────────────
+  if(wo&&(wo.division||'').toLowerCase().includes('radon')){
+    try{
+      const{data:resp}=await DB.from('lhs_intake_responses')
+        .select('answers')
+        .eq('work_order_id',woId)
+        .limit(1).maybeSingle();
+      const ans=resp?(typeof resp.answers==='string'?JSON.parse(resp.answers):(resp.answers||{})):null;
+      const pciL=ans?parseFloat(ans['r7']||0):0;
+      if(pciL>0){
+        // Pull appointments for this WO to get techs + hours
+        const apts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===woId||a.work_order_id===woId);
+        const techs=[...new Set(apts.map(a=>a.tech||a.assigned_tech||a.technician).filter(Boolean))];
+        const totalHours=apts.reduce((s,a)=>{
+          const hrs=parseFloat(a.duration_hours||a.hours||0);
+          return s+(hrs||1); // default 1hr if not set
+        },0)||1;
+        const er=1.0; // equilibrium ratio default
+        const wl=(er*pciL)/100;
+        const wlm=(wl*totalHours)/170;
+        // Log WL entry for each tech into the existing lhs_wlm_exposures table
+        const year=new Date(now).getFullYear();
+        for(const tech of techs){
+          const rec={
+            employee_name:tech,
+            exposure_date:now.split('T')[0],
+            calendar_year:year,
+            visit_type:'installation',
+            job_address:wo.customer_address||wo.service_address||'',
+            work_order_id:woId,
+            radon_pci_l:pciL,
+            radon_source:'intake_form',
+            hours_on_site:totalHours,
+            equilibrium_ratio:er,
+            wl:wl,
+            wlm:wlm,
+            notes:'Auto-logged on WO close with dispatch',
+            logged_by:CU?.name||''
+          };
+          await DB.from('lhs_wlm_exposures').insert(rec).then(({data})=>{
+            if(data){const all=S.get('lhs:wlm_exposures')||[];all.unshift(data);S.set('lhs:wlm_exposures',all);}
+          }).catch(()=>{});
+        }
+        if(techs.length) tst(`Radon WL logged for ${techs.join(', ')} (${wlm.toFixed(4)} WLM)`,'success');
+      }
+    }catch(e){console.warn('Radon WL auto-log error:',e.message);}
+  }
   // Lock the linked estimate as Final
   if(wo?.estimate_id){
     const ests=S.get('lhs:estimates')||[];
@@ -37055,11 +37118,11 @@ function bAccountHub(){
   const name=((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||c.company||'Unnamed Account';
   const cityState=[c.city,c.state].filter(Boolean).join(', ');
 
-  const tabs=['details','locations','opportunities','work_orders','activity'];
+  const tabs=['details','locations','opportunities','work_orders','activity','intake_forms'];
   // Count includes customer's own address if not yet saved as a property
   const custAddrUnsaved=!!(c.address||'').trim()&&!props.some(p=>(p.address||'').trim().toLowerCase()===(c.address||'').trim().toLowerCase());
   const locCount=props.length+(custAddrUnsaved?1:0);
-  const tabLabels={'details':'Details','locations':`Locations (${locCount})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`};
+  const tabLabels={'details':'Details','locations':`Locations (${locCount})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`,'intake_forms':'Intake Forms'};
 
   const fld=(label,val)=>`<div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">${label}</div>
@@ -37222,6 +37285,16 @@ function bAccountHub(){
             <td style="padding:8px;color:var(--muted)">${(w.completed_at||w.invoice_date||'').substring(0,10)||'—'}</td>
           </tr>`).join('')}</tbody>
         </table>${wos.length>50?`<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">Showing 50 of ${wos.length}</div>`:''}`:`<div style="text-align:center;color:var(--muted);padding:28px;font-size:13px">No work orders on file.</div>`}
+      </div>`;
+    }
+
+    if(_acctHubTab==='intake_forms'){
+      setTimeout(()=>_iOpenAccountHub(id),50);
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Intake Forms</div>
+        </div>
+        <div id="acct-intake-body"><div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Loading…</div></div>
       </div>`;
     }
 
@@ -40553,6 +40626,18 @@ function renderSalesSettings(){
     </div>
   </div>
 
+  <!-- Intake Form Templates -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div class="ct" style="margin:0">Intake Form Templates</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Per-division intake questionnaires filled out on opportunities and work orders. Base templates are pre-seeded. Add state variants to customize questions by state.</div>
+      </div>
+    </div>
+    <div id="intake-tmpl-list"><div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading templates…</div></div>
+    <script>setTimeout(renderIntakeTemplatesSettings,100);<\/script>
+  </div>
+
   <!-- Lead Statuses -->
   <div class="card" style="padding:16px">
     <div class="ct">Lead Statuses</div>
@@ -41211,6 +41296,18 @@ function openOpportunity(id){
     </div>`;
   })()}
 
+  <!-- Intake Form -->
+  ${(()=>{
+    const custState=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)?.state||'';
+    return`<details style="margin-bottom:14px;border:1px solid var(--bdr);border-radius:8px" onToggle="if(this.open)_iOpenForOpp('${id}','${o.customer_id||''}','${custState}','${esc(o.division||'')}')">
+      <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);cursor:pointer;background:var(--surf);border-radius:8px;list-style:none;display:flex;align-items:center;gap:6px">
+        <span style="font-size:14px">&#9654;</span> Intake Form
+        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:4px">${esc(o.division||'')}</span>
+      </summary>
+      <div id="opp-intake-body" style="min-height:40px"></div>
+    </details>`;
+  })()}
+
   <!-- Activity Timeline -->
   <div>
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px">Activity Timeline (${acts.length})</div>
@@ -41315,6 +41412,382 @@ async function updateOppStage(id,stage){
   }
   tst(`Stage: ${stage}`,'success');
   openOpportunity(id);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INTAKE FORMS — Core Engine
+// ═══════════════════════════════════════════════════════════════════════
+
+let _iTmplCache=null;
+
+async function _iFetch(){
+  if(_iTmplCache) return _iTmplCache;
+  try{const{data}=await DB.from('lhs_intake_templates').select('*').order('division');_iTmplCache=data||[];}
+  catch(e){_iTmplCache=[];}
+  return _iTmplCache;
+}
+
+function _iFind(division,state){
+  const t=_iTmplCache||[];
+  return t.find(x=>x.division===division&&x.state===state)||t.find(x=>x.division===division&&!x.state)||null;
+}
+
+function _iRenderQ(q,ans,mode){
+  const val=ans[q.id]!==undefined?ans[q.id]:'';
+  const req=q.required?'<span style="color:var(--red)"> *</span>':'';
+  const note=q.note?`<div style="font-size:11px;color:var(--muted);margin-top:2px;font-style:italic">${esc(q.note)}</div>`:'';
+  const si='padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit;';
+  let inp='';
+  if(mode==='view'){
+    const d=Array.isArray(val)?val.join(', '):(val||'—');
+    inp=`<div style="font-size:13px;color:${val?'var(--text)':'var(--muted)'};padding:5px 0">${esc(d)}</div>`;
+  } else {
+    const ctx=`window._iAns['${q.id}']=`;
+    switch(q.type){
+      case'yes_no':
+        inp=`<div style="display:flex;gap:12px;margin-top:5px">${['Yes','No'].map(o=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="iq-${q.id}" value="${o}" ${val===o?'checked':''} onchange="${ctx}'${o}';_iCond()"> ${o}</label>`).join('')}</div>`;
+        break;
+      case'radio':
+        inp=`<div style="display:flex;flex-direction:column;gap:4px;margin-top:5px">${(q.options||[]).map(o=>`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="iq-${q.id}" value="${esc(o)}" ${val===o?'checked':''} onchange="${ctx}this.value;_iCond()"> ${esc(o)}</label>`).join('')}</div>`;
+        break;
+      case'select':
+        inp=`<select style="${si}width:100%;margin-top:5px" onchange="${ctx}this.value;_iCond()"><option value="">— Select —</option>${(q.options||[]).map(o=>`<option ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+        break;
+      case'multiselect':
+        const sa=Array.isArray(val)?val:(val?val.split(',').map(s=>s.trim()):[]);
+        inp=`<div style="display:flex;flex-direction:column;gap:4px;margin-top:5px">${(q.options||[]).map(o=>`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" data-multi="${q.id}" value="${esc(o)}" ${sa.includes(o)?'checked':''} onchange="_iMulti('${q.id}')"> ${esc(o)}</label>`).join('')}</div>`;
+        break;
+      case'textarea':
+        inp=`<textarea rows="3" style="${si}width:100%;resize:vertical;box-sizing:border-box;margin-top:5px" onchange="${ctx}this.value">${esc(val)}</textarea>`;
+        break;
+      case'date':
+        inp=`<input type="date" value="${esc(val)}" style="${si}margin-top:5px" onchange="${ctx}this.value">`;
+        break;
+      case'number':
+        inp=`<input type="number" value="${esc(val)}" style="${si}width:160px;margin-top:5px" onchange="${ctx}this.value">`;
+        break;
+      default:
+        inp=`<input type="text" value="${esc(val)}" style="${si}width:100%;margin-top:5px" oninput="${ctx}this.value">`;
+    }
+  }
+  const cond=q.conditional?.parent_id?`data-parent="${q.conditional.parent_id}" data-trigger="${esc(q.conditional.trigger_value)}"` :'';
+  return`<div class="if-q" data-qid="${q.id}" ${cond} style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--bdr)">
+    <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(q.label)}${req}</div>${note}${inp}
+  </div>`;
+}
+
+function _iCond(){
+  document.querySelectorAll('.if-q[data-parent]').forEach(el=>{
+    const pv=window._iAns?window._iAns[el.dataset.parent]:'';
+    el.style.display=(pv===el.dataset.trigger)?'':'none';
+  });
+}
+
+function _iMulti(qid){
+  const vals=Array.from(document.querySelectorAll(`input[data-multi="${qid}"]`)).filter(b=>b.checked).map(b=>b.value);
+  window._iAns=window._iAns||{};window._iAns[qid]=vals.join(', ');
+}
+
+function _iRenderForm(qs,ans,mode){return qs.map(q=>_iRenderQ(q,ans,mode)).join('');}
+
+async function _iSave(oppId,custId,woId,tmplId,division,state,onDone){
+  const ans=window._iAns||{};
+  const tmpl=(_iTmplCache||[]).find(t=>t.id===tmplId);
+  if(tmpl){
+    const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions):(tmpl.questions||[]);
+    const miss=qs.filter(q=>q.required&&!ans[q.id]);
+    if(miss.length){tst('Required: '+miss.map(q=>q.label).join(', '),'error');return;}
+  }
+  const now=new Date().toISOString();
+  const pl={template_id:tmplId,customer_id:custId||null,opportunity_id:oppId||null,work_order_id:woId||null,division:division||null,state:state||null,answers:ans,submitted_by:CU?.name||'',is_complete:true,updated_at:now};
+  let saved=null;
+  if(window._iRespId){
+    const{data,error}=await DB.from('lhs_intake_responses').update(pl).eq('id',window._iRespId).select().maybeSingle();
+    if(!error&&data) saved=data;
+    else if(error){tst('Save error: '+error.message,'error');return;}
+  } else {
+    pl.created_at=now;
+    const{data,error}=await DB.from('lhs_intake_responses').insert(pl).select().single();
+    if(!error&&data){saved=data;window._iRespId=data.id;}
+    else if(error){tst('Save error: '+error.message,'error');return;}
+  }
+  if(division==='Air Solutions') await _iCheckAeroseal(custId,ans);
+  tst('Intake form saved','success');
+  if(onDone) onDone(saved);
+}
+
+async function _iCheckAeroseal(custId,ans){
+  if(ans['d5']!=='Yes') return;
+  const opps=S.get('lhs:opportunities')||[];
+  const has=opps.some(o=>o.customer_id===custId&&(o.division||'').toLowerCase().includes('aeroseal')&&o.stage!=='Lost');
+  if(has) return;
+  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===custId);
+  const name=cust?((cust.first_name||'')+' '+(cust.last_name||'')).trim():'';
+  const now=new Date().toISOString();
+  const opp={name:(name?name+' — ':'')+'Aeroseal',customer_id:custId,division:'Air Solutions',job_type:'Aeroseal',stage:'Prospect',probability:20,estimated_value:0,source:'Intake Form — Hot/Cold Rooms',assigned_to:CU?.name||'',created_at:now,updated_at:now};
+  try{
+    const{data,error}=await DB.from('lhs_opportunities').insert(opp).select().single();
+    if(!error&&data){const os=S.get('lhs:opportunities')||[];os.unshift(data);S.set('lhs:opportunities',os);tst('Aeroseal opportunity auto-created','success');}
+  }catch(e){}
+}
+
+async function _iOpenForOpp(oppId,custId,state,division){
+  const el=document.getElementById('opp-intake-body');
+  if(!el) return;
+  el.innerHTML='<div style="padding:16px;color:var(--muted);font-size:13px">Loading…</div>';
+  await _iFetch();
+  const tmpl=_iFind(division,state);
+  if(!tmpl){el.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted)">No intake form template found for <strong>${esc(division)}</strong>${state?' in '+esc(state):''}. Configure templates in Sales Settings → Intake Forms.</div>`;return;}
+  const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions):(tmpl.questions||[]);
+  let resp=null;
+  try{const{data}=await DB.from('lhs_intake_responses').select('*').eq('opportunity_id',oppId).order('created_at',{ascending:false}).limit(1).maybeSingle();resp=data;}catch(e){}
+  window._iAns=resp?(typeof resp.answers==='string'?JSON.parse(resp.answers):(resp.answers||{})):{};
+  window._iRespId=resp?.id||null;
+  window._iTmplId=tmpl.id;
+  const dateStr=resp?`· Last saved ${new Date(resp.updated_at||resp.created_at).toLocaleDateString()}`:'';
+  const complBadge=resp?.is_complete?'<span style="color:#10b981;font-weight:700">● Complete</span>':'<span style="color:var(--amber);font-weight:700">◐ Partial</span>';
+  el.innerHTML=`<div style="padding:14px">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${esc(tmpl.name)} ${dateStr} ${resp?complBadge:''}</div>
+    <div id="opp-intake-qs">${_iRenderForm(qs,window._iAns,'edit')}</div>
+    <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+      <button class="btn btn-n" onclick="_iSave('${oppId}','${custId}',null,'${tmpl.id}','${esc(division)}','${esc(state||'')}',()=>_iOpenForOpp('${oppId}','${custId}','${esc(state||'')}','${esc(division)}'))">Save Intake Form</button>
+      ${resp?`<button class="btn btn-o sm" onclick="_iPDF('${resp.id}')">Export PDF</button>`:''}
+    </div>
+  </div>`;
+  setTimeout(_iCond,50);
+}
+
+async function _iOpenForWO(woId,custId,state,division){
+  const el=document.getElementById('wo-intake-body');
+  if(!el) return;
+  el.innerHTML='<div style="padding:12px;color:var(--muted);font-size:13px">Loading…</div>';
+  await _iFetch();
+  const tmpl=_iFind(division,state);
+  if(!tmpl){el.innerHTML=`<div style="padding:12px;font-size:13px;color:var(--muted)">No form for <strong>${esc(division)}</strong>.</div>`;return;}
+  const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions):(tmpl.questions||[]);
+  let resp=null;
+  try{
+    const{data:bw}=await DB.from('lhs_intake_responses').select('*').eq('work_order_id',woId).limit(1).maybeSingle();
+    resp=bw;
+    if(!resp){
+      const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+      if(wo?.opp_id){const{data:bo}=await DB.from('lhs_intake_responses').select('*').eq('opportunity_id',wo.opp_id).limit(1).maybeSingle();resp=bo;}
+    }
+  }catch(e){}
+  window._iWoAns=resp?(typeof resp.answers==='string'?JSON.parse(resp.answers):(resp.answers||{})):{};
+  window._iWoRespId=resp?.id||null;
+  window._iWoTmplId=tmpl.id;
+  const filled=Object.entries(window._iWoAns).filter(([k,v])=>v!=='').length;
+  const pci=window._iWoAns['r7'];
+  const sqft=window._iWoAns['r8']||window._iWoAns['d1']||window._iWoAns['e2'];
+  const hints=[pci?`<span style="color:var(--teal);font-weight:700">pCi/L: ${pci}</span>`:null,sqft?`${sqft} sq ft`:null].filter(Boolean).join(' · ');
+  el.innerHTML=`<div style="padding:12px 14px">
+    ${resp?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Saved ${new Date(resp.updated_at||resp.created_at).toLocaleDateString()} · ${resp.is_complete?'<span style="color:#10b981;font-weight:600">Complete</span>':'<span style="color:var(--amber)">Partial</span>'} · ${filled} fields</div>`:''}
+    ${hints?`<div style="font-size:12px;margin-bottom:10px">${hints}</div>`:''}
+    ${resp?`<div style="margin-bottom:10px">${qs.slice(0,5).map(q=>{const a=window._iWoAns[q.id];if(!a)return'';return`<div style="font-size:12px;margin-bottom:4px"><span style="color:var(--muted)">${esc(q.label.length>44?q.label.slice(0,44)+'…':q.label)}:</span> <strong>${esc(Array.isArray(a)?a.join(', '):a)}</strong></div>`;}).join('')}${filled>5?`<div style="font-size:11px;color:var(--muted)">${filled} total fields filled</div>`:''}</div>`:'<div style="font-size:13px;color:var(--muted);margin-bottom:10px">No intake form on file.</div>'}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-o sm" onclick="_iWoEdit('${woId}','${custId}','${esc(state||'')}','${esc(division)}','${tmpl.id}')">✏️ ${resp?'Edit':'Fill Out'} Form</button>
+      ${resp?`<button class="btn btn-o sm" onclick="_iPDF('${resp.id}')">PDF</button>`:''}
+    </div>
+  </div>`;
+}
+
+function _iWoEdit(woId,custId,state,division,tmplId){
+  const el=document.getElementById('wo-intake-body');
+  if(!el) return;
+  const tmpl=(_iTmplCache||[]).find(t=>t.id===tmplId);
+  if(!tmpl) return;
+  const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions):(tmpl.questions||[]);
+  el.innerHTML=`<div style="padding:12px 14px">
+    <div id="wo-intake-qs">${_iRenderForm(qs,window._iWoAns||{},'edit')}</div>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button class="btn btn-n sm" onclick="_iWoSave('${woId}','${custId}','${tmplId}','${esc(division)}','${esc(state||'')}')">Save</button>
+      <button class="btn btn-o sm" onclick="_iOpenForWO('${woId}','${custId}','${esc(state||'')}','${esc(division)}')">Cancel</button>
+    </div>
+  </div>`;
+  setTimeout(_iCond,50);
+}
+
+async function _iWoSave(woId,custId,tmplId,division,state){
+  const ans=window._iWoAns||{};
+  window._iAns=ans;window._iRespId=window._iWoRespId||null;
+  await _iSave(null,custId,woId,tmplId,division,state,()=>{
+    window._iWoRespId=window._iRespId;
+    _iOpenForWO(woId,custId,state,division);
+  });
+}
+
+function _iPDF(respId){
+  DB.from('lhs_intake_responses').select('*,lhs_intake_templates(*)').eq('id',respId).maybeSingle().then(({data})=>{
+    if(!data){tst('Response not found','error');return;}
+    const tmpl=data.lhs_intake_templates||{};
+    const ans=typeof data.answers==='string'?JSON.parse(data.answers):(data.answers||{});
+    const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions||'[]'):(tmpl.questions||[]);
+    const rows=qs.map(q=>{const v=ans[q.id];if(!v&&v!==0)return'';const d=Array.isArray(v)?v.join(', '):v;return`<tr style="border-bottom:1px solid #e5e7eb"><td style="padding:10px 12px;font-weight:600;color:#1e3a5f;width:45%;font-size:13px">${esc(q.label)}</td><td style="padding:10px 12px;font-size:13px">${esc(String(d))}</td></tr>`;}).filter(Boolean).join('');
+    const html=`<!DOCTYPE html><html><head><title>Intake Form</title><style>body{font-family:'DM Sans',Arial,sans-serif;margin:0;padding:32px;color:#111}table{width:100%;border-collapse:collapse}th{background:#1e3a5f;color:white;padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em}@media print{body{padding:16px}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1e3a5f">
+      <div><div style="font-size:22px;font-weight:800;color:#1e3a5f">Intake Form</div><div style="font-size:14px;color:#6b7280;margin-top:4px">${esc(tmpl.name||data.division||'')}</div></div>
+      <div style="text-align:right;font-size:12px;color:#6b7280"><div>${new Date(data.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div><div>${esc(data.submitted_by||'')}</div><div style="font-weight:700;color:#1e3a5f;margin-top:4px">Lifetime Home Services</div></div>
+    </div>
+    <table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>${rows}</tbody></table>
+    <script>window.onload=()=>window.print();<\/script></body></html>`;
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}
+  });
+}
+
+// ── Intake Forms Settings renderer ──────────────────────────────────────────
+async function renderIntakeTemplatesSettings(){
+  const el=document.getElementById('intake-tmpl-list');
+  if(!el) return;
+  await _iFetch();
+  const divs=[...new Set((_iTmplCache||[]).map(t=>t.division))].sort();
+  if(!divs.length){el.innerHTML='<div style="font-size:13px;color:var(--muted)">No templates loaded. Run the SQL seed script.</div>';return;}
+  el.innerHTML=divs.map(div=>{
+    const templates=(_iTmplCache||[]).filter(t=>t.division===div);
+    return`<div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:6px">${esc(div)}</div>
+      ${templates.map(t=>`<div style="border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;background:var(--surf)">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--navy)">${esc(t.name)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${t.state?'State: '+t.state:'Base template'} · ${(typeof t.questions==='string'?JSON.parse(t.questions):t.questions||[]).length} questions</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm btn-o" onclick="oEditIntakeTemplate('${t.id}')">Edit</button>
+          ${t.state?`<button class="btn sm btn-o" onclick="delIntakeTemplate('${t.id}')">Delete</button>`:''}
+          <button class="btn sm btn-n" onclick="oAddStateIntakeVariant('${t.id}','${esc(div)}')">+ State Variant</button>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function oEditIntakeTemplate(tmplId){
+  const tmpl=(_iTmplCache||[]).find(t=>t.id===tmplId);
+  if(!tmpl) return;
+  const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions):(tmpl.questions||[]);
+  window._editTmplId=tmplId;
+  window._editTmplQs=[...qs];
+  oMod(`Edit: ${tmpl.name}`,`
+    <div style="max-height:75vh;overflow-y:auto;padding-right:4px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${esc(tmpl.division)}${tmpl.state?' · State: '+tmpl.state:' · Base template'} · ${qs.length} questions</div>
+      <div id="itq-list">${_iQEditorList(qs)}</div>
+      <button class="btn btn-o sm" style="margin-top:8px" onclick="_iAddQ()">+ Add Question</button>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-n" onclick="svEditIntakeTemplate()">Save Template</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+function _iQEditorList(qs){
+  return qs.map((q,i)=>`<div style="border:1px solid var(--bdr);border-radius:6px;padding:10px 12px;margin-bottom:6px;background:var(--surf)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted)">Q${i+1} · <span style="color:var(--navy)">${esc(q.type)}</span>${q.required?' · <span style="color:var(--red)">required</span>':''}</div>
+      <div style="display:flex;gap:4px">
+        <button class="btn sm btn-o" onclick="window._editTmplQs.splice(${i},1);document.getElementById('itq-list').innerHTML=_iQEditorList(window._editTmplQs)">Remove</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
+          <input type="checkbox" ${q.required?'checked':''} onchange="window._editTmplQs[${i}].required=this.checked;document.getElementById('itq-list').innerHTML=_iQEditorList(window._editTmplQs)"> Req
+        </label>
+      </div>
+    </div>
+    <input type="text" value="${esc(q.label)}" style="width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:4px;font-size:12px;font-family:inherit;box-sizing:border-box" oninput="window._editTmplQs[${i}].label=this.value">
+  </div>`).join('');
+}
+
+function _iAddQ(){
+  window._editTmplQs=window._editTmplQs||[];
+  window._editTmplQs.push({id:'q_'+Date.now(),type:'text',label:'New question',required:false});
+  document.getElementById('itq-list').innerHTML=_iQEditorList(window._editTmplQs);
+}
+
+async function svEditIntakeTemplate(){
+  const qs=window._editTmplQs||[];
+  const{error}=await DB.from('lhs_intake_templates').update({questions:qs,updated_at:new Date().toISOString()}).eq('id',window._editTmplId);
+  if(error){tst('Save failed: '+error.message,'error');return;}
+  _iTmplCache=null;
+  tst('Template saved','success');
+  cMod();
+  renderIntakeTemplatesSettings();
+}
+
+function oAddStateIntakeVariant(baseTmplId,division){
+  oMod('Add State Variant',`
+    <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">Clone the base <strong>${esc(division)}</strong> template and save a state-specific version.</div>
+    <div class="fl"><label>State (2-letter code)</label>
+      <input id="isv-state" placeholder="e.g. WI" maxlength="2" style="text-transform:uppercase;width:80px;padding:8px 10px;border:1px solid var(--bdr);border-radius:6px;font-family:inherit;font-size:13px">
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svAddStateIntakeVariant('${baseTmplId}','${esc(division)}')">Create Variant</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function svAddStateIntakeVariant(baseTmplId,division){
+  const state=(document.getElementById('isv-state')?.value||'').toUpperCase().trim();
+  if(state.length!==2){tst('Enter a valid 2-letter state code','error');return;}
+  const base=(_iTmplCache||[]).find(t=>t.id===baseTmplId);
+  if(!base) return;
+  const existing=(_iTmplCache||[]).find(t=>t.division===division&&t.state===state);
+  if(existing){tst(`${state} variant already exists for ${division}`,'info');cMod();return;}
+  const{data,error}=await DB.from('lhs_intake_templates').insert({division,name:`${base.name} — ${state}`,is_default:true,state,questions:base.questions,created_at:new Date().toISOString(),updated_at:new Date().toISOString()}).select().single();
+  if(error){tst('Failed: '+error.message,'error');return;}
+  _iTmplCache=null;
+  tst(`${state} variant created for ${division}`,'success');
+  cMod();
+  renderIntakeTemplatesSettings();
+}
+
+async function delIntakeTemplate(tmplId){
+  if(!confirm('Delete this state variant? The base template will remain.')) return;
+  const{error}=await DB.from('lhs_intake_templates').delete().eq('id',tmplId);
+  if(error){tst('Delete failed: '+error.message,'error');return;}
+  _iTmplCache=null;tst('Variant deleted','success');renderIntakeTemplatesSettings();
+}
+
+async function _iOpenAccountHub(custId){
+  const el=document.getElementById('acct-intake-body');
+  if(!el) return;
+  el.innerHTML='<div style="padding:20px;color:var(--muted);font-size:13px">Loading…</div>';
+  let resps=[];
+  try{const{data}=await DB.from('lhs_intake_responses').select('*,lhs_intake_templates(name)').eq('customer_id',custId).order('created_at',{ascending:false});resps=data||[];}catch(e){}
+  if(!resps.length){el.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">No intake forms on file for this account.</div>';return;}
+  el.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px">${resps.map(r=>{
+    const filled=Object.entries(typeof r.answers==='string'?JSON.parse(r.answers):(r.answers||{})).filter(([k,v])=>v!=='').length;
+    const dt=new Date(r.updated_at||r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    return`<div class="card" style="padding:14px;cursor:pointer" onclick="_iOpenRespModal('${r.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">${esc(r.lhs_intake_templates?.name||r.division||'Intake Form')}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${dt} · ${esc(r.submitted_by||'—')} · ${filled} fields filled</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${bx(r.is_complete?'Complete':'Partial',r.is_complete?'bg':'ba')}
+          <button class="btn sm btn-o" onclick="event.stopPropagation();_iPDF('${r.id}')">PDF</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+async function _iOpenRespModal(respId){
+  const{data}=await DB.from('lhs_intake_responses').select('*,lhs_intake_templates(*)').eq('id',respId).maybeSingle();
+  if(!data) return;
+  const tmpl=data.lhs_intake_templates||{};
+  const qs=typeof tmpl.questions==='string'?JSON.parse(tmpl.questions||'[]'):(tmpl.questions||[]);
+  window._iAns=typeof data.answers==='string'?JSON.parse(data.answers):(data.answers||{});
+  window._iRespId=respId;window._iTmplId=tmpl.id;
+  const custId=data.customer_id;const oppId=data.opportunity_id;const woId=data.work_order_id;
+  oMod(tmpl.name||'Intake Form',`
+    <div style="max-height:78vh;overflow-y:auto;padding-right:4px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${esc(data.division||'')} · Saved ${new Date(data.updated_at||data.created_at).toLocaleDateString()} by ${esc(data.submitted_by||'—')}</div>
+      <div id="resp-modal-qs">${_iRenderForm(qs,window._iAns,'edit')}</div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-n" onclick="_iSave('${oppId||''}','${custId||''}','${woId||''}','${tmpl.id}','${esc(data.division||'')}','${esc(data.state||'')}',()=>_iOpenAccountHub('${custId||''}');cMod())">Save Changes</button>
+      <button class="btn btn-o sm" onclick="_iPDF('${respId}')">Export PDF</button>
+      <button class="btn btn-o" onclick="cMod()">Close</button>
+    </div>`);
+  setTimeout(_iCond,50);
 }
 
 async function oppToWO(oppId){
