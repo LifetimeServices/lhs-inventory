@@ -41240,17 +41240,44 @@ function openOpportunity(id){
 
   <!-- Details + Activity split -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-    <!-- Details -->
+    <!-- Details (editable) -->
     <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:10px;letter-spacing:.06em">Details</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px">
-        <span style="color:var(--muted);font-weight:600">Division</span><span>${esc(o.division||'—')}</span>
-        <span style="color:var(--muted);font-weight:600">Job Type</span><span>${esc(o.job_type||'—')}</span>
-        <span style="color:var(--muted);font-weight:600">Rep</span><span>${esc(o.assigned_to||'—')}</span>
-        <span style="color:var(--muted);font-weight:600">Close Date</span><span>${o.close_date?new Date(o.close_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</span>
-        <span style="color:var(--muted);font-weight:600">Created</span><span>${o.created_at?new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.06em">Details</div>
+        <button class="btn sm btn-n" onclick="svOppDetails('${id}')">Save</button>
       </div>
-      ${o.description?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);font-size:13px;color:var(--text);line-height:1.5">${esc(o.description)}</div>`:''}
+      ${(()=>{
+        const si='width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px;font-family:inherit;box-sizing:border-box';
+        const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
+        const reps=(S.get('lhs:users')||[]).map(u=>u.name||u.full_name||'').filter(Boolean);
+        return`<div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Division</label>
+            <select id="od-div" style="${si}">
+              <option value="">— None —</option>
+              ${divs.map(d=>`<option value="${esc(d)}" ${o.division===d?'selected':''}>${esc(d)}</option>`).join('')}
+            </select>
+          </div>
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Job Type</label>
+            <input id="od-jtype" type="text" value="${esc(o.job_type||'')}" placeholder="e.g. Installation" style="${si}">
+          </div>
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Rep</label>
+            ${reps.length?`<select id="od-rep" style="${si}">
+              <option value="">— Unassigned —</option>
+              ${reps.map(r=>`<option ${o.assigned_to===r?'selected':''}>${esc(r)}</option>`).join('')}
+            </select>`:`<input id="od-rep" type="text" value="${esc(o.assigned_to||'')}" placeholder="Assigned rep" style="${si}">`}
+          </div>
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Est. Value ($)</label>
+            <input id="od-val" type="number" value="${o.estimated_value||0}" min="0" style="${si}">
+          </div>
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Close Date</label>
+            <input id="od-close" type="date" value="${o.close_date||''}" style="${si}">
+          </div>
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Description</label>
+            <textarea id="od-desc" rows="2" placeholder="Notes about this opportunity…" style="${si};resize:vertical">${esc(o.description||'')}</textarea>
+          </div>
+          <div style="font-size:11px;color:var(--muted);padding-top:4px;border-top:1px solid var(--bdr)">Created ${o.created_at?new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+        </div>`;
+      })()}
     </div>
     <!-- Quick Activity Entry -->
     <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px">
@@ -41332,6 +41359,23 @@ function openOpportunity(id){
     </div>`:'<div style="font-size:13px;color:var(--muted);padding:12px 0">No activities yet — use the form above to log the first one.</div>'}
   </div>
   </div>`);
+}
+
+async function svOppDetails(oppId){
+  const div=document.getElementById('od-div')?.value||'';
+  const jtype=document.getElementById('od-jtype')?.value||'';
+  const rep=document.getElementById('od-rep')?.value||'';
+  const val=parseFloat(document.getElementById('od-val')?.value||0)||0;
+  const close=document.getElementById('od-close')?.value||null;
+  const desc=document.getElementById('od-desc')?.value||'';
+  const now=new Date().toISOString();
+  const updates={division:div||null,job_type:jtype||null,assigned_to:rep||null,estimated_value:val,close_date:close||null,description:desc||null,updated_at:now};
+  const opps=S.get('lhs:opportunities')||[];
+  const o=opps.find(x=>x.id===oppId);
+  if(o){Object.assign(o,updates);S.set('lhs:opportunities',opps);}
+  try{await dbUpdate('lhs:opportunities',oppId,updates);tst('Opportunity updated','success');}
+  catch(e){tst('Save failed: '+e.message,'error');return;}
+  openOpportunity(oppId);
 }
 
 async function logOppActivity(oppId){
