@@ -38341,15 +38341,17 @@ function pbCategoryForm(c){
   return`<div style="min-width:340px">
   <div class="fl"><label>Category Name</label><input id="pbc-name" value="${esc(c.name||'')}" placeholder="e.g. Radon Systems - Residential"></div>
   <div class="fl"><label>Divisions <span style="font-weight:400;color:var(--muted)">(select all that apply)</span></label>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;border:1.5px solid var(--bdr);border-radius:8px;background:var(--surf);max-height:180px;overflow-y:auto">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;width:100%;color:var(--muted)">
+    <div style="border:1.5px solid var(--bdr);border-radius:8px;background:var(--surf);max-height:200px;overflow-y:auto;padding:8px 12px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:5px 0;border-bottom:1px solid var(--bdr);margin-bottom:4px;color:var(--muted)">
         <input type="checkbox" id="pbc-div-all" onchange="if(this.checked)document.querySelectorAll('.pbc-div-cb').forEach(x=>x.checked=false)"
-          ${selDivs.length===0?' checked':''}> — All Divisions —
+          ${selDivs.length===0?' checked':''}> <span>— All Divisions —</span>
       </label>
-      ${divs.map(d=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;min-width:45%;flex:1">
-        <input type="checkbox" class="pbc-div-cb" value="${esc(d)}" onchange="if(this.checked)document.getElementById('pbc-div-all').checked=false"
-          ${selDivs.includes(d)?' checked':''}> ${esc(d)}
-      </label>`).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px">
+        ${divs.map(d=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:5px 4px;border-radius:4px">
+          <input type="checkbox" class="pbc-div-cb" value="${esc(d)}" onchange="if(this.checked)document.getElementById('pbc-div-all').checked=false"
+            ${selDivs.includes(d)?' checked':''}> <span style="line-height:1.3">${esc(d)}</span>
+        </label>`).join('')}
+      </div>
     </div>
   </div>
   <div class="fl"><label>Color</label>
