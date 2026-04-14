@@ -41780,7 +41780,15 @@ function oNewEstimate(prefill={}){
 
   <!-- Line items -->
   <div id="est-lines-wrap">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:8px">Line Items</div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:6px">Line Items</div>
+    <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 80px 32px;gap:4px;padding:0 0 4px;border-bottom:2px solid var(--bdr);margin-bottom:2px">
+      <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Description</span>
+      <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Type</span>
+      <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;text-align:right">Qty</span>
+      <span style="font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;text-align:right">Cost</span>
+      <span style="font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;text-align:right">Price</span>
+      <span></span>
+    </div>
     <div id="est-lines"></div>
     <button class="btn btn-o sm" style="margin-top:6px" onclick="estAddLine()">+ Add Line</button>
     <div style="margin-top:12px;padding:12px;background:var(--surf);border-radius:8px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:13px">
