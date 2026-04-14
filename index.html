@@ -15252,7 +15252,7 @@ function bAcctInvoices(){
 }
 
 function oAddInvoice(d){
-  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.status==='Completed'||w.status==='Invoiced');
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.status==='Completed'||w.status==='Invoiced'||w.status==='Closed with Dispatch');
   const today=new Date().toISOString().slice(0,10);
   const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
   const editId=d?.id||'';
@@ -15260,6 +15260,33 @@ function oAddInvoice(d){
   const existCustName=d?.customer_name||'';
   window._invSelCustId=existCustId;
   window._invSelCustName=existCustName;
+  window._invEstimateId=d?._estimate_id||null;
+  window._invLineItems=d?._line_items||null;
+  // Build line items preview if pre-filling from estimate
+  const lineItemsPreview=(()=>{
+    if(!d?._line_items) return '';
+    const lines=typeof d._line_items==='string'?JSON.parse(d._line_items||'[]'):(d._line_items||[]);
+    if(!lines.length) return '';
+    const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `<div class="fl" style="margin-bottom:12px">
+      <label style="color:var(--teal)">Line Items (from Estimate)</label>
+      <div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1fr 50px 80px;gap:4px;padding:6px 10px;background:var(--surf);border-bottom:1px solid var(--bdr)">
+          <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Description</span>
+          <span style="font-size:10px;font-weight:700;color:var(--muted);text-align:center">Qty</span>
+          <span style="font-size:10px;font-weight:700;color:var(--teal);text-align:right">Price</span>
+        </div>
+        ${lines.map(l=>`<div style="display:grid;grid-template-columns:1fr 50px 80px;gap:4px;padding:6px 10px;border-bottom:1px solid var(--bdr);font-size:13px">
+          <div>${l.description||l.name||''}</div>
+          <div style="text-align:center;color:var(--muted)">${l.qty||1}</div>
+          <div style="text-align:right;font-weight:600;color:var(--teal)">${fmt(l.price||l.unit_price||0)}</div>
+        </div>`).join('')}
+        <div style="display:flex;justify-content:flex-end;padding:8px 10px;background:var(--surf)">
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">Total: ${fmt(d.amount||0)}</span>
+        </div>
+      </div>
+    </div>`;
+  })();
 
   oMod((editId?'Edit':'+ New')+' Invoice',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -15290,6 +15317,7 @@ function oAddInvoice(d){
       <select id="inv-wo"><option value="">-- None --</option>
         ${wos.map(w=>`<option value="${esc(w.id)}"${d?.work_order_id===w.id?' selected':''}>WO #${esc(w.wo_number||w.id?.slice(-6))} — ${esc(w.customer_name||'')} (${esc(w.division||'')})</option>`).join('')}
       </select></div>
+    ${lineItemsPreview}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="fl" style="margin:0"><label>Amount *</label>
         <input type="number" id="inv-amt" step="0.01" min="0" placeholder="0.00" value="${d?.amount||''}"></div>
@@ -15412,6 +15440,8 @@ async function saveInvoice(editId){
     due_date:document.getElementById('inv-due')?.value||null,
     status:document.getElementById('inv-status')?.value||'Open',
     notes:document.getElementById('inv-notes')?.value||null,
+    estimate_id:window._invEstimateId||null,
+    line_items:window._invLineItems||null,
     created_by:CU?.name||null,
   };
   const invs=S.get('lhs:acct_invoices')||[];
@@ -15425,7 +15455,15 @@ async function saveInvoice(editId){
     rec.id=crypto.randomUUID(); rec.created_at=new Date().toISOString();
     invs.push(rec); S.set('lhs:acct_invoices',invs);
     try{await DB.from('lhs_acct_invoices').insert(rec);}catch{}
+    // Link invoice back to estimate so estimate knows it's been invoiced
+    if(rec.estimate_id){
+      const ests=S.get('lhs:estimates')||[];
+      const ei=ests.findIndex(x=>x.id===rec.estimate_id);
+      if(ei>=0){ests[ei].invoice_id=rec.id;S.set('lhs:estimates',ests);}
+      try{await dbUpdate('lhs:estimates',rec.estimate_id,{invoice_id:rec.id});}catch{}
+    }
   }
+  window._invEstimateId=null; window._invLineItems=null;
   cMod(); showPage('acct-invoices');
 }
 
@@ -18221,6 +18259,7 @@ async function stMigrate(){
     if(doInvoices){
       log('Fetching invoices...');prog(79,'Fetching invoices...');
       try{
+        log('  Refreshing ST token...');token=await _stGetToken();log('  ✓ Token refreshed');
         const invs=await _stFetchAll(token,`${BASE}/accounting/v2/tenant/${tid}/invoices`,log);
         log(`Fetched ${invs.length} invoices — saving...`);
         for(let i=0;i<invs.length;i+=100){
@@ -18241,6 +18280,7 @@ async function stMigrate(){
     if(doEstimates){
       log('Fetching estimates...');prog(89,'Fetching estimates...');
       try{
+        log('  Refreshing ST token...');token=await _stGetToken();log('  ✓ Token refreshed');
         const ests=await _stFetchAll(token,`${BASE}/sales/v2/tenant/${tid}/estimates`,log);
         log(`Fetched ${ests.length} estimates — saving...`);
         for(let i=0;i<ests.length;i+=100){
@@ -18261,6 +18301,7 @@ async function stMigrate(){
     if(doAppts){
       log('Fetching appointments...');prog(95,'Fetching appointments...');
       try{
+        log('  Refreshing ST token...');token=await _stGetToken();log('  ✓ Token refreshed');
         const appts=await _stFetchAll(token,`${BASE}/jpm/v2/tenant/${tid}/appointments`,log);
         log(`✓ ${appts.length} appointments fetched (stored with jobs)\n`);
       }catch(e){log(`  Appointments skipped: ${e.message}\n`);}
@@ -23215,6 +23256,48 @@ async function openWO(woId){
       ${wo.property_id?`<div style="margin-top:8px"><button class="btn btn-o sm" onclick="openProperty('${wo.property_id}')">📋 View Property Record</button></div>`:''}
     </div>
   </div>
+
+  <!-- Estimate / Scope of Work -->
+  ${(()=>{
+    if(!wo.estimate_id) return '';
+    const est=(S.get('lhs:estimates')||[]).find(x=>x.id===wo.estimate_id);
+    if(!est) return '';
+    const lines=typeof est.line_items==='string'?JSON.parse(est.line_items||'[]'):(est.line_items||[]);
+    const isLocked=!!est.locked;
+    const canUnlock=['Creator','God View','Admin','Director'].includes(CU?.role);
+    const canEdit=!isLocked;
+    const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `<div class="card" style="padding:16px;margin-bottom:16px;${isLocked?'border:2px solid var(--green);':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="ct" style="margin:0">Scope of Work</div>
+          <span style="font-size:12px;color:var(--muted)">${esc(est.estimate_number||'')}</span>
+          ${isLocked
+            ? `<span style="background:var(--green);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.04em">🔒 FINAL</span>`
+            : `<span style="background:var(--amber);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.04em">LIVE</span>`}
+        </div>
+        <div style="display:flex;gap:6px">
+          ${canEdit ? `<button class="btn btn-o sm" onclick="cMod();editEstimate('${est.id}')">&#9998; Edit</button>` : ''}
+          ${isLocked && canUnlock ? `<button class="btn btn-o sm" style="color:var(--amber);border-color:var(--amber)" onclick="_unlockEstimate('${est.id}','wo','${woId}')">&#128275; Unlock</button>` : ''}
+        </div>
+      </div>
+      ${lines.length ? `
+      <div style="display:grid;grid-template-columns:1fr 50px 80px;gap:4px;padding-bottom:6px;border-bottom:1px solid var(--bdr);margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Description</span>
+        <span style="font-size:10px;font-weight:700;color:var(--muted);text-align:center">Qty</span>
+        <span style="font-size:10px;font-weight:700;color:var(--teal);text-align:right">Price</span>
+      </div>
+      ${lines.map(l=>`<div style="display:grid;grid-template-columns:1fr 50px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--bdr);font-size:13px">
+        <div style="display:flex;align-items:center;gap:6px">${esc(l.description||l.name||'')}${l.type?`<span style="font-size:10px;color:var(--muted)">${esc(l.type)}</span>`:''}</div>
+        <div style="text-align:center;color:var(--muted)">${l.qty||1}</div>
+        <div style="text-align:right;font-weight:600;color:var(--teal)">${fmt(l.price||l.unit_price||0)}</div>
+      </div>`).join('')}
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:2px solid var(--bdr)">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">Total</span>
+        <span style="font-size:17px;font-weight:800;color:var(--navy)">${fmt(est.total_price||0)}</span>
+      </div>` : `<div style="font-size:13px;color:var(--muted);padding:4px 0">No line items on this estimate yet.</div>`}
+    </div>`;
+  })()}
 
   <!-- Appointments -->
   <div style="margin-bottom:16px">
@@ -29696,12 +29779,104 @@ function bCloseout(){
 }
 
 async function closeoutWO(woId){
-  if(!confirm('Mark this work order as Closed with Dispatch?')) return;
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
-  if(wo){wo.status='Closed with Dispatch';wo.closed_at=new Date().toISOString();wo.closed_by=CU.name;S.set('lhs:work_orders',wos);}
-  await dbUpdate('lhs:work_orders',woId,{status:'Closed with Dispatch',closed_at:new Date().toISOString(),closed_by:CU.name});
-  tst('Work order closed','success');refreshDispBoard();showPage('closeout');
+  if(!wo) return;
+  const est=wo.estimate_id?(S.get('lhs:estimates')||[]).find(x=>x.id===wo.estimate_id):null;
+  const hasInvoice=!!(est?.invoice_id);
+  const estTotal=est?.total_price||wo.total_price||0;
+  const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  oMod('Close Work Order',`
+    <div style="text-align:center;padding:8px 0 16px">
+      <div style="font-size:36px;margin-bottom:10px">&#10003;</div>
+      <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Mark as Closed with Dispatch?</div>
+      <div style="font-size:13px;color:var(--muted)">WO #${esc(wo.wo_number||'')} &middot; ${esc(wo.customer_name||'')}</div>
+    </div>
+    ${est&&!hasInvoice?`
+    <div style="background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;padding:12px 14px;font-size:13px;color:#0d47a1;margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:4px">&#128196; Create Invoice?</div>
+      <div>This job has an estimate totaling <strong>${fmt(estTotal)}</strong>. Close and generate an invoice at the same time.</div>
+    </div>`:''}
+    <div class="br2">
+      <button class="btn btn-n" onclick="_doCloseoutWO('${woId}',false)">Close Job Only</button>
+      ${est&&!hasInvoice?`<button class="btn btn-g" onclick="_doCloseoutWO('${woId}',true)">Close + Create Invoice</button>`:''}
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function _doCloseoutWO(woId,createInvoice){
+  cMod();
+  const now=new Date().toISOString();
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  if(wo){wo.status='Closed with Dispatch';wo.closed_at=now;wo.closed_by=CU?.name||'';S.set('lhs:work_orders',wos);}
+  await dbUpdate('lhs:work_orders',woId,{status:'Closed with Dispatch',closed_at:now,closed_by:CU?.name||''});
+  // Lock the linked estimate as Final
+  if(wo?.estimate_id){
+    const ests=S.get('lhs:estimates')||[];
+    const ei=ests.findIndex(x=>x.id===wo.estimate_id);
+    if(ei>=0&&!ests[ei].locked){
+      ests[ei].locked=true;ests[ei].locked_at=now;ests[ei].locked_by=CU?.name||'';
+      S.set('lhs:estimates',ests);
+      try{await dbUpdate('lhs:estimates',wo.estimate_id,{locked:true,locked_at:now,locked_by:CU?.name||''});}catch{}
+      try{await DB.from('lhs_estimate_audit').insert({estimate_id:wo.estimate_id,changed_by:CU?.name||'',change_type:'locked',new_value:'Final — WO Closed with Dispatch',source:'closeout'});}catch{}
+    }
+  }
+  tst('Work order closed','success');
+  if(createInvoice&&wo?.estimate_id){
+    setTimeout(()=>_createInvoiceFromWO(woId),200);
+  } else {
+    refreshDispBoard();showPage('closeout');
+  }
+}
+
+async function _unlockEstimate(id,source,returnId){
+  const canUnlock=['Creator','God View','Admin','Director'].includes(CU?.role);
+  if(!canUnlock){tst('You do not have permission to unlock estimates','error');return;}
+  const ests=S.get('lhs:estimates')||[];
+  const est=ests.find(x=>x.id===id);
+  const hasInvoice=!!(est?.invoice_id);
+  const msg=hasInvoice
+    ?'This estimate has an invoice. Unlock for editing? You will be prompted to regenerate the invoice after saving changes.'
+    :'Unlock this estimate for editing?';
+  if(!confirm(msg)) return;
+  const now=new Date().toISOString();
+  const ei=ests.findIndex(x=>x.id===id);
+  if(ei>=0){ests[ei].locked=false;ests[ei].locked_at=null;ests[ei].locked_by=null;S.set('lhs:estimates',ests);}
+  try{await dbUpdate('lhs:estimates',id,{locked:false,locked_at:null,locked_by:null,updated_at:now});}catch{}
+  try{await DB.from('lhs_estimate_audit').insert({estimate_id:id,changed_by:CU?.name||'',change_type:'unlocked',old_value:'Final',new_value:'Unlocked for editing',source:source||'estimate'});}catch{}
+  tst('Estimate unlocked — make your changes then save','info');
+  if(source==='wo'&&returnId) openWO(returnId);
+  else openEstimate(id);
+}
+
+function _createInvoiceFromWO(woId){
+  const wos=S.get('lhs:work_orders')||[];
+  const wo=wos.find(w=>w.id===woId);
+  if(!wo) return;
+  const est=wo.estimate_id?(S.get('lhs:estimates')||[]).find(x=>x.id===wo.estimate_id):null;
+  const invs=S.get('lhs:acct_invoices')||[];
+  const nextNum='INV-'+String(invs.length+1).padStart(4,'0');
+  const today=new Date().toISOString().slice(0,10);
+  const due30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+  const prefill={
+    invoice_number:nextNum,
+    customer_id:wo.customer_id||'',
+    customer_name:wo.customer_name||'',
+    work_order_id:wo.id,
+    division:wo.division||'',
+    amount:est?.total_price||wo.total_price||0,
+    invoice_date:today,
+    due_date:due30,
+    status:'Open',
+    notes:est?`${est.estimate_number||'Estimate'} — ${wo.wo_number||''}`.trim():'',
+    _estimate_id:est?.id||null,
+    _line_items:est?.line_items||'[]',
+  };
+  window._invSelCustId=wo.customer_id||'';
+  window._invSelCustName=wo.customer_name||'';
+  showPage('acct-invoices');
+  setTimeout(()=>oAddInvoice(prefill),150);
 }
 
 // ── TOOL MANAGEMENT ───────────────────────────────────────────────────────────
@@ -42376,6 +42551,15 @@ function estToDb(obj){return Object.fromEntries(Object.entries(obj).filter(([k])
 
 // ── SAVE ESTIMATE ──────────────────────────────────────────────────────────────
 async function svEstimate(){
+  // Lock check — block save if estimate is locked as Final
+  const _earlyEditId=window._estEditId||null;
+  if(_earlyEditId){
+    const _earlyEst=(S.get('lhs:estimates')||[]).find(x=>x.id===_earlyEditId);
+    if(_earlyEst?.locked){
+      tst('This estimate is locked as Final. Unlock it first to make changes.','error');
+      return;
+    }
+  }
   const pkg=window._estPkg||'custom';
   const lines=window._estLines?.[pkg]||[];
   const custId=document.getElementById('est-cust')?.value||'';
@@ -42442,6 +42626,36 @@ async function svEstimate(){
       delete upd.created_at; delete upd.created_by; // preserve originals
       upd.updated_at=now;
       try{await dbUpdate('lhs:estimates',editId,estToDb(upd));}catch(e){console.warn('svEstimate update:',e?.message);}
+      // Audit log — compare old vs new
+      try{
+        const oldLines=typeof orig?.line_items==='string'?JSON.parse(orig.line_items||'[]'):(orig?.line_items||[]);
+        const auditRows=[];
+        const src=window._estSource||'estimate';
+        // Removed lines
+        oldLines.forEach(ol=>{
+          if(!lines.find(nl=>(nl.description||nl.name)===(ol.description||ol.name)))
+            auditRows.push({estimate_id:editId,changed_by:CU?.name||'',change_type:'line_item_removed',line_item_desc:ol.description||ol.name||'',old_value:JSON.stringify({qty:ol.qty,price:ol.price||ol.unit_price}),source:src});
+        });
+        // Added lines
+        lines.forEach(nl=>{
+          if(!oldLines.find(ol=>(ol.description||ol.name)===(nl.description||nl.name)))
+            auditRows.push({estimate_id:editId,changed_by:CU?.name||'',change_type:'line_item_added',line_item_desc:nl.description||nl.name||'',new_value:JSON.stringify({qty:nl.qty,price:nl.price||nl.unit_price}),source:src});
+        });
+        // Edited lines (same desc, different qty or price)
+        lines.forEach(nl=>{
+          const ol=oldLines.find(o=>(o.description||o.name)===(nl.description||nl.name));
+          if(ol){
+            const op=ol.price||ol.unit_price||0,np=nl.price||nl.unit_price||0;
+            const oq=ol.qty||1,nq=nl.qty||1;
+            if(op!==np||oq!==nq)
+              auditRows.push({estimate_id:editId,changed_by:CU?.name||'',change_type:'line_item_edited',line_item_desc:nl.description||nl.name||'',old_value:JSON.stringify({qty:oq,price:op}),new_value:JSON.stringify({qty:nq,price:np}),source:src});
+          }
+        });
+        // Status change
+        if(orig?.status&&orig.status!==est.status)
+          auditRows.push({estimate_id:editId,changed_by:CU?.name||'',change_type:'status_changed',field_name:'status',old_value:orig.status,new_value:est.status,source:src});
+        if(auditRows.length) await DB.from('lhs_estimate_audit').insert(auditRows);
+      }catch(e){console.warn('Estimate audit:',e?.message);}
       if(idx>=0) existingEsts[idx]={...existingEsts[idx],...upd,id:editId};
       S.set('lhs:estimates',existingEsts);
       window._estEditId=null; cMod();
