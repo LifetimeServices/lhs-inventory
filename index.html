@@ -15242,6 +15242,7 @@ function bAcctInvoices(){
             <td><span style="background:${statusBg[st]||'var(--surf)'};color:${statusColor[st]||'var(--muted)'};border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${st}</span></td>
             <td>${wo?`<a href="#" onclick="showPage('closeout');return false" style="color:var(--teal);font-size:12px">WO #${esc(wo.wo_number||wo.id?.slice(-6))}</a>`:'—'}</td>
             ${canEdit?`<td style="white-space:nowrap;text-align:right">
+              <button class="btn sm btn-o" onclick="oEmailInvoice('${esc(i.id)}')">&#9993; Email</button>
               <button class="btn sm btn-o" onclick="oEditInvoice('${esc(i.id)}')">Edit</button>
               <button class="btn sm btn-r" onclick="delInvoice('${esc(i.id)}')">&#215;</button>
             </td>`:''}
@@ -15479,6 +15480,132 @@ async function delInvoice(id){
   S.set('lhs:acct_invoices',invs.filter(i=>i.id!==id));
   try{await DB.from('lhs_acct_invoices').delete().eq('id',id);}catch{}
   showPage('acct-invoices');
+}
+
+function oEmailInvoice(id){
+  const inv=(S.get('lhs:acct_invoices')||[]).find(x=>x.id===id);
+  if(!inv){tst('Invoice not found','error');return;}
+  const cust=(S.get('lhs:customers')||[]).find(c=>c.id===inv.customer_id);
+  const custEmail=cust?.email||'';
+  const lines=inv.line_items?(typeof inv.line_items==='string'?JSON.parse(inv.line_items||'[]'):(inv.line_items||[])):[];
+  const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lastSent=inv.emailed_at?`<div style="font-size:12px;color:var(--green);margin-bottom:10px">&#10003; Last sent ${fmtDate(inv.emailed_at.slice(0,10))} to ${esc(inv.emailed_to||'')}</div>`:'';
+  oMod(`Email Invoice ${inv.invoice_number||''}`,`
+    ${lastSent}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="fl" style="margin:0"><label>To (Email) *</label>
+        <input id="ei-to" type="email" value="${esc(custEmail)}" placeholder="customer@email.com"></div>
+      <div class="fl" style="margin:0"><label>CC (optional)</label>
+        <input id="ei-cc" type="email" placeholder="cc@email.com"></div>
+    </div>
+    <div class="fl" style="margin-bottom:12px"><label>Subject</label>
+      <input id="ei-subj" value="Invoice ${esc(inv.invoice_number||'')} from Lifetime Home Services"></div>
+    <div class="fl" style="margin-bottom:12px"><label>Message (shown above invoice)</label>
+      <textarea id="ei-msg" rows="3" placeholder="Hi ${esc(inv.customer_name||'')}, please find your invoice attached below.">${esc('Hi '+(inv.customer_name||''))+', please find your invoice details below. Thank you for choosing Lifetime Home Services!'}</textarea></div>
+    <!-- Invoice preview -->
+    <div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:16px">
+      <div style="background:var(--navy);color:white;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;font-size:15px">Lifetime Home Services</div>
+        <div style="font-size:12px;opacity:.8">INVOICE</div>
+      </div>
+      <div style="padding:14px 16px;background:white">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:13px">
+          <div><div style="color:#666;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:2px">Invoice #</div><div style="font-weight:700">${esc(inv.invoice_number||'')}</div></div>
+          <div><div style="color:#666;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:2px">Bill To</div><div style="font-weight:700">${esc(inv.customer_name||'')}</div></div>
+          <div><div style="color:#666;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:2px">Invoice Date</div><div>${fmtDate(inv.invoice_date)}</div></div>
+          <div><div style="color:#666;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:2px">Due Date</div><div style="font-weight:600;color:${inv.status==='Overdue'?'#e53935':'inherit'}">${fmtDate(inv.due_date)}</div></div>
+        </div>
+        ${lines.length?`
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+          <thead><tr style="background:#f5f5f5">
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd">Description</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:1px solid #ddd">Qty</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd">Price</th>
+          </tr></thead>
+          <tbody>${lines.map(l=>`<tr>
+            <td style="padding:5px 8px;border-bottom:1px solid #eee">${esc(l.description||l.name||'')}</td>
+            <td style="text-align:center;padding:5px 8px;border-bottom:1px solid #eee">${l.qty||1}</td>
+            <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #eee;font-weight:600">${fmt(l.price||l.unit_price||0)}</td>
+          </tr>`).join('')}</tbody>
+        </table>`:``}
+        <div style="display:flex;justify-content:flex-end;padding-top:8px;border-top:2px solid #ddd">
+          <span style="font-size:16px;font-weight:800;color:#1a237e">Total: ${fmt(inv.amount||0)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="br2">
+      <button class="btn btn-n" onclick="svEmailInvoice('${id}')">&#9993; Send Invoice</button>
+      <button class="btn btn-o" onclick="cMod()">Cancel</button>
+    </div>`);
+}
+
+async function svEmailInvoice(id){
+  const to=(document.getElementById('ei-to')?.value||'').trim();
+  const cc=(document.getElementById('ei-cc')?.value||'').trim();
+  const subj=(document.getElementById('ei-subj')?.value||'').trim();
+  const msg=(document.getElementById('ei-msg')?.value||'').trim();
+  if(!to){tst('Enter a recipient email','error');return;}
+  const inv=(S.get('lhs:acct_invoices')||[]).find(x=>x.id===id);
+  if(!inv) return;
+  const lines=inv.line_items?(typeof inv.line_items==='string'?JSON.parse(inv.line_items||'[]'):(inv.line_items||[])):[];
+  const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lineItemsHTML=lines.length?`
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
+      <thead><tr style="background:#f0f4ff">
+        <th style="text-align:left;padding:8px 12px;border-bottom:2px solid #c5cae9;font-weight:700">Description</th>
+        <th style="text-align:center;padding:8px 12px;border-bottom:2px solid #c5cae9;font-weight:700">Qty</th>
+        <th style="text-align:right;padding:8px 12px;border-bottom:2px solid #c5cae9;font-weight:700">Price</th>
+      </tr></thead>
+      <tbody>${lines.map((l,i)=>`<tr style="background:${i%2===0?'#fff':'#fafafa'}">
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${esc(l.description||l.name||'')}</td>
+        <td style="text-align:center;padding:8px 12px;border-bottom:1px solid #eee">${l.qty||1}</td>
+        <td style="text-align:right;padding:8px 12px;border-bottom:1px solid #eee;font-weight:600;color:#1565c0">${fmt(l.price||l.unit_price||0)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`:'';
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">
+  <div style="max-width:600px;margin:32px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
+    <div style="background:#1a237e;padding:24px 28px;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:white;font-size:20px;font-weight:800;letter-spacing:.5px">Lifetime Home Services</div>
+      <div style="color:#7986cb;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Invoice</div>
+    </div>
+    <div style="padding:28px">
+      <p style="color:#444;font-size:15px;margin:0 0 20px">${msg.replace(/\n/g,'<br>')}</p>
+      <div style="background:#f0f4ff;border-radius:8px;padding:16px 20px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7986cb;margin-bottom:4px">Invoice #</div><div style="font-weight:700;font-size:15px;color:#1a237e">${esc(inv.invoice_number||'')}</div></div>
+        <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7986cb;margin-bottom:4px">Bill To</div><div style="font-weight:700;font-size:15px">${esc(inv.customer_name||'')}</div></div>
+        <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7986cb;margin-bottom:4px">Invoice Date</div><div>${esc(fmtDate(inv.invoice_date))}</div></div>
+        <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7986cb;margin-bottom:4px">Due Date</div><div style="font-weight:600;color:${inv.status==='Overdue'?'#e53935':'#333'}">${esc(fmtDate(inv.due_date))}</div></div>
+        ${inv.division?`<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7986cb;margin-bottom:4px">Division</div><div>${esc(inv.division)}</div></div>`:''}
+      </div>
+      ${lineItemsHTML}
+      <div style="background:#1a237e;border-radius:8px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <span style="color:#7986cb;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px">Total Due</span>
+        <span style="color:white;font-size:22px;font-weight:800">${fmt(inv.amount||0)}</span>
+      </div>
+      ${inv.notes?`<div style="background:#fffde7;border-left:4px solid #f9a825;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:#555;margin-bottom:20px">${esc(inv.notes)}</div>`:''}
+      <p style="font-size:13px;color:#888;margin:0">Questions? Reply to this email or call us at 608-215-2241.</p>
+    </div>
+    <div style="background:#f5f5f5;padding:16px 28px;text-align:center;font-size:12px;color:#999">
+      Lifetime Home Services &middot; 3485 N 124th St, Brookfield WI 53005 &middot; lifetimemanagementsystem.com
+    </div>
+  </div></body></html>`;
+  const btn=document.querySelector('#mo .btn-n');
+  if(btn){btn.disabled=true;btn.textContent='Sending...';}
+  try{
+    await sendBrevoEmail({to,toName:inv.customer_name||'',subject:subj,html,cc:cc||''});
+    // Mark as emailed
+    const now=new Date().toISOString();
+    const invs=S.get('lhs:acct_invoices')||[];
+    const ei=invs.findIndex(x=>x.id===id);
+    if(ei>=0){invs[ei].emailed_at=now;invs[ei].emailed_to=to;S.set('lhs:acct_invoices',invs);}
+    try{await DB.from('lhs_acct_invoices').update({emailed_at:now,emailed_to:to}).eq('id',id);}catch{}
+    cMod();
+    tst(`Invoice emailed to ${to}`,'success');
+    showPage('acct-invoices');
+  }catch(e){
+    tst('Email failed: '+e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent='&#9993; Send Invoice';}
+  }
 }
 
 // ─── AR AGING ─────────────────────────────────────────────────────────────────
@@ -41045,8 +41172,8 @@ async function updateOppStage(id,stage){
   const opps=S.get('lhs:opportunities')||[];
   const o=opps.find(x=>x.id===id);
   const prevStage=o?.stage||'';
-  if(o){o.stage=stage;o.updated_at=new Date().toISOString();S.set('lhs:opportunities',opps);}
   const prob=stage==='Won'?100:stage==='Lost'?0:stage==='Negotiation'?75:stage==='Proposal Sent'?50:stage==='Estimate Sent'?40:stage==='Site Visit'?30:20;
+  if(o){o.stage=stage;o.probability=prob;o.updated_at=new Date().toISOString();S.set('lhs:opportunities',opps);}
   await dbUpdate('lhs:opportunities',id,{stage,probability:prob,updated_at:new Date().toISOString()});
   // Auto-log stage change
   if(prevStage!==stage){
