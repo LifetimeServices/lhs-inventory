@@ -361,6 +361,8 @@ const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
 </div>
 
 <div id="tst"></div>
+<!-- Excel-style column filter dropdown -->
+<div id="col-filter-dd" style="display:none;position:fixed;z-index:99999;background:white;border:1.5px solid var(--navy);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);min-width:220px;max-width:300px;padding:0;overflow:hidden"></div>
 
 <!-- Chat Toast Stack (Teams-style, bottom-right) -->
 <div id="chat-toasts" style="position:fixed;bottom:24px;right:24px;z-index:9000;display:flex;flex-direction:column-reverse;gap:10px;max-width:340px;pointer-events:none"></div>
@@ -3291,6 +3293,8 @@ function showPage(id){
   if(id==='dispatch'||id==='dispatch-board') setTimeout(fixDispBoardHeight,0);
   // Render transfer history table after page builds
   if(id==='transfer') setTimeout(xfrHistRefresh,0);
+  // Discounts — lazy-load promotions from Supabase on first visit
+  if(id==='sales-discounts') setTimeout(_discPageLoad,60);
   // Van Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='vans') setTimeout(refreshVanInvPage,0);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
@@ -3363,7 +3367,7 @@ function buildPage(id){
     'sales-activities':bSalesActivities,
     'sales-email-sync':bEmailSync,
     'sales-marketing':bSalesMarketing,'sales-settings':bSalesSettings,'sales-tax-settings':bStateTaxSettings,
-    'sales-discounts':()=>bPlaceholder('Discounts &amp; Promotions'),
+    'sales-discounts':bDiscounts,
     'sales-permits':bSalesPermits,
     tasks:bTasks, mytasks:bMyTasks,
     accounting:bAccounting,'acct-dashboard':bAcctDashboard,
@@ -5769,6 +5773,10 @@ function addrPick(idx, resultsJson, streetId, cityId, stateId, zipId, dropId, co
 
   const drop=document.getElementById(dropId);
   if(drop) drop.style.display='none';
+  // Show verify buttons for the street field if present
+  const _vpfx=streetId.replace(/-addr$/,'');
+  const _vbtns=document.getElementById(_vpfx+'-addr-vbtns');
+  if(_vbtns&&street) _vbtns.style.display='flex';
 }
 
 function locTypeChange(type){
@@ -36551,7 +36559,7 @@ function _crmDashLoad(){
   const attentionGroups=Object.values(jobGroups).filter(grp=>grp.some(w=>scheduledWoIds.has(w.id))&&grp.some(w=>!scheduledWoIds.has(w.id)));
 
   // Recent activities
-  const recentActs=(acts||[]).slice(0,5);
+  const recentActs=(acts||[]).filter(a=>{const t=(a.activity_type||'').toLowerCase();return t==='call'||t==='email'||t==='text';}).slice(0,5);
   const typeIcon=t=>t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'?'🏠':t==='Demo'?'🖥️':'📋';
   const typeColor=t=>t==='Call'?'#dbeafe':t==='Email'?'#f3e5f5':t==='Text'?'#fef3c7':t==='Visit'?'#dcfce7':'#f3f4f6';
 
@@ -37063,10 +37071,20 @@ async function _acctLoad(){
     return 0;
   });
 
-  const _aArr=f=>_acctSort.field===f?(_acctSort.dir===1?' ▲':' ▼'):' ⇅';
-  const _aSH=(f,label,extra='')=>`<th onclick="_sortAcct('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap;${extra}">${label}<span style="color:var(--teal);font-size:10px">${_aArr(f)}</span></th>`;
+  // Collect unique values for column filter dropdowns (from full customer list)
+  const _uTypes=[...new Set(customers.map(c=>typeFor(c)))].sort();
+  const _uOwners=[...new Set(customers.map(c=>c.assigned_to||''))].sort();
+  const _uLocs=[...new Set(customers.map(c=>[c.city,c.state].filter(Boolean).join(', ')||''))].filter(Boolean).sort();
+  const _uHealths=[...new Set(customers.map(c=>healthFor(c)))].sort();
+  // Apply column filters on top of existing type/search filter
+  const cfFiltered=filtered.filter(c=>
+    _cfFilter('accounts','type',typeFor(c))&&
+    _cfFilter('accounts','owner',c.assigned_to||'')&&
+    _cfFilter('accounts','location',[c.city,c.state].filter(Boolean).join(', '))&&
+    _cfFilter('accounts','health',healthFor(c))
+  );
 
-  const tableRows=filtered.map(c=>{
+  const tableRows=cfFiltered.map(c=>{
     const cOpps=opps.filter(o=>o.customer_id===c.id&&o.stage!=='Lost'&&o.stage!=='Won');
     const totalRev=opps.filter(o=>o.customer_id===c.id&&o.stage==='Won').reduce((s,o)=>s+(o.estimated_value||0),0);
     const health=healthFor(c);
@@ -37105,7 +37123,7 @@ async function _acctLoad(){
   </div>
   <div class="card" style="padding:0;margin-bottom:${_acctOpenId?'20px':'0'}">
     <div class="tw" style="margin:0"><table>
-      <thead><tr>${_aSH('name','Account')}${_aSH('type','Type')}${_aSH('owner','Owner')}${_aSH('phone','Phone')}${_aSH('location','Location')}${_aSH('opps','Open Opps','text-align:center')}${_aSH('revenue','Total Revenue')}${_aSH('activity','Last Activity')}${_aSH('health','Health')}<th></th></tr></thead>
+      <thead><tr><th>Account</th>${_cfTH('accounts','type','Type',_uTypes)}<th>Phone</th>${_cfTH('accounts','owner','Owner',_uOwners)}${_cfTH('accounts','location','Location',_uLocs)}<th style="text-align:center">Open Opps</th><th>Total Revenue</th><th>Last Activity</th>${_cfTH('accounts','health','Health',_uHealths)}<th></th></tr></thead>
       <tbody>${tableRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No accounts found.</td></tr>'}</tbody>
     </table></div>
   </div>
@@ -37207,11 +37225,11 @@ function bAccountHub(){
   const name=((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||c.company||'Unnamed Account';
   const cityState=[c.city,c.state].filter(Boolean).join(', ');
 
-  const tabs=['details','locations','opportunities','work_orders','activity','intake_forms'];
+  const tabs=['details','locations','opportunities','work_orders','activity','intake_forms','files'];
   // Count includes customer's own address if not yet saved as a property
   const custAddrUnsaved=!!(c.address||'').trim()&&!props.some(p=>(p.address||'').trim().toLowerCase()===(c.address||'').trim().toLowerCase());
   const locCount=props.length+(custAddrUnsaved?1:0);
-  const tabLabels={'details':'Details','locations':`Locations (${locCount})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`,'intake_forms':'Intake Forms'};
+  const tabLabels={'details':'Details','locations':`Locations (${locCount})`,'opportunities':`Opportunities (${opps.length})`,'work_orders':`Work Orders (${wos.length})`,'activity':`Activity (${acts.length})`,'intake_forms':'Intake Forms','files':'Files'};
 
   const fld=(label,val)=>`<div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">${label}</div>
@@ -37234,7 +37252,8 @@ function bAccountHub(){
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Address</label><br><input id="ahub-addr" value="${esc(c.address||'')}" style="${inpStyle}"></div>
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">City</label><br><input id="ahub-city" value="${esc(c.city||'')}" style="${inpStyle}"></div>
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">State</label><br><input id="ahub-state" value="${esc(c.state||'')}" style="${inpStyle}"></div>
-            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Zip</label><br><input id="ahub-zip" value="${esc(c.zip||'')}" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Zip</label><br><input id="ahub-zip" value="${esc(c.zip||'')}" style="${inpStyle}" onblur="_ahubLookupCounty()"></div>
+            <div style="grid-column:1/-1"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">County <span style="font-size:10px;font-weight:400;color:var(--teal)">(auto-fills from ZIP)</span></label><br><input id="ahub-county" value="${esc(c.county||'')}" placeholder="e.g. Milwaukee County" style="${inpStyle}"></div>
           </div>
           <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
             <textarea id="ahub-notes" style="${inpStyle};height:80px;resize:vertical">${esc(c.notes||'')}</textarea>
@@ -37384,6 +37403,20 @@ function bAccountHub(){
           <div style="font-size:14px;font-weight:700;color:var(--navy)">Intake Forms</div>
         </div>
         <div id="acct-intake-body"><div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Loading…</div></div>
+      </div>`;
+    }
+
+    if(_acctHubTab==='files'){
+      setTimeout(()=>_acctFilesLoad(id),50);
+      return`<div class="card" style="padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">Files &amp; Attachments</div>
+          <label class="btn btn-n sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            📎 Upload File
+            <input type="file" id="acct-file-input" multiple style="display:none" onchange="_acctFileUpload('${id}',this)">
+          </label>
+        </div>
+        <div id="acct-files-body"><div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">Loading…</div></div>
       </div>`;
     }
 
@@ -37563,6 +37596,7 @@ async function acctHubSave(id){
     city:document.getElementById('ahub-city')?.value||null,
     state:document.getElementById('ahub-state')?.value||null,
     zip:document.getElementById('ahub-zip')?.value||null,
+    county:document.getElementById('ahub-county')?.value||null,
     notes:document.getElementById('ahub-notes')?.value||null,
     source:document.getElementById('ahub-src')?.value||null,
     updated_at:new Date().toISOString(),
@@ -37574,6 +37608,81 @@ async function acctHubSave(id){
   tst('Account updated','success');
   window._acctHubEditing=false;
   showPage('account-hub');
+}
+
+// Auto-populate county from ZIP code via Nominatim
+async function _ahubLookupCounty(){
+  const zip=(document.getElementById('ahub-zip')?.value||'').trim();
+  const el=document.getElementById('ahub-county');
+  if(!el||el.value||!zip||zip.length<5) return;
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(zip)}&countrycodes=US&format=json&addressdetails=1&limit=1`,{headers:{'Accept-Language':'en-US,en'}});
+    const d=await r.json();
+    const county=d[0]?.address?.county||'';
+    if(county&&!el.value) el.value=county;
+  }catch(e){console.warn('County lookup:',e.message);}
+}
+
+// ── ACCOUNT FILES ─────────────────────────────────────────────────────────────
+async function _acctFilesLoad(custId){
+  const el=document.getElementById('acct-files-body');
+  if(!el) return;
+  try{
+    const{data,error}=await DB.from('lhs_customer_files').select('*').eq('customer_id',custId).order('created_at',{ascending:false});
+    if(error) throw new Error(error.message);
+    if(!data||!data.length){
+      el.innerHTML=`<div style="text-align:center;color:var(--muted);padding:32px;font-size:13px">
+        <div style="font-size:32px;margin-bottom:8px">📁</div>
+        No files uploaded yet. Click <strong>Upload File</strong> to attach documents, photos, or reports.
+      </div>`;
+      return;
+    }
+    const iconFor=ft=>{if(!ft)return'📄';const e=(ft.split('/').pop()||ft).toLowerCase();return e==='pdf'?'📕':e.includes('word')||e==='docx'||e==='doc'?'📘':e.includes('sheet')||e==='xlsx'||e==='xls'||e==='csv'?'📗':e==='jpg'||e==='jpeg'||e==='png'||e==='gif'||e==='webp'?'🖼️':'📄';};
+    const fmtSize=b=>{if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return Math.round(b/1024)+'KB';return(b/1048576).toFixed(1)+'MB';};
+    el.innerHTML=data.map(f=>`<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px">
+      <div style="font-size:28px;flex-shrink:0">${iconFor(f.file_type)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.file_name)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${[fmtSize(f.file_size),f.uploaded_by?'by '+esc(f.uploaded_by):'',new Date(f.created_at).toLocaleDateString()].filter(Boolean).join(' · ')}</div>
+      </div>
+      <a href="${esc(f.file_url)}" target="_blank" rel="noopener" class="btn btn-o sm">⬇ View</a>
+      <button class="btn sm" style="background:var(--red,#e53e3e);color:white;border:none" onclick="_acctFileDelete('${f.id}','${esc(f.storage_path||'')}','${custId}')">✕</button>
+    </div>`).join('');
+  }catch(e){el.innerHTML=`<div style="text-align:center;color:var(--red,#e53e3e);padding:20px;font-size:13px">Error loading files: ${esc(e.message)}</div>`;}
+}
+
+async function _acctFileUpload(custId,input){
+  if(!input.files||!input.files.length) return;
+  const label=input.closest('label');
+  if(label){label.style.pointerEvents='none';label.querySelector('span')&&(label.querySelector('span').textContent='Uploading…');}
+  let uploadedCount=0;
+  for(const file of input.files){
+    try{
+      const safeName=file.name.replace(/[^a-zA-Z0-9._\- ]/g,'_');
+      const path=`customers/${custId}/${Date.now()}_${safeName}`;
+      const{error:upErr}=await DB.storage.from('customer-files').upload(path,file,{upsert:true});
+      if(upErr) throw new Error(upErr.message);
+      const{data:urlData}=DB.storage.from('customer-files').getPublicUrl(path);
+      const fileUrl=urlData?.publicUrl||'';
+      const{error:dbErr}=await DB.from('lhs_customer_files').insert({customer_id:custId,file_name:file.name,file_url:fileUrl,file_type:file.type,file_size:file.size,storage_path:path,uploaded_by:CU?.name||''});
+      if(dbErr) throw new Error(dbErr.message);
+      uploadedCount++;
+    }catch(e){tst('Upload failed for '+file.name+': '+e.message,'error');}
+  }
+  input.value='';
+  if(label) label.style.pointerEvents='';
+  if(uploadedCount>0) tst(uploadedCount===1?'File uploaded':''+uploadedCount+' files uploaded','success');
+  _acctFilesLoad(custId);
+}
+
+async function _acctFileDelete(fileId,storagePath,custId){
+  if(!confirm('Delete this file? This cannot be undone.')) return;
+  try{
+    if(storagePath) await DB.storage.from('customer-files').remove([storagePath]);
+    await DB.from('lhs_customer_files').delete().eq('id',fileId);
+    tst('File deleted','success');
+    _acctFilesLoad(custId);
+  }catch(e){tst('Delete failed: '+e.message,'error');}
 }
 
 // ── LEADS PAGE ────────────────────────────────────────────────────────────────
@@ -38435,6 +38544,231 @@ async function pbDeleteCategory(id){
 }
 
 // ── DISCOUNTS & FEES ──────────────────────────────────────────────────────────
+// ── DISCOUNTS & PROMOTIONS PAGE ───────────────────────────────────────────────
+let _discPageTab='codes';
+
+function bDiscounts(){
+  const now=new Date();
+  const discounts=S.get('lhs:discounts')||[];
+  const fees=S.get('lhs:fees')||[];
+  const promos=S.get('lhs:promotions')||[];
+
+  const activeDiscounts=discounts.filter(d=>d.active!==false&&(!d.expires||new Date(d.expires)>now)).length;
+  const activePromos=promos.filter(p=>p.active!==false&&(!p.end_date||new Date(p.end_date)>now)&&(!p.start_date||new Date(p.start_date)<=now)).length;
+  const expiringSoon=discounts.filter(d=>d.expires&&new Date(d.expires)>now&&(new Date(d.expires)-now)<7*24*60*60*1000).length;
+  const activeFees=fees.filter(f=>f.active!==false).length;
+
+  const t=_discPageTab;
+  const tabBtn=(id,lbl)=>`<button onclick="_discPageTab='${id}';showPage('sales-discounts')" style="padding:10px 22px;border:none;border-bottom:3px solid ${t===id?'var(--teal)':'transparent'};background:none;font-size:13px;font-weight:${t===id?'700':'500'};color:${t===id?'var(--teal)':'var(--muted)'};cursor:pointer;font-family:inherit;white-space:nowrap">${lbl}</button>`;
+  const codeBadge=(d)=>{if(!d.code)return'<span style="color:var(--muted)">—</span>';return`<span style="font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;background:#f0f4ff;color:var(--navy);padding:2px 8px;border-radius:5px;letter-spacing:.06em">${esc(d.code)}</span>`;};
+
+  // ── DISCOUNT CODES ──────────────────────────────────────────────────────────
+  const codesTab=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;color:var(--muted)">${discounts.length} code${discounts.length!==1?'s':''} &nbsp;·&nbsp; ${activeDiscounts} active</div>
+    <button class="btn btn-n" onclick="oAddDiscount()">+ Add Discount Code</button>
+  </div>
+  ${discounts.length?`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Name</th><th>Code</th><th>Type</th><th>Value</th><th>Division</th><th>Min Order</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+    <tbody>${discounts.map((d,i)=>{
+      const isExp=d.expires&&new Date(d.expires)<now;
+      const isSoon=d.expires&&!isExp&&(new Date(d.expires)-now)<7*24*60*60*1000;
+      return`<tr style="opacity:${d.active===false?0.5:1}">
+        <td style="font-weight:600;color:var(--navy)">${esc(d.name)}</td>
+        <td>${codeBadge(d)}</td>
+        <td style="font-size:12px">${d.discount_type==='percent'?'% Off':'$ Off'}</td>
+        <td style="font-weight:700;color:var(--teal)">${d.discount_type==='percent'?d.value+'%':'$'+parseFloat(d.value||0).toFixed(2)}</td>
+        <td style="font-size:12px">${esc(d.division||'All Divisions')}</td>
+        <td style="font-size:12px">${d.min_order?'$'+d.min_order:'—'}</td>
+        <td style="font-size:12px;color:${isExp?'var(--red,#ef4444)':isSoon?'var(--gold,#c9a84c)':'var(--muted)'}">${d.expires?(isExp?'⚠ ':isSoon?'⚡ ':'')+d.expires:'—'}</td>
+        <td>${bx(d.active===false?'Inactive':isExp?'Expired':'Active',d.active===false?'bgr':isExp?'br':'bg')}</td>
+        <td style="display:flex;gap:4px"><button class="btn sm btn-o" onclick="oEditDiscount(${i})">Edit</button><button class="btn sm btn-r" onclick="delDiscount(${i})">Del</button></td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`
+    :`<div class="card" style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:36px;margin-bottom:12px">🏷️</div><div style="font-weight:700;color:var(--navy);margin-bottom:8px">No discount codes yet</div><div style="font-size:13px;margin-bottom:16px">Create codes like SPRING20 or RADON10 applied at estimate time</div><button class="btn btn-n" onclick="oAddDiscount()">+ Add First Discount Code</button></div>`}`;
+
+  // ── PROMOTIONS ───────────────────────────────────────────────────────────────
+  const promosTab=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;color:var(--muted)">${promos.length} campaign${promos.length!==1?'s':''} &nbsp;·&nbsp; ${activePromos} running now</div>
+    <button class="btn btn-n" onclick="oAddPromo()">+ New Promotion</button>
+  </div>
+  ${promos.length?`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Campaign</th><th>Tagline</th><th>Discount</th><th>Code</th><th>Division</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+    <tbody>${promos.map((p,i)=>{
+      const started=!p.start_date||new Date(p.start_date)<=now;
+      const ended=p.end_date&&new Date(p.end_date)<now;
+      const endSoon=p.end_date&&!ended&&(new Date(p.end_date)-now)<7*24*60*60*1000;
+      const status=p.active===false?'Inactive':ended?'Ended':!started?'Scheduled':'Live';
+      const cls=p.active===false?'bgr':ended?'br':!started?'ba':'bg';
+      return`<tr>
+        <td style="font-weight:600;color:var(--navy)">${esc(p.name)}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description||'—')}</td>
+        <td style="font-weight:700;color:var(--teal)">${p.discount_type==='percent'?p.discount_value+'%':'$'+parseFloat(p.discount_value||0).toFixed(2)} Off</td>
+        <td>${codeBadge(p)}</td>
+        <td style="font-size:12px">${esc(p.division||'All')}</td>
+        <td style="font-size:12px;color:var(--muted)">${p.start_date||'—'}</td>
+        <td style="font-size:12px;color:${ended?'var(--red,#ef4444)':endSoon?'var(--gold,#c9a84c)':'var(--muted)'}">${p.end_date||(endSoon?'⚡ ':'')||'—'}${p.end_date&&endSoon?' ⚡':''}</td>
+        <td>${bx(status,cls)}</td>
+        <td style="display:flex;gap:4px"><button class="btn sm btn-o" onclick="oEditPromo(${i})">Edit</button><button class="btn sm btn-r" onclick="delPromo(${i})">Del</button></td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`
+    :`<div class="card" style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:36px;margin-bottom:12px">🎯</div><div style="font-weight:700;color:var(--navy);margin-bottom:8px">No promotions yet</div><div style="font-size:13px;margin-bottom:16px">Create time-limited campaigns for seasonal specials, bundle deals, or new customer offers</div><button class="btn btn-n" onclick="oAddPromo()">+ Create First Promotion</button></div>`}`;
+
+  // ── SERVICE FEES ─────────────────────────────────────────────────────────────
+  const feesTab=`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:13px;color:var(--muted)">${fees.length} fee${fees.length!==1?'s':''} &nbsp;·&nbsp; ${activeFees} active</div>
+    <button class="btn btn-n" onclick="oAddFee()">+ Add Service Fee</button>
+  </div>
+  ${fees.length?`<div class="card" style="padding:0"><div class="tw"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Amount</th><th>Division</th><th>Taxable</th><th>Description</th><th>Status</th><th></th></tr></thead>
+    <tbody>${fees.map((f,i)=>`<tr style="opacity:${f.active===false?0.5:1}">
+      <td style="font-weight:600;color:var(--navy)">${esc(f.name)}</td>
+      <td style="font-size:12px">${f.fee_type==='percent'?'% Fee':'Flat Fee'}</td>
+      <td style="font-weight:700;color:var(--navy)">${f.fee_type==='percent'?f.amount+'%':'$'+parseFloat(f.amount||0).toFixed(2)}</td>
+      <td style="font-size:12px">${esc(f.division||'All')}</td>
+      <td style="font-size:12px">${f.taxable?'✓ Yes':'No'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.description||'—')}</td>
+      <td>${bx(f.active===false?'Inactive':'Active',f.active===false?'bgr':'bg')}</td>
+      <td style="display:flex;gap:4px"><button class="btn sm btn-o" onclick="oEditFee(${i})">Edit</button><button class="btn sm btn-r" onclick="delFee(${i})">Del</button></td>
+    </tr>`).join('')}</tbody></table></div></div>`
+    :`<div class="card" style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:36px;margin-bottom:12px">💲</div><div style="font-weight:700;color:var(--navy);margin-bottom:8px">No service fees yet</div><div style="font-size:13px;margin-bottom:16px">Add trip charges, fuel surcharges, or other fees applied to estimates</div><button class="btn btn-n" onclick="oAddFee()">+ Add First Service Fee</button></div>`}`;
+
+  return`
+  <div class="pt">Discounts &amp; Promotions</div>
+  <div class="ps">Manage discount codes, seasonal campaigns, and service fees across all divisions</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+    <div class="card" style="padding:18px;text-align:center">
+      <div style="font-size:32px;font-weight:800;color:var(--teal)">${activeDiscounts}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:4px">Active Codes</div>
+    </div>
+    <div class="card" style="padding:18px;text-align:center">
+      <div style="font-size:32px;font-weight:800;color:var(--navy)">${activePromos}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:4px">Live Promotions</div>
+    </div>
+    <div class="card" style="padding:18px;text-align:center">
+      <div style="font-size:32px;font-weight:800;color:${expiringSoon>0?'var(--gold,#c9a84c)':'var(--muted)'}">${expiringSoon}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:4px">Expiring This Week</div>
+    </div>
+    <div class="card" style="padding:18px;text-align:center">
+      <div style="font-size:32px;font-weight:800;color:var(--navy)">${activeFees}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:4px">Active Fees</div>
+    </div>
+  </div>
+  <div style="display:flex;border-bottom:2px solid var(--bdr);margin-bottom:20px">
+    ${tabBtn('codes','🏷️ Discount Codes')}
+    ${tabBtn('promos','🎯 Promotions')}
+    ${tabBtn('fees','💲 Service Fees')}
+  </div>
+  ${t==='codes'?codesTab:t==='promos'?promosTab:feesTab}`;
+}
+
+async function _discPageLoad(){
+  try{
+    const{data}=await DB.from('lhs_promotions').select('*').order('created_at',{ascending:false});
+    if(data) S.set('lhs:promotions',data);
+  }catch(e){console.warn('_discPageLoad:',e.message);}
+  const el=document.getElementById('p-sales-discounts');
+  if(el&&el.classList.contains('active')) el.innerHTML=buildPage('sales-discounts');
+}
+
+function _discRefreshAll(){
+  const pbEl=document.getElementById('pb-content');
+  if(pbEl) pbLoadDiscounts(pbEl);
+  const dEl=document.getElementById('p-sales-discounts');
+  if(dEl&&dEl.classList.contains('active')) dEl.innerHTML=buildPage('sales-discounts');
+}
+
+// ── PROMOTION CRUD ────────────────────────────────────────────────────────────
+function _promoForm(p={}){
+  const divs=(S.get('lhs:divs')||[]).map(x=>x.name||x.division||x).filter(Boolean);
+  return`
+  <div class="fr">
+    <div class="fl"><label>Campaign Name</label><input id="pf-name" value="${esc(p.name||'')}" placeholder="e.g. Spring Radon Sale"></div>
+    <div class="fl"><label>Promo Code <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input id="pf-code" value="${esc(p.code||'')}" placeholder="e.g. SPRING25" style="text-transform:uppercase"></div>
+  </div>
+  <div class="fl" style="margin-bottom:12px">
+    <label>Customer Tagline <span style="font-weight:400;color:var(--muted)">(shown on estimates)</span></label>
+    <input id="pf-desc" value="${esc(p.description||'')}" placeholder="e.g. Save 15% on all radon mitigation this spring!">
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Discount Type</label>
+      <select id="pf-type">
+        <option value="percent"${p.discount_type!=='flat'?' selected':''}>Percentage (% Off)</option>
+        <option value="flat"${p.discount_type==='flat'?' selected':''}>Flat Amount ($ Off)</option>
+      </select>
+    </div>
+    <div class="fl"><label>Discount Value</label><input type="number" id="pf-value" value="${p.discount_value||''}" min="0" step="0.01" placeholder="e.g. 15"></div>
+    <div class="fl"><label>Min Order ($)</label><input type="number" id="pf-min" value="${p.min_order||''}" min="0" placeholder="0 = none"></div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Applies to Division</label>
+      <select id="pf-div">
+        <option value="">All Divisions</option>
+        ${divs.map(d=>`<option${(p.division||'')===d?' selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Start Date <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="date" id="pf-start" value="${p.start_date||''}">
+    </div>
+    <div class="fl"><label>End Date <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="date" id="pf-end" value="${p.end_date||''}">
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Status</label>
+      <select id="pf-active">
+        <option value="true"${p.active!==false?' selected':''}>Active</option>
+        <option value="false"${p.active===false?' selected':''}>Inactive</option>
+      </select>
+    </div>
+    <div class="fl"><label>Notes <span style="font-weight:400;color:var(--muted)">(internal)</span></label>
+      <input id="pf-notes" value="${esc(p.notes||'')}" placeholder="Internal reference notes">
+    </div>
+  </div>`;
+}
+function oAddPromo(){
+  oMod('New Promotion',`${_promoForm()}
+  <div class="br2"><button class="btn btn-n" onclick="svAddPromo()">Save Promotion</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+function oEditPromo(i){
+  const p=(S.get('lhs:promotions')||[])[i];if(!p)return;
+  oMod('Edit Promotion',`${_promoForm(p)}
+  <div class="br2"><button class="btn btn-n" onclick="svEditPromo(${i})">Save Changes</button><button class="btn btn-o" onclick="cMod()">Cancel</button></div>`);
+}
+async function svAddPromo(){
+  const name=v('pf-name').trim();if(!name){tst('Name required','error');return;}
+  const val=parseFloat(v('pf-value'));if(!val||val<=0){tst('Enter a valid discount value','error');return;}
+  const p={name,code:v('pf-code').trim().toUpperCase()||null,description:v('pf-desc').trim()||null,
+    discount_type:v('pf-type'),discount_value:val,min_order:parseFloat(v('pf-min'))||null,
+    division:v('pf-div')||null,start_date:v('pf-start')||null,end_date:v('pf-end')||null,
+    notes:v('pf-notes').trim()||null,active:v('pf-active')!=='false',
+    created_by:CU?.name||'',created_at:new Date().toISOString()};
+  try{const{data,error}=await DB.from('lhs_promotions').insert(p).select().single();if(!error&&data)p.id=data.id;}catch(e){console.warn('svAddPromo:',e.message);}
+  const all=S.get('lhs:promotions')||[];all.push(p);S.set('lhs:promotions',all);
+  cMod();tst('Promotion created','success');_discRefreshAll();
+}
+async function svEditPromo(i){
+  const all=S.get('lhs:promotions')||[];const p=all[i];if(!p)return;
+  const name=v('pf-name').trim();if(!name){tst('Name required','error');return;}
+  const val=parseFloat(v('pf-value'));if(!val||val<=0){tst('Enter a valid discount value','error');return;}
+  const upd={name,code:v('pf-code').trim().toUpperCase()||null,description:v('pf-desc').trim()||null,
+    discount_type:v('pf-type'),discount_value:val,min_order:parseFloat(v('pf-min'))||null,
+    division:v('pf-div')||null,start_date:v('pf-start')||null,end_date:v('pf-end')||null,
+    notes:v('pf-notes').trim()||null,active:v('pf-active')!=='false'};
+  all[i]={...p,...upd};S.set('lhs:promotions',all);
+  if(p.id) try{await DB.from('lhs_promotions').update(upd).eq('id',p.id);}catch(e){console.warn('svEditPromo:',e.message);}
+  cMod();tst('Promotion updated','success');_discRefreshAll();
+}
+async function delPromo(i){
+  if(!confirm('Delete this promotion?'))return;
+  const all=S.get('lhs:promotions')||[];const p=all[i];
+  if(p?.id) try{await DB.from('lhs_promotions').delete().eq('id',p.id);}catch{}
+  all.splice(i,1);S.set('lhs:promotions',all);
+  tst('Deleted','info');_discRefreshAll();
+}
+
 function pbLoadDiscounts(el){
   const subTab=window._discSubTab||'codes';
   const discounts=S.get('lhs:discounts')||[];
@@ -38558,7 +38892,7 @@ async function svAddDiscount(){
     active:v('df-active')!=='false',created_by:CU.name,created_at:new Date().toISOString()};
   try{const{data,error}=await DB.from('lhs_discounts').insert(d).select().single();if(!error&&data)d.id=data.id;}catch(e){console.warn('svAddDiscount:',e.message);}
   const all=S.get('lhs:discounts')||[];all.push(d);S.set('lhs:discounts',all);
-  cMod();tst('Discount added','success');pbLoadDiscounts(document.getElementById('pb-content'));
+  cMod();tst('Discount added','success');_discRefreshAll();
 }
 async function svEditDiscount(i){
   const all=S.get('lhs:discounts')||[];const d=all[i];if(!d)return;
@@ -38569,14 +38903,14 @@ async function svEditDiscount(i){
     expires:v('df-exp')||null,notes:v('df-notes').trim()||null,active:v('df-active')!=='false'};
   all[i]={...d,...upd};S.set('lhs:discounts',all);
   if(d.id) try{await DB.from('lhs_discounts').update(upd).eq('id',d.id);}catch(e){console.warn('svEditDiscount:',e.message);}
-  cMod();tst('Discount updated','success');pbLoadDiscounts(document.getElementById('pb-content'));
+  cMod();tst('Discount updated','success');_discRefreshAll();
 }
 async function delDiscount(i){
   if(!confirm('Delete this discount?'))return;
   const all=S.get('lhs:discounts')||[];const d=all[i];
   if(d?.id) try{await DB.from('lhs_discounts').delete().eq('id',d.id);}catch{}
   all.splice(i,1);S.set('lhs:discounts',all);
-  tst('Deleted','info');pbLoadDiscounts(document.getElementById('pb-content'));
+  tst('Deleted','info');_discRefreshAll();
 }
 
 // ── FEE CRUD ──────────────────────────────────────────────────────────────────
@@ -38634,7 +38968,7 @@ async function svAddFee(){
     active:v('ff-active')!=='false',created_by:CU.name,created_at:new Date().toISOString()};
   try{const{data,error}=await DB.from('lhs_fees').insert(f).select().single();if(!error&&data)f.id=data.id;}catch(e){console.warn('svAddFee:',e.message);}
   const all=S.get('lhs:fees')||[];all.push(f);S.set('lhs:fees',all);
-  cMod();tst('Fee added','success');pbLoadDiscounts(document.getElementById('pb-content'));
+  cMod();tst('Fee added','success');_discRefreshAll();
 }
 async function svEditFee(i){
   const all=S.get('lhs:fees')||[];const f=all[i];if(!f)return;
@@ -38644,14 +38978,14 @@ async function svEditFee(i){
     taxable:v('ff-taxable')==='true',description:v('ff-desc').trim()||null,active:v('ff-active')!=='false'};
   all[i]={...f,...upd};S.set('lhs:fees',all);
   if(f.id) try{await DB.from('lhs_fees').update(upd).eq('id',f.id);}catch(e){console.warn('svEditFee:',e.message);}
-  cMod();tst('Fee updated','success');pbLoadDiscounts(document.getElementById('pb-content'));
+  cMod();tst('Fee updated','success');_discRefreshAll();
 }
 async function delFee(i){
   if(!confirm('Delete this fee?'))return;
   const all=S.get('lhs:fees')||[];const f=all[i];
   if(f?.id) try{await DB.from('lhs_fees').delete().eq('id',f.id);}catch{}
   all.splice(i,1);S.set('lhs:fees',all);
-  tst('Deleted','info');pbLoadDiscounts(document.getElementById('pb-content'));
+  tst('Deleted','info');_discRefreshAll();
 }
 
 // ── ESTIMATES PAGE ─────────────────────────────────────────────────────────────
@@ -39033,14 +39367,138 @@ function _refreshActTimeline(){
   if(el) el.innerHTML=renderCRMActivities();
 }
 
+// ── EXCEL-STYLE COLUMN FILTERS ────────────────────────────────────────────────
+let _cfTable=null,_cfField=null,_cfSearch='';
+// Filter state per table: {leads:{division:['Radon'],status:['New']}, accounts:{...}, opps:{...}}
+window._cfState={leads:{},accounts:{},opps:{}};
+
+function _cfOpen(tableId,field,headerEl,allValues,labelFn){
+  const dd=document.getElementById('col-filter-dd');
+  if(!dd) return;
+  // Toggle closed if same header clicked again
+  if(_cfTable===tableId&&_cfField===field&&dd.style.display!=='none'){_cfClose();return;}
+  _cfTable=tableId;_cfField=field;_cfSearch='';
+  const sel=window._cfState[tableId]?.[field]||[];
+  const rect=headerEl.getBoundingClientRect();
+  const vals=[...new Set(allValues.filter(v=>v!==null&&v!==undefined&&v!==''))].sort();
+  const allChecked=sel.length===0;
+
+  dd.innerHTML=`
+    <div style="background:var(--navy);color:white;padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center">
+      <span>Filter: ${field}</span>
+      <button onclick="_cfClose()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:16px;line-height:1;padding:0">×</button>
+    </div>
+    <div style="padding:8px 10px;border-bottom:1px solid var(--bdr)">
+      <input id="cf-search" placeholder="Search values…" value="" oninput="_cfSearchFilter(this.value)"
+        style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">
+    </div>
+    <div style="padding:6px 10px;border-bottom:1px solid var(--bdr);display:flex;gap:8px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="cf-all-chk" ${allChecked?'checked':''} onchange="_cfToggleAll(this.checked)"> Select All
+      </label>
+      <button onclick="_cfClear()" style="margin-left:auto;font-size:11px;color:var(--red);background:none;border:none;cursor:pointer;text-decoration:underline">Clear</button>
+    </div>
+    <div id="cf-values" style="max-height:220px;overflow-y:auto;padding:4px 0">
+      ${vals.map(v=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
+        <input type="checkbox" class="cf-val-chk" value="${esc(String(v))}" ${allChecked||sel.includes(String(v))?'checked':''} onchange="_cfValChange()">
+        <span>${esc(labelFn?labelFn(v):String(v))}</span>
+      </label>`).join('')}
+    </div>
+    <div style="padding:8px 10px;border-top:1px solid var(--bdr);display:flex;gap:6px;justify-content:flex-end">
+      <button onclick="_cfClose()" class="btn btn-o sm">Cancel</button>
+      <button onclick="_cfApply()" class="btn btn-n sm">Apply Filter</button>
+    </div>`;
+
+  // Position dropdown below the header
+  const left=Math.min(rect.left,window.innerWidth-310);
+  const top=rect.bottom+4;
+  dd.style.left=left+'px';
+  dd.style.top=top+'px';
+  dd.style.display='block';
+
+  // Close on outside click
+  setTimeout(()=>{
+    document.addEventListener('mousedown',_cfOutside,{once:true});
+  },0);
+  document.getElementById('cf-search')?.focus();
+}
+
+function _cfOutside(e){
+  const dd=document.getElementById('col-filter-dd');
+  if(dd&&!dd.contains(e.target)) _cfClose();
+}
+function _cfClose(){
+  const dd=document.getElementById('col-filter-dd');
+  if(dd) dd.style.display='none';
+  _cfTable=null;_cfField=null;
+  document.removeEventListener('mousedown',_cfOutside);
+}
+function _cfSearchFilter(q){
+  _cfSearch=q.toLowerCase();
+  document.querySelectorAll('#cf-values label').forEach(lbl=>{
+    const txt=lbl.querySelector('span')?.textContent?.toLowerCase()||'';
+    lbl.style.display=txt.includes(_cfSearch)?'':'none';
+  });
+}
+function _cfToggleAll(checked){
+  document.querySelectorAll('.cf-val-chk').forEach(c=>{c.checked=checked;});
+}
+function _cfValChange(){
+  const all=document.querySelectorAll('.cf-val-chk');
+  const allCk=[...all].every(c=>c.checked);
+  const allChk=document.getElementById('cf-all-chk');
+  if(allChk) allChk.checked=allCk;
+}
+function _cfClear(){
+  document.querySelectorAll('.cf-val-chk').forEach(c=>{c.checked=true;});
+  const a=document.getElementById('cf-all-chk');if(a) a.checked=true;
+  if(!window._cfState[_cfTable]) window._cfState[_cfTable]={};
+  window._cfState[_cfTable][_cfField]=[];
+  _cfApplyTable();
+  _cfClose();
+}
+function _cfApply(){
+  const allCk=document.getElementById('cf-all-chk')?.checked;
+  let sel=[];
+  if(!allCk){
+    sel=[...document.querySelectorAll('.cf-val-chk:checked')].map(c=>c.value);
+  }
+  if(!window._cfState[_cfTable]) window._cfState[_cfTable]={};
+  window._cfState[_cfTable][_cfField]=sel;
+  _cfApplyTable();
+  _cfClose();
+}
+let _leadStatusFilter='All';
+function _cfApplyTable(){
+  if(_cfTable==='leads'){const _al=S.get('lhs:leads')||[];const _sl=_leadStatusFilter==='All'?_al:_al.filter(l=>l.status===_leadStatusFilter);const el=document.getElementById('leads-list');if(el) el.innerHTML=renderCRMLeadsTable(_sl);}
+  if(_cfTable==='accounts') _acctLoad();
+  if(_cfTable==='opps'){const el=document.getElementById('opp-view-content');if(el) el.innerHTML=renderCRMPipeline();}
+}
+function _cfActive(tableId,field){return(window._cfState[tableId]?.[field]||[]).length>0;}
+function _cfFilter(tableId,field,val){
+  const sel=window._cfState[tableId]?.[field]||[];
+  if(!sel.length) return true;
+  return sel.includes(String(val===null||val===undefined||val===''?'(Blank)':val));
+}
+// Header builder: icon + label, highlights when filter active
+function _cfTH(tableId,field,label,allVals,extra='',labelFn=null){
+  const active=_cfActive(tableId,field);
+  const icon=active?'🔽':'▾';
+  const style=`cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--teal);':''}${extra}`;
+  return`<th style="${style}">
+    <span onclick="_cfOpen('${tableId}','${field}',this.parentElement,[${allVals.map(v=>`'${esc(String(v===null||v===undefined?'':v)).replace(/'/g,"\\'")}'`).join(',')}]${labelFn?','+labelFn:''})" style="display:inline-flex;align-items:center;gap:4px;width:100%">
+      ${label} <span style="font-size:10px;color:${active?'var(--teal)':'var(--muted)'}">${icon}</span>
+    </span>
+  </th>`;
+}
+
 let _leadView='list';
-let _leadSort={field:'score',dir:-1}; // default: score descending
+let _leadSort={field:'score',dir:-1};
 function _sortLeads(field){
   if(_leadSort.field===field) _leadSort.dir*=-1;
   else {_leadSort={field,dir:1};}
-  const leads=(S.get('lhs:leads')||[]);
   const el=document.getElementById('leads-list');
-  if(el) el.innerHTML=renderCRMLeadsTable(leads);
+  if(el) el.innerHTML=renderCRMLeadsTable(S.get('lhs:leads')||[]);
 }
 function renderCRMLeads(){
   const leads=(S.get('lhs:leads')||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -39110,6 +39568,7 @@ function renderLeadsKanban(){
 }
 
 function filterLeads(status,btn){
+  _leadStatusFilter=status||'All';
   document.querySelectorAll('#lead-filter-btns .btn').forEach(b=>{
     b.classList.remove('btn-n');b.classList.add('btn-o');
   });
@@ -39126,9 +39585,14 @@ function renderCRMLeadsTable(leads){
   const priColor=p=>p==='Hot'?'var(--red)':p==='Cold'?'var(--muted)':p==='Urgent'?'var(--gold,#c9a84c)':'inherit';
   const priIcon=p=>p==='Hot'?'🔥 ':p==='Cold'?'❄ ':p==='Urgent'?'⚡ ':'';
   const scoreRing=(s)=>{const cls=s>=70?'background:#fee2e2;color:#b91c1c':s>=40?'background:#fef3c7;color:#b45309':'background:#dbeafe;color:#1d4ed8';return`<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;${cls}">${s}</div>`;};
-  const sArr=f=>_leadSort.field===f?(_leadSort.dir===1?' ▲':' ▼'):' ⇅';
-  const sh=(f,label)=>`<th onclick="_sortLeads('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}<span style="color:var(--teal);font-size:10px">${sArr(f)}</span></th>`;
-  // Sort leads
+  // Collect unique values from full dataset for filter dropdowns
+  const allLeads=S.get('lhs:leads')||[];
+  const uSources=[...new Set(allLeads.map(l=>l.source_category||l.source||''))].sort();
+  const uDivs=[...new Set(allLeads.map(l=>l.division||''))].sort();
+  const uAssigned=[...new Set(allLeads.map(l=>l.assigned_to||''))].sort();
+  const uStatuses=[...new Set(allLeads.map(l=>l.status||'New'))].sort();
+  const uPriority=[...new Set(allLeads.map(l=>l.priority||'Normal'))].sort();
+  // Sort then apply column filters
   const sorted=[...leads].sort((a,b)=>{
     const f=_leadSort.field,d=_leadSort.dir;
     if(f==='score') return d*(calcLeadScore(b)-calcLeadScore(a));
@@ -39141,10 +39605,17 @@ function renderCRMLeadsTable(leads){
     if(f==='value') return d*((a.estimated_value||0)-(b.estimated_value||0));
     if(f==='followup') return d*(new Date(a.next_followup_at||0)-new Date(b.next_followup_at||0));
     return 0;
-  });
+  }).filter(l=>
+    _cfFilter('leads','source',l.source_category||l.source||'')&&
+    _cfFilter('leads','division',l.division||'')&&
+    _cfFilter('leads','assigned',l.assigned_to||'')&&
+    _cfFilter('leads','status',l.status||'New')&&
+    _cfFilter('leads','priority',l.priority||'Normal')
+  );
+  if(!sorted.length) return`<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No leads match the active filters. <button class="btn btn-o sm" onclick="window._cfState.leads={};filterLeads(_leadStatusFilter||'All')">Clear Filters</button></div>`;
   return`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr>${sh('score','Score')}${sh('name','Name')}<th>Phone / Email</th>${sh('source','Source')}${sh('division','Division')}${sh('assigned','Assigned')}${sh('status','Status')}${sh('priority','Priority')}${sh('value','Est. Value')}${sh('followup','Next Follow-up')}<th></th></tr></thead>
-  <tbody>${leads.map(l=>{const sc=calcLeadScore(l);return`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
+  <thead><tr><th>Score</th><th>Name</th><th>Phone / Email</th>${_cfTH('leads','source','Source',uSources)}${_cfTH('leads','division','Division',uDivs)}${_cfTH('leads','assigned','Assigned',uAssigned)}${_cfTH('leads','status','Status',uStatuses)}${_cfTH('leads','priority','Priority',uPriority)}<th>Est. Value</th><th>Next Follow-up</th><th></th></tr></thead>
+  <tbody>${sorted.map(l=>{const sc=calcLeadScore(l);return`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
     <td>${scoreRing(sc)}</td>
     <td>
       <div style="font-weight:700">${l.salutation?l.salutation+' ':''} ${l.first_name||''} ${l.last_name||''}${l.customer_id?` <span style="font-size:10px;background:#e3f2fd;color:#1565c0;border-radius:10px;padding:1px 6px;font-weight:600;vertical-align:middle">👤 CRM</span>`:''}</div>
@@ -39182,9 +39653,11 @@ function renderCRMPipeline(){
   const stageColor=s=>s==='Won'?'bg':s==='Lost'?'br':s==='Estimate Sent'?'bb':s==='Negotiation'?'ba':'bn';
   const custs=S.get('lhs:customers')||[];
   const custName=o=>{const c=custs.find(x=>x.id===o.customer_id);return c?((c.first_name||'')+' '+(c.last_name||'')).trim():''};
-  // Sort
-  const oArr=f=>_oppSort.field===f?(_oppSort.dir===1?' ▲':' ▼'):' ⇅';
-  const oSH=(f,label)=>`<th onclick="_sortOpp('${f}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}<span style="color:var(--teal);font-size:10px">${oArr(f)}</span></th>`;
+  // Collect unique values for column filter dropdowns (from full opp list)
+  const _uOppDivs=[...new Set(allOpps.map(o=>o.division||''))].sort();
+  const _uOppStages=[...new Set(allOpps.map(o=>o.stage||''))].sort();
+  const _uOppAssigned=[...new Set(allOpps.map(o=>o.assigned_to||''))].sort();
+  // Sort then apply column filters
   opps=[...opps].sort((a,b)=>{
     const f=_oppSort.field,d=_oppSort.dir;
     if(f==='name') return d*(a.name||'').localeCompare(b.name||'');
@@ -39196,7 +39669,11 @@ function renderCRMPipeline(){
     if(f==='close') return d*(new Date(a.close_date||0)-new Date(b.close_date||0));
     if(f==='assigned') return d*(a.assigned_to||'').localeCompare(b.assigned_to||'');
     return 0;
-  });
+  }).filter(o=>
+    _cfFilter('opps','division',o.division||'')&&
+    _cfFilter('opps','stage',o.stage||'')&&
+    _cfFilter('opps','assigned',o.assigned_to||'')
+  );
   return`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     ${stages.map(s=>{
       const cnt=opps.filter(o=>o.stage===s).length;
@@ -39209,7 +39686,7 @@ function renderCRMPipeline(){
   </div>
   ${!opps.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No opportunities yet.</div>'
   :`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr>${oSH('name','Name')}${oSH('customer','Customer')}${oSH('division','Division')}${oSH('stage','Stage')}${oSH('prob','%')}${oSH('value','Est. Value')}${oSH('close','Close Date')}${oSH('assigned','Assigned')}<th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Customer</th>${_cfTH('opps','division','Division',_uOppDivs)}${_cfTH('opps','stage','Stage',_uOppStages)}<th>%</th><th>Est. Value</th><th>Close Date</th>${_cfTH('opps','assigned','Assigned',_uOppAssigned)}<th></th></tr></thead>
   <tbody>${opps.map(o=>`<tr style="cursor:pointer" onclick="openOpportunity('${o.id}')">
     <td style="font-weight:600">${o.name}</td>
     <td style="font-size:12px;color:var(--muted)">${esc(custName(o))}</td>
@@ -39941,8 +40418,13 @@ function leadForm(l,saveFn){
   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--navy);background:#f0f4fa;padding:7px 12px;border-radius:6px;margin-bottom:12px">Address Information</div>
   <div class="fl" style="margin-bottom:8px">
     <label>Street</label>
-    <input id="${pfx}-addr" value="${esc(l.address||'')}" placeholder="Start typing address..." autocomplete="off"
-      oninput="addrAutoComplete(this.value,'${pfx}-addr-drop','${pfx}-addr','${pfx}-city','${pfx}-state','${pfx}-zip','${pfx}-county')">
+    <input id="${pfx}-addr" value="${esc(l.address||'')}" placeholder="Start typing address…" autocomplete="off"
+      oninput="addrAutoComplete(this.value,'${pfx}-addr-drop','${pfx}-addr','${pfx}-city','${pfx}-state','${pfx}-zip','${pfx}-county');(function(){const vb=document.getElementById('${pfx}-addr-vbtns');if(vb)vb.style.display=this.value.trim()?'flex':'none';}).call(this)">
+    <div id="${pfx}-addr-vbtns" style="display:${l.address?'flex':'none'};gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button type="button" class="btn btn-o sm" onclick="(function(){const s=document.getElementById('${pfx}-addr')?.value||'',ci=document.getElementById('${pfx}-city')?.value||'',st=document.getElementById('${pfx}-state')?.value||'',z=document.getElementById('${pfx}-zip')?.value||'';const a=[s,ci,st,z].filter(Boolean).join(', ');if(!a)return;window.open('https://maps.google.com/?q='+encodeURIComponent(a),'_blank','noopener');})()">📍 Verify (Maps)</button>
+      <button type="button" class="btn btn-o sm" onclick="(function(){const a=document.getElementById('${pfx}-addr')?.value.trim();if(!a)return;window.open('https://www.zillow.com/homes/'+a.replace(/\\s+/g,'-')+'_rb/','_blank','noopener');})()">🏠 Zillow</button>
+      <button type="button" class="btn btn-o sm" onclick="(function(){const s=document.getElementById('${pfx}-addr')?.value||'',ci=document.getElementById('${pfx}-city')?.value||'',st=document.getElementById('${pfx}-state')?.value||'',z=document.getElementById('${pfx}-zip')?.value||'';const a=[s,ci,st,z].filter(Boolean).join(', ');if(!a)return;window.open('https://www.redfin.com/search?location='+encodeURIComponent(a),'_blank','noopener');})()">🔴 Redfin</button>
+    </div>
     <div id="${pfx}-addr-verify-result" style="margin-top:4px;font-size:12px;display:none"></div>
   </div>
   <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
