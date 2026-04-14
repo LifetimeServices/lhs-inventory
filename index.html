@@ -13946,10 +13946,13 @@ async function sendChatMsg(){
   const inp=document.getElementById('chat-input');
   const body=(inp?.value||'').trim();
   if(!body) return;
+  // Always sync channel from window state at send time to avoid stale reference
+  if(window._chatChannel!==undefined) _chatChannel=window._chatChannel;
+  const channel=_chatChannel||'all';
   // Extract @mentions
   const mentions=[...body.matchAll(/@(\w+)/g)].map(m=>m[1]);
   const msg={
-    channel:_chatChannel,
+    channel,
     sender_name:CU.name,
     sender_email:CU.email,
     body,
@@ -38304,7 +38307,12 @@ async function pbLoadCategories(el){
       <div style="width:12px;height:40px;border-radius:4px;background:${c.color||'#1565C0'};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">${esc(c.name)}</div>
-        ${c.division?`<div style="font-size:11px;color:var(--muted)">${esc(c.division)}</div>`:''}
+        ${(()=>{
+          let ds=[];
+          if(Array.isArray(c.divisions)&&c.divisions.length) ds=c.divisions;
+          else if(c.division) ds=[c.division];
+          return ds.length?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${ds.map(d=>`<span style="font-size:10px;background:#e8edf5;color:var(--navy);border-radius:4px;padding:1px 6px;font-weight:600">${esc(d)}</span>`).join('')}</div>`:'';
+        })()}
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn sm btn-o" onclick="pbEditCategory('${c.id}')">✎</button>
@@ -38324,13 +38332,25 @@ async function pbEditCategory(id){
 }
 function pbCategoryForm(c){
   const divs=(S.get('lhs:divs')||[]).map(d=>d.name||d).filter(Boolean);
-  return`<div style="min-width:320px">
+  // Parse existing divisions — support legacy single string or JSON array
+  let selDivs=[];
+  if(c.divisions&&Array.isArray(c.divisions)) selDivs=c.divisions;
+  else if(typeof c.division==='string'&&c.division){
+    try{const p=JSON.parse(c.division);selDivs=Array.isArray(p)?p:[c.division];}catch{selDivs=[c.division];}
+  }
+  return`<div style="min-width:340px">
   <div class="fl"><label>Category Name</label><input id="pbc-name" value="${esc(c.name||'')}" placeholder="e.g. Radon Systems - Residential"></div>
-  <div class="fl"><label>Division</label>
-    <select id="pbc-div">
-      <option value="">— All Divisions —</option>
-      ${divs.map(d=>`<option value="${esc(d)}"${c.division===d?' selected':''}>${esc(d)}</option>`).join('')}
-    </select>
+  <div class="fl"><label>Divisions <span style="font-weight:400;color:var(--muted)">(select all that apply)</span></label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;border:1.5px solid var(--bdr);border-radius:8px;background:var(--surf);max-height:180px;overflow-y:auto">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;width:100%;color:var(--muted)">
+        <input type="checkbox" id="pbc-div-all" onchange="if(this.checked)document.querySelectorAll('.pbc-div-cb').forEach(x=>x.checked=false)"
+          ${selDivs.length===0?' checked':''}> — All Divisions —
+      </label>
+      ${divs.map(d=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;min-width:45%;flex:1">
+        <input type="checkbox" class="pbc-div-cb" value="${esc(d)}" onchange="if(this.checked)document.getElementById('pbc-div-all').checked=false"
+          ${selDivs.includes(d)?' checked':''}> ${esc(d)}
+      </label>`).join('')}
+    </div>
   </div>
   <div class="fl"><label>Color</label>
     <input type="color" id="pbc-color" value="${c.color||'#1565C0'}" style="height:38px;padding:2px;border:1px solid var(--bdr);border-radius:8px;width:80px;cursor:pointer">
@@ -38341,7 +38361,9 @@ function pbCategoryForm(c){
 async function pbSaveCategory(id){
   const name=(document.getElementById('pbc-name')?.value||'').trim();
   if(!name){tst('Category name required','error');return;}
-  const payload={name,division:document.getElementById('pbc-div')?.value||null,color:document.getElementById('pbc-color')?.value||'#1565C0'};
+  const allDiv=document.getElementById('pbc-div-all')?.checked;
+  const selDivs=allDiv?[]:([...document.querySelectorAll('.pbc-div-cb:checked')].map(x=>x.value));
+  const payload={name,divisions:selDivs,division:selDivs.length===1?selDivs[0]:selDivs.length===0?null:selDivs.join(', '),color:document.getElementById('pbc-color')?.value||'#1565C0'};
   if(id){
     await DB.from('lhs_pb_categories').update(payload).eq('id',id);
     tst('Category updated','success');
@@ -42209,8 +42231,10 @@ async function pollChatMessages(){
       refreshChatBadge();
     }
     if(onChatPage){
+      if(window._chatChannel!==undefined) _chatChannel=window._chatChannel;
       const relevant=newForMe.filter(m=>m.channel===(_chatChannel||'all'));
       if(relevant.length) refreshChatMsgs();
+      else refreshChatMsgs(); // always refresh so any channel new msgs show
     }
 
     // Teams-style toast (max 3)
