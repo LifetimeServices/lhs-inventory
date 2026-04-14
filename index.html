@@ -41250,7 +41250,28 @@ function openOpportunity(id){
         const si='width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px;font-family:inherit;box-sizing:border-box';
         const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
         const reps=(S.get('lhs:users')||[]).map(u=>u.name||u.full_name||'').filter(Boolean);
+        const cust=(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id);
+        const custAddr=[cust?.address,cust?.city,(cust?.state||'')+(cust?.zip?' '+cust.zip:'')].filter(Boolean).join(', ');
+        const propAddr=o.site_address||custAddr||'';
+        const addrEnc=encodeURIComponent(propAddr);
+        const zillowUrl=`https://www.zillow.com/homes/${addrEnc}_rb/`;
+        const redfinUrl=`https://www.redfin.com/search#location=${addrEnc}`;
         return`<div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+          ${propAddr?`<div style="padding:8px 10px;background:white;border:1px solid var(--bdr);border-radius:6px;position:relative">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">Property Address</div>
+            <div style="font-size:13px;font-weight:600;color:var(--navy);cursor:pointer" onclick="document.getElementById('od-site-picker').style.display=document.getElementById('od-site-picker').style.display==='none'?'flex':'none'">${esc(propAddr)} <span style="font-size:10px;color:var(--teal)">▼</span></div>
+            <div id="od-site-picker" style="display:none;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bdr)">
+              <a href="${zillowUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#006aff;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">
+                <span style="font-size:15px">🏠</span> Zillow
+              </a>
+              <a href="${redfinUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#cd2d2e;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">
+                <span style="font-size:15px">🔴</span> Redfin
+              </a>
+            </div>
+          </div>`:''}
+          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Property Address <span style="font-weight:400">(override)</span></label>
+            <input id="od-saddr" type="text" value="${esc(o.site_address||'')}" placeholder="${esc(custAddr||'From customer record')}" style="${si}">
+          </div>
           <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Division</label>
             <select id="od-div" style="${si}">
               <option value="">— None —</option>
@@ -41368,8 +41389,9 @@ async function svOppDetails(oppId){
   const val=parseFloat(document.getElementById('od-val')?.value||0)||0;
   const close=document.getElementById('od-close')?.value||null;
   const desc=document.getElementById('od-desc')?.value||'';
+  const saddr=document.getElementById('od-saddr')?.value||'';
   const now=new Date().toISOString();
-  const updates={division:div||null,job_type:jtype||null,assigned_to:rep||null,estimated_value:val,close_date:close||null,description:desc||null,updated_at:now};
+  const updates={division:div||null,job_type:jtype||null,assigned_to:rep||null,estimated_value:val,close_date:close||null,description:desc||null,site_address:saddr||null,updated_at:now};
   const opps=S.get('lhs:opportunities')||[];
   const o=opps.find(x=>x.id===oppId);
   if(o){Object.assign(o,updates);S.set('lhs:opportunities',opps);}
