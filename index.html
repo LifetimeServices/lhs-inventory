@@ -36947,6 +36947,7 @@ async function _acctLoad(){
     <div style="display:flex;gap:8px;align-items:center">
       <input placeholder="Search accounts…" value="${esc(_acctSearch)}" oninput="clearTimeout(window._acctST);window._acctST=setTimeout(()=>{_acctSearch=this.value;_acctLoad()},300)"
         style="padding:8px 14px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;width:220px;outline:none;font-family:inherit">
+      <button class="btn btn-o" onclick="oConvertLeadToAccount()">+ From Lead</button>
       <button class="btn btn-n" onclick="oAddCustomer()">+ New Account</button>
     </div>
   </div>
@@ -40768,7 +40769,7 @@ function openLead(id){
   ${(()=>{
     if(!l.customer_id) return'';
     const c=(S.get('lhs:customers')||[]).find(x=>x.id===l.customer_id);
-    if(!c) return`<div class="card" style="padding:12px;margin-bottom:14px;border-left:3px solid var(--teal)"><div class="ct">Linked Customer</div><div style="font-size:12px;color:var(--muted)">Customer ID on file — not in local cache. <button class="btn sm btn-o" onclick="oEditCustomer('${l.customer_id}')">Open Customer</button></div></div>`;
+    if(!c) return`<div class="card" style="padding:12px;margin-bottom:14px;border-left:3px solid var(--red)"><div class="ct" style="color:var(--red)">⚠ Linked Customer Missing</div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">The customer account linked to this lead no longer exists in the database.</div><div style="display:flex;gap:8px"><button class="btn sm btn-n" onclick="leadForceCreateCustomer('${id}')">Re-create Account</button><button class="btn sm btn-o" onclick="oEditCustomer('${l.customer_id}')">Try Open Anyway</button></div></div>`;
     const props=(S.get('lhs:props')||[]).filter(p=>p.current_customer_id===c.id);
     return`<div class="card" style="padding:12px;margin-bottom:14px;border-left:3px solid var(--teal)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -40860,6 +40861,69 @@ async function leadCreateCustomer(leadId){
   try{await dbUpdate('lhs:leads',leadId,{customer_id:finalCust.id});}catch{}
   tst(`Customer ${custNum} created and linked`,'success');
   openLead(leadId);
+}
+
+async function leadForceCreateCustomer(leadId){
+  const leads=S.get('lhs:leads')||[];
+  const l=leads.find(x=>x.id===leadId);
+  if(!l){tst('Lead not found','error');return;}
+  // Verify old customer truly missing from DB before creating new one
+  if(l.customer_id){
+    try{
+      const{data}=await DB.from('lhs_customers').select('id').eq('id',l.customer_id).maybeSingle();
+      if(data){
+        // Customer exists in DB but not in local cache — sync it
+        const{data:full}=await DB.from('lhs_customers').select('*').eq('id',l.customer_id).maybeSingle();
+        if(full){
+          const custs=S.get('lhs:customers')||[];custs.unshift(full);
+          _C['lhs:customers']=custs;S.set('lhs:customers',custs);
+          tst('Customer found in DB and restored to cache','success');
+          openLead(leadId);return;
+        }
+      }
+    }catch{}
+  }
+  // Customer is truly gone — clear old ID and create fresh
+  l.customer_id=null;
+  S.set('lhs:leads',leads);
+  try{await dbUpdate('lhs:leads',leadId,{customer_id:null});}catch{}
+  await leadCreateCustomer(leadId);
+}
+
+function oConvertLeadToAccount(){
+  const leads=S.get('lhs:leads')||[];
+  const customers=S.get('lhs:customers')||[];
+  const linkedIds=new Set(customers.map(c=>c.lead_id).filter(Boolean));
+  // Leads that don't have a customer_id AND haven't been linked as a source
+  const unlinked=leads.filter(l=>!l.customer_id&&!linkedIds.has(l.id)&&l.first_name);
+  if(!unlinked.length){tst('No unconverted leads found','info');return;}
+  const rows=unlinked.map(l=>`
+    <tr>
+      <td style="padding:8px 10px;font-weight:600">${esc((l.first_name||'')+' '+(l.last_name||'')).trim()}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${esc(l.phone||l.email||'—')}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${esc([l.city,l.state].filter(Boolean).join(', ')||'—')}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${esc(l.status||'—')}</td>
+      <td style="padding:8px 10px;text-align:right">
+        <button class="btn sm btn-n" onclick="leadCreateCustomer('${l.id}');_acctLoad()">Convert</button>
+      </td>
+    </tr>`).join('');
+  oMod('Convert Lead to Account',`
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted)">${unlinked.length} lead${unlinked.length===1?'':'s'} without a linked account</div>
+    <div style="max-height:60vh;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:11px;color:var(--muted);border-bottom:1px solid var(--bdr)">
+        <th style="padding:6px 10px;text-align:left;font-weight:600">Name</th>
+        <th style="padding:6px 10px;text-align:left;font-weight:600">Contact</th>
+        <th style="padding:6px 10px;text-align:left;font-weight:600">Location</th>
+        <th style="padding:6px 10px;text-align:left;font-weight:600">Status</th>
+        <th></th>
+      </tr></thead>
+      <tbody style="font-size:13px">${rows}</tbody>
+    </table>
+    </div>
+    <div style="margin-top:14px;text-align:right">
+      <button class="btn btn-o" onclick="cMod()">Close</button>
+    </div>`);
 }
 
 function oAddActivity(leadId,oppId,custId){
@@ -41121,6 +41185,31 @@ function openOpportunity(id){
     ${won?`<span style="font-size:13px;color:#10b981;font-weight:700">🏆 Won — $${Number(o.estimated_value||0).toLocaleString()}</span>`:''}
     ${lost?`<span style="font-size:13px;color:var(--red);font-weight:700">❌ Lost</span>`:''}
   </div>
+
+  <!-- Linked Estimates -->
+  ${(()=>{
+    const linkedEsts=(S.get('lhs:estimates')||[])
+      .filter(e=>(e.opp_id||e.opportunity_id)===id||(e.customer_id&&e.customer_id===o.customer_id&&!e.opp_id&&!e.opportunity_id))
+      .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    if(!linkedEsts.length) return'';
+    const stColor=s=>s==='Accepted'?'#10b981':s==='Sent'?'var(--teal)':s==='Draft'?'var(--muted)':s==='Declined'?'var(--red)':'var(--muted)';
+    return`<div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Linked Estimates (${linkedEsts.length})</div>
+      ${linkedEsts.map(e=>{
+        const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
+        const total=e.total_price||lines.reduce((s,l)=>s+(parseFloat(l.price||l.unit_price||0)*(parseFloat(l.qty||l.quantity||1))),0)||0;
+        return`<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:700">${esc(e.estimate_number||e.id?.slice(0,8)||'EST')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${e.created_at?new Date(e.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+          </div>
+          <div style="font-size:14px;font-weight:800;color:var(--teal)">$${Number(total).toLocaleString()}</div>
+          <div style="font-size:12px;font-weight:700;color:${stColor(e.status)}">${e.status||'Draft'}</div>
+          <button class="btn sm btn-o" onclick="svEstimate('${e.id}')">Open</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+  })()}
 
   <!-- Activity Timeline -->
   <div>
