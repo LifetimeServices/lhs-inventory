@@ -36413,8 +36413,39 @@ function _useEmailTemplate(idx){
 
 // ── FOLLOW-UP QUEUE ───────────────────────────────────────────────────────────
 function bSalesFollowupQueue(){
+  if(!window._fupFRange) window._fupFRange='week';
   setTimeout(_fupQueueLoad,0);
+  const users=(S.get('lhs:users')||[]).filter(u=>['Sales','Dispatcher','Territory Manager','Regional Manager','Operations Manager','Admin','Director','God View','Creator'].includes(u.role)).sort((a,b)=>a.name.localeCompare(b.name));
+  const divs=[...new Set((S.get('lhs:leads')||[]).map(l=>l.division).filter(Boolean))].sort();
+  const fAssigned=window._fupFAssigned||'';
+  const fDiv=window._fupFDiv||'';
+  const fStatus=window._fupFStatus||'';
+  const fSearch=window._fupFSearch||'';
+  const fRange=window._fupFRange||'week';
   return`<div class="pt">Follow-up Queue</div><div class="ps">Scheduled follow-ups sorted by urgency — overdue first</div>
+  <!-- Filters -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <input placeholder="🔍 Search name or company…" value="${esc(fSearch)}"
+      oninput="window._fupFSearch=this.value;_fupQueueLoad()"
+      style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;min-width:200px">
+    <select onchange="window._fupFAssigned=this.value;_fupQueueLoad()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Reps</option>
+      ${users.map(u=>`<option value="${esc(u.name)}"${fAssigned===u.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+    </select>
+    <select onchange="window._fupFDiv=this.value;_fupQueueLoad()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Divisions</option>
+      ${divs.map(d=>`<option value="${esc(d)}"${fDiv===d?' selected':''}>${esc(d)}</option>`).join('')}
+    </select>
+    <select onchange="window._fupFStatus=this.value;_fupQueueLoad()" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit">
+      <option value="">All Statuses</option>
+      ${['New','Contacted','Qualified','Unqualified','Converted'].map(s=>`<option value="${s}"${fStatus===s?' selected':''}>${s}</option>`).join('')}
+    </select>
+    <div style="display:flex;border:1px solid var(--bdr);border-radius:7px;overflow:hidden;margin-left:auto">
+      ${[['overdue','🚨 Overdue'],['today','📅 Today'],['week','📆 This Week'],['all','All']].map(([k,l])=>`
+      <button onclick="window._fupFRange='${k}';_fupQueueLoad()" style="padding:6px 14px;border:none;border-left:${k!=='overdue'?'1px solid var(--bdr)':'none'};background:${fRange===k?'var(--navy)':'var(--white)'};color:${fRange===k?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">${l}</button>`).join('')}
+    </div>
+    ${(fSearch||fAssigned||fDiv||fStatus)?`<button class="btn btn-o sm" onclick="window._fupFSearch='';window._fupFAssigned='';window._fupFDiv='';window._fupFStatus='';_fupQueueLoad()">✕ Clear</button>`:''}
+  </div>
   <div id="fup-queue-content"><div style="text-align:center;padding:40px;color:var(--muted)">Loading...</div></div>`;
 }
 
@@ -36426,11 +36457,24 @@ function _fupQueueLoad(){
   const todayStr=now.toISOString().slice(0,10);
   const weekEnd=new Date(now);weekEnd.setDate(weekEnd.getDate()+7);
   const weekStr=weekEnd.toISOString().slice(0,10);
+  const fAssigned=window._fupFAssigned||'';
+  const fDiv=window._fupFDiv||'';
+  const fStatus=window._fupFStatus||'';
+  const fSearch=(window._fupFSearch||'').toLowerCase();
+  const fRange=window._fupFRange||'week';
 
-  const withFup=leads.filter(l=>l.next_followup_at&&l.status!=='Converted');
+  let withFup=leads.filter(l=>l.next_followup_at&&l.status!=='Converted');
+  if(fAssigned) withFup=withFup.filter(l=>(l.assigned_to||'')===fAssigned);
+  if(fDiv) withFup=withFup.filter(l=>(l.division||'')===fDiv);
+  if(fStatus) withFup=withFup.filter(l=>(l.status||'')===fStatus);
+  if(fSearch) withFup=withFup.filter(l=>`${l.first_name||''} ${l.last_name||''} ${l.company||''}`.toLowerCase().includes(fSearch));
+
   const overdue=withFup.filter(l=>l.next_followup_at.slice(0,10)<todayStr).sort((a,b)=>a.next_followup_at.localeCompare(b.next_followup_at));
   const today=withFup.filter(l=>l.next_followup_at.slice(0,10)===todayStr);
   const week=withFup.filter(l=>l.next_followup_at.slice(0,10)>todayStr&&l.next_followup_at.slice(0,10)<=weekStr).sort((a,b)=>a.next_followup_at.localeCompare(b.next_followup_at));
+  const all=withFup.sort((a,b)=>a.next_followup_at.localeCompare(b.next_followup_at));
+
+  const show=fRange==='overdue'?{overdue,today:[],week:[],all:[]}:fRange==='today'?{overdue,today,week:[],all:[]}:fRange==='all'?{overdue:[],today:[],week:[],all}:{overdue,today,week,all:[]};
 
   const fupRow=(l,cls,dotColor)=>`
     <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid ${cls==='ov'?'#fca5a5':cls==='td'?'#86efac':'var(--bdr)'};background:${cls==='ov'?'#fff5f5':cls==='td'?'#f0fdf4':'white'};margin-bottom:8px;box-shadow:var(--sh)">
@@ -36449,6 +36493,21 @@ function _fupQueueLoad(){
       </div>
     </div>`;
 
+  const leadsTable=(arr,title,color)=>arr.length?`
+    <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:10px">${title} (${arr.length})</div>
+    <div class="tw" style="margin-bottom:16px"><table>
+      <thead><tr><th>Lead / Account</th><th>Division</th><th>Status</th><th>Due</th><th>Assigned</th><th>Value</th><th></th></tr></thead>
+      <tbody>${arr.map(l=>`<tr>
+        <td><div style="font-weight:700">${esc(l.first_name)} ${esc(l.last_name)}</div>${l.company?`<div style="font-size:11px;color:var(--muted)">${esc(l.company)}</div>`:''}</td>
+        <td>${l.division?`<span class="bx bn">${esc(l.division)}</span>`:'—'}</td>
+        <td><span class="bx ${l.status==='New'?'ba':l.status==='Contacted'?'bb':l.status==='Qualified'?'bg':'bgr'}">${l.status||'—'}</span></td>
+        <td style="color:${color==='var(--red)'?'var(--red)':'inherit'};font-weight:${color==='var(--red)'?700:400}">${new Date(l.next_followup_at+'T00:00:00').toLocaleDateString()}</td>
+        <td>${esc(l.assigned_to||'—')}</td>
+        <td style="font-weight:700">${l.estimated_value?'$'+Number(l.estimated_value).toLocaleString():'—'}</td>
+        <td><button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:'';
+
   el.innerHTML=`
   <div class="sg">
     <div class="sc r"><div class="sl">Overdue</div><div class="sv">${overdue.length}</div><div class="ss">Need immediate attention</div></div>
@@ -36456,22 +36515,11 @@ function _fupQueueLoad(){
     <div class="sc n"><div class="sl">This Week</div><div class="sv">${week.length}</div><div class="ss">Next 7 days</div></div>
     <div class="sc a"><div class="sl">Total Scheduled</div><div class="sv">${withFup.length}</div><div class="ss">All open follow-ups</div></div>
   </div>
-  ${overdue.length?`<div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:10px">🚨 Overdue (${overdue.length})</div>${overdue.map(l=>fupRow(l,'ov','var(--red)')).join('')}`:''}
-  ${today.length?`<div style="font-size:13px;font-weight:700;color:var(--green);margin:${overdue.length?'16px':0} 0 10px">📅 Due Today (${today.length})</div>${today.map(l=>fupRow(l,'td','var(--green)')).join('')}`:''}
-  ${week.length?`<div style="font-size:13px;font-weight:700;color:var(--navy);margin:${(overdue.length||today.length)?'16px':0} 0 10px">📆 This Week (${week.length})</div>
-  <div class="tw"><table>
-    <thead><tr><th>Lead / Account</th><th>Division</th><th>Status</th><th>Due</th><th>Assigned</th><th>Value</th><th></th></tr></thead>
-    <tbody>${week.map(l=>`<tr>
-      <td><div style="font-weight:700">${l.first_name} ${l.last_name}</div>${l.company?`<div style="font-size:11px;color:var(--muted)">${l.company}</div>`:''}</td>
-      <td>${l.division?`<span class="bx bn">${l.division}</span>`:'—'}</td>
-      <td><span class="bx ${l.status==='New'?'ba':l.status==='Contacted'?'bb':l.status==='Qualified'?'bg':'bgr'}">${l.status}</span></td>
-      <td>${new Date(l.next_followup_at).toLocaleDateString()}</td>
-      <td>${l.assigned_to||'—'}</td>
-      <td style="font-weight:700">${l.estimated_value?'$'+Number(l.estimated_value).toLocaleString():'—'}</td>
-      <td><button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button></td>
-    </tr>`).join('')}</tbody>
-  </table></div>`:''}
-  ${!overdue.length&&!today.length&&!week.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No follow-ups scheduled. Add a follow-up date when editing a lead.</div>':''}`;
+  ${leadsTable(show.overdue,'🚨 Overdue','var(--red)')}
+  ${leadsTable(show.today,'📅 Due Today','var(--green)')}
+  ${leadsTable(show.week,'📆 This Week','var(--navy)')}
+  ${leadsTable(show.all,'📋 All Follow-ups','var(--navy)')}
+  ${!show.overdue.length&&!show.today.length&&!show.week.length&&!show.all.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No follow-ups match your filters.</div>':''}`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
