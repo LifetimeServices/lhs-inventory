@@ -40469,6 +40469,7 @@ async function svStateTax(code){
 
 // ── SALES SETTINGS PAGE ────────────────────────────────────────────────────────
 function bSalesSettings(){
+  setTimeout(renderIntakeTemplatesSettings,100);
   return`<div class="pt">Sales Settings</div>
   <div class="ps">Configure lists and fields used across leads, opportunities, and activities</div>
   ${renderSalesSettings()}`;
@@ -40635,7 +40636,6 @@ function renderSalesSettings(){
       </div>
     </div>
     <div id="intake-tmpl-list"><div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Loading templates…</div></div>
-    <script>setTimeout(renderIntakeTemplatesSettings,100);<\/script>
   </div>
 
   <!-- Lead Statuses -->
