@@ -41257,20 +41257,18 @@ function openOpportunity(id){
         const zillowUrl=`https://www.zillow.com/homes/${addrEnc}_rb/`;
         const redfinUrl=`https://www.redfin.com/search#location=${addrEnc}`;
         return`<div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
-          ${propAddr?`<div style="padding:8px 10px;background:white;border:1px solid var(--bdr);border-radius:6px;position:relative">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:3px;letter-spacing:.05em">Property Address</div>
-            <div style="font-size:13px;font-weight:600;color:var(--navy);cursor:pointer" onclick="document.getElementById('od-site-picker').style.display=document.getElementById('od-site-picker').style.display==='none'?'flex':'none'">${esc(propAddr)} <span style="font-size:10px;color:var(--teal)">▼</span></div>
+          <div style="padding:8px 10px;background:white;border:1px solid var(--bdr);border-radius:6px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:4px;letter-spacing:.05em">Property Address</div>
+            ${propAddr?`<div style="font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;margin-bottom:0" onclick="document.getElementById('od-site-picker').style.display=document.getElementById('od-site-picker').style.display==='none'?'flex':'none'">${esc(propAddr)} <span style="font-size:10px;color:var(--teal)">▼ look up</span></div>
             <div id="od-site-picker" style="display:none;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bdr)">
-              <a href="${zillowUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#006aff;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">
-                <span style="font-size:15px">🏠</span> Zillow
-              </a>
-              <a href="${redfinUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#cd2d2e;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">
-                <span style="font-size:15px">🔴</span> Redfin
-              </a>
+              <a href="${zillowUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#006aff;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">🏠 Zillow</a>
+              <a href="${redfinUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:#cd2d2e;color:white;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;flex:1;justify-content:center">🔴 Redfin</a>
+            </div>`:`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:4px">No address on file — enter one below</div>`}
+            <input id="od-saddr" type="text" value="${esc(o.site_address||'')}" placeholder="${esc(custAddr||'Enter address…')}" style="${si};margin-top:6px" oninput="(function(v){const enc=encodeURIComponent(v);document.getElementById('od-zlnk').href='https://www.zillow.com/homes/'+enc+'_rb/';document.getElementById('od-rflnk').href='https://www.redfin.com/search#location='+enc;document.getElementById('od-site-picker2').style.display=v?'flex':'none';})(this.value)">
+            <div id="od-site-picker2" style="display:${o.site_address?'flex':'none'};gap:6px;margin-top:6px">
+              <a id="od-zlnk" href="${o.site_address?`https://www.zillow.com/homes/${encodeURIComponent(o.site_address)}_rb/`:zillowUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:5px 8px;background:#006aff;color:white;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;flex:1;justify-content:center">🏠 Zillow</a>
+              <a id="od-rflnk" href="${o.site_address?`https://www.redfin.com/search#location=${encodeURIComponent(o.site_address)}`:redfinUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;padding:5px 8px;background:#cd2d2e;color:white;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;flex:1;justify-content:center">🔴 Redfin</a>
             </div>
-          </div>`:''}
-          <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Property Address <span style="font-weight:400">(override)</span></label>
-            <input id="od-saddr" type="text" value="${esc(o.site_address||'')}" placeholder="${esc(custAddr||'From customer record')}" style="${si}">
           </div>
           <div><label style="color:var(--muted);font-weight:600;display:block;margin-bottom:2px">Division</label>
             <select id="od-div" style="${si}">
