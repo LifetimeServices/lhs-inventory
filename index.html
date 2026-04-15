@@ -3283,6 +3283,8 @@ function refreshDispBoard(){
 }
 
 function showPage(id){
+  // Kill leaderboard auto-refresh whenever navigating away from it
+  if(id!=='sales-board'&&window._sbRefreshTimer){clearInterval(window._sbRefreshTimer);window._sbRefreshTimer=null;}
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb:not(.nb-back)').forEach(b=>b.classList.remove('active'));
   const pg=document.getElementById('p-'+id); if(!pg) return;
