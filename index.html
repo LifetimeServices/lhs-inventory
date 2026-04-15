@@ -29529,16 +29529,17 @@ function oAddItem(){
       <input id="ai-unit" placeholder="Each, ea, ft, gal, Box…" value="Each">
     </div>
   </div>
+  <div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Vendors &amp; Costs</div>
+      <button type="button" onclick="_addVendorRow('ai')" class="btn btn-o sm">+ Add Vendor</button>
+    </div>
+    <div style="display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;font-size:11px;font-weight:600;color:var(--muted);padding:0 4px;margin-bottom:4px">
+      <span style="text-align:center">PRIMARY</span><span>VENDOR</span><span>VENDOR PART #</span><span>COST TO US $</span><span></span>
+    </div>
+    <div id="ai-vendor-rows">${_buildVendorRows([],'ai')}</div>
+  </div>
   <div class="fr">
-    <div class="fl"><label>Vendor</label>
-      <select id="ai-vendor">
-        <option value="">— None —</option>
-        ${(S.get('lhs:vens')||[]).map(v=>{const n=typeof v==='string'?v:v.name;return`<option>${n}</option>`;}).join('')}
-      </select>
-    </div>
-    <div class="fl"><label>Company Cost $</label>
-      <input type="number" id="ai-cost" step="0.01" placeholder="0.00">
-    </div>
     <div class="fl"><label>Customer Price $</label>
       <input type="number" id="ai-custcost" step="0.01" placeholder="0.00">
     </div>
@@ -29559,8 +29560,12 @@ async function svAddItem(){
   if(!sku||!name){tst('SKU and Name are required','error');return}
   const items=S.get('lhs:items')||[];
   if(items.find(i=>i.sku===sku)){tst('SKU already exists','error');return}
+  const vendors=_readVendorRows('ai');
+  const primary=vendors.find(vr=>vr.primary)||vendors[0]||null;
   const item={sku,name,division:_readDivCbs('ai-div'),unit:v('ai-unit')||'Each',
-    vendor:v('ai-vendor'),cost:parseFloat(v('ai-cost'))||0,
+    vendor:primary?.vendor||'',
+    cost:primary?.cost||0,
+    vendors:vendors.length?vendors:[],
     customer_cost:parseFloat(v('ai-custcost'))||0,
     min:parseInt(v('ai-min'))||0,max:parseInt(v('ai-max'))||0,
     created_at:new Date().toISOString()};
@@ -29594,16 +29599,20 @@ function oEditItem(itemId){
       <input id="ei-unit" value="${esc(item.unit||'Each')}" placeholder="Each, ea, ft, gal, Box…">
     </div>
   </div>
+  <div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Vendors &amp; Costs</div>
+      <button type="button" onclick="_addVendorRow('ei')" class="btn btn-o sm">+ Add Vendor</button>
+    </div>
+    <div style="display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;font-size:11px;font-weight:600;color:var(--muted);padding:0 4px;margin-bottom:4px">
+      <span style="text-align:center">PRIMARY</span><span>VENDOR</span><span>VENDOR PART #</span><span>COST TO US $</span><span></span>
+    </div>
+    <div id="ei-vendor-rows">
+      ${_buildVendorRows(item.vendors||(item.vendor?[{vendor:item.vendor,part_number:'',cost:item.cost||0,primary:true}]:[]),'ei')}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;padding-left:4px">☝ Select a vendor's radio button to make it the <b>active primary</b> — its cost becomes the live material cost for this item.</div>
+  </div>
   <div class="fr">
-    <div class="fl"><label>Vendor</label>
-      <select id="ei-vendor">
-        <option value="">— None —</option>
-        ${vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option${(typeof v==='string'?v:v.name)===(item.vendor||'')?'  selected':''}>${n}</option>`;}).join('')}
-      </select>
-    </div>
-    <div class="fl"><label>Company Cost $</label>
-      <input type="number" id="ei-cost" step="0.01" value="${esc((item.cost||0).toFixed(2))}">
-    </div>
     <div class="fl"><label>Customer Price $</label>
       <input type="number" id="ei-custcost" step="0.01" value="${esc((item.customer_cost||0).toFixed(2))}">
     </div>
@@ -29652,6 +29661,83 @@ function addBulkRow(){
   container.appendChild(row);
 }
 
+// ── ITEM VENDOR ROWS ──────────────────────────────────────────────────────────
+function _buildVendorRows(vendors, pfx){
+  if(!vendors||!vendors.length) vendors=[{vendor:'',part_number:'',cost:0,primary:true}];
+  const vens=S.get('lhs:vens')||[];
+  return vendors.map((vr,i)=>_buildVendorRowHTML(vr,pfx,vens)).join('');
+}
+function _buildVendorRowHTML(vr, pfx, vens){
+  if(!vens) vens=S.get('lhs:vens')||[];
+  const venOpts=vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option value="${n}"${n===(vr.vendor||'')?'  selected':''}>${n}</option>`;}).join('');
+  const isPrimary=!!vr.primary;
+  return`<div class="item-vend-row" style="display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;margin-bottom:6px;align-items:center;padding:8px 8px 8px 6px;border-radius:8px;border:1.5px solid ${isPrimary?'var(--green)':'var(--bdr)'};background:${isPrimary?'#f0fdf4':''}">
+    <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer" title="Mark as primary — activates this vendor cost">
+      <input type="radio" name="${pfx}-vend-primary" ${isPrimary?'checked':''} onchange="_vendorRowPrimaryChanged(this)" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+      ${isPrimary?`<span style="font-size:9px;font-weight:700;color:var(--green);letter-spacing:.02em">ACTIVE</span>`:`<span style="font-size:9px;color:var(--muted)">set</span>`}
+    </label>
+    <select class="ivend-name" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+      <option value="">— Select Vendor —</option>
+      ${venOpts}
+    </select>
+    <input type="text" class="ivend-partno" value="${esc(vr.part_number||'')}" placeholder="Vendor Part # (opt.)" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    <input type="number" class="ivend-cost" step="0.01" value="${(vr.cost||0).toFixed(2)}" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    <button type="button" onclick="_removeVendorRow(this)" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0" title="Remove vendor">×</button>
+  </div>`;
+}
+function _vendorRowPrimaryChanged(radio){
+  document.querySelectorAll('.item-vend-row').forEach(row=>{
+    const r=row.querySelector('input[type=radio]');
+    const on=r&&r.checked;
+    row.style.borderColor=on?'var(--green)':'var(--bdr)';
+    row.style.background=on?'#f0fdf4':'';
+    const lbl=row.querySelector('label span');
+    if(lbl){lbl.textContent=on?'ACTIVE':'set';lbl.style.color=on?'var(--green)':'var(--muted)';}
+  });
+}
+function _addVendorRow(pfx){
+  const container=document.getElementById(`${pfx}-vendor-rows`);
+  if(!container) return;
+  const div=document.createElement('div');
+  div.className='item-vend-row';
+  div.style.cssText='display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;margin-bottom:6px;align-items:center;padding:8px 8px 8px 6px;border-radius:8px;border:1.5px solid var(--bdr)';
+  const vens=S.get('lhs:vens')||[];
+  const venOpts=vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option value="${n}">${n}</option>`;}).join('');
+  div.innerHTML=`
+    <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer" title="Mark as primary">
+      <input type="radio" name="${pfx}-vend-primary" onchange="_vendorRowPrimaryChanged(this)" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+      <span style="font-size:9px;color:var(--muted)">set</span>
+    </label>
+    <select class="ivend-name" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+      <option value="">— Select Vendor —</option>
+      ${venOpts}
+    </select>
+    <input type="text" class="ivend-partno" placeholder="Vendor Part # (opt.)" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    <input type="number" class="ivend-cost" step="0.01" value="0.00" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    <button type="button" onclick="_removeVendorRow(this)" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1" title="Remove">×</button>`;
+  container.appendChild(div);
+}
+function _removeVendorRow(btn){
+  const row=btn.closest('.item-vend-row');
+  const container=row?.parentElement;
+  if(!container) return;
+  if(container.querySelectorAll('.item-vend-row').length<=1){tst('At least one vendor row is required','error');return;}
+  const wasPrimary=row.querySelector('input[type=radio]')?.checked;
+  row.remove();
+  if(wasPrimary){
+    const first=container.querySelector('.item-vend-row input[type=radio]');
+    if(first){first.checked=true;_vendorRowPrimaryChanged(first);}
+  }
+}
+function _readVendorRows(pfx){
+  return[...document.querySelectorAll(`#${pfx}-vendor-rows .item-vend-row`)].map(row=>({
+    vendor:row.querySelector('.ivend-name')?.value||'',
+    part_number:(row.querySelector('.ivend-partno')?.value||'').trim(),
+    cost:parseFloat(row.querySelector('.ivend-cost')?.value)||0,
+    primary:!!(row.querySelector('input[type=radio]')?.checked)
+  })).filter(r=>r.vendor);
+}
+
 async function svEditItem(){
   const itemId=window._editItemId; if(!itemId) return;
   const items=S.get('lhs:items')||[];
@@ -29670,8 +29756,12 @@ async function svEditItem(){
   item.name=name;
   item.division=_readDivCbs('ei-div');
   item.unit=v('ei-unit')||'Each';
-  item.vendor=v('ei-vendor');
-  item.cost=parseFloat(v('ei-cost'))||0;
+  // Vendor rows — primary vendor drives item.vendor + item.cost
+  const _vendorRows=_readVendorRows('ei');
+  const _primaryVendor=_vendorRows.find(vr=>vr.primary)||_vendorRows[0]||null;
+  item.vendors=_vendorRows;
+  item.vendor=_primaryVendor?.vendor||'';
+  item.cost=_primaryVendor?.cost||0;
   item.customer_cost=parseFloat(v('ei-custcost'))||0;
   item.min=parseInt(v('ei-min'))||0;
   item.max=parseInt(v('ei-max'))||0;
@@ -29684,7 +29774,8 @@ async function svEditItem(){
     await dbUpdate('lhs:items',item.id,{
       sku:item.sku,name:item.name,division:item.division,unit:item.unit,
       vendor:item.vendor,cost:item.cost,customer_cost:item.customer_cost||0,
-      min:item.min,max:item.max,bulk_pricing:item.bulk_pricing
+      min:item.min,max:item.max,bulk_pricing:item.bulk_pricing,
+      vendors:item.vendors
     });
   } else {
     // Item has no Supabase id — insert it now and store the returned id
