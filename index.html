@@ -37359,10 +37359,20 @@ async function _acctLoad(){
       }
     }catch(e){console.warn('_acctLoad fetch:',e.message);}
   }
-  // Show all customers — ST imports are valid CRM accounts too
   const opps=S.get('lhs:opportunities')||[];
   const activities=S.get('lhs:activities')||[];
   const leads=S.get('lhs:leads')||[];
+
+  // Permanent rule: a customer is a CRM Account if it was created through the CRM
+  // (no st_customer_id) OR has at least one linked lead or opportunity.
+  // Pure ST-import records with zero CRM activity are excluded.
+  const leadCustIds=new Set(leads.map(l=>l.customer_id).filter(Boolean));
+  const oppCustIds=new Set(opps.map(o=>o.customer_id).filter(Boolean));
+  customers=customers.filter(c=>
+    !c.st_customer_id ||          // created directly in CRM
+    leadCustIds.has(c.id) ||      // has a linked lead
+    oppCustIds.has(c.id)          // has a linked opportunity
+  );
 
   const typeFilters=['All','Active','Residential','Commercial','HOA / Multi-Unit'];
   const typeFor=c=>{
