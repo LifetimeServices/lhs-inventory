@@ -2852,7 +2852,7 @@ async function startApp(){
   const _restorePage=_validPages.includes(_lastPage)?_lastPage:'dashboard';
   const _dispPgs=['dispatch-board','dispatch-calendar'];
   const _invPgs=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
-  const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
+  const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-board','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
   const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
@@ -3014,6 +3014,7 @@ const SALES_NAV=[
   {id:'sales-pricebook',     l:'Pricebook'},
   {id:'sales-followups',     l:'Follow Ups'},
   {id:'sales-activities',    l:'Activities'},
+  {id:'sales-board',         l:'🏆 Leaderboard'},
   {id:'sales-email-sync',    l:'Email Sync'},
   {id:'sales-marketing',     l:'Marketing'},
   {id:'sales-discounts',     l:'Discounts &amp; Promotions'},
@@ -3332,7 +3333,7 @@ window.addEventListener('popstate',e=>{
   // Re-render the correct nav mode for this page
   const dispPages=['dispatch-board','dispatch-calendar'];
   const invPages=['inv-dashboard','inventory','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools'];
-  const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
+  const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-board','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
   const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-settings'];
@@ -36741,7 +36742,7 @@ function bSalesBoard(){
   };
 
   const DIVS_ALL=(S.get('lhs:divs')||[]).map(d=>d.name||d).concat(
-    ...(S.get('lhs:work_orders')||[]).map(w=>w.division||'').filter(Boolean)
+    (S.get('lhs:work_orders')||[]).map(w=>w.division||'').filter(Boolean)
   );
   const uniqDivs=[...new Set(DIVS_ALL)].sort();
 
