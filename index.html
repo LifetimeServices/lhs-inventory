@@ -19877,7 +19877,16 @@ function bDash(){
   const monthRevenue=wos.filter(w=>w.completed_at&&w.completed_at>=monthStart).reduce((s,w)=>s+(w.total_price||0),0);
   const totalAR=wos.reduce((s,w)=>s+Math.max(0,(w.total_price||0)-(w.total_paid||0)),0);
   const openPOs=pos.filter(p=>!['Received in Full','Cancelled'].includes(p.status)).length;
-  const myTasks=tasks.filter(t=>t.assigned_to_email===CU?.email&&t.status!=='Complete');
+  // Use same scope as bTasks: God View sees all, managers see self+reports, others see self only
+  const _isGodView=CU?.role==='God View'||CU?.role==='Creator';
+  const _myReports=users.filter(u=>u.manager&&u.manager===CU?.name&&u.email);
+  const _reportEmails=new Set(_myReports.map(u=>u.email));
+  const myTasks=tasks.filter(t=>{
+    if(t.status==='Complete') return false;
+    if(_isGodView) return true;
+    if(_reportEmails.size&&(t.assigned_to_email===CU?.email||_reportEmails.has(t.assigned_to_email))) return true;
+    return t.assigned_to_email===CU?.email;
+  });
   const overdueTasks=myTasks.filter(t=>t.due_date&&new Date(t.due_date)<new Date());
 
   // Tech utilization across all dispatch users today
@@ -19922,7 +19931,7 @@ function bDash(){
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${notifs.length?`<button class="btn btn-o sm" onclick="showPage('mytasks')" style="color:var(--red);border-color:var(--red)">🔔 ${notifs.length} unread</button>`:''}
-      ${overdueTasks.length?`<button class="btn btn-o sm" onclick="showPage('mytasks')" style="color:var(--red);border-color:var(--red)">⚠️ ${overdueTasks.length} overdue</button>`:''}
+      ${overdueTasks.length?`<button class="btn btn-o sm" onclick="showPage('${(_isGodView||_reportEmails.size)?'tasks':'mytasks'}')" style="color:var(--red);border-color:var(--red)">⚠️ ${overdueTasks.length} overdue</button>`:''}
       <button class="btn btn-n sm" onclick="goDispBoard()">→ Dispatch Board</button>
     </div>
   </div>
