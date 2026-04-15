@@ -23111,9 +23111,12 @@ async function svCreateWO(){
     delete woFallback.job_group_id;
     delete woFallback.property_id;
     delete woFallback.wo_state;
+    delete woFallback.sold_by;
+    delete woFallback.office_sold_by;
+    delete woFallback.tech_sold_by;
     savedWO=await dbInsert('lhs:work_orders',woFallback);
     if(savedWO){
-      console.warn('WO saved with fallback schema — run SQL migration to add missing columns (estimate_id, opp_id, job_group_id, property_id, wo_state)');
+      console.warn('WO saved with fallback schema — run SQL migration to add missing columns (estimate_id, opp_id, job_group_id, property_id, wo_state, sold_by, office_sold_by, tech_sold_by)');
       tst('Work order saved — run DB migration to enable full linking','warning');
     }
   }
