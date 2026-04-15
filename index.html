@@ -12427,23 +12427,44 @@ async function delOpsAssignment(id){
 
 // ─── ADMIN ───────────────────────────────────────────────────────────────────
 function bAdmin(){
-  if(!['Creator','God View','Admin','Director'].includes(CU?.role))
+  // Full-access roles always pass; others need at least the 'view' sub-permission on admin
+  const fullAccess=['Creator','God View','Admin','Director'].includes(CU?.role);
+  if(!fullAccess && !hasPerm('admin','view'))
     return`<div class="pt">Admin</div><div class="al al-r">Access restricted. Contact your administrator.</div>`;
+
+  // Build tab list based on what this user is allowed to see
+  const canUsers   = fullAccess || hasPerm('admin','manage_users');
+  const canPerms   = fullAccess || hasPerm('admin','change_permissions');
+  const canRegions = fullAccess || hasPerm('admin','access_regions');
+  const canTerr    = fullAccess || hasPerm('admin','access_territories');
+  const canDivs    = fullAccess || hasPerm('admin','access_divisions');
+  const canWO      = fullAccess || hasPerm('admin','access_wo_settings');
+  const canVendors = fullAccess || hasPerm('admin','access_vendors');
+  const canInt     = fullAccess || hasPerm('admin','manage_integrations');
+  const canSec     = fullAccess || hasPerm('admin','access_security');
+  const canImport  = fullAccess;
+
+  // Pick the first visible tab as the default active tab
+  const firstTab = canUsers?'users':canVendors?'vendors':canRegions?'regions':canTerr?'territories':canDivs?'divs':canWO?'wo-settings':canInt?'integrations':canSec?'security':canPerms?'perms':null;
+  if(!firstTab)
+    return`<div class="pt">Admin</div><div class="al al-r">Access restricted. Contact your administrator.</div>`;
+
+  const tabBtn=(id,label,has)=>has?`<button class="tab${id===firstTab?' active':''}" onclick="aTab('${id}',this)">${label}</button>`:'';
   return`<div class="pt">Admin</div>
   <div class="ps">System settings, users, integrations, and configuration</div>
   <div class="tabs">
-    <button class="tab active" onclick="aTab('users',this)">Users</button>
-    <button class="tab" onclick="aTab('perms',this)">Permissions</button>
-    <button class="tab" onclick="aTab('regions',this)">Regions</button>
-    <button class="tab" onclick="aTab('territories',this)">Territories</button>
-    <button class="tab" onclick="aTab('divs',this)">Divisions</button>
-    <button class="tab" onclick="aTab('wo-settings',this)">W/O Settings</button>
-    <button class="tab" onclick="aTab('vendors',this)">Vendors</button>
-    <button class="tab" onclick="aTab('integrations',this)">Integrations</button>
-    <button class="tab" onclick="aTab('security',this)">🔒 Security & Training</button>
-    <button class="tab" onclick="aTab('import',this)">ST Import</button>
+    ${tabBtn('users','Users',canUsers)}
+    ${tabBtn('perms','Permissions',canPerms)}
+    ${tabBtn('regions','Regions',canRegions)}
+    ${tabBtn('territories','Territories',canTerr)}
+    ${tabBtn('divs','Divisions',canDivs)}
+    ${tabBtn('wo-settings','W/O Settings',canWO)}
+    ${tabBtn('vendors','Vendors',canVendors)}
+    ${tabBtn('integrations','Integrations',canInt)}
+    ${tabBtn('security','🔒 Security & Training',canSec)}
+    ${tabBtn('import','ST Import',canImport)}
   </div>
-  <div id="atab">${aUsers()}</div>`;
+  <div id="atab">${firstTab==='users'?aUsers():firstTab==='vendors'?aVens():firstTab==='regions'?aRegions():firstTab==='territories'?aTerritories():firstTab==='divs'?aDivs():firstTab==='wo-settings'?aWOSettings():firstTab==='integrations'?bInt():firstTab==='security'?aSecurityTraining():firstTab==='perms'?aPerms():''}</div>`;
 }
 
 function aTab(tab,btn){
