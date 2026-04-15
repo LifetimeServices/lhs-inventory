@@ -35268,6 +35268,9 @@ function bReports(){
   const canScheduleReports=hasPerm('reports','rpt_schedule');
   const allDefs=[...REPORT_DEFS,...custom.map(c=>({id:'custom-'+c.id,cat:'Custom',name:c.name,desc:c.description||'Custom report',custom:true,customId:c.id}))]
     .filter(r=>_catAllowed(r.cat));
+  // Cache for _rptApplyFilter (used by search-in-place)
+  window._rptBuiltinDefs=REPORT_DEFS.filter(r=>_catAllowed(r.cat));
+  window._rptCustomDefs=custom.map(c=>({id:'custom-'+c.id,cat:'Custom',name:c.name,desc:c.description||'Custom report',custom:true,customId:c.id}));
 
   // ── Tab bar ────────────────────────────────────────────────────────────────
   const _tabs=[
@@ -35308,7 +35311,7 @@ function bReports(){
 
   <!-- Search + Category filter -->
   <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-    <input value="${esc(_rptSearch)}" oninput="window._rptSearch=this.value;showPage('reports')"
+    <input id="rpt-search-inp" value="${esc(_rptSearch)}" oninput="window._rptSearch=this.value;clearTimeout(window._rptT);window._rptT=setTimeout(_rptApplyFilter,0)"
       placeholder="🔍 Search reports..."
       style="padding:8px 12px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;width:220px">
     <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -35319,7 +35322,7 @@ function bReports(){
   </div>
 
   <!-- Report cards by category -->
-  ${Object.entries(byCategory).map(([cat,rpts])=>`
+  <div id="rpt-grid">${Object.entries(byCategory).map(([cat,rpts])=>`
     <div style="margin-bottom:24px">
       <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">${cat}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
@@ -35346,7 +35349,50 @@ function bReports(){
         }).join('')}
       </div>
     </div>`).join('')}
-  ${!Object.keys(byCategory).length?`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No reports match your search</div>`:''}`;
+  ${!Object.keys(byCategory).length?`<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No reports match your search</div>`:''}</div>`;
+}
+
+function _rptApplyFilter(){
+  const allDefs=[...(window._rptBuiltinDefs||[]),...(window._rptCustomDefs||[])];
+  const q=(window._rptSearch||'').toLowerCase();
+  const cat=window._rptCat||'all';
+  const scheduled=window._rptScheduled||[];
+  const canScheduleReports=hasPerm('reports','schedule_reports')||CU?.role==='God View'||CU?.role==='Creator';
+  const filtered=allDefs.filter(r=>{
+    if(cat!=='all'&&r.cat!==cat) return false;
+    if(q&&!r.name.toLowerCase().includes(q)&&!(r.desc||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const byCategory={};
+  filtered.forEach(r=>{if(!byCategory[r.cat])byCategory[r.cat]=[];byCategory[r.cat].push(r);});
+  const el=document.getElementById('rpt-grid');
+  if(!el) return;
+  el.innerHTML=Object.entries(byCategory).map(([cat,rpts])=>`
+    <div style="margin-bottom:24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">${cat}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+        ${rpts.map(r=>{
+          const isSched=scheduled.some(s=>s.report_id===(r.customId||r.id)&&s.active);
+          return`<div style="background:white;border:1px solid var(--bdr);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s,border-color .15s"
+            onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.08)';this.style.borderColor='var(--teal)'"
+            onmouseout="this.style.boxShadow='';this.style.borderColor='var(--bdr)'">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+              <div style="font-size:14px;font-weight:700;color:var(--navy);line-height:1.3">${esc(r.name)}</div>
+              ${isSched?`<span style="background:rgba(58,191,191,.15);color:var(--teal);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;flex-shrink:0">📅 Sched</span>`:''}
+            </div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.4;flex:1">${esc(r.desc||'')}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+              <span style="background:var(--surf);color:var(--navy);font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px">${r.cat}</span>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-n sm" onclick="event.stopPropagation();rptRun('${r.id}','${esc(r.name)}',${!!r.custom})">▶ Run</button>
+                ${canScheduleReports?`<button class="btn btn-o sm" onclick="event.stopPropagation();rptOpenSchedule('${r.id}','${esc(r.name)}')">📅 Schedule</button>`:''}
+                ${r.custom?`<button class="btn btn-o sm" onclick="event.stopPropagation();rptDeleteCustom('${r.customId}')">✕</button>`:''}
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`).join('')+(!Object.keys(byCategory).length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No reports match your search</div>':'');
 }
 
 function rptApplyFilters(){
@@ -42782,7 +42828,11 @@ async function pollChatMessages(){
       const existing=msgs.find(x=>x.id===m.id||( x.id&&x.id.startsWith('tmp_')&&x.body===m.body&&x.sender_email===m.sender_email&&x.channel===m.channel));
       if(!existing){
         msgs.push(m);
-        if(m.sender_email!==CU.email&&(_chatLastMsgTime?true:m.created_at>tenSecsAgo)) newForMe.push(m);
+        if(m.sender_email!==CU.email&&(_chatLastMsgTime?true:m.created_at>tenSecsAgo)){
+          // Don't surface DMs where the current user is not a participant
+          if(m.channel?.startsWith('dm-')){const mySlug=(CU.name||'').replace(/\s+/g,'-').toLowerCase();if(!m.channel.includes(mySlug)) return;}
+          newForMe.push(m);
+        }
       } else if(existing.id&&existing.id.startsWith('tmp_')){
         // Replace temp record with real one
         const idx=msgs.indexOf(existing);
@@ -42894,7 +42944,7 @@ function showChatToast(msg){
       </div>
       <button onclick="this.closest('.chat-toast').remove()" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:16px;padding:0 0 0 8px;flex-shrink:0;line-height:1">&times;</button>
     </div>
-    <div class="chat-toast-body" onclick="window._chatChannel='${esc(msg.channel)}';showPage('chatter');this.closest('.chat-toast').remove();_chatUnread=0;refreshChatBadge()">
+    <div class="chat-toast-body" onclick="(function(el){const ch='${esc(msg.channel)}';if(ch.startsWith('dm-')){const mySlug=(CU?.name||'').replace(/\\s+/g,'-').toLowerCase();if(!ch.includes(mySlug))return;}window._chatChannel=ch;showPage('chatter');el.closest('.chat-toast').remove();_chatUnread=0;refreshChatBadge();})(this)">
       ${esc((msg.body||'').slice(0,120))}
     </div>`;
   stack.appendChild(toast);
