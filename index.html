@@ -45160,6 +45160,7 @@ function _buildEstWOModal(e){
     }
   });
   window._woEstDivTotals=divTotals;
+  window._woEstTotal=total;
 
   // First row: use per-division total if available, else full estimate total
   const firstDiv=e.division||divs[0]||'';
@@ -45238,14 +45239,31 @@ function _updateWOSplitCheck(){
 function _woAutoPrice(selectEl,idx){
   const div=selectEl?.value||'';
   const divTotals=window._woEstDivTotals||{};
+  const estTotal=window._woEstTotal||0;
   const priceInput=document.querySelector(`#wo-split-row-${idx} .wo-split-price`);
   const hint=document.getElementById(`wo-split-hint-${idx}`);
   if(!priceInput) return;
-  if(divTotals[div]!==undefined){
-    priceInput.value=divTotals[div].toFixed(2);
-    if(hint) hint.textContent=`Auto-filled from estimate line items`;
+
+  // Try exact match first, then case-insensitive
+  let matched=divTotals[div];
+  if(matched===undefined){
+    const key=Object.keys(divTotals).find(k=>k.toLowerCase()===div.toLowerCase());
+    if(key!==undefined) matched=divTotals[key];
+  }
+
+  if(matched!==undefined){
+    priceInput.value=matched.toFixed(2);
+    if(hint) hint.textContent='Auto-filled from estimate line items';
   } else {
-    if(hint) hint.textContent=div?`No line items found for ${div}`:'';
+    // Fallback: estimate total minus the sum of all OTHER WO rows
+    const rows=[...document.querySelectorAll('#wo-split-rows [id^="wo-split-row-"]')];
+    const otherTotal=rows.reduce((s,r)=>{
+      if(r.id===`wo-split-row-${idx}`) return s;
+      return s+(parseFloat(r.querySelector('.wo-split-price')?.value)||0);
+    },0);
+    const remainder=Math.max(0,Math.round((estTotal-otherTotal)*100)/100);
+    priceInput.value=remainder.toFixed(2);
+    if(hint) hint.textContent=remainder>0?'Auto-filled as remaining balance':'';
   }
   _updateWOSplitCheck();
 }
