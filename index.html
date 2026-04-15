@@ -37347,27 +37347,50 @@ function bSalesAccountsPage(){
 async function _acctLoad(){
   const el=document.getElementById('acct-page-body');
   if(!el) return;
-  // Customers are on-demand — fetch from Supabase if cache is empty
-  let customers=_C['lhs:customers']||S.get('lhs:customers')||[];
-  if(!customers.length){
-    try{
-      el.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">Loading accounts…</div>';
-      const{data}=await DB.from('lhs_customers').select('*').order('created_at',{ascending:false}).limit(2000);
-      if(data&&data.length){
-        customers=data;
-        _C['lhs:customers']=customers;
-      }
-    }catch(e){console.warn('_acctLoad fetch:',e.message);}
-  }
+
+  const leads=S.get('lhs:leads')||[];
   const opps=S.get('lhs:opportunities')||[];
   const activities=S.get('lhs:activities')||[];
-  const leads=S.get('lhs:leads')||[];
+
+  // Always fetch fresh from Supabase so lead-linked customers are never missed
+  try{
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">Loading accounts…</div>';
+    const{data}=await DB.from('lhs_customers').select('*').order('created_at',{ascending:false}).limit(2000);
+    if(data&&data.length){
+      // Merge into cache without losing other records
+      const cached=S.get('lhs:customers')||[];
+      const mergedMap={};
+      cached.forEach(c=>{mergedMap[c.id]=c;});
+      data.forEach(c=>{mergedMap[c.id]=c;});
+      const merged=Object.values(mergedMap);
+      S.set('lhs:customers',merged);
+      _C['lhs:customers']=merged;
+    }
+  }catch(e){console.warn('_acctLoad fetch:',e.message);}
+
+  let customers=_C['lhs:customers']||S.get('lhs:customers')||[];
+
+  // Also ensure any lead-linked customer IDs not yet in cache are fetched
+  const leadCustIds=new Set(leads.map(l=>l.customer_id).filter(Boolean));
+  const oppCustIds=new Set(opps.map(o=>o.customer_id).filter(Boolean));
+  const cachedIds=new Set(customers.map(c=>c.id));
+  const missingIds=[...new Set([...leadCustIds,...oppCustIds])].filter(id=>!cachedIds.has(id));
+  if(missingIds.length){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').in('id',missingIds);
+      if(data&&data.length){
+        const all=S.get('lhs:customers')||[];
+        data.forEach(c=>{if(!all.find(x=>x.id===c.id)) all.unshift(c);});
+        S.set('lhs:customers',all);
+        _C['lhs:customers']=all;
+        customers=all;
+      }
+    }catch(e){console.warn('_acctLoad missing ids fetch:',e.message);}
+  }
 
   // Permanent rule: a customer is a CRM Account if it was created through the CRM
   // (no st_customer_id) OR has at least one linked lead or opportunity.
   // Pure ST-import records with zero CRM activity are excluded.
-  const leadCustIds=new Set(leads.map(l=>l.customer_id).filter(Boolean));
-  const oppCustIds=new Set(opps.map(o=>o.customer_id).filter(Boolean));
   customers=customers.filter(c=>
     !c.st_customer_id ||          // created directly in CRM
     leadCustIds.has(c.id) ||      // has a linked lead
