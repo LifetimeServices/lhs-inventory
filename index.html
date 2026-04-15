@@ -2827,6 +2827,7 @@ async function startApp(){
     <div class="page" id="p-sales-marketing"></div>
     <div class="page" id="p-admin-security"></div>
     <div class="page" id="p-admin-import"></div>
+    <div class="page" id="p-sales-board"></div>
   `;
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
@@ -2839,7 +2840,7 @@ async function startApp(){
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
-    'reports','operations','admin','admin-security','admin-import'];
+    'reports','operations','admin','admin-security','admin-import','sales-board'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -3395,6 +3396,7 @@ function buildPage(id){
     'my-timeoff':bMyTimeOff,
     payroll:bPayroll,
     reports:bReports, operations:bOperations, admin:bAdmin, 'admin-security':aSecurityTraining, 'admin-import':bAdminImport,
+    'sales-board':bSalesBoard,
   };
   return (pages[id]||bDash)();
 }
@@ -20043,7 +20045,10 @@ function bDash(){
     ${hasPerm('dashboard','view_sales')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">🎯 Sales Pipeline</div>
-        <button class="btn btn-o sm" onclick="renderSalesNav();showPage('sales-leads')">View Sales</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-n sm" onclick="showPage('sales-board')" title="Sales Leaderboard / Jumbotron">🏆 Leaderboard</button>
+          <button class="btn btn-o sm" onclick="renderSalesNav();showPage('sales-leads')">View Sales</button>
+        </div>
       </div>
       <div style="padding:16px">
         ${[
@@ -23085,8 +23090,13 @@ async function svCreateWO(){
   if(window._wocPropertyId) wo.property_id=window._wocPropertyId;
   // Link to job group (multi-division job)
   if(window._woJobGroupId) wo.job_group_id=window._woJobGroupId;
-  // Link to estimate and opportunity
-  if(window._woEstId) wo.estimate_id=window._woEstId;
+  // Link to estimate and opportunity — also pull sold_by from the accepted estimate
+  if(window._woEstId){
+    wo.estimate_id=window._woEstId;
+    const _linkedEst=(S.get('lhs:estimates')||[]).find(e=>e.id===window._woEstId);
+    if(_linkedEst?.sold_by) wo.sold_by=_linkedEst.sold_by;
+    if(_linkedEst?.office_sold_by) wo.office_sold_by=_linkedEst.office_sold_by;
+  }
   if(window._woOppId) wo.opp_id=window._woOppId;
 
   let savedWO=await dbInsert('lhs:work_orders',wo);
@@ -23414,6 +23424,9 @@ async function openWO(woId){
         <div style="color:var(--muted)">Priority</div><div>${bx(wo.priority||'Normal',wo.priority==='Emergency'?'br':wo.priority==='High'?'ba':'bn')}</div>
         <div style="color:var(--muted)">Flexibility</div><div><span style="display:inline-block;width:28px;height:5px;background:${wo.is_flexible?'var(--green)':'#E53935'};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${wo.is_flexible?'Flexible':'Do Not Move'}</div>
         <div style="color:var(--muted)">Created By</div><div>${wo.created_by||'—'}</div>
+        ${wo.sold_by?`<div style="color:var(--muted)">Sold By</div><div style="font-weight:600;color:var(--green)">🏆 ${esc(wo.sold_by)}</div>`:''}
+        ${wo.office_sold_by?`<div style="color:var(--muted)">Office Sold By</div><div style="font-weight:600;color:var(--teal)">${esc(wo.office_sold_by)}</div>`:''}
+        ${wo.tech_sold_by?`<div style="color:var(--muted)">Tech Sold By</div><div style="font-weight:600;color:var(--navy)">🔧 ${esc(wo.tech_sold_by)}</div>`:''}
       </div>
       ${wo.description?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)"><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Description</div><div style="font-size:13px">${wo.description}</div></div>`:''}
       ${wo.special_instructions?`<div style="margin-top:8px"><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Special Instructions</div><div style="font-size:13px;color:var(--amber)">${wo.special_instructions}</div></div>`:''}
@@ -26100,6 +26113,46 @@ function oEditWODetails(woId){
     <textarea id="ewo-inst" rows="2">${wo.special_instructions||''}</textarea>
   </div>
 
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px;margin-top:4px">Sales Attribution</div>
+  <div class="fr">
+    <div class="fl">
+      <label>Sold By <span style="font-size:10px;font-weight:400;color:var(--muted)">(office rep)</span></label>
+      <div style="position:relative">
+        <input id="ewo-soldby-search" placeholder="Search users…" autocomplete="off" value="${esc(wo.sold_by||'')}"
+          oninput="_soldBySearch(this.value,'ewo-soldby-search','ewo-soldby-val','ewo-soldby-drop')"
+          onfocus="_soldBySearch(this.value,'ewo-soldby-search','ewo-soldby-val','ewo-soldby-drop')"
+          onblur="setTimeout(()=>{const d=document.getElementById('ewo-soldby-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="ewo-soldby-val" value="${esc(wo.sold_by||'')}">
+        <div id="ewo-soldby-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:9999;max-height:160px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="fl">
+      <label>Office Sold By</label>
+      <div style="position:relative">
+        <input id="ewo-officesold-search" placeholder="Search users…" autocomplete="off" value="${esc(wo.office_sold_by||'')}"
+          oninput="_soldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
+          onfocus="_soldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
+          onblur="setTimeout(()=>{const d=document.getElementById('ewo-officesold-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="ewo-officesold-val" value="${esc(wo.office_sold_by||'')}">
+        <div id="ewo-officesold-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:9999;max-height:160px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="fl">
+      <label>Tech Sold By <span style="font-size:10px;font-weight:400;color:var(--muted)">(field upsell)</span></label>
+      <div style="position:relative">
+        <input id="ewo-techsold-search" placeholder="Search techs…" autocomplete="off" value="${esc(wo.tech_sold_by||'')}"
+          oninput="_soldBySearch(this.value,'ewo-techsold-search','ewo-techsold-val','ewo-techsold-drop')"
+          onfocus="_soldBySearch(this.value,'ewo-techsold-search','ewo-techsold-val','ewo-techsold-drop')"
+          onblur="setTimeout(()=>{const d=document.getElementById('ewo-techsold-drop');if(d)d.style.display='none'},200)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <input type="hidden" id="ewo-techsold-val" value="${esc(wo.tech_sold_by||'')}">
+        <div id="ewo-techsold-drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--bdr);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:9999;max-height:160px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Customer Info</div>
   <div class="fr">
     <div class="fl"><label>Customer Name</label><input id="ewo-cname" value="${wo.customer_name||''}"></div>
@@ -26239,6 +26292,9 @@ async function svEditWODetails(woId){
     billing_contact_city:_billSame?null:v('ewo-bl-city')||null,
     billing_contact_state:_billSame?null:(v('ewo-bl-state')||'').split(' - ')[0]||null,
     billing_contact_zip:_billSame?null:v('ewo-bl-zip')||null,
+    sold_by:document.getElementById('ewo-soldby-val')?.value||wo.sold_by||null,
+    office_sold_by:document.getElementById('ewo-officesold-val')?.value||wo.office_sold_by||null,
+    tech_sold_by:document.getElementById('ewo-techsold-val')?.value||null,
     updated_at:new Date().toISOString(),updated_by:CU.name,
   };
   Object.assign(wo,updates);
@@ -34731,6 +34787,7 @@ const REPORT_DEFS=[
   {id:'leads-followup',cat:'Sales',name:'Leads Follow Up',desc:'All leads with status, source, and last activity date.',run:rpt_leadsFollowup},
   {id:'sales-whiteboard',cat:'Sales',name:'Sales Whiteboard (MTD)',desc:'Month-to-date sales totals by rep and division.',run:rpt_salesWhiteboard},
   {id:'yoy-sales',cat:'Sales',name:'YOY Trends – Total Sales',desc:'Month-by-month sales booking comparison across 2 years.',run:rpt_yoySales},
+  {id:'sold-by-completed',cat:'Sales',name:'Sold By & Completed',desc:'Jobs sold and completed by rep, showing estimate totals, business unit, job type, and completion date.',run:rpt_soldByCompleted},
   // TERRITORIES
   {id:'territory-performance',cat:'Operations',name:'Territory Performance',desc:'Revenue, job count, and avg job value grouped by territory.',run:rpt_territoryPerformance},
   // REPORT CARDS
@@ -35416,7 +35473,8 @@ function rptApplyFilters(){
     state:document.getElementById('rpt-state')?.value||'',
     division:document.getElementById('rpt-div')?.value||'',
     tech:document.getElementById('rpt-tech')?.value||'',
-    status:document.getElementById('rpt-status')?.value||''
+    status:document.getElementById('rpt-status')?.value||'',
+    date_type:document.getElementById('rpt-date-type')?.value||''
   };
   showPage('reports');
 }
@@ -35463,6 +35521,12 @@ function bReportRun(){
 
   <!-- Filters -->
   <div style="background:var(--surf);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    ${id==='sold-by-completed'?`<div class="fl" style="margin:0;min-width:160px"><label>Date Type</label>
+      <select id="rpt-date-type" style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <option value="completed_at"${(f.date_type||'completed_at')==='completed_at'?' selected':''}>Completion Date</option>
+        <option value="scheduled_date"${f.date_type==='scheduled_date'?' selected':''}>Scheduled Date</option>
+        <option value="created_at"${f.date_type==='created_at'?' selected':''}>Invoice / Created Date</option>
+      </select></div>`:''}
     <div class="fl" style="margin:0;min-width:130px"><label>Date From</label>
       <input type="date" id="rpt-dfrom" value="${f.dateFrom||monthAgo}"
         style="width:100%;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
@@ -36213,6 +36277,47 @@ function rpt_yoySales(from,to){
   return{cols,rows};
 }
 
+// ── SOLD BY & COMPLETED REPORT ────────────────────────────────────────────────
+function rpt_soldByCompleted(from,to,div,tech){
+  const dateType=(window._rptFilters?.date_type)||'completed_at';
+  let wos=rptDateFilter(S.get('lhs:work_orders')||[],dateType,from,to)
+    .filter(w=>['Complete','Closed','Closed with Dispatch'].includes(w.status));
+  if(div) wos=wos.filter(w=>w.division===div);
+  if(tech) wos=wos.filter(w=>(w.sold_by||w.assigned_to||'')===(tech));
+  const ests=S.get('lhs:estimates')||[];
+  const cols=[
+    {key:'sold_by',label:'Sold By'},
+    {key:'office_sold_by',label:'Office Sold By'},
+    {key:'tech_sold_by',label:'Tech Sold By'},
+    {key:'estimate_number',label:'Estimate #',mono:true},
+    {key:'estimate_subtotal',label:'Estimate Sales Total',mono:true},
+    {key:'wo_number',label:'Job #',mono:true},
+    {key:'division',label:'Business Unit'},
+    {key:'job_type',label:'Job Type'},
+    {key:'total_price',label:'Jobs Total',mono:true},
+    {key:'status',label:'Status'},
+    {key:'completed_at',label:'Completion Date'},
+  ];
+  const rows=wos.map(w=>{
+    const est=ests.find(e=>e.opportunity_id&&e.opportunity_id===w.opportunity_id)||
+              ests.find(e=>e.customer_id&&e.customer_id===w.customer_id&&(e.status==='Sold'||e.status==='Accepted'));
+    return{
+      sold_by:w.sold_by||w.assigned_to||'—',
+      office_sold_by:w.office_sold_by||'—',
+      tech_sold_by:w.tech_sold_by||'—',
+      estimate_number:est?.estimate_number||'—',
+      estimate_subtotal:est?rptFmt(est.total_price||0):'—',
+      wo_number:w.wo_number||w.id||'',
+      division:w.division||'',
+      job_type:w.job_type||'',
+      total_price:rptFmt(w.total_price||0),
+      status:w.status||'',
+      completed_at:(w.completed_at||w.scheduled_date||'').split('T')[0]||'—',
+    };
+  }).sort((a,b)=>(a.sold_by||'').localeCompare(b.sold_by||''));
+  return{cols,rows};
+}
+
 
 function rpt_territoryPerformance(from,to){
   let wos=S.get('lhs:work_orders')||[];
@@ -36545,6 +36650,197 @@ function rpt_photosByTech(from,to,div,emp,status,region,state){
 const LEAD_STATUSES=['New','Contacted','Qualified','Unqualified','Converted'];
 const OPP_STAGES=['Prospect','Site Visit','Estimate Sent','Negotiation','Won','Lost'];
 const LEAD_SOURCES=['Manual','Website','Referral','Google Ads','Facebook','Door Knock','Trade Show','Repeat Customer','Other'];
+// ── SALES LEADERBOARD (JUMBOTRON) ────────────────────────────────────────────
+window._sbPeriod='mtd';
+window._sbDiv='';
+window._sbMetric='revenue'; // 'revenue' | 'jobs'
+window._sbRefreshTimer=null;
+
+function bSalesBoard(){
+  // Clear any previous refresh timer
+  if(window._sbRefreshTimer) clearInterval(window._sbRefreshTimer);
+
+  const period=window._sbPeriod||'mtd';
+  const selDiv=window._sbDiv||'';
+  const today=new Date();
+  const todayStr=today.toISOString().split('T')[0];
+
+  // Compute date range from period
+  let fromStr,toStr=todayStr;
+  if(period==='today'){
+    fromStr=todayStr;
+  } else if(period==='week'){
+    const d=new Date(today); d.setDate(d.getDate()-d.getDay()); // Sunday
+    fromStr=d.toISOString().split('T')[0];
+  } else if(period==='mtd'){
+    fromStr=todayStr.slice(0,7)+'-01';
+  } else if(period==='ytd'){
+    fromStr=todayStr.slice(0,4)+'-01-01';
+  } else {
+    fromStr=todayStr.slice(0,7)+'-01';
+  }
+
+  // Use accepted estimates as the source of truth for "sold"
+  let ests=(S.get('lhs:estimates')||[]).filter(e=>e.status==='Accepted'&&e.sold_by);
+  // Date filter on estimate_date or updated_at
+  ests=ests.filter(e=>{
+    const d=(e.estimate_date||e.updated_at||e.created_at||'').slice(0,10);
+    return d>=fromStr&&d<=toStr;
+  });
+  if(selDiv) ests=ests.filter(e=>e.division===selDiv);
+
+  // Aggregate by sold_by
+  const byRep={};
+  ests.forEach(e=>{
+    const rep=e.sold_by||'Unknown';
+    if(!byRep[rep]) byRep[rep]={rep,revenue:0,jobs:0};
+    byRep[rep].revenue+=(e.total_price||0);
+    byRep[rep].jobs++;
+  });
+
+  // Also aggregate tech_sold_by from WOs (field upsells)
+  let wos=(S.get('lhs:work_orders')||[]).filter(w=>w.tech_sold_by);
+  wos=wos.filter(w=>{
+    const d=(w.completed_at||w.updated_at||w.created_at||'').slice(0,10);
+    return d>=fromStr&&d<=toStr;
+  });
+  if(selDiv) wos=wos.filter(w=>w.division===selDiv);
+  const techByRep={};
+  wos.forEach(w=>{
+    const rep=w.tech_sold_by;
+    if(!techByRep[rep]) techByRep[rep]={rep,revenue:0,jobs:0};
+    techByRep[rep].revenue+=(w.total_price||0);
+    techByRep[rep].jobs++;
+  });
+
+  const revRanked=Object.values(byRep).sort((a,b)=>b.revenue-a.revenue);
+  const techRanked=Object.values(techByRep).sort((a,b)=>b.revenue-a.revenue);
+  const maxRev=revRanked[0]?.revenue||1;
+  const maxTechRev=techRanked[0]?.revenue||1;
+
+  const medalColor=(i)=>i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'#3B82F6';
+  const medalEmoji=(i)=>i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+
+  const periodLabel={today:'Today',week:'This Week',mtd:'Month to Date',ytd:'Year to Date'}[period]||'MTD';
+
+  const renderBars=(ranked,maxVal,valueKey,fmtFn)=>{
+    if(!ranked.length) return`<div style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;font-size:15px">No data for this period</div>`;
+    return ranked.map((r,i)=>{
+      const pct=maxVal>0?Math.round((r[valueKey]/maxVal)*100):0;
+      const color=medalColor(i);
+      return`<div style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:16px;font-weight:700;color:white;letter-spacing:.01em">${medalEmoji(i)} ${esc(r.rep)}</span>
+          <span style="font-size:18px;font-weight:800;color:${color};font-variant-numeric:tabular-nums">${fmtFn(r[valueKey])}</span>
+        </div>
+        <div style="background:rgba(255,255,255,.1);border-radius:6px;height:22px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:6px;transition:width .6s ease;min-width:${pct>0?'4px':'0'}"></div>
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  const DIVS_ALL=(S.get('lhs:divs')||[]).map(d=>d.name||d).concat(
+    ...(S.get('lhs:work_orders')||[]).map(w=>w.division||'').filter(Boolean)
+  );
+  const uniqDivs=[...new Set(DIVS_ALL)].sort();
+
+  const periodBtns=['today','week','mtd','ytd'].map(p=>`
+    <button onclick="window._sbPeriod='${p}';showPage('sales-board')"
+      style="padding:8px 18px;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;
+        background:${period===p?'white':'rgba(255,255,255,.12)'};
+        color:${period===p?'#0F172A':'rgba(255,255,255,.8)'}">${{today:'Today',week:'This Week',mtd:'MTD',ytd:'YTD'}[p]}</button>
+  `).join('');
+
+  // Auto-refresh every 5 min
+  window._sbRefreshTimer=setInterval(()=>showPage('sales-board'),300000);
+
+  return`<div style="min-height:100vh;background:linear-gradient(135deg,#0F172A 0%,#1E293B 60%,#0F172A 100%);padding:0;margin:-16px;box-sizing:border-box">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px 16px;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div>
+        <div style="font-size:24px;font-weight:900;color:white;letter-spacing:-.5px;line-height:1.1">🏆 Sales Leaderboard</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:2px">${periodLabel} · ${selDiv||'All Divisions'} · Last refreshed ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <!-- Period selector -->
+      <div style="display:flex;gap:4px;background:rgba(255,255,255,.06);border-radius:24px;padding:4px">
+        ${periodBtns}
+      </div>
+      <!-- Division filter -->
+      <select onchange="window._sbDiv=this.value;showPage('sales-board')"
+        style="padding:8px 12px;border:none;border-radius:20px;background:rgba(255,255,255,.12);color:white;font-size:13px;font-weight:600;cursor:pointer;outline:none">
+        <option value="" style="color:#000" ${!selDiv?'selected':''}>All Divisions</option>
+        ${uniqDivs.map(d=>`<option value="${esc(d)}" style="color:#000" ${selDiv===d?'selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <!-- Fullscreen -->
+      <button onclick="sbToggleFullscreen()"
+        style="padding:8px 16px;border:none;border-radius:20px;background:rgba(255,255,255,.12);color:white;font-size:13px;font-weight:700;cursor:pointer" title="Toggle fullscreen">⛶ TV Mode</button>
+      <!-- Back -->
+      <button onclick="showPage('dashboard')"
+        style="padding:8px 16px;border:none;border-radius:20px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);font-size:13px;cursor:pointer">← Back</button>
+    </div>
+  </div>
+
+  <!-- Two panels -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:28px;gap:24px">
+
+    <!-- Revenue Panel -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px">
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4);margin-bottom:4px">Sales Revenue</div>
+        <div style="font-size:32px;font-weight:900;color:white">${f$(revRanked.reduce((s,r)=>s+r.revenue,0))}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.35);margin-top:2px">${revRanked.length} rep${revRanked.length!==1?'s':''} · ${revRanked.reduce((s,r)=>s+r.jobs,0)} deals closed</div>
+      </div>
+      <div>
+        ${renderBars(revRanked,maxRev,'revenue',(v)=>f$(v))}
+      </div>
+    </div>
+
+    <!-- Tech Upsell Panel -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px">
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4);margin-bottom:4px">🔧 Tech Upsells</div>
+        <div style="font-size:32px;font-weight:900;color:white">${f$(techRanked.reduce((s,r)=>s+r.revenue,0))}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.35);margin-top:2px">${techRanked.length} tech${techRanked.length!==1?'s':''} · ${techRanked.reduce((s,r)=>s+r.jobs,0)} field upgrades</div>
+      </div>
+      <div>
+        ${renderBars(techRanked,maxTechRev,'revenue',(v)=>f$(v))}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Deal count row -->
+  <div style="padding:0 28px 28px">
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4);margin-bottom:16px">Deals Closed — Count</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
+        ${revRanked.length?revRanked.map((r,i)=>`
+          <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px;border-left:3px solid ${medalColor(i)}">
+            <div style="font-size:11px;color:rgba(255,255,255,.45);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${medalEmoji(i)} ${esc(r.rep)}</div>
+            <div style="font-size:28px;font-weight:900;color:white;line-height:1">${r.jobs}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px">avg ${f$(r.jobs?r.revenue/r.jobs:0)}/deal</div>
+          </div>`).join('')
+        :'<div style="color:rgba(255,255,255,.3);font-size:14px">No data for this period</div>'}
+      </div>
+    </div>
+  </div>
+
+</div>`;
+}
+
+function sbToggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+
 const ACTIVITY_TYPES=['Call','Email','Text','Visit','Demo','Proposal Sent','Follow Up','Meeting'];
 const ACTIVITY_OUTCOMES=['Reached','Left VM','No Answer','Replied','Scheduled','Not Interested'];
 function bSales(){
