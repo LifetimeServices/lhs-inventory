@@ -9007,6 +9007,146 @@ async function svAddRMA(){
   cMod();tst('RMA submitted','success');showPage('rma');
 }
 
+// ── RMA FROM WORK ORDER ───────────────────────────────────────────────────────
+function oAddRMAFromWO(woId){
+  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  if(!wo){tst('Work order not found','error');return;}
+  const items=S.get('lhs:items')||[];
+  const _locs=S.get('lhs:locs')||[];
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false&&u.name).sort((a,b)=>a.name.localeCompare(b.name));
+  // Pre-select the tech's van/location if they have one
+  const cuUser=(S.get('lhs:users')||[]).find(u=>u.email===CU?.email);
+  const cuLoc=cuUser?.loc||cuUser?.home_location||'';
+  const vehOpts=VH.map(vn=>{
+    const loc=_locs.find(l=>l.name===vn);
+    const drv=loc?.driver?` — ${loc.driver}`:'';
+    return`<option value="${vn}"${cuLoc===vn?' selected':''}>${vn}${drv}</option>`;
+  }).join('');
+  oMod(`Submit RMA — ${wo.wo_number}`,`
+  <div style="background:#FFF8E1;border:1px solid #F9A825;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#5D4037">
+    📋 <b>Work Order:</b> ${esc(wo.wo_number)} · ${esc(wo.customer_name||'')} · ${esc(wo.division||'')}
+  </div>
+  <div class="fr">
+    <div class="fl" style="flex:2"><label>Submitted By</label>
+      <select id="rma-user">
+        ${users.map(u=>`<option value="${esc(u.name)}" data-email="${esc(u.email||'')}"${u.name===CU?.name?' selected':''}>${esc(u.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl"><label>Quantity</label>
+      <input type="number" id="rma-qty" value="1" min="1" style="width:70px">
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>From Location</label>
+      <select id="rma-loc">
+        <option value="">— Select —</option>
+        ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+        ${vehOpts}
+      </select>
+    </div>
+    <div class="fl"><label>To Location</label>
+      <select id="rma-to">
+        <option value="">— Select —</option>
+        ${WH.map(w=>`<option value="${w}">${w} (Warehouse)</option>`).join('')}
+        <option value="Vendor">Vendor</option>
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl" style="position:relative">
+      <label>Material Item</label>
+      <input id="rma-item-search" placeholder="Search items…" autocomplete="off"
+        oninput="rmaItemSearch(this.value)"
+        onfocus="rmaItemSearch(this.value)"
+        style="padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;width:100%">
+      <input type="hidden" id="rma-item">
+      <div id="rma-item-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:white;border:1px solid var(--bdr);border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;margin-top:2px"></div>
+    </div>
+    <div class="fl"><label>Issue</label>
+      <select id="rma-issue">
+        ${RMA_ISSUES.map(i=>`<option>${i}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fl"><label>Serial Number <span style="font-weight:400;color:var(--muted)">(if applicable)</span></label>
+      <input id="rma-serial" placeholder="e.g. SN-12345">
+    </div>
+    <div class="fl"><label>DOM — Date of Manufacture</label>
+      <input type="date" id="rma-dom">
+    </div>
+    <div class="fl"><label>Submitted to Vendor Date <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="date" id="rma-vendor-date">
+    </div>
+  </div>
+  <div class="fl" style="margin-bottom:16px"><label>Notes</label>
+    <input id="rma-notes" placeholder="Optional" value="WO: ${esc(wo.wo_number)}">
+  </div>
+  <div class="br2">
+    <button class="btn btn-n" style="background:#e65100;border-color:#e65100" onclick="svAddRMAFromWO('${woId}')">🔄 Submit RMA</button>
+    <button class="btn btn-o" onclick="openWO('${woId}')">Cancel</button>
+  </div>`);
+}
+
+async function svAddRMAFromWO(woId){
+  const wo=(S.get('lhs:work_orders')||[]).find(w=>w.id===woId);
+  const locVal=v('rma-loc');
+  const toVal=v('rma-to');
+  const itemVal=v('rma-item');
+  if(!locVal){tst('Select a From location','error');return;}
+  if(!toVal){tst('Select a To location','error');return;}
+  if(!itemVal){tst('Select a material item','error');return;}
+  const [sku,itemName]=itemVal.split('|');
+  const now=new Date().toISOString();
+  const userSel=document.getElementById('rma-user');
+  const submittedBy=userSel?.value||CU?.name||'';
+  const submittedEmail=userSel?.options[userSel.selectedIndex]?.dataset?.email||'';
+  const rma={
+    id:'rma_'+Date.now(),
+    created_at:now,updated_at:now,
+    submitted_by:submittedBy,submitted_by_email:submittedEmail,
+    from_location:locVal,to_location:toVal,
+    item_sku:sku,item_name:itemName,
+    issue:v('rma-issue'),
+    serial_number:v('rma-serial').trim()||null,
+    dom:v('rma-dom')||null,
+    quantity:parseInt(v('rma-qty'))||1,
+    submitted_to_vendor:v('rma-vendor-date')||null,
+    notes:v('rma-notes').trim()||null,
+    status:'At Warehouse',
+    wo_id:woId,
+    wo_number:wo?.wo_number||null
+  };
+  // Try with wo_id/wo_number first, fall back without if columns don't exist
+  const dbRowFull={
+    submitted_by:rma.submitted_by,submitted_by_email:rma.submitted_by_email,
+    from_location:rma.from_location,to_location:rma.to_location,
+    item_sku:rma.item_sku,item_name:rma.item_name,issue:rma.issue,
+    serial_number:rma.serial_number,dom:rma.dom,quantity:rma.quantity,
+    submitted_to_vendor:rma.submitted_to_vendor,notes:rma.notes,
+    status:rma.status,created_at:now,updated_at:now,
+    wo_id:woId,wo_number:wo?.wo_number||null
+  };
+  let saved=false;
+  try{
+    const{data,error}=await DB.from('lhs_rmas').insert(dbRowFull).select().single();
+    if(error) throw new Error(error.message);
+    rma.id=data.id;saved=true;
+  }catch(e){
+    console.warn('svAddRMAFromWO attempt 1:',e.message);
+    // Fallback: strip wo_id/wo_number if those columns don't exist yet
+    const dbRowBasic={...dbRowFull};delete dbRowBasic.wo_id;delete dbRowBasic.wo_number;
+    try{
+      const{data,error}=await DB.from('lhs_rmas').insert(dbRowBasic).select().single();
+      if(error) throw new Error(error.message);
+      rma.id=data.id;saved=true;
+    }catch(e2){console.warn('svAddRMAFromWO attempt 2:',e2.message);tst('Saved locally — DB sync failed','error');}
+  }
+  const rmas=S.get('lhs:rmas')||[];rmas.push(rma);S.set('lhs:rmas',rmas);
+  tst('RMA submitted successfully','success');
+  openWO(woId); // Stay on the work order
+}
+
 function oEditRMA(id){
   const rmas=S.get('lhs:rmas')||[];
   const r=rmas.find(x=>x.id===id);
@@ -23720,6 +23860,36 @@ async function openWO(woId){
       }).join('')}
     </div>
     ${!_woActiveTags.length?`<div style="font-size:12px;color:var(--muted);margin-top:6px">Click tags to select — appears on dispatch board</div>`:''}
+  </div>`:''}
+
+  <!-- RMA Section — Standard & Difficult service calls only -->
+  ${(['Standard','Difficult'].includes(wo.job_type))?`
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:14px;font-weight:600;color:var(--navy)">🔄 RMA</div>
+        <span style="font-size:11px;color:var(--muted);font-weight:500">Return Merchandise Authorization</span>
+      </div>
+      <button class="btn sm" style="background:#e65100;color:white;border-color:#e65100;font-weight:700" onclick="oAddRMAFromWO('${woId}')">+ Submit RMA</button>
+    </div>
+    ${(()=>{
+      const woRmas=(S.get('lhs:rmas')||[]).filter(r=>r.wo_id===woId);
+      if(!woRmas.length) return`<div style="font-size:13px;color:var(--muted);padding:10px 12px;border:1px dashed var(--bdr);border-radius:8px;text-align:center">No RMAs submitted for this work order yet</div>`;
+      const issueBadge=i=>i==='Broken'?bx(i,'bgr'):i==='Defective'?bx(i,'ba'):i==='Warranty'?bx(i,'bb'):bx(i,'bn');
+      const stBadge=s=>s==='Received'?bx(s,'bg'):s==='Sent to Vendor'?bx(s,'bb'):bx(s,'bn');
+      return`<div style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden">
+        ${woRmas.map((r,ri)=>`
+        <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center;padding:10px 14px;font-size:13px;${ri%2?'background:var(--surf)':''}">
+          <div>
+            <div style="font-weight:600;color:var(--navy)">${esc(r.item_name||'—')}</div>
+            <div style="font-size:11px;color:var(--muted)">SKU: ${esc(r.item_sku||'—')} · Qty: ${r.quantity||1}${r.serial_number?' · S/N: '+esc(r.serial_number):''}</div>
+          </div>
+          <div>${issueBadge(r.issue||'—')}</div>
+          <div>${stBadge(r.status||'At Warehouse')}</div>
+          <button class="btn sm btn-o" onclick="oEditRMA('${r.id}')">Edit</button>
+        </div>`).join('')}
+      </div>`;
+    })()}
   </div>`:''}
 
   <!-- WO Notes -->
