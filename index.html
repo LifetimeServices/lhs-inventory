@@ -43652,6 +43652,7 @@ function estAddFromPricebook(svcId){
     price:_sp.price||0,
     hours:_sp.hours||0,
     pricebook_id:s.id,
+    division:s.division||'',
     tier:pkg==='custom'?undefined:pkg,
   });
   estRenderLines();
@@ -45088,6 +45089,24 @@ function _buildEstWOModal(e){
   const divs=DIVS.length?[...DIVS]:(S.get('lhs:divs')||[]).map(d=>d.name||d);
   const total=e.total_price||0;
   window._estWOSplitCount=1;
+
+  // Pre-compute per-division totals from estimate line items
+  const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
+  const pb=S.get('lhs:pricebook')||[];
+  const divTotals={};
+  lines.forEach(l=>{
+    if(l.type==='Discount'||l.type==='discount') return; // skip discount lines
+    const lineDivision=l.division||(pb.find(s=>s.id===l.pricebook_id)?.division)||'';
+    if(lineDivision){
+      divTotals[lineDivision]=(divTotals[lineDivision]||0)+(l.qty||1)*(l.price||0);
+    }
+  });
+  window._woEstDivTotals=divTotals;
+
+  // First row: use per-division total if available, else full estimate total
+  const firstDiv=e.division||divs[0]||'';
+  const firstPrice=divTotals[firstDiv]??total;
+
   return`<div style="max-height:72vh;overflow-y:auto;padding-right:4px">
     <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">
       <div>
@@ -45098,7 +45117,7 @@ function _buildEstWOModal(e){
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Each division becomes a separate work order on the dispatch board. Prices should add up to the estimate total.</div>
     <div id="wo-split-rows">
-      ${_woSplitRowHtml(0,e.division||divs[0],e.job_type||'Installation',total)}
+      ${_woSplitRowHtml(0,firstDiv,e.job_type||'Installation',firstPrice)}
     </div>
     <button class="btn btn-o sm" style="margin-bottom:14px" onclick="_addWOSplitRow()">+ Add Another Division / WO</button>
     <div id="wo-split-check" style="font-size:12px;margin-bottom:14px"></div>
@@ -45121,7 +45140,7 @@ function _woSplitRowHtml(idx,div,jobType,price){
     <div style="display:grid;grid-template-columns:1fr 1fr 130px;gap:8px">
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Division</label>
-        <select class="wo-split-div" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">${divOpts}</select>
+        <select class="wo-split-div" onchange="_woAutoPrice(this,${idx})" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">${divOpts}</select>
       </div>
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Job Type</label>
@@ -45131,6 +45150,7 @@ function _woSplitRowHtml(idx,div,jobType,price){
         <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:3px">Price $</label>
         <input class="wo-split-price" type="number" value="${Number(price).toFixed(2)}" step="0.01" oninput="_updateWOSplitCheck()"
           style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        <div id="wo-split-hint-${idx}" style="font-size:10px;color:var(--teal);margin-top:3px;min-height:14px"></div>
       </div>
     </div>
   </div>`;
@@ -45155,6 +45175,21 @@ function _updateWOSplitCheck(){
   if(!el) return;
   el.textContent=`Total across all WOs: $${total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
   el.style.color=total>0?'var(--teal)':'var(--muted)';
+}
+
+function _woAutoPrice(selectEl,idx){
+  const div=selectEl?.value||'';
+  const divTotals=window._woEstDivTotals||{};
+  const priceInput=document.querySelector(`#wo-split-row-${idx} .wo-split-price`);
+  const hint=document.getElementById(`wo-split-hint-${idx}`);
+  if(!priceInput) return;
+  if(divTotals[div]!==undefined){
+    priceInput.value=divTotals[div].toFixed(2);
+    if(hint) hint.textContent=`Auto-filled from estimate line items`;
+  } else {
+    if(hint) hint.textContent=div?`No line items found for ${div}`:'';
+  }
+  _updateWOSplitCheck();
 }
 
 function _startJobGroup(estId){
