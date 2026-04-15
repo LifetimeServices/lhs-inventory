@@ -537,7 +537,7 @@ const ROLE_ALIAS={'Van Tech':'Technician','Sales Rep':'Sales','Location Manager'
 
 // Permission module definitions — key maps to nav id, perms = granular sub-permissions
 const PERM_MODS=[
-  {key:'dashboard',label:'Dashboard',icon:'📊',perms:['view']},
+  {key:'dashboard',label:'Dashboard',icon:'📊',perms:['view','view_kpis','view_revenue','view_schedule','view_utilization','view_sales','view_pipeline','view_alerts']},
   {key:'dispatch',label:'Dispatch',icon:'🗓️',perms:['view','edit_schedule','manage_routes','view_all_divs','clockin_tech','clockout_tech','view_company_cal','edit_company_cal']},
   {key:'workorders',label:'Work Orders',icon:'🔧',perms:['view','create','edit','delete','assign_techs','unassign_techs','dispatch_techs','cancel_dispatch','arrive_techs','view_cost','view_pricing','adjust_materials','edit_tech_audit','edit_creation_audit','wo_assigned_only','wo_window_prior','wo_window_ahead']},
   {key:'closeout',label:'Closeout',icon:'✔️',perms:['view','submit','approve','override']},
@@ -557,7 +557,11 @@ const PERM_MODS=[
 ];
 
 const PERM_LABELS={
-  view:'Can View',post:'Can Post Messages',delete_own:'Can Delete Own Messages',delete_any:'Can Delete Any Message',
+  view:'Can View',
+  view_kpis:'Can View KPI Stat Cards',view_revenue:'Can View Revenue & Financial Figures',
+  view_schedule:'Can View Today\'s Schedule',view_utilization:'Can View Tech Utilization',
+  view_sales:'Can View Sales Pipeline',view_pipeline:'Can View Revenue Pipeline Charts',
+  view_alerts:'Can View Alerts & Actions Panel',post:'Can Post Messages',delete_own:'Can Delete Own Messages',delete_any:'Can Delete Any Message',
   create:'Can Create',edit:'Can Edit',delete:'Can Delete',assign:'Can Assign to Others',
   edit_schedule:'Can Edit Schedule',manage_routes:'Can Manage Routes',view_all_divs:'Can View All Divisions',
   assign_techs:'Can Assign Technicians',unassign_techs:'Can Unassign Technicians',dispatch_techs:'Can Dispatch Technicians',cancel_dispatch:'Can Cancel Dispatch',arrive_techs:'Can Arrive Technicians',view_cost:'Can View Cost',view_pricing:'Can View Pricing',adjust_materials:'Can Adjust Materials',edit_tech_audit:'Can Edit Tech Audit',edit_creation_audit:'Can Edit Creation Audit',wo_assigned_only:'⚠️ Restrict to Assigned Work Orders Only',wo_window_prior:'⚠️ Limit View: Today + 2 Days Prior (assigned only)',wo_window_ahead:'⚠️ Limit View: Today + 3 Days Ahead (assigned only)',clockin_tech:'Can Clock In Technician',clockout_tech:'Can Clock Out Technician',view_company_cal:'Can View Company Calendar',edit_company_cal:'Can Edit Company Calendar',
@@ -19856,7 +19860,7 @@ function bDash(){
   const leads=S.get('lhs:leads')||[];
   const opps=S.get('lhs:opps')||[];
   const notifs=(S.get('lhs:notifications')||[]).filter(n=>n.user_email===CU?.email&&!n.is_read);
-  const canSeeCost=['Creator','God View','Regional Manager'].includes(CU?.role);
+  const canSeeCost=hasPerm('dashboard','view_revenue');
   const isField=CU?.role==='Van Tech';
 
   // ── KPI calculations ──────────────────────────────────────────────────────
@@ -19937,7 +19941,7 @@ function bDash(){
   </div>
 
   <!-- KPI Row 1 — Operations -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+  ${hasPerm('dashboard','view_kpis')?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
     ${dashCard('Open WOs',openWOs.length,inProgressWOs.length+' in progress','var(--navy)','var(--navy)','workorders')}
     ${dashCard("Today's Jobs",todayApts.length,Object.keys(divApts).length+' division'+(Object.keys(divApts).length!==1?'s':''),'#2E7D32','#E8F5E9','dispatch')}
     ${dashCard('Closeout Pending',closeoutPending.length,closeoutPending.length?'Need attention':'All caught up',closeoutPending.length?'#C62828':'#2E7D32',closeoutPending.length?'#FFEBEE':'#E8F5E9','closeout')}
@@ -19946,13 +19950,13 @@ function bDash(){
     ${dashCard('Open POs',openPOs,'Purchase orders pending','#6A1B9A','#F3E5F5','po')}
     ${dashCard('My Tasks',myTasks.length,overdueTasks.length?overdueTasks.length+' overdue':'All on track',overdueTasks.length?'#C62828':'#2E7D32',overdueTasks.length?'#FFEBEE':'#E8F5E9','mytasks')}
     ${dashCard('Avg Utilization',avgUtil+'%',highUtil.length+' tech'+(highUtil.length!==1?'s':'')+' at 80%+',utilColor(avgUtil).replace('var(--red)','#C62828').replace('var(--amber)','#E65100').replace('var(--green)','#2E7D32'),'#f9f9f9','dispatch')}
-  </div>
+  </div>`:''}
 
   <!-- Main content grid -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px">
 
     <!-- Today's Schedule -->
-    <div class="card" style="padding:0">
+    ${hasPerm('dashboard','view_schedule')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">📅 Today's Schedule</div>
         <button class="btn btn-o sm" onclick="goDispBoard()">View Board</button>
@@ -19978,10 +19982,10 @@ function bDash(){
           </div>`;
         }).join('')}
       </div>
-    </div>
+    </div>`:''}
 
     <!-- Tech Utilization -->
-    <div class="card" style="padding:0">
+    ${hasPerm('dashboard','view_utilization')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">👷 Tech Utilization Today</div>
         <button class="btn btn-o sm" onclick="goDispBoard()">Dispatch</button>
@@ -20007,14 +20011,14 @@ function bDash(){
           </div>`;
         }).join('')}
       </div>
-    </div>
+    </div>`:''}
   </div>
 
   <!-- Second row -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px">
 
     <!-- Division Breakdown -->
-    <div class="card" style="padding:0">
+    ${hasPerm('dashboard','view_schedule')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr)">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">📊 Today by Division</div>
       </div>
@@ -20033,10 +20037,10 @@ function bDash(){
           </div>`;
         }).join('')}
       </div>
-    </div>
+    </div>`:''}
 
     <!-- Sales Funnel -->
-    <div class="card" style="padding:0">
+    ${hasPerm('dashboard','view_sales')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">🎯 Sales Pipeline</div>
         <button class="btn btn-o sm" onclick="renderSalesNav();showPage('sales-leads')">View Sales</button>
@@ -20060,14 +20064,14 @@ function bDash(){
           </div>`;
         }).join('')}
       </div>
-    </div>
+    </div>`:''}
   </div>
 
   <!-- Third row -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px">
 
-    <!-- Recent Activity -->
-    <div class="card" style="padding:0">
+    <!-- Recent Completions -->
+    ${hasPerm('dashboard','view_schedule')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr)">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">⚡ Recent Completions</div>
       </div>
@@ -20083,10 +20087,10 @@ function bDash(){
             ${canSeeCost?`<div style="font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap">$${(wo.total_price||0).toLocaleString()}</div>`:''}
           </div>`).join('')}
       </div>
-    </div>
+    </div>`:''}
 
     <!-- Alerts & Actions -->
-    <div class="card" style="padding:0">
+    ${hasPerm('dashboard','view_alerts')?`<div class="card" style="padding:0">
       <div style="padding:14px 16px;border-bottom:1px solid var(--bdr)">
         <div style="font-weight:700;font-size:14px;color:var(--navy)">🚨 Alerts & Actions</div>
       </div>
@@ -20112,11 +20116,11 @@ function bDash(){
           </div>`).join('')
         :`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">✅ All clear — no alerts</div>`}
       </div>
-    </div>
+    </div>`:''}
   </div>
 
   <!-- Revenue Pipeline -->
-  ${canSeeCost?`
+  ${hasPerm('dashboard','view_pipeline')?`
   <div style="margin-top:16px">
     <!-- Pipeline filter bar -->
     <div class="card" style="padding:0;margin-bottom:16px">
