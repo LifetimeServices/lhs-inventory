@@ -44636,7 +44636,16 @@ async function svEstimate(){
       const upd={...est};
       delete upd.created_at; delete upd.created_by; // preserve originals
       upd.updated_at=now;
-      try{await dbUpdate('lhs:estimates',editId,estToDb(upd));}catch(e){console.warn('svEstimate update:',e?.message);}
+      try{await dbUpdate('lhs:estimates',editId,estToDb(upd));}
+      catch(e){
+        console.warn('svEstimate update attempt 1:',e?.message);
+        // Retry without columns that may not exist yet
+        const updFallback={...estToDb(upd)};
+        delete updFallback.opportunity_id;delete updFallback.selected_package;
+        delete updFallback.total_cost;delete updFallback.internal_notes;
+        delete updFallback.site_address;delete updFallback.state;delete updFallback.region;
+        try{await dbUpdate('lhs:estimates',editId,updFallback);}catch(e2){console.warn('svEstimate update attempt 2:',e2?.message);}
+      }
       // Audit log — compare old vs new
       try{
         const oldLines=typeof orig?.line_items==='string'?JSON.parse(orig.line_items||'[]'):(orig?.line_items||[]);
@@ -44675,11 +44684,25 @@ async function svEstimate(){
     }
   }
 
-  // INSERT new estimate
+  // INSERT new estimate — with progressive fallback if newer columns don't exist in DB
   let saved=null;
   try{saved=await dbInsert('lhs:estimates',estToDb(est));}
-  catch(e){console.warn('svEstimate exception:',e?.message);}
-  if(!saved) console.warn('svEstimate: Supabase insert returned null — saving locally only.');
+  catch(e){console.warn('svEstimate insert attempt 1:',e?.message);}
+  if(!saved){
+    // Retry without columns that may not exist yet in the DB schema
+    const estFallback={...estToDb(est)};
+    delete estFallback.opportunity_id;
+    delete estFallback.selected_package;
+    delete estFallback.total_cost;
+    delete estFallback.internal_notes;
+    delete estFallback.site_address;
+    delete estFallback.state;
+    delete estFallback.region;
+    try{saved=await dbInsert('lhs:estimates',estFallback);}
+    catch(e){console.warn('svEstimate insert attempt 2:',e?.message);}
+    if(saved) tst('Estimate saved — run DB migration to add missing columns','warning');
+  }
+  if(!saved) console.warn('svEstimate: both insert attempts failed — saving locally only.');
   const final=saved||{...est,id:'est_'+Date.now()};
   // Guard against duplicates if user double-clicked Save
   if(!existingEsts.find(x=>x.id===final.id)){
