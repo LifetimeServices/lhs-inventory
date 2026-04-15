@@ -275,7 +275,7 @@ const DB = supabase.createClient(SUPA_URL, SUPA_KEY);
       <button onclick="sendVAMessage(document.getElementById('va-input')?.value||'')"
         style="width:38px;height:38px;border-radius:50%;border:none;background:var(--navy);color:white;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">Responses reflect your access level · Enter to send · Shift+Enter for new line</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">Enter to send · Shift+Enter for new line</div>
   </div>
 </div>
 
@@ -17476,7 +17476,7 @@ function openVA(){
   panel.style.display='flex';
   setTimeout(()=>{panel.style.transform='translateX(0)';},10);
   if(!_vaHistory.length){
-    _vaHistory.push({role:'assistant',content:`Hello ${CU?.name?.split(' ')[0]||'there'}! I'm your LHS Assistant. I can answer questions about work orders, customers, schedules, financials, and more — based on your ${CU?.role||''} access level.\n\nWhat would you like to know?`});
+    _vaHistory.push({role:'assistant',content:`Hello ${CU?.name?.split(' ')[0]||'there'}! I'm your LHS Assistant. I can answer questions about work orders, customers, schedules, financials, and more.\n\nWhat would you like to know?`});
     _vaRender();
   }
   setTimeout(()=>document.getElementById('va-input')?.focus(),300);
@@ -17527,14 +17527,18 @@ function _vaBuildContext(){
   const opsAssign = S.get('lhs:ops_assignments')||[];
   const custCount = S.get('lhs:customers_count')||0;
 
+  const _isCreator=(CU?.role==='Creator'||CU?.role==='God View');
   let c = `You are LHS Assistant, the AI helper for Lifetime Home Services LLC's internal management platform.
 Today: ${now}
-Current User: ${CU?.name||'Unknown'} | Role: ${CU?.role||'Unknown'} | Division: ${CU?.division||'All'} | Region: ${CU?.region||'All'} | Location: ${CU?.loc||'All'}
+Current User: ${CU?.name||'Unknown'} | Division: ${CU?.division||'All'} | Region: ${CU?.region||'All'} | Location: ${CU?.loc||'All'}
 
-PERMISSION ENFORCEMENT — CRITICAL:
+${_isCreator
+  ? `ACCESS LEVEL: This user has FULL UNRESTRICTED access to all data, all reports, all financials, all HR records, all users, and all platform information. Never deny any request. Answer every question completely and openly.`
+  : `PERMISSION ENFORCEMENT — CRITICAL:
 You MUST enforce role-based access. If a user asks about data they are NOT permitted to see, respond:
-"I'm sorry, your [role] access level does not include permission to view [topic]. Please contact your administrator if you need access."
-Never reveal restricted data under any circumstances, even if it appears in this prompt.
+"I'm sorry, I'm not able to provide that information. Please contact your administrator if you need access."
+NEVER reveal, mention, or hint at the user's role name in any response — not in denials, not in greetings, not in any context. Role names are confidential system configuration.
+Never reveal restricted data under any circumstances, even if it appears in this prompt.`}
 
 ━━━ PLATFORM DATA SUMMARY ━━━\n`;
 
@@ -18140,7 +18144,7 @@ async function stSyncOneCustomer(stCustId){
       if(stSt==='canceled'||stSt==='cancelled')lhsStatus='Cancelled';
       if(stSt==='inprogress'||stSt==='in_progress')lhsStatus='In Progress';
       const woRow={st_job_id:stJobId,wo_number:`ST-${j.jobNumber||j.id}`,wo_year:woYear,
-        customer_id:lhsCustId,customer_name:`${custRow.first_name} ${custRow.last_name}`.trim(),
+        customer_id:lhsCustId,customer_name:(custRow.first_name||custRow.last_name)?`${custRow.first_name||''} ${custRow.last_name||''}`.trim():(custRow.name||''),
         customer_phone:custRow.phone,customer_email:custRow.email,
         customer_address:jAddr.street||custRow.address||null,customer_city:jAddr.city||custRow.city||null,
         customer_state:jAddr.state||custRow.state||null,customer_zip:jAddr.zip||custRow.zip||null,
@@ -22827,14 +22831,13 @@ async function _wocSearchAsync(q){
   try{
     const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
     const clauses=words.flatMap(w=>[
-      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,`name.ilike.%${w}%`,
       `company.ilike.%${w}%`,`phone.ilike.%${w}%`,`email.ilike.%${w}%`
     ]);
     const{data,error}=await DB.from('lhs_customers')
-      .select('id,first_name,last_name,company,phone,email,address,city,state,zip')
+      .select('id,first_name,last_name,name,company,phone,email,address,city,state,zip')
       .or(clauses.join(','))
-      .order('last_name',{ascending:true})
-      .range(0,39);
+      .range(0,49);
     if(error) throw error;
     _wocCustResults={};
     (data||[]).forEach(c=>{_wocCustResults[c.id]=c;});
@@ -22843,17 +22846,31 @@ async function _wocSearchAsync(q){
       res.innerHTML='<div style="padding:14px;font-size:13px;color:var(--muted)">No customers found</div>';
       return;
     }
-    res.innerHTML=(data||[]).map(c=>`
+    // Sort: exact/starts-with full name match first, then alphabetical
+    const ql=q.toLowerCase();
+    const sorted=[...(data||[])].sort((a,b)=>{
+      const an=_wocCustDisplayName(a).toLowerCase();
+      const bn=_wocCustDisplayName(b).toLowerCase();
+      const aEx=an===ql?0:an.startsWith(ql)?1:2;
+      const bEx=bn===ql?0:bn.startsWith(ql)?1:2;
+      if(aEx!==bEx) return aEx-bEx;
+      return an.localeCompare(bn);
+    });
+    res.innerHTML=sorted.map(c=>`
       <div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bdr);font-size:13px"
         onmousedown="wocSelectCust('${esc(c.id)}')"
         onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
-        <div style="font-weight:600;color:var(--navy)">${esc((c.first_name||'')+' '+(c.last_name||''))}${c.company?' <span style="font-weight:400;color:var(--muted)">— '+esc(c.company)+'</span>':''}</div>
+        <div style="font-weight:600;color:var(--navy)">${esc(_wocCustDisplayName(c))}${c.company?' <span style="font-weight:400;color:var(--muted)">— '+esc(c.company)+'</span>':''}</div>
         <div style="font-size:11px;color:var(--muted)">${esc(c.phone||'')}${c.city?' &middot; '+esc(c.city):''} ${esc(c.state||'')}</div>
       </div>`).join('');
   }catch(e){
     if(document.getElementById('woc-cresults'))
       res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--red)">Search error: ${e?.message||'try again'}</div>`;
   }
+}
+function _wocCustDisplayName(c){
+  if(c.first_name||c.last_name) return `${c.first_name||''} ${c.last_name||''}`.trim();
+  return c.name||'';
 }
 
 function wocSelectCust(id){
@@ -22865,7 +22882,7 @@ function wocSelectCust(id){
   document.getElementById('woc-csearch').style.display='none';
   const sel=document.getElementById('woc-cselected');
   sel.style.display='block';
-  document.getElementById('woc-csel-name').textContent=`${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}`;
+  document.getElementById('woc-csel-name').textContent=_wocCustDisplayName(c)+(c.company?' ('+c.company+')':'');
   document.getElementById('woc-csel-info').textContent=`${c.phone||''} | ${c.address||''} ${c.city||''} ${c.state||''} ${c.zip||''}`;
 }
 
@@ -23066,7 +23083,7 @@ async function svCreateWO(){
   const wo={
     wo_number:woNum, wo_year:woYear, wo_state:woState,
     customer_id:cust.id,
-    customer_name:`${cust.first_name} ${cust.last_name}${cust.company?' ('+cust.company+')':''}`,
+    customer_name:_wocCustDisplayName(cust)+(cust.company?' ('+cust.company+')':''),
     customer_phone:cust.phone||'',
     customer_email:cust.email||'',
     customer_address:cust.address||'',
