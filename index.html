@@ -43478,6 +43478,27 @@ function oNewEstimate(prefill={}){
     </div>
   </div>
 
+  <!-- Promotions & Discounts panel -->
+  <div style="border:1px solid #bbf7d0;border-radius:10px;margin-bottom:14px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;cursor:pointer" onclick="estTogglePromoPanel()">
+      <span style="font-size:13px;font-weight:700;color:var(--navy)">🎁 Promotions &amp; Discounts</span>
+      <span id="est-promo-applied-badge" style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:10px;padding:1px 8px;font-weight:600;display:none"></span>
+      <span id="est-promo-hint" style="font-size:11px;color:var(--muted);margin-left:2px">Apply a promotion or enter a discount code</span>
+      <span id="est-promo-chevron" style="margin-left:auto;color:var(--muted);font-size:14px">▼</span>
+    </div>
+    <div id="est-promo-body" style="display:none;padding:12px 14px">
+      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:flex-end">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Enter Promo Code</div>
+          <input id="est-promo-code-inp" placeholder="e.g. SPRING25" style="width:100%;padding:7px 10px;border:1.5px solid var(--bdr);border-radius:6px;font-size:13px;box-sizing:border-box;text-transform:uppercase;font-family:inherit" onkeydown="if(event.key==='Enter')estApplyPromoCode()">
+        </div>
+        <button class="btn btn-n sm" onclick="estApplyPromoCode()">Apply Code</button>
+      </div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Active Promotions</div>
+      <div id="est-promo-list"><div style="font-size:12px;color:var(--muted);text-align:center;padding:10px">Loading…</div></div>
+    </div>
+  </div>
+
   <!-- Package selector -->
   <div style="display:flex;gap:8px;margin-bottom:14px">
     <div style="font-size:13px;font-weight:600;color:var(--navy);align-self:center;margin-right:4px">Package:</div>
@@ -43500,6 +43521,7 @@ function oNewEstimate(prefill={}){
     <div style="margin-top:12px;padding:12px;background:var(--surf);border-radius:8px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:13px">
       <span>Subtotal (Materials)</span><span id="est-mat-total" style="font-family:'DM Sans',sans-serif;text-align:right">$0.00</span>
       <span>Labor</span><span id="est-labor-total" style="font-family:'DM Sans',sans-serif;text-align:right">$0.00</span>
+      <span id="est-disc-lbl" style="color:#16a34a;display:none">🎁 Promotion Discount</span><span id="est-disc-total" style="font-family:'DM Sans',sans-serif;text-align:right;color:#16a34a;font-weight:600;display:none">–$0.00</span>
       <span style="font-weight:600;padding-top:6px;border-top:1px solid var(--bdr)">Total Price</span>
       <span id="est-grand-total" style="font-family:'DM Sans',sans-serif;text-align:right;font-weight:700;font-size:15px;padding-top:6px;border-top:1px solid var(--bdr);color:var(--navy)">$0.00</span>
       <span style="color:var(--muted)">Est. Cost</span><span id="est-cost-total" style="font-family:'DM Sans',sans-serif;text-align:right;color:var(--muted)">$0.00</span>
@@ -43520,12 +43542,20 @@ function oNewEstimate(prefill={}){
 
   // Initialize lines and render
   window._estPkg=prefill._pkg||'custom';
+  window._estAppliedPromo=prefill._appliedPromo||null;
   estRenderLines();
   // Highlight the correct package button
   ['good','better','best','custom'].forEach(p=>{
     const b=document.getElementById('pkg-btn-'+p);
     if(b){b.className=p===window._estPkg?'btn sm btn-n':'btn sm btn-o';}
   });
+  // Restore promo badge if editing an estimate that had a promo applied
+  if(window._estAppliedPromo){
+    const badge=document.getElementById('est-promo-applied-badge');
+    if(badge){badge.textContent='✓ '+window._estAppliedPromo.name;badge.style.display='inline';}
+    const hint=document.getElementById('est-promo-hint');
+    if(hint) hint.style.display='none';
+  }
   if(!prefill._lines&&prefill.division) estLoadTemplate(true);
 }
 
@@ -43634,6 +43664,8 @@ function estTogglePbPanel(){
 
 function estDivChange(div){
   window._estDiv=div; estLoadTemplate(true); estRefreshPbPanel(); estRefreshPermitPanel();
+  // Refresh promo panel if it's open so division filter takes effect
+  if(document.getElementById('est-promo-body')?.style.display!=='none') estRefreshPromoPanel();
 }
 
 function estLoadTemplate(silent=false){
@@ -43704,30 +43736,175 @@ function estAddLine(){
 
 function estRemoveLine(i){
   const pkg=window._estPkg||'custom';
+  // If removing a promo line, clear the applied promo state
+  const line=window._estLines[pkg][i];
+  if(line&&(line.type==='Discount'||line._isPromo)){
+    window._estAppliedPromo=null;
+    const badge=document.getElementById('est-promo-applied-badge');
+    if(badge){badge.style.display='none';badge.textContent='';}
+  }
   window._estLines[pkg].splice(i,1);
   estRenderLines();
+}
+
+// ── ESTIMATE PROMOTIONS ───────────────────────────────────────────────────────
+function estTogglePromoPanel(){
+  const body=document.getElementById('est-promo-body');
+  const chev=document.getElementById('est-promo-chevron');
+  if(!body) return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  if(chev) chev.textContent=open?'▼':'▲';
+  if(!open) estRefreshPromoPanel();
+}
+
+function estRefreshPromoPanel(){
+  const el=document.getElementById('est-promo-list');
+  if(!el) return;
+  const now=new Date();
+  const div=document.getElementById('est-div')?.value||'';
+  const {grand:subtotal}=estCalcTotals();
+  const promos=(S.get('lhs:promotions')||[]).filter(p=>{
+    if(p.active===false) return false;
+    if(p.start_date&&new Date(p.start_date)>now) return false;
+    if(p.end_date&&new Date(p.end_date)<now) return false;
+    if(p.division&&div&&p.division!==div) return false;
+    return true;
+  });
+  if(!promos.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:10px 0">No active promotions for this division.</div>';
+    return;
+  }
+  el.innerHTML=promos.map((p,i)=>{
+    const raw=subtotal>0?subtotal:0;
+    const discAmt=p.discount_type==='flat'?Number(p.discount_value):Math.round(raw*(p.discount_value/100)*100)/100;
+    const meetsMin=!p.min_order||raw>=p.min_order;
+    const alreadyApplied=window._estAppliedPromo&&(window._estAppliedPromo.id===p.id||(window._estAppliedPromo.name===p.name&&!p.id));
+    return`<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:white;display:flex;gap:12px;align-items:center${alreadyApplied?';border-color:#86efac;background:#f0fdf4':''}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${esc(p.name)}${alreadyApplied?'<span style="margin-left:6px;font-size:11px;color:#16a34a;font-weight:600">✓ Applied</span>':''}</div>
+        ${p.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">${esc(p.description)}</div>`:''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:11px;background:#e0f2fe;color:#0369a1;border-radius:10px;padding:1px 8px;font-weight:600">${p.discount_type==='flat'?'$'+Number(p.discount_value).toFixed(2)+' Off':p.discount_value+'% Off'}</span>
+          ${p.code?`<span style="font-size:11px;font-family:monospace;background:#f3f4f6;color:var(--muted);border-radius:10px;padding:1px 8px">Code: ${esc(p.code)}</span>`:''}
+          ${p.min_order?`<span style="font-size:11px;font-weight:600;color:${meetsMin?'#16a34a':'var(--red)'}">${meetsMin?'✓':'✗'} Min $${Number(p.min_order).toLocaleString()}</span>`:''}
+          ${p.end_date?`<span style="font-size:11px;color:var(--muted)">Ends ${p.end_date}</span>`:''}
+          ${raw>0&&discAmt>0?`<span style="font-size:11px;color:#16a34a;font-weight:600">= –$${discAmt.toFixed(2)}</span>`:''}
+        </div>
+      </div>
+      ${alreadyApplied
+        ?`<button class="btn btn-o sm" style="flex-shrink:0;color:var(--red);border-color:var(--red)" onclick="estRemovePromo()">Remove</button>`
+        :`<button class="btn btn-g sm" style="flex-shrink:0;white-space:nowrap" onclick="estApplyPromoByIndex(${i})" ${!meetsMin?'disabled title="Minimum order not met"':''}>Apply</button>`
+      }
+    </div>`;
+  }).join('');
+}
+
+function estApplyPromoByIndex(i){
+  const now=new Date();
+  const div=document.getElementById('est-div')?.value||'';
+  const promos=(S.get('lhs:promotions')||[]).filter(p=>{
+    if(p.active===false) return false;
+    if(p.start_date&&new Date(p.start_date)>now) return false;
+    if(p.end_date&&new Date(p.end_date)<now) return false;
+    if(p.division&&div&&p.division!==div) return false;
+    return true;
+  });
+  const p=promos[i];
+  if(!p) return;
+  _estAddPromoDiscount(p);
+}
+
+function estApplyPromoCode(){
+  const code=(document.getElementById('est-promo-code-inp')?.value||'').trim().toUpperCase();
+  if(!code){tst('Enter a promo code','error');return;}
+  const now=new Date();
+  const promos=S.get('lhs:promotions')||[];
+  const p=promos.find(x=>(x.code||'').toUpperCase()===code&&x.active!==false);
+  if(!p){tst('Promo code not found or inactive','error');return;}
+  if(p.start_date&&new Date(p.start_date)>now){tst('This promotion hasn\'t started yet','error');return;}
+  if(p.end_date&&new Date(p.end_date)<now){tst('This promotion has expired','error');return;}
+  _estAddPromoDiscount(p);
+}
+
+function _estAddPromoDiscount(p){
+  const pkg=window._estPkg||'custom';
+  if(!window._estLines) window._estLines={good:[],better:[],best:[],custom:[]};
+  if(!window._estLines[pkg]) window._estLines[pkg]=[];
+  // Remove any existing promo/discount lines first
+  window._estLines[pkg]=window._estLines[pkg].filter(l=>!l._isPromo&&l.type!=='Discount'&&l.type!=='discount');
+  // Calculate from current subtotal (service lines only)
+  const raw=window._estLines[pkg].reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  if(p.min_order&&raw<p.min_order){tst(`Minimum order of $${Number(p.min_order).toLocaleString()} required for this promotion`,'error');return;}
+  const discAmt=p.discount_type==='flat'?Number(p.discount_value):Math.round(raw*(p.discount_value/100)*100)/100;
+  window._estAppliedPromo={...p};
+  window._estLines[pkg].push({
+    label:p.name+(p.code?' ('+p.code+')':''),
+    type:'Discount',
+    qty:1,
+    cost:0,
+    price:-discAmt,
+    _isPromo:true,
+    promo_id:p.id||null,
+  });
+  // Update applied badge
+  const badge=document.getElementById('est-promo-applied-badge');
+  if(badge){badge.textContent='✓ '+p.name;badge.style.display='inline';}
+  const hint=document.getElementById('est-promo-hint');
+  if(hint) hint.style.display='none';
+  estRenderLines();
+  estRefreshPromoPanel();
+  tst(`${p.name} applied — ${p.discount_type==='flat'?'$'+discAmt.toFixed(2)+' off':''+p.discount_value+'% off (–$'+discAmt.toFixed(2)+')'}`, 'success');
+}
+
+function estRemovePromo(){
+  const pkg=window._estPkg||'custom';
+  if(!window._estLines?.[pkg]) return;
+  window._estLines[pkg]=window._estLines[pkg].filter(l=>!l._isPromo&&l.type!=='Discount'&&l.type!=='discount');
+  window._estAppliedPromo=null;
+  const badge=document.getElementById('est-promo-applied-badge');
+  if(badge){badge.style.display='none';badge.textContent='';}
+  const hint=document.getElementById('est-promo-hint');
+  if(hint) hint.style.display='';
+  estRenderLines();
+  estRefreshPromoPanel();
+  tst('Promotion removed','info');
 }
 
 function estCalcTotals(){
   const pkg=window._estPkg||'custom';
   const lines=window._estLines?.[pkg]||[];
-  let matPrice=0,laborPrice=0,totalCost=0;
+  let matPrice=0,laborPrice=0,discAmt=0,totalCost=0;
   lines.forEach(l=>{
     const q=l.qty||1,p=l.price||0,c=l.cost||0;
     if(l.type==='Labor') laborPrice+=q*p;
+    else if(l.type==='Discount'||l.type==='discount') discAmt+=q*p; // negative values
     else matPrice+=q*p;
     totalCost+=q*c;
   });
-  const grand=matPrice+laborPrice;
+  const subtotal=matPrice+laborPrice;
+  const grand=subtotal+discAmt; // discAmt is negative so this subtracts
   const margin=grand>0?Math.round((grand-totalCost)/grand*100):0;
   const set=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
   set('est-mat-total','$'+matPrice.toLocaleString('en-US',{minimumFractionDigits:2}));
   set('est-labor-total','$'+laborPrice.toLocaleString('en-US',{minimumFractionDigits:2}));
   set('est-grand-total','$'+grand.toLocaleString('en-US',{minimumFractionDigits:2}));
   set('est-cost-total','$'+totalCost.toLocaleString('en-US',{minimumFractionDigits:2}));
+  // Show/hide discount row
+  const discLbl=document.getElementById('est-disc-lbl');
+  const discTotal=document.getElementById('est-disc-total');
+  const appliedPromo=window._estAppliedPromo;
+  if(discAmt<0&&discLbl&&discTotal){
+    discLbl.style.display='';
+    discLbl.textContent='🎁 '+(appliedPromo?.name||'Promotion Discount');
+    discTotal.style.display='';
+    discTotal.textContent='–$'+Math.abs(discAmt).toLocaleString('en-US',{minimumFractionDigits:2});
+  } else if(discLbl&&discTotal){
+    discLbl.style.display='none';discTotal.style.display='none';
+  }
   const mEl=document.getElementById('est-margin');
   if(mEl){mEl.textContent=grand>0?margin+'%':'—';mEl.style.color=margin>=30?'var(--green)':margin>=15?'var(--gold,#c9a84c)':'var(--red)';}
-  return{matPrice,laborPrice,grand,totalCost,margin};
+  return{matPrice,laborPrice,discAmt,grand,totalCost,margin};
 }
 
 function estGetTotals(){return estCalcTotals();}
@@ -44075,6 +44252,9 @@ async function svEstimate(){
     line_items:JSON.stringify(lines),
     total_price:grand,
     total_cost:totalCost,
+    promo_id:window._estAppliedPromo?.id||null,
+    promo_name:window._estAppliedPromo?.name||null,
+    promo_code:window._estAppliedPromo?.code||null,
     created_by:orig?.created_by||CU?.name||'',
     created_at:orig?.created_at||now,
     updated_at:now,
@@ -44201,7 +44381,11 @@ function openEstimate(id){
   if(!e) return;
   const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
   const statusColor=s=>s==='Draft'?'bn':s==='Sent'?'ba':s==='Accepted'?'bg':s==='Declined'?'br':'bgr';
-  const total=lines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const svcLines=lines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
+  const discLines=lines.filter(l=>l.type==='Discount'||l.type==='discount');
+  const subtotal=svcLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const discTotal=discLines.reduce((s,l)=>s+(l.qty||1)*(l.price||0),0);
+  const total=subtotal+discTotal;
   const cost=lines.reduce((s,l)=>s+(l.qty||1)*(l.cost||0),0);
   const margin=total>0?Math.round((total-cost)/total*100):0;
   oMod(`${e.estimate_number} — ${e.customer_name||'No Customer'}`,`
@@ -44259,8 +44443,14 @@ function openEstimate(id){
   <!-- Totals -->
   <div style="display:flex;justify-content:flex-end">
     <div style="min-width:260px;font-size:13px">
-      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bdr)">
-        <span>Total Price</span><span style="font-weight:700;font-family:'DM Sans',sans-serif;font-size:16px;color:var(--navy)">${f$(total)}</span>
+      ${discTotal<0?`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);font-size:12px">
+        <span>Subtotal</span><span style="font-family:'DM Sans',sans-serif">${f$(subtotal)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:#16a34a;font-size:12px;font-weight:600">
+        <span>🎁 ${esc(e.promo_name||discLines[0]?.label||'Promotion Discount')}</span><span style="font-family:'DM Sans',sans-serif">–${f$(Math.abs(discTotal))}</span>
+      </div>`:''}
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)">
+        <span style="font-weight:600">Total Price</span><span style="font-weight:700;font-family:'DM Sans',sans-serif;font-size:16px;color:var(--navy)">${f$(total)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--muted);font-size:12px">
         <span>Est. Cost</span><span style="font-family:'DM Sans',sans-serif">${f$(cost)}</span>
@@ -44446,7 +44636,9 @@ function editEstimate(id){
     _lines:lines,
     _pkg:(e.selected_package||'Custom').toLowerCase(),
     _created_at:e.created_at,
-    _created_by:e.created_by
+    _created_by:e.created_by,
+    // Restore applied promo if one was saved
+    _appliedPromo:(e.promo_id||e.promo_name)?{id:e.promo_id,name:e.promo_name,code:e.promo_code}:null,
   });
 }
 
