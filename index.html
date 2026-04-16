@@ -12756,6 +12756,42 @@ function oEditUser(i){
       </div>
     </div>
   </div>
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Field Work & Scheduling</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Primary division is set above. Check additional divisions this person can also be scheduled for:</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+    ${DIVS.map(d=>{
+      const divId='eu-sdiv-'+d.replace(/[^a-zA-Z0-9]/g,'_');
+      const isPrimary=(u.division||'')=== d;
+      const isChecked=isPrimary||(u.service_divisions||[]).includes(d);
+      return`<label style="cursor:${isPrimary?'default':'pointer'};display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:16px;border:1.5px solid ${isPrimary?'var(--teal)':'var(--bdr)'};background:${isChecked?'var(--teal)':'var(--surf)'};color:${isChecked?'white':'var(--text)'};font-size:12px;font-weight:600;transition:all .15s">
+        <input type="checkbox" id="${divId}" ${isChecked?'checked':''} ${isPrimary?'disabled':''} style="display:none"
+          onchange="this.closest('label').style.background=this.checked?'var(--teal)':'var(--surf)';this.closest('label').style.color=this.checked?'white':'var(--text)'">
+        ${isPrimary?'★ ':''} ${d}${isPrimary?' (primary)':''}
+      </label>`;
+    }).join('')}
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px">★ = Primary division (always included). Check others to make this person selectable for those division's work orders and dispatch board.</div>
+
+  <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Sales & CRM Visibility</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Control which dropdowns this user appears in across the platform. Sales reps rarely install; installers rarely sell — keep lists focused.</div>
+  <div class="fr">
+    <div class="fl">
+      <label>Show as Sales Rep?</label>
+      <select id="eu-cansell">
+        <option value="true"${u.can_sell!==false?' selected':''}>Yes — Sold By, Lead Owner, Opportunity Assigned To</option>
+        <option value="false"${u.can_sell===false?' selected':''}>No — Exclude from sales dropdowns</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Shows in: Sold By, Lead Owner, Opportunity Rep, Estimate Rep</div>
+    </div>
+    <div class="fl">
+      <label>Show as Office Rep?</label>
+      <select id="eu-canofficesell">
+        <option value="true"${u.can_office_sell!==false?' selected':''}>Yes — Appears in Office Sold By</option>
+        <option value="false"${u.can_office_sell===false?' selected':''}>No — Exclude from Office Sold By</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Shows in: Office Sold By on work orders and estimates</div>
+    </div>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="svEditUser(${i})">Save</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -12792,6 +12828,9 @@ async function svEditUser(i){
     work_end:v('eu-wend')||'17:00',
     timezone:v('eu-tz')||'America/Chicago',
     work_days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].filter(d=>document.getElementById('eu-wd-'+d)?.checked).join(',')||'Mon,Tue,Wed,Thu,Fri',
+    service_divisions:DIVS.filter(d=>{const el=document.getElementById('eu-sdiv-'+d.replace(/[^a-zA-Z0-9]/g,'_'));return el&&!el.disabled&&el.checked;}),
+    can_sell:document.getElementById('eu-cansell')?.value!=='false',
+    can_office_sell:document.getElementById('eu-canofficesell')?.value!=='false',
   };
   users[i]=updated;
   S.set('lhs:users',users);
@@ -12802,7 +12841,9 @@ async function svEditUser(i){
       include_dispatch:updated.include_dispatch,timesheet_needed:updated.timesheet_needed,
       password_hash:updated.password_hash,mfa_enabled:updated.mfa_enabled,
       work_start:updated.work_start,work_end:updated.work_end,
-      timezone:updated.timezone,work_days:updated.work_days};
+      timezone:updated.timezone,work_days:updated.work_days,
+      service_divisions:updated.service_divisions,
+      can_sell:updated.can_sell,can_office_sell:updated.can_office_sell};
     await dbUpdate('lhs:users',updated.id,dbFields);
   }
   logAudit('user_updated',{name:updated.name,email:updated.email,role:updated.role,updated_by:CU?.email});
@@ -21418,7 +21459,7 @@ function renderDispBoard(){
     divGroups[canonDiv].apts.push(apt);
   });
 
-  // Add techs ONLY to their primary division row
+  // Add techs to their primary division row, plus any service_divisions they can cover
   techUsers.forEach(u=>{
     const rawDiv=(u.division||'').trim();
     if(!rawDiv) return;
@@ -21426,6 +21467,14 @@ function renderDispBoard(){
     const canonDiv=DIVS.find(d=>d.trim().toLowerCase()===rawDiv.toLowerCase())||rawDiv;
     if(!divGroups[canonDiv]) divGroups[canonDiv]={apts:[],techs:new Set()};
     divGroups[canonDiv].techs.add(u.name);
+    // Also add to any additional service_divisions this user can cover
+    (u.service_divisions||[]).forEach(sd=>{
+      const canonSd=DIVS.find(d=>d.trim().toLowerCase()===sd.trim().toLowerCase())||sd.trim();
+      if(canonSd&&canonSd!==canonDiv){
+        if(!divGroups[canonSd]) divGroups[canonSd]={apts:[],techs:new Set()};
+        divGroups[canonSd].techs.add(u.name);
+      }
+    });
   });
 
   // Build sortedDivs — DIVS order first, then any extras, strictly deduplicated
@@ -43101,7 +43150,9 @@ function leadToOpportunity(leadId){
 
 function oAddOpportunity(prefill={}){
   const custs=S.get('lhs:customers')||[];
-  const reps=(S.get('lhs:users')||[]).filter(u=>['Sales Rep','Regional Manager','God View','Admin'].includes(u.role));
+  const _allU=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const _hasSellFlag=_allU.some(u=>u.can_sell===true||u.can_sell===false);
+  const reps=_hasSellFlag?_allU.filter(u=>u.can_sell!==false):_allU.filter(u=>['Sales Rep','Sales','Regional Manager','Regional Director','God View','Admin','Director','Creator'].includes(u.role));
   // Pre-fill customer if coming from a lead
   const preCustId=prefill.customer_id||'';
   const preCust=preCustId?custs.find(c=>c.id===preCustId):null;
@@ -46041,7 +46092,10 @@ function _showSoldByModal(estId){
 }
 
 function _soldBySearch(query,searchId,valId,dropId){
-  const all=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const allUsers=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  // If any user has can_sell explicitly configured, filter to only those; otherwise show all (backward compat)
+  const hasSellFlag=allUsers.some(u=>u.can_sell===true||u.can_sell===false);
+  const all=hasSellFlag?allUsers.filter(u=>u.can_sell!==false):allUsers;
   const q=(query||'').toLowerCase();
   const matches=q?all.filter(u=>(u.name||'').toLowerCase().includes(q)):all;
   const drop=document.getElementById(dropId);
