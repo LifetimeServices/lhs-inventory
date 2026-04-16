@@ -466,6 +466,8 @@ const R2_URL='https://lhs-r2-proxy.george-a3e.workers.dev';
 async function r2Upload(path,file){
   const res=await fetch(`${R2_URL}/${path}`,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}});
   if(!res.ok) throw new Error(`R2 upload failed: ${res.status}`);
+  // Worker returns {url} pointing to public R2 URL; fall back to proxy URL for older deploys
+  try{const j=await res.json();if(j.url)return j.url;}catch(e){}
   return `${R2_URL}/${path}`;
 }
 async function r2Delete(path){
@@ -18173,6 +18175,22 @@ function stMigrateOpen(){
         <button class="btn btn-r sm" id="stm-run-btn" onclick="stMigrate()">&#9654; Run Migration</button>
         <button class="btn btn-o sm" onclick="document.getElementById('st-migrate-panel').innerHTML=''">Cancel</button>
       </div>
+    </div>
+    <div id="stm-photo200-panel" style="background:#f0fdf4;border:1.5px solid var(--green);border-radius:12px;padding:16px;margin-top:12px">
+      <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:4px">📷 Photo-Only Import</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pulls photos from the most recent jobs and uploads them to Cloudflare. Skips jobs already imported. Safe to re-run.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <label style="font-size:13px;font-weight:600">Jobs to scan:</label>
+        <input type="number" id="stm-p200-limit" value="200" min="1" max="2000" style="width:80px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <button class="btn btn-n sm" id="stm-p200-btn" onclick="stPhotoImport200()">▶ Run Photo Import</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+        <span>Progress</span><span id="stm-p200-pct">0%</span>
+      </div>
+      <div style="background:var(--bdr);border-radius:4px;height:8px;overflow:hidden;margin-bottom:10px">
+        <div id="stm-p200-bar" style="height:100%;background:var(--green);transition:width .3s;width:0%"></div>
+      </div>
+      <div id="stm-p200-log" style="display:none;background:#0f172a;color:#86efac;font-family:monospace;font-size:11px;line-height:1.6;padding:12px;border-radius:8px;max-height:200px;overflow-y:auto;white-space:pre-wrap"></div>
     </div>`;
 }
 
@@ -18690,6 +18708,102 @@ async function stMigrate(){
     tst('Migration error: '+e.message,'error');
     if(btn){btn.disabled=false;btn.textContent='↺ Retry';}
   }
+}
+
+// ── ST PHOTO-ONLY IMPORT (first N jobs) ──────────────────────────────────────
+async function stPhotoImport200(){
+  const panel=document.getElementById('stm-photo200-panel');
+  if(!panel) return;
+  const logEl=document.getElementById('stm-p200-log');
+  const progEl=document.getElementById('stm-p200-bar');
+  const pctEl=document.getElementById('stm-p200-pct');
+  const btn=document.getElementById('stm-p200-btn');
+  const limitEl=document.getElementById('stm-p200-limit');
+  const LIMIT=parseInt(limitEl?.value||'200')||200;
+  if(btn){btn.disabled=true;btn.textContent='Running...';}
+  if(logEl){logEl.style.display='block';logEl.textContent='';}
+  const log=msg=>{if(logEl){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}console.log('[ST-Photos]',msg);};
+  const prog=(pct)=>{if(progEl)progEl.style.width=pct+'%';if(pctEl)pctEl.textContent=pct+'%';};
+  const tid=S.get('lhs:st_tenant_id')||'1951433246';
+  const BASE='https://api.servicetitan.io';
+  try{
+    log('Authenticating...');
+    let token=await _stGetToken();
+    log('✓ Token obtained\n');
+    // Fetch first LIMIT jobs
+    log(`Fetching first ${LIMIT} jobs from ServiceTitan...`);prog(5);
+    const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${LIMIT}&sort=-completedOn`);
+    const jobs=(d.data||d.items||[]).slice(0,LIMIT);
+    log(`✓ ${jobs.length} jobs fetched\n`);prog(10);
+    // Build st_job_id → wo_id map
+    log('Building work order map...');
+    const woMap={};
+    try{
+      const{data:wos}=await DB.from('lhs_work_orders').select('id,st_job_id').not('st_job_id','is',null);
+      if(wos)wos.forEach(w=>{if(w.st_job_id)woMap[String(w.st_job_id)]=w.id;});
+      log(`  ${Object.keys(woMap).length} WOs mapped`);
+    }catch(e){log(`  WO map warning: ${e.message}`);}
+    // Get already-imported photo st_job_ids to skip
+    const doneSet=new Set();
+    try{
+      const{data:done}=await DB.from('lhs_wo_photos').select('st_job_id').eq('source','ServiceTitan');
+      if(done)done.forEach(r=>{if(r.st_job_id)doneSet.add(r.st_job_id);});
+      log(`  ${doneSet.size} jobs already have photos — will skip\n`);
+    }catch(e){}
+    let photoCount=0,jobsScanned=0,jobsSkipped=0,errors=0;
+    for(let ji=0;ji<jobs.length;ji++){
+      const job=jobs[ji];
+      const stJobId=String(job.id);
+      if(doneSet.has(stJobId)){jobsSkipped++;continue;}
+      const matchedWoId=woMap[stJobId]||null;
+      try{
+        // Re-auth every 50 jobs to avoid token expiry
+        if(ji>0&&ji%50===0){try{token=await _stGetToken();}catch(e){}}
+        // Try attachments endpoint
+        const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`);
+        const atts=(attData.data||attData.items||attData||[]).filter(a=>{
+          const src=a.url||a.downloadUrl||'';
+          const fn=a.filename||a.name||src;
+          return src&&/\.(jpg|jpeg|png|gif|webp)/i.test(fn);
+        });
+        for(const att of atts){
+          try{
+            const src=att.url||att.downloadUrl;
+            const appKey=S.get('lhs:st_app_key')||'';
+            const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,...(appKey?{'ST-App-Key':appKey}:{})}});
+            if(!imgR.ok){errors++;continue;}
+            const blob=await imgR.blob();
+            const fname=att.filename||att.name||`st_${att.id||Date.now()}.jpg`;
+            const file=new File([blob],fname,{type:blob.type||'image/jpeg'});
+            const path=`st-migration/${job.customerId||'unknown'}/${job.id}/${fname}`;
+            const up=await lhsUploadFile(file,path);
+            if(up?.url){
+              await DB.from('lhs_wo_photos').insert({
+                wo_id:matchedWoId,st_job_id:stJobId,
+                st_customer_id:job.customerId?String(job.customerId):null,
+                url:up.url,caption:att.caption||att.filename||fname,
+                source:'ServiceTitan',created_at:att.addedOn||new Date().toISOString()
+              });
+              photoCount++;
+            }
+          }catch(e){errors++;}
+        }
+      }catch(e){/* job has no attachments */}
+      jobsScanned++;
+      const pct=10+Math.round((ji/jobs.length)*88);
+      prog(pct);
+      if(ji%20===0||ji===jobs.length-1){
+        log(`  ${ji+1}/${jobs.length} jobs | ${photoCount} photos uploaded | ${jobsSkipped} skipped | ${errors} errors`);
+      }
+    }
+    prog(100);
+    log(`\n✅ Done — ${photoCount} photos uploaded from ${jobsScanned} jobs (${jobsSkipped} already done, ${errors} download errors)`);
+    tst(`${photoCount} photos imported from ServiceTitan`,'success');
+  }catch(e){
+    log(`\n❌ Error: ${e.message}`);
+    tst('Photo import failed: '+e.message,'error');
+  }
+  if(btn){btn.disabled=false;btn.textContent='▶ Run Photo Import';}
 }
 
 function saveAiEndpoint(){
