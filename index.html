@@ -18190,11 +18190,14 @@ function stMigrateOpen(){
     <div id="stm-photo200-panel" style="background:#f0fdf4;border:1.5px solid var(--green);border-radius:12px;padding:16px;margin-top:12px">
       <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:4px">📷 Photo-Only Import</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pulls photos from the most recent jobs and uploads them to Cloudflare. Skips jobs already imported. Safe to re-run.</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
         <label style="font-size:13px;font-weight:600">Jobs to scan:</label>
         <input type="number" id="stm-p200-limit" value="200" min="1" max="2000" style="width:80px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+        <label style="font-size:13px;font-weight:600;margin-left:8px">Test specific job ID:</label>
+        <input type="text" id="stm-p200-jobid" placeholder="e.g. 5417717" style="width:120px;padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
         <button class="btn btn-n sm" id="stm-p200-btn" onclick="stPhotoImport200()">▶ Run Photo Import</button>
       </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">If "Test specific job ID" is filled, only that one job is probed (ignores scan limit). Find a job ID in ServiceTitan that you know has photos.</div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
         <span>Progress</span><span id="stm-p200-pct">0%</span>
       </div>
@@ -18730,6 +18733,7 @@ async function stPhotoImport200(){
   const pctEl=document.getElementById('stm-p200-pct');
   const btn=document.getElementById('stm-p200-btn');
   const limitEl=document.getElementById('stm-p200-limit');
+  const specificJobId=(document.getElementById('stm-p200-jobid')?.value||'').trim();
   const LIMIT=parseInt(limitEl?.value||'200')||200;
   if(btn){btn.disabled=true;btn.textContent='Running...';}
   if(logEl){logEl.style.display='block';logEl.textContent='';}
@@ -18741,10 +18745,22 @@ async function stPhotoImport200(){
     log('Authenticating...');
     let token=await _stGetToken();
     log('✓ Token obtained\n');
-    // Fetch first LIMIT jobs
-    log(`Fetching first ${LIMIT} jobs from ServiceTitan...`);prog(5);
-    const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${LIMIT}&orderBy=completedOn&orderByDirection=Desc`);
-    const jobs=(d.data||d.items||[]).slice(0,LIMIT);
+    let jobs=[];
+    if(specificJobId){
+      // Single job probe mode
+      log(`Probing specific job ${specificJobId}...`);prog(5);
+      try{
+        const jd=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${specificJobId}`);
+        if(jd?.id) jobs=[jd];
+        else if(jd?.data) jobs=[jd.data];
+        else { log('Could not fetch job — check job ID'); }
+      }catch(e){log(`Job fetch error: ${e.message}`);}
+    } else {
+      // Bulk mode
+      log(`Fetching first ${LIMIT} jobs from ServiceTitan...`);prog(5);
+      const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${LIMIT}&orderBy=completedOn&orderByDirection=Desc`);
+      jobs=(d.data||d.items||[]).slice(0,LIMIT);
+    }
     log(`✓ ${jobs.length} jobs fetched\n`);prog(10);
     // Build st_job_id → wo_id map
     log('Building work order map...');
@@ -18770,80 +18786,67 @@ async function stPhotoImport200(){
       try{
         // Re-auth every 50 jobs to avoid token expiry
         if(ji>0&&ji%50===0){try{token=await _stGetToken();}catch(e){}}
+        const appKey=S.get('lhs:st_app_key')||S.get('lhs:st_client_id')||'';
 
-        // Helper: filter raw attachment list to images only
-        const _filterImgs=(list)=>list.filter(a=>{
-          const src=a.url||a.downloadUrl||a.uri||'';
-          const fn=(a.filename||a.name||a.fileName||src).toLowerCase();
-          const ct=(a.contentType||a.mimeType||a.type||'').toLowerCase();
-          return src&&(/^image\//.test(ct)||/\.(jpg|jpeg|png|gif|webp|heic)/.test(fn)||/photo|image/.test(ct));
-        });
-
-        // Helper: upload one attachment record
-        const _uploadAtt=async(att,jobObj)=>{
-          const src=att.url||att.downloadUrl||att.uri;
-          if(!src) return false;
-          const appKey=S.get('lhs:st_app_key')||'';
-          const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,...(appKey?{'ST-App-Key':appKey}:{})}});
-          if(!imgR.ok) return false;
-          const blob=await imgR.blob();
-          const fname=att.filename||att.fileName||att.name||`st_${att.id||Date.now()}.jpg`;
-          const file=new File([blob],fname,{type:blob.type||'image/jpeg'});
-          const path=`st-migration/${jobObj.customerId||'unknown'}/${jobObj.id}/${fname}`;
-          const up=await lhsUploadFile(file,path);
-          if(up?.url){
-            await DB.from('lhs_wo_photos').insert({
-              wo_id:matchedWoId,st_job_id:stJobId,
-              st_customer_id:jobObj.customerId?String(jobObj.customerId):null,
-              url:up.url,caption:att.caption||att.filename||fname,
-              source:'ServiceTitan',created_at:att.addedOn||new Date().toISOString()
-            });
-            return true;
-          }
+        // Upload helper
+        const uploadSTPhoto=async(src,fname,attObj)=>{
+          try{
+            const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,'ST-App-Key':appKey}});
+            if(!imgR.ok) return false;
+            const blob=await imgR.blob();
+            const up=await lhsUploadFile(new File([blob],fname,{type:blob.type||'image/jpeg'}),`st-migration/${job.customerId||'unknown'}/${job.id}/${fname}`);
+            if(up?.url){
+              await DB.from('lhs_wo_photos').insert({
+                wo_id:matchedWoId,st_job_id:stJobId,
+                st_customer_id:job.customerId?String(job.customerId):null,
+                url:up.url,caption:attObj.caption||fname,
+                source:'ServiceTitan',created_at:attObj.addedOn||new Date().toISOString()
+              });
+              return true;
+            }
+          }catch(e){}
           return false;
         };
 
-        let jobPhotos=0;
+        // Probe all known ST photo endpoints (same as main migration)
+        let allMedia=[];
+        const tryEndpoint=async(url,label)=>{
+          try{
+            const d=await _stApiFetch(token,url);
+            const list=d.data||d.items||d.media||d.photos||(Array.isArray(d)?d:[]);
+            if(list.length){
+              log(`  Job ${job.id}: ${list.length} items via ${label}`);
+              allMedia.push(...list);
+            } else if(ji===0){
+              log(`  [debug] Job ${job.id} ${label} → 0 items (keys:${Object.keys(d).join(',')})`);
+            }
+          }catch(e){ if(ji===0) log(`  [debug] Job ${job.id} ${label} → error: ${e.message.slice(0,80)}`); }
+        };
 
-        // ── Strategy 1: /jobs/{id}/attachments ──────────────────────────
+        await tryEndpoint(`${BASE}/media/v2/tenant/${tid}/photos?jobId=${job.id}&pageSize=100`,'media/photos');
+        await tryEndpoint(`${BASE}/media/v2/tenant/${tid}/media?jobId=${job.id}&pageSize=100`,'media/media');
+        await tryEndpoint(`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/photos`,'jpm/jobs/photos');
+        await tryEndpoint(`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`,'jpm/jobs/attachments');
+        await tryEndpoint(`${BASE}/jpm/v2/tenant/${tid}/attachments?jobId=${job.id}&pageSize=100`,'jpm/attachments?jobId');
+
+        // Also check appointment-level attachments
         try{
-          const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`);
-          const rawAtts=attData.data||attData.items||(Array.isArray(attData)?attData:[]);
-          if(ji===0) log(`  [debug S1] job ${job.id} /attachments → keys:${Object.keys(attData).join(',')} count:${rawAtts.length}${rawAtts[0]?' sample:'+JSON.stringify(rawAtts[0]).slice(0,200):''}`);
-          for(const att of _filterImgs(rawAtts)){
-            try{if(await _uploadAtt(att,job)){jobPhotos++;photoCount++;}}catch(e){errors++;}
+          const apd=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/appointments?jobId=${job.id}&pageSize=20`);
+          for(const apt of (apd.data||apd.items||[])){
+            await tryEndpoint(`${BASE}/jpm/v2/tenant/${tid}/appointments/${apt.id}/attachments`,`apt/${apt.id}/attachments`);
           }
         }catch(e){}
 
-        // ── Strategy 2: /job-notes?jobId={id} → note.attachments ───────
-        if(jobPhotos===0){
-          try{
-            const notesData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/job-notes?jobId=${job.id}&pageSize=50`);
-            const notes=notesData.data||notesData.items||[];
-            if(ji===0&&notes.length>0) log(`  [debug S2] job ${job.id} notes:${notes.length} first:${JSON.stringify(notes[0]).slice(0,200)}`);
-            for(const note of notes){
-              const noteAtts=note.attachments||note.images||[];
-              for(const att of _filterImgs(noteAtts)){
-                try{if(await _uploadAtt(att,job)){jobPhotos++;photoCount++;}}catch(e){errors++;}
-              }
-            }
-          }catch(e){}
+        let jobPhotos=0;
+        for(const att of allMedia){
+          const src=att.url||att.downloadUrl||att.publicUrl||null;
+          if(!src) continue;
+          const fname=att.filename||att.name||`st_${att.id||Date.now()}.jpg`;
+          if(await uploadSTPhoto(src,fname,att)){jobPhotos++;photoCount++;}
+          else errors++;
         }
-
-        // ── Strategy 3: top-level /attachments?jobId={id} ───────────────
-        if(jobPhotos===0){
-          try{
-            const attData2=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/attachments?jobId=${job.id}&pageSize=50`);
-            const rawAtts2=attData2.data||attData2.items||(Array.isArray(attData2)?attData2:[]);
-            if(ji===0&&rawAtts2.length>0) log(`  [debug S3] job ${job.id} top-level attachments:${rawAtts2.length} sample:${JSON.stringify(rawAtts2[0]).slice(0,200)}`);
-            for(const att of _filterImgs(rawAtts2)){
-              try{if(await _uploadAtt(att,job)){jobPhotos++;photoCount++;}}catch(e){errors++;}
-            }
-          }catch(e){}
-        }
-
-        if(jobPhotos>0) log(`  Job ${stJobId}: ✓ ${jobPhotos} photos uploaded`);
-      }catch(e){/* job has no attachments */}
+        if(jobPhotos>0) log(`  ✓ Job ${stJobId}: ${jobPhotos} photos uploaded`);
+      }catch(e){/* job error */}
       jobsScanned++;
       const pct=10+Math.round((ji/jobs.length)*88);
       prog(pct);
