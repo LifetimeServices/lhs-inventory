@@ -2826,6 +2826,7 @@ async function startApp(){
     <div class="page" id="p-hr-timeoff"></div>
     <div class="page" id="p-hr-onboarding"></div>
     <div class="page" id="p-hr-radon"></div>
+    <div class="page" id="p-hr-trir"></div>
     <div class="page" id="p-hr-settings"></div>
     <div class="page" id="p-my-timeoff"></div>
     <div class="page" id="p-sales-marketing"></div>
@@ -2841,7 +2842,7 @@ async function startApp(){
     'sales','sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings',
     'tasks','mytasks',
     'inventory','inv-dashboard','po','receive','transfer','vans','locations','locstock','rma','inv-reports','testers','tools',
-    'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-settings',
+    'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-trir','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
     'reports','operations','admin','admin-security','admin-import','sales-board'];
@@ -2859,7 +2860,7 @@ async function startApp(){
   const _salesPgs=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-board','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const _acctPgs=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const _acctsPgs=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
-  const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-settings'];
+  const _hrPgs=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-trir','hr-settings'];
   if(_dispPgs.includes(_restorePage)) renderDispatchNav();
   else if(_invPgs.includes(_restorePage)) renderInvNav();
   else if(_salesPgs.includes(_restorePage)) renderSalesNav();
@@ -3034,6 +3035,7 @@ const HR_NAV=[
   {id:'hr-timeoff',        l:'Time Off Requests'},
   {id:'hr-onboarding',     l:'Onboarding'},
   {id:'hr-radon',          l:'☢️ Radon Exposure'},
+  {id:'hr-trir',           l:'📊 TRIR / Safety'},
   {id:'hr-settings',       l:'HR Settings'},
 ];
 
@@ -3351,7 +3353,7 @@ window.addEventListener('popstate',e=>{
   const salesPages=['sales-crm-dashboard','sales-leads','sales-accounts','sales-opps','sales-estimates','sales-pricebook','sales-tasks','sales-followups','sales-activities','sales-board','sales-email-sync','sales-marketing','sales-discounts','sales-permits','sales-settings','sales-tax-settings'];
   const acctPages=['acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings'];
   const accountsPages=['customers','properties','business','commercial','rolodex-builders','rolodex-realtors','rolodex-inspectors','rolodex-property-managers'];
-  const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-settings'];
+  const hrPages=['hr-payroll','hr-employees','hr-state','hr-timeoff','hr-onboarding','hr-radon','hr-trir','hr-settings'];
   if(dispPages.includes(id)&&_navMode!=='dispatch') renderDispatchNav();
   else if(invPages.includes(id)&&_navMode!=='inventory') renderInvNav();
   else if(salesPages.includes(id)&&_navMode!=='sales') renderSalesNav();
@@ -3408,6 +3410,7 @@ function buildPage(id){
     'hr-timeoff':bHRTimeOff,
     'hr-onboarding':bHrOnboarding,
     'hr-radon':bHRRadonExposure,
+    'hr-trir':bHRTrir,
     'hr-settings':bHRSettings,
     'my-timeoff':bMyTimeOff,
     payroll:bPayroll,
@@ -35460,6 +35463,336 @@ function _wlmBar(ytdWlm){
 /* ── Visit type label ── */
 function _wlmTypeLabel(t){
   return{installation:'Installation',diagnostic:'Diagnostic Assessment',post_test:'Post-Mitigation Test',callback:'Callback/Service',training:'Training/Demo',other:'Other'}[t]||t||'—';
+}
+
+// ─── TRIR / SAFETY ────────────────────────────────────────────────────────────
+window._trirPeriod=window._trirPeriod||'ytd';
+
+async function bHRTrir(){
+  const pg=document.getElementById('p-hr-trir');
+  if(!pg) return;
+  pg.innerHTML='<div style="padding:32px;text-align:center;color:var(--muted)">Loading safety data…</div>';
+
+  const canEdit=['Creator','God View','Admin','Director','HR Manager','Operations Manager'].includes(CU?.role);
+  const period=window._trirPeriod||'ytd';
+  const now=new Date();
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  // Period date ranges
+  function periodRange(p){
+    const y=now.getFullYear(), m=now.getMonth();
+    if(p==='mtd'){
+      return{from:`${y}-${String(m+1).padStart(2,'0')}-01`,to:todayStr};
+    } else if(p==='ytd'){
+      return{from:`${y}-01-01`,to:todayStr};
+    } else if(p==='r12'){
+      const r=new Date(now); r.setFullYear(r.getFullYear()-1);
+      return{from:`${r.getFullYear()}-${String(r.getMonth()+1).padStart(2,'0')}-${String(r.getDate()).padStart(2,'0')}`,to:todayStr};
+    } else if(p==='prev'){
+      const py=y-1;
+      return{from:`${py}-01-01`,to:`${py}-12-31`};
+    }
+    return{from:`${y}-01-01`,to:todayStr};
+  }
+
+  const{from,to}=periodRange(period);
+
+  // Load incidents
+  let incidents=[];
+  try{
+    const{data}=await DB.from('lhs_incidents').select('*').order('incident_date',{ascending:false});
+    incidents=data||[];
+  }catch(e){console.warn('TRIR load error',e.message);}
+
+  // Filter to period
+  const periodInc=incidents.filter(i=>i.incident_date>=from&&i.incident_date<=to);
+  const recordable=periodInc.filter(i=>i.recordable!==false);
+
+  // Load hours from timesheets for period
+  let totalHours=0;
+  try{
+    const allTS=S.get('lhs:timesheets')||[];
+    totalHours=allTS.filter(t=>t.week_start>=from&&t.week_start<=to)
+                    .reduce((a,r)=>a+(+r.total_hours||0),0);
+    // If no cached data, try Supabase
+    if(!totalHours){
+      const{data:tsRows}=await DB.from('lhs_timesheets').select('total_hours,week_start')
+        .gte('week_start',from).lte('week_start',to);
+      totalHours=(tsRows||[]).reduce((a,r)=>a+(+r.total_hours||0),0);
+    }
+  }catch(e){}
+
+  // TRIR = (recordable incidents × 200,000) / total hours
+  const trir=totalHours>0?((recordable.length*200000)/totalHours):null;
+
+  // Days since last incident
+  const allSorted=[...incidents].sort((a,b)=>b.incident_date.localeCompare(a.incident_date));
+  const lastInc=allSorted[0];
+  const daysSince=lastInc
+    ? Math.floor((now-new Date(lastInc.incident_date+'T00:00:00'))/(1000*60*60*24))
+    : null;
+
+  // OSHA benchmark (construction ~3.5, general industry ~2.8, services ~1.5)
+  const trirColor=trir===null?'var(--muted)':trir<=1?'var(--green)':trir<=3?'#f59e0b':'var(--red)';
+  const trirLabel=trir===null?'N/A':trir.toFixed(2);
+
+  const periodLabels={mtd:'Month to Date',ytd:'Year to Date',r12:'Rolling 12 Months',prev:'Prior Year'};
+
+  const incTypeLabel={injury:'Injury',illness:'Illness',near_miss:'Near Miss',property:'Property Damage'};
+
+  const rows=periodInc.map(i=>{
+    const isRec=i.recordable!==false;
+    const typeBadge=`<span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${i.incident_type==='injury'?'#fee2e2':i.incident_type==='illness'?'#fef3c7':i.incident_type==='near_miss'?'#dbeafe':'#f3f4f6'};color:${i.incident_type==='injury'?'var(--red)':i.incident_type==='illness'?'#b45309':i.incident_type==='near_miss'?'#1d4ed8':'var(--muted)'}">${incTypeLabel[i.incident_type]||i.incident_type||'—'}</span>`;
+    return`<tr>
+      <td style="padding:10px 12px;font-size:13px">${i.incident_date||'—'}</td>
+      <td style="padding:10px 12px;font-size:13px">${esc(i.employee_name||'—')}</td>
+      <td style="padding:10px 12px">${typeBadge}</td>
+      <td style="padding:10px 12px;font-size:13px">${esc((i.description||'').slice(0,60))}${(i.description||'').length>60?'…':''}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:center">${i.lost_time_days||0}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:center">${i.restricted_days||0}</td>
+      <td style="padding:10px 12px;text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${isRec?'#fee2e2':'#dcfce7'};color:${isRec?'var(--red)':'var(--green)'}">${isRec?'Yes':'No'}</span></td>
+      ${canEdit?`<td style="padding:10px 12px;text-align:center;white-space:nowrap">
+        <button class="btn btn-xs btn-n" onclick="oEditIncident('${i.id}')">Edit</button>
+        <button class="btn btn-xs" style="background:#fee2e2;color:var(--red);margin-left:4px" onclick="oDeleteIncident('${i.id}')">Delete</button>
+      </td>`:''}
+    </tr>`;
+  }).join('');
+
+  pg.innerHTML=`
+    <div style="padding:20px;max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:20px;font-weight:800;color:var(--navy)">📊 TRIR / Safety Tracking</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Total Recordable Incident Rate — OSHA Formula: (Incidents × 200,000) ÷ Hours Worked</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${['mtd','ytd','r12','prev'].map(p=>`
+            <button onclick="window._trirPeriod='${p}';showPage('hr-trir')"
+              style="padding:6px 14px;border:none;border-radius:16px;font-size:12px;font-weight:700;cursor:pointer;
+                background:${period===p?'var(--navy)':'var(--bdr)'};color:${period===p?'white':'var(--navy)'}">
+              ${periodLabels[p]}
+            </button>`).join('')}
+          ${canEdit?`<button class="btn btn-p" onclick="oAddIncident()">+ Log Incident</button>`:''}
+        </div>
+      </div>
+
+      <!-- Metric Cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px">
+        <div class="card" style="padding:20px;text-align:center">
+          <div style="font-size:38px;font-weight:900;color:${trirColor};line-height:1">${trirLabel}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.5px">TRIR</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">${periodLabels[period]}</div>
+        </div>
+        <div class="card" style="padding:20px;text-align:center">
+          <div style="font-size:38px;font-weight:900;color:${recordable.length>0?'var(--red)':'var(--green)'};line-height:1">${recordable.length}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.5px">Recordable Incidents</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">${periodInc.length} total events</div>
+        </div>
+        <div class="card" style="padding:20px;text-align:center">
+          <div style="font-size:38px;font-weight:900;color:var(--navy);line-height:1">${totalHours>0?Math.round(totalHours).toLocaleString():'—'}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.5px">Hours Worked</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">From payroll timesheets</div>
+        </div>
+        <div class="card" style="padding:20px;text-align:center">
+          <div style="font-size:38px;font-weight:900;color:${daysSince===null?'var(--muted)':daysSince>=30?'var(--green)':daysSince>=7?'#f59e0b':'var(--red)'};line-height:1">${daysSince===null?'—':daysSince}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.5px">Days Since Last Incident</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">${lastInc?'Last: '+lastInc.incident_date:'No incidents recorded'}</div>
+        </div>
+      </div>
+
+      <!-- TRIR Benchmark -->
+      <div class="card" style="padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+        <div style="font-size:12px;font-weight:700;color:var(--navy)">Industry Benchmarks:</div>
+        ${[['≤ 1.0','Excellent','var(--green)'],['1.0–2.0','Good','#16a34a'],['2.0–3.5','Average','#f59e0b'],['> 3.5','Above Average','var(--red)']].map(([r,l,c])=>`
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${c};display:inline-block"></span>
+            <span style="font-size:12px;color:var(--muted)">${r} — <strong style="color:${c}">${l}</strong></span>
+          </div>`).join('')}
+        <div style="font-size:11px;color:var(--muted);margin-left:auto">Construction industry avg: ~3.5 | General industry: ~2.8</div>
+      </div>
+
+      <!-- Incident Log -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-weight:700;font-size:14px;color:var(--navy)">Incident Log — ${periodLabels[period]}</div>
+          <div style="font-size:12px;color:var(--muted)">${periodInc.length} event${periodInc.length!==1?'s':''}</div>
+        </div>
+        ${periodInc.length===0?`
+          <div style="padding:40px;text-align:center;color:var(--muted)">
+            <div style="font-size:32px;margin-bottom:8px">✅</div>
+            <div style="font-weight:700">No incidents recorded for this period</div>
+            ${canEdit?`<button class="btn btn-p" style="margin-top:12px" onclick="oAddIncident()">+ Log First Incident</button>`:''}
+          </div>`:`
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:var(--bg);border-bottom:1px solid var(--bdr)">
+                  <th style="padding:10px 12px;font-size:11px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase">Date</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase">Employee</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase">Type</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:left;font-weight:700;color:var(--muted);text-transform:uppercase">Description</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:center;font-weight:700;color:var(--muted);text-transform:uppercase">Lost Days</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:center;font-weight:700;color:var(--muted);text-transform:uppercase">Restricted Days</th>
+                  <th style="padding:10px 12px;font-size:11px;text-align:center;font-weight:700;color:var(--muted);text-transform:uppercase">Recordable</th>
+                  ${canEdit?'<th style="padding:10px 12px"></th>':''}
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`}
+      </div>
+    </div>
+
+    <!-- Add/Edit Incident Modal -->
+    <div id="trir-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center">
+      <div style="background:white;border-radius:14px;padding:28px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="font-size:17px;font-weight:800;color:var(--navy);margin-bottom:20px" id="trir-modal-title">Log Incident</div>
+        <input type="hidden" id="trir-inc-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Date *</label>
+            <input type="date" id="trir-inc-date" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Employee Name *</label>
+            <input type="text" id="trir-inc-emp" placeholder="Full name" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Incident Type</label>
+            <select id="trir-inc-type" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+              <option value="injury">Injury</option>
+              <option value="illness">Illness</option>
+              <option value="near_miss">Near Miss</option>
+              <option value="property">Property Damage</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Case / Claim #</label>
+            <input type="text" id="trir-inc-case" placeholder="Optional" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Body Part Affected</label>
+            <input type="text" id="trir-inc-body" placeholder="e.g. Lower back, Hand" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Nature of Injury/Illness</label>
+            <input type="text" id="trir-inc-nature" placeholder="e.g. Sprain, Laceration" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Lost Time Days</label>
+            <input type="number" id="trir-inc-lost" value="0" min="0" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">Restricted Duty Days</label>
+            <input type="number" id="trir-inc-restricted" value="0" min="0" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box">
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <label style="font-size:12px;font-weight:700;color:var(--muted)">Description / What Happened *</label>
+          <textarea id="trir-inc-desc" rows="3" placeholder="Describe what happened..." style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box;resize:vertical"></textarea>
+        </div>
+        <div style="margin-top:14px">
+          <label style="font-size:12px;font-weight:700;color:var(--muted)">Root Cause</label>
+          <textarea id="trir-inc-root" rows="2" placeholder="Why did this happen?" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box;resize:vertical"></textarea>
+        </div>
+        <div style="margin-top:14px">
+          <label style="font-size:12px;font-weight:700;color:var(--muted)">Corrective Action</label>
+          <textarea id="trir-inc-action" rows="2" placeholder="What was done to prevent recurrence?" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box;resize:vertical"></textarea>
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="trir-inc-recordable" checked style="width:16px;height:16px;cursor:pointer">
+          <label for="trir-inc-recordable" style="font-size:13px;font-weight:600;cursor:pointer">OSHA Recordable <span style="font-weight:400;color:var(--muted)">(requires medical treatment beyond first aid, lost time, or restricted duty)</span></label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end">
+          <button class="btn btn-n" onclick="document.getElementById('trir-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-p" onclick="saveIncident()">Save Incident</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function oAddIncident(){
+  const today=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  document.getElementById('trir-modal-title').textContent='Log Incident';
+  document.getElementById('trir-inc-id').value='';
+  document.getElementById('trir-inc-date').value=today;
+  document.getElementById('trir-inc-emp').value='';
+  document.getElementById('trir-inc-type').value='injury';
+  document.getElementById('trir-inc-case').value='';
+  document.getElementById('trir-inc-body').value='';
+  document.getElementById('trir-inc-nature').value='';
+  document.getElementById('trir-inc-lost').value='0';
+  document.getElementById('trir-inc-restricted').value='0';
+  document.getElementById('trir-inc-desc').value='';
+  document.getElementById('trir-inc-root').value='';
+  document.getElementById('trir-inc-action').value='';
+  document.getElementById('trir-inc-recordable').checked=true;
+  document.getElementById('trir-modal').style.display='flex';
+}
+
+async function oEditIncident(id){
+  let inc=null;
+  try{const{data}=await DB.from('lhs_incidents').select('*').eq('id',id).single();inc=data;}catch(e){}
+  if(!inc) return;
+  document.getElementById('trir-modal-title').textContent='Edit Incident';
+  document.getElementById('trir-inc-id').value=inc.id;
+  document.getElementById('trir-inc-date').value=inc.incident_date||'';
+  document.getElementById('trir-inc-emp').value=inc.employee_name||'';
+  document.getElementById('trir-inc-type').value=inc.incident_type||'injury';
+  document.getElementById('trir-inc-case').value=inc.case_number||'';
+  document.getElementById('trir-inc-body').value=inc.body_part||'';
+  document.getElementById('trir-inc-nature').value=inc.nature_of_injury||'';
+  document.getElementById('trir-inc-lost').value=inc.lost_time_days||0;
+  document.getElementById('trir-inc-restricted').value=inc.restricted_days||0;
+  document.getElementById('trir-inc-desc').value=inc.description||'';
+  document.getElementById('trir-inc-root').value=inc.root_cause||'';
+  document.getElementById('trir-inc-action').value=inc.corrective_action||'';
+  document.getElementById('trir-inc-recordable').checked=inc.recordable!==false;
+  document.getElementById('trir-modal').style.display='flex';
+}
+
+async function saveIncident(){
+  const id=document.getElementById('trir-inc-id').value;
+  const date=document.getElementById('trir-inc-date').value;
+  const emp=(document.getElementById('trir-inc-emp').value||'').trim();
+  const desc=(document.getElementById('trir-inc-desc').value||'').trim();
+  if(!date||!emp||!desc){tst('Date, employee, and description are required','error');return;}
+  const payload={
+    incident_date:date,
+    employee_name:emp,
+    incident_type:document.getElementById('trir-inc-type').value,
+    case_number:(document.getElementById('trir-inc-case').value||'').trim()||null,
+    body_part:(document.getElementById('trir-inc-body').value||'').trim()||null,
+    nature_of_injury:(document.getElementById('trir-inc-nature').value||'').trim()||null,
+    lost_time_days:parseInt(document.getElementById('trir-inc-lost').value)||0,
+    restricted_days:parseInt(document.getElementById('trir-inc-restricted').value)||0,
+    description:desc,
+    root_cause:(document.getElementById('trir-inc-root').value||'').trim()||null,
+    corrective_action:(document.getElementById('trir-inc-action').value||'').trim()||null,
+    recordable:document.getElementById('trir-inc-recordable').checked,
+    created_by:CU?.name||CU?.email||'',
+    updated_at:new Date().toISOString()
+  };
+  try{
+    if(id){
+      await DB.from('lhs_incidents').update(payload).eq('id',id);
+    } else {
+      payload.created_at=new Date().toISOString();
+      await DB.from('lhs_incidents').insert(payload);
+    }
+    document.getElementById('trir-modal').style.display='none';
+    tst(id?'Incident updated':'Incident logged','success');
+    showPage('hr-trir');
+  }catch(e){tst('Save failed: '+e.message,'error');}
+}
+
+async function oDeleteIncident(id){
+  if(!confirm('Delete this incident record? This cannot be undone.')) return;
+  try{
+    await DB.from('lhs_incidents').delete().eq('id',id);
+    tst('Incident deleted','success');
+    showPage('hr-trir');
+  }catch(e){tst('Delete failed: '+e.message,'error');}
 }
 
 /* ── Main page ── */
