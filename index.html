@@ -29516,6 +29516,8 @@ function _readDivCbs(pfx){
   return result.join(',');
 }
 function oAddItem(){
+  window._pendingItemImages=[];
+  window._itemImagesExisting=[];
   oMod('Add Inventory Item',`
   <div class="fr">
     <div class="fl"><label>SKU *</label><input id="ai-sku" placeholder="e.g. RM-FAN-001"></div>
@@ -29548,6 +29550,17 @@ function oAddItem(){
     <div class="fl"><label>Min Qty</label><input type="number" id="ai-min" value="0" min="0"></div>
     <div class="fl"><label>Max Qty</label><input type="number" id="ai-max" value="0" min="0"></div>
   </div>
+  <div style="margin:16px 0 4px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Product Images</div>
+    <div id="ai-img-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:flex-start">
+      <label class="item-img-add" style="width:80px;height:80px;border:2px dashed var(--bdr);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:11px;gap:3px;flex-shrink:0" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--bdr)'">
+        <input type="file" accept="image/*" multiple style="display:none" onchange="_itemImgFileChange(this,'ai')">
+        <span style="font-size:22px;line-height:1">📷</span>
+        <span style="text-align:center;line-height:1.3">Add<br>Photo</span>
+      </label>
+    </div>
+    <div id="ai-img-status" style="font-size:11px;color:var(--muted)"></div>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="svAddItem()">Save Item</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -29562,12 +29575,15 @@ async function svAddItem(){
   if(items.find(i=>i.sku===sku)){tst('SKU already exists','error');return}
   const vendors=_readVendorRows('ai');
   const primary=vendors.find(vr=>vr.primary)||vendors[0]||null;
+  const _uploadedImages=await _uploadPendingItemImages(sku);
   const item={sku,name,division:_readDivCbs('ai-div'),unit:v('ai-unit')||'Each',
     vendor:primary?.vendor||'',
     cost:primary?.cost||0,
     vendors:vendors.length?vendors:[],
+    bulk_pricing:primary?.bulk_pricing||[],
     customer_cost:parseFloat(v('ai-custcost'))||0,
     min:parseInt(v('ai-min'))||0,max:parseInt(v('ai-max'))||0,
+    images:_uploadedImages,
     created_at:new Date().toISOString()};
   const saved=await dbInsert('lhs:items',item);
   if(!saved){tst('Failed to save item','error');return}
@@ -29580,6 +29596,8 @@ function oEditItem(itemId){
   const item=items.find(i=>i.id===itemId||i.sku===itemId);
   if(!item){tst('Item not found','error');return;}
   window._editItemId=itemId;
+  window._itemImagesExisting=[...(item.images||[])];
+  window._pendingItemImages=[];
   // Use textContent for title to avoid any HTML injection issues
   const vens=S.get('lhs:vens')||[];
   oMod('',`
@@ -29625,20 +29643,21 @@ function oEditItem(itemId){
       <input type="number" id="ei-max" value="${esc(item.max||0)}" min="0">
     </div>
   </div>
-  <div style="margin:12px 0 4px">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Bulk Pricing</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;font-size:11px;font-weight:600;color:var(--muted);padding:0 2px;margin-bottom:4px">
-      <span>MIN QTY (units)</span><span>COST PER UNIT $</span><span></span>
-    </div>
-    <div id="ei-bulk-rows">
-      ${(item.bulk_pricing||[]).map(bp=>`
-      <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center">
-        <input type="number" class="ei-bulk-qty" value="${bp.min_qty||''}" min="1" placeholder="e.g. 10" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <input type="number" class="ei-bulk-cost" step="0.01" value="${(bp.cost||0).toFixed(2)}" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-        <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1">×</button>
+  <div style="margin:16px 0 4px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Product Images</div>
+    <div id="ei-img-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:flex-start">
+      ${(item.images||[]).map(url=>`
+      <div class="item-img-thumb" data-url="${esc(url)}" style="position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid var(--bdr)">
+        <img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">
+        <button type="button" onclick="_removeItemImageThumb(this)" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:18px;text-align:center;padding:0">×</button>
       </div>`).join('')}
+      <label class="item-img-add" style="width:80px;height:80px;border:2px dashed var(--bdr);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:11px;gap:3px;flex-shrink:0" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--bdr)'">
+        <input type="file" accept="image/*" multiple style="display:none" onchange="_itemImgFileChange(this,'ei')">
+        <span style="font-size:22px;line-height:1">📷</span>
+        <span style="text-align:center;line-height:1.3">Add<br>Photo</span>
+      </label>
     </div>
-    <button type="button" onclick="addBulkRow()" class="btn btn-o sm" style="margin-top:4px">+ Add Row</button>
+    <div id="ei-img-status" style="font-size:11px;color:var(--muted)"></div>
   </div>
   <div class="br2">
     <button class="btn btn-n" onclick="svEditItem()">Save Changes</button>
@@ -29650,6 +29669,7 @@ function oEditItem(itemId){
 }
 
 function addBulkRow(){
+  // Legacy — bulk pricing is now per-vendor. Kept for backward compatibility.
   const container=document.getElementById('ei-bulk-rows');
   if(!container) return;
   const row=document.createElement('div');
@@ -29659,6 +29679,76 @@ function addBulkRow(){
     <input type="number" class="ei-bulk-cost" step="0.01" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1">×</button>`;
   container.appendChild(row);
+}
+
+// ── ITEM IMAGE MANAGEMENT ─────────────────────────────────────────────────────
+function _itemImgFileChange(input, pfx){
+  const files=[...input.files];
+  if(!files.length) return;
+  if(!window._pendingItemImages) window._pendingItemImages=[];
+  const thumbs=document.getElementById(`${pfx}-img-thumbs`);
+  const label=thumbs?.querySelector('.item-img-add');
+  files.forEach(file=>{
+    const objectUrl=URL.createObjectURL(file);
+    window._pendingItemImages.push({file,objectUrl});
+    if(thumbs&&label){
+      const div=document.createElement('div');
+      div.className='item-img-thumb';
+      div.dataset.pending=objectUrl;
+      div.style.cssText='position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid var(--bdr)';
+      div.innerHTML=`<img src="${objectUrl}" style="width:100%;height:100%;object-fit:cover"><button type="button" onclick="_removeItemImageThumb(this)" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:18px;text-align:center;padding:0">×</button>`;
+      thumbs.insertBefore(div,label);
+    }
+  });
+  input.value='';
+  const status=document.getElementById(`${pfx}-img-status`);
+  if(status) status.textContent=`${window._pendingItemImages.length} photo(s) queued — will upload on save`;
+}
+function _removeItemImageThumb(btn){
+  const div=btn.closest('.item-img-thumb');
+  const url=div?.dataset.url;
+  const pending=div?.dataset.pending;
+  if(url&&window._itemImagesExisting){
+    window._itemImagesExisting=window._itemImagesExisting.filter(u=>u!==url);
+  }
+  if(pending&&window._pendingItemImages){
+    window._pendingItemImages=window._pendingItemImages.filter(p=>p.objectUrl!==pending);
+    URL.revokeObjectURL(pending);
+  }
+  div?.remove();
+}
+// ── Cloudflare R2 image upload ─────────────────────────────────────────────
+// Set this to your deployed Cloudflare Worker URL after setup
+const CF_IMG_WORKER='https://lhs-r2-proxy.george-a3e.workers.dev';
+
+async function _uploadPendingItemImages(pathKey){
+  const pending=window._pendingItemImages||[];
+  if(!pending.length) return[];
+  const uploaded=[];
+  // Get current Supabase session token to authenticate with the Worker
+  const session=(await DB.auth.getSession())?.data?.session;
+  const token=session?.access_token||'';
+  if(!token){tst('Not authenticated — images not uploaded','error');return[];}
+  for(const {file,objectUrl} of pending){
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    const fname=`${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
+    const storagePath=`${(pathKey||'misc').replace(/[^a-zA-Z0-9_\-]/g,'_')}/${fname}`;
+    try{
+      const fd=new FormData();
+      fd.append('file',file);
+      fd.append('path',storagePath);
+      const res=await fetch(CF_IMG_WORKER,{
+        method:'POST',
+        headers:{'Authorization':`Bearer ${token}`},
+        body:fd
+      });
+      if(!res.ok){const err=await res.text();console.warn('R2 upload failed',err);continue;}
+      const json=await res.json();
+      if(json.url){uploaded.push(json.url);URL.revokeObjectURL(objectUrl);}
+    }catch(e){console.warn('R2 upload exception',e.message);}
+  }
+  window._pendingItemImages=[];
+  return uploaded;
 }
 
 // ── ITEM VENDOR ROWS ──────────────────────────────────────────────────────────
@@ -29671,19 +29761,41 @@ function _buildVendorRowHTML(vr, pfx, vens){
   if(!vens) vens=S.get('lhs:vens')||[];
   const venOpts=vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option value="${n}"${n===(vr.vendor||'')?'  selected':''}>${n}</option>`;}).join('');
   const isPrimary=!!vr.primary;
-  return`<div class="item-vend-row" style="display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;margin-bottom:6px;align-items:center;padding:8px 8px 8px 6px;border-radius:8px;border:1.5px solid ${isPrimary?'var(--green)':'var(--bdr)'};background:${isPrimary?'#f0fdf4':''}">
+  const bpRows=(vr.bulk_pricing||[]).map(bp=>`
+    <div class="ivend-bp-row" style="display:grid;grid-template-columns:1fr 1fr 32px;gap:5px;margin-bottom:5px;align-items:center">
+      <input type="number" class="ivend-bp-qty" value="${bp.min_qty||''}" min="1" placeholder="Min Qty" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px">
+      <input type="number" class="ivend-bp-cost" step="0.01" value="${(bp.cost||0).toFixed(2)}" placeholder="0.00" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px">
+      <button type="button" onclick="this.closest('.ivend-bp-row').remove()" style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>
+    </div>`).join('');
+  const bpEmpty=!(vr.bulk_pricing||[]).length;
+  return`<div class="item-vend-row" style="border-radius:8px;border:1.5px solid ${isPrimary?'var(--green)':'var(--bdr)'};background:${isPrimary?'#f0fdf4':''};margin-bottom:8px;overflow:hidden">
+  <div style="display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;padding:8px 8px 8px 6px;align-items:center">
     <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer" title="Mark as primary — activates this vendor cost">
       <input type="radio" name="${pfx}-vend-primary" ${isPrimary?'checked':''} onchange="_vendorRowPrimaryChanged(this)" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
-      ${isPrimary?`<span style="font-size:9px;font-weight:700;color:var(--green);letter-spacing:.02em">ACTIVE</span>`:`<span style="font-size:9px;color:var(--muted)">set</span>`}
+      <span class="ivend-active-lbl" style="font-size:9px;font-weight:${isPrimary?700:400};color:${isPrimary?'var(--green)':'var(--muted)'};letter-spacing:.02em">${isPrimary?'ACTIVE':'set'}</span>
     </label>
     <select class="ivend-name" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
       <option value="">— Select Vendor —</option>
       ${venOpts}
     </select>
-    <input type="text" class="ivend-partno" value="${esc(vr.part_number||'')}" placeholder="Vendor Part # (opt.)" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
+    <input type="text" class="ivend-partno" value="${esc(vr.part_number||'')}" placeholder="Vendor Part #" oninput="_itemVendorPartnoChanged(this)" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
     <input type="number" class="ivend-cost" step="0.01" value="${(vr.cost||0).toFixed(2)}" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
     <button type="button" onclick="_removeVendorRow(this)" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0" title="Remove vendor">×</button>
-  </div>`;
+  </div>
+  <div class="ivend-bp-section" style="border-top:1px solid var(--bdr);padding:7px 10px 8px 10px;background:${isPrimary?'#f7fef9':'#fafafa'}">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+      <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Bulk Pricing Tiers</span>
+      <button type="button" onclick="_addVendorBulkRow(this)" style="font-size:11px;padding:2px 8px;border:1px solid var(--bdr);border-radius:5px;background:white;cursor:pointer;color:var(--navy)">+ Add Tier</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:4px;font-size:10px;font-weight:600;color:var(--muted);padding:0 2px;margin-bottom:3px">
+      <span>MIN QTY</span><span>COST/UNIT $</span><span></span>
+    </div>
+    <div class="ivend-bp-rows">
+      ${bpRows}
+      ${bpEmpty?`<div class="ivend-bp-empty" style="font-size:11px;color:var(--muted);font-style:italic;padding:2px 0">No bulk tiers — click + Add Tier</div>`:''}
+    </div>
+  </div>
+</div>`;
 }
 function _vendorRowPrimaryChanged(radio){
   document.querySelectorAll('.item-vend-row').forEach(row=>{
@@ -29691,31 +29803,50 @@ function _vendorRowPrimaryChanged(radio){
     const on=r&&r.checked;
     row.style.borderColor=on?'var(--green)':'var(--bdr)';
     row.style.background=on?'#f0fdf4':'';
-    const lbl=row.querySelector('label span');
-    if(lbl){lbl.textContent=on?'ACTIVE':'set';lbl.style.color=on?'var(--green)':'var(--muted)';}
+    const lbl=row.querySelector('.ivend-active-lbl');
+    if(lbl){lbl.textContent=on?'ACTIVE':'set';lbl.style.color=on?'var(--green)':'var(--muted)';lbl.style.fontWeight=on?'700':'400';}
+    const bp=row.querySelector('.ivend-bp-section');
+    if(bp) bp.style.background=on?'#f7fef9':'#fafafa';
   });
+  // Sync SKU field to primary vendor's part number
+  const primaryRow=radio.closest('.item-vend-row');
+  const partno=(primaryRow?.querySelector('.ivend-partno')?.value||'').trim();
+  if(partno){
+    const skuEl=document.getElementById('ei-sku')||document.getElementById('ai-sku');
+    if(skuEl) skuEl.value=partno;
+  }
+}
+function _itemVendorPartnoChanged(input){
+  const row=input.closest('.item-vend-row');
+  const radio=row?.querySelector('input[type=radio]');
+  if(radio?.checked){
+    const skuEl=document.getElementById('ei-sku')||document.getElementById('ai-sku');
+    if(skuEl) skuEl.value=input.value;
+  }
 }
 function _addVendorRow(pfx){
   const container=document.getElementById(`${pfx}-vendor-rows`);
   if(!container) return;
-  const div=document.createElement('div');
-  div.className='item-vend-row';
-  div.style.cssText='display:grid;grid-template-columns:44px 1fr 130px 110px 32px;gap:6px;margin-bottom:6px;align-items:center;padding:8px 8px 8px 6px;border-radius:8px;border:1.5px solid var(--bdr)';
   const vens=S.get('lhs:vens')||[];
-  const venOpts=vens.map(v=>{const n=esc(typeof v==='string'?v:v.name);return`<option value="${n}">${n}</option>`;}).join('');
-  div.innerHTML=`
-    <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer" title="Mark as primary">
-      <input type="radio" name="${pfx}-vend-primary" onchange="_vendorRowPrimaryChanged(this)" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
-      <span style="font-size:9px;color:var(--muted)">set</span>
-    </label>
-    <select class="ivend-name" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
-      <option value="">— Select Vendor —</option>
-      ${venOpts}
-    </select>
-    <input type="text" class="ivend-partno" placeholder="Vendor Part # (opt.)" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-family:inherit">
-    <input type="number" class="ivend-cost" step="0.01" value="0.00" placeholder="0.00" style="padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
-    <button type="button" onclick="_removeVendorRow(this)" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0;line-height:1" title="Remove">×</button>`;
-  container.appendChild(div);
+  const html=_buildVendorRowHTML({vendor:'',part_number:'',cost:0,primary:false,bulk_pricing:[]},pfx,vens);
+  const tmp=document.createElement('div');
+  tmp.innerHTML=html;
+  container.appendChild(tmp.firstElementChild);
+}
+function _addVendorBulkRow(btn){
+  const section=btn.closest('.ivend-bp-section');
+  const container=section?.querySelector('.ivend-bp-rows');
+  if(!container) return;
+  const empty=container.querySelector('.ivend-bp-empty');
+  if(empty) empty.remove();
+  const row=document.createElement('div');
+  row.className='ivend-bp-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 32px;gap:5px;margin-bottom:5px;align-items:center';
+  row.innerHTML=`
+    <input type="number" class="ivend-bp-qty" min="1" placeholder="Min Qty" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px">
+    <input type="number" class="ivend-bp-cost" step="0.01" placeholder="0.00" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:5px;font-size:12px">
+    <button type="button" onclick="this.closest('.ivend-bp-row').remove()" style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>`;
+  container.appendChild(row);
 }
 function _removeVendorRow(btn){
   const row=btn.closest('.item-vend-row');
@@ -29734,7 +29865,11 @@ function _readVendorRows(pfx){
     vendor:row.querySelector('.ivend-name')?.value||'',
     part_number:(row.querySelector('.ivend-partno')?.value||'').trim(),
     cost:parseFloat(row.querySelector('.ivend-cost')?.value)||0,
-    primary:!!(row.querySelector('input[type=radio]')?.checked)
+    primary:!!(row.querySelector('input[type=radio]')?.checked),
+    bulk_pricing:[...row.querySelectorAll('.ivend-bp-row')].map(bpr=>({
+      min_qty:parseInt(bpr.querySelector('.ivend-bp-qty')?.value)||0,
+      cost:parseFloat(bpr.querySelector('.ivend-bp-cost')?.value)||0
+    })).filter(bp=>bp.min_qty>0)
   })).filter(r=>r.vendor);
 }
 
@@ -29765,17 +29900,19 @@ async function svEditItem(){
   item.customer_cost=parseFloat(v('ei-custcost'))||0;
   item.min=parseInt(v('ei-min'))||0;
   item.max=parseInt(v('ei-max'))||0;
-  item.bulk_pricing=[...document.querySelectorAll('#ei-bulk-rows > div')].map(row=>({
-    min_qty:parseInt(row.querySelector('.ei-bulk-qty')?.value)||0,
-    cost:parseFloat(row.querySelector('.ei-bulk-cost')?.value)||0
-  })).filter(bp=>bp.min_qty>0);
+  // Bulk pricing comes from the primary vendor's tiers
+  item.bulk_pricing=_primaryVendor?.bulk_pricing||[];
+  // Images — upload any pending new images, combine with kept existing
+  const _keptImages=window._itemImagesExisting||[...(item.images||[])];
+  const _uploadedImages=await _uploadPendingItemImages(item.sku||item.id||'unknown');
+  item.images=[..._keptImages,..._uploadedImages];
   S.set('lhs:items',items);
   if(item.id){
     await dbUpdate('lhs:items',item.id,{
       sku:item.sku,name:item.name,division:item.division,unit:item.unit,
       vendor:item.vendor,cost:item.cost,customer_cost:item.customer_cost||0,
       min:item.min,max:item.max,bulk_pricing:item.bulk_pricing,
-      vendors:item.vendors
+      vendors:item.vendors,images:item.images
     });
   } else {
     // Item has no Supabase id — insert it now and store the returned id
