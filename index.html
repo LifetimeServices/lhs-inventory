@@ -12538,8 +12538,8 @@ function aUsers(){
     <td style="text-align:center">${u.include_dispatch!==false?bx('Yes','bg'):bx('No','bgr')}</td>
     <td style="text-align:center">${u.timesheet_needed!==false?bx('Yes','bg'):bx('No','bgr')}</td>
     <td style="white-space:nowrap">
-      <button class="btn sm btn-o" onclick="oEditUser(${i})">Edit</button>
-      <button class="btn sm btn-r" onclick="delUser(${i})">&#215;</button>
+      <button class="btn sm btn-o" onclick="oEditUser('${u.id||u.email}')">Edit</button>
+      <button class="btn sm btn-r" onclick="delUser('${u.id||u.email}')">&#215;</button>
     </td>
   </tr>`;}).join('')}
   </tbody></table></div></div>`;
@@ -12689,8 +12689,10 @@ async function svAddUser(){
   tst(`${name} added successfully. They can now log in from any device.`,'success');
   g('atab').innerHTML=aUsers();
 }
-function oEditUser(i){
-  const users=S.get('lhs:users')||USERS;const u=users[i];
+function oEditUser(idOrEmail){
+  const users=S.get('lhs:users')||USERS;
+  const u=users.find(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(!u){tst('User not found','error');return;}
   const mgrs=(S.get('lhs:users')||USERS).filter(x=>['Creator','God View','Admin','Director','Regional Director','Regional Manager','Operations Manager'].includes(x.role)).sort((a,b)=>a.name.localeCompare(b.name));
   oMod('Edit: '+u.name,`<div class="fr">
     <div class="fl"><label>Full Name</label><input id="eu0" value="${u.name}"></div>
@@ -12811,17 +12813,19 @@ function oEditUser(i){
     </div>
   </div>
   <div class="br2">
-    <button class="btn btn-n" onclick="svEditUser(${i})">Save</button>
+    <button class="btn btn-n" onclick="svEditUser('${u.id||u.email}')">Save</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
   </div>`);
 }
-async function svEditUser(i){
+async function svEditUser(idOrEmail){
   const users=S.get('lhs:users')||[...USERS];
+  const idx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(idx<0){tst('User not found','error');return;}
   const _incDisp=document.getElementById('eu-disp')?.value;
   const _tsNeeded=document.getElementById('eu-ts')?.value;
   const _rawPw=(v('eu2')||'').trim();
   // If blank — keep existing password hash unchanged
-  const _existingHash=users[i]?.password_hash||users[i]?.pw||'';
+  const _existingHash=users[idx]?.password_hash||users[idx]?.pw||'';
   let _newPwHash=_existingHash;
   if(_rawPw){
     const _isAlreadyHashed=/^[a-f0-9]{64}$/.test(_rawPw);
@@ -12835,7 +12839,7 @@ async function svEditUser(i){
   }
   const _mfaVal=document.getElementById('eu-mfa')?.value;
   const updated={
-    ...users[i],
+    ...users[idx],
     name:v('eu0'),email:v('eu1'),pw:_newPwHash,password_hash:_newPwHash,
     role:v('eu3'),division:v('eu4'),region:v('eu5'),
     loc:v('eu6'),home_location:v('eu6'),manager:v('eu7'),
@@ -12850,9 +12854,10 @@ async function svEditUser(i){
     can_sell:document.getElementById('eu-cansell')?.value!=='false',
     can_office_sell:document.getElementById('eu-canofficesell')?.value!=='false',
   };
-  users[i]=updated;
+  users[idx]=updated;
   S.set('lhs:users',users);
-  if(USERS[i]) USERS[i]={...USERS[i],...updated};
+  const ui=USERS.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(ui>=0) USERS[ui]={...USERS[ui],...updated};
   if(updated.id){
     const dbFields={name:updated.name,role:updated.role,division:updated.division,
       region:updated.region,home_location:updated.home_location,manager:updated.manager,
@@ -12867,12 +12872,15 @@ async function svEditUser(i){
   logAudit('user_updated',{name:updated.name,email:updated.email,role:updated.role,updated_by:CU?.email});
   cMod();tst('User updated','success');g('atab').innerHTML=aUsers();
 }
-function delUser(i){
+function delUser(idOrEmail){
   const users=S.get('lhs:users')||[...USERS];
-  if(users[i]?.email===CU?.email){tst('Cannot delete your own account','error');return}
-  if(!confirm(`Delete user "${users[i]?.name}"?`))return;
-  users.splice(i,1);S.set('lhs:users',users);
-  if(USERS[i]) USERS.splice(i,1);
+  const idx=users.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(idx<0){tst('User not found','error');return;}
+  if(users[idx]?.email===CU?.email){tst('Cannot delete your own account','error');return;}
+  if(!confirm(`Delete user "${users[idx]?.name}"?`))return;
+  users.splice(idx,1);S.set('lhs:users',users);
+  const ui=USERS.findIndex(x=>x.id===idOrEmail||x.email===idOrEmail);
+  if(ui>=0) USERS.splice(ui,1);
   tst('User deleted','info');g('atab').innerHTML=aUsers();
 }
 
