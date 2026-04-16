@@ -38592,7 +38592,8 @@ function bAccountHub(){
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">City</label><br><input id="ahub-city" value="${esc(c.city||'')}" style="${inpStyle}"></div>
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">State</label><br><input id="ahub-state" value="${esc(c.state||'')}" style="${inpStyle}"></div>
             <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Zip</label><br><input id="ahub-zip" value="${esc(c.zip||'')}" style="${inpStyle}" onblur="_ahubLookupCounty()"></div>
-            <div style="grid-column:1/-1"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">County <span style="font-size:10px;font-weight:400;color:var(--teal)">(auto-fills from ZIP)</span></label><br><input id="ahub-county" value="${esc(c.county||'')}" placeholder="e.g. Milwaukee County" style="${inpStyle}"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">County <span style="font-size:10px;font-weight:400;color:var(--teal)">(auto-fills from ZIP)</span></label><br><input id="ahub-county" value="${esc(c.county||'')}" placeholder="e.g. Milwaukee County" style="${inpStyle}" oninput="_ahubAutoTerritory()"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Territory <span style="font-size:10px;font-weight:400;color:var(--teal)">(auto-set from county)</span></label><br><input id="ahub-territory" value="${esc(c.territory||lookupTerritory(c.state||'',c.county||'')||'')}" placeholder="Auto-assigned" style="${inpStyle}" readonly></div>
           </div>
           <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
             <textarea id="ahub-notes" style="${inpStyle};height:80px;resize:vertical">${esc(c.notes||'')}</textarea>
@@ -38936,6 +38937,7 @@ async function acctHubSave(id){
     state:document.getElementById('ahub-state')?.value||null,
     zip:document.getElementById('ahub-zip')?.value||null,
     county:document.getElementById('ahub-county')?.value||null,
+    territory:document.getElementById('ahub-territory')?.value||null,
     notes:document.getElementById('ahub-notes')?.value||null,
     source:document.getElementById('ahub-src')?.value||null,
     updated_at:new Date().toISOString(),
@@ -38958,8 +38960,17 @@ async function _ahubLookupCounty(){
     const r=await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(zip)}&countrycodes=US&format=json&addressdetails=1&limit=1`,{headers:{'Accept-Language':'en-US,en'}});
     const d=await r.json();
     const county=d[0]?.address?.county||'';
-    if(county&&!el.value) el.value=county;
+    if(county&&!el.value){ el.value=county; _ahubAutoTerritory(); }
   }catch(e){console.warn('County lookup:',e.message);}
+}
+
+// Auto-set territory from county + state
+function _ahubAutoTerritory(){
+  const state=(document.getElementById('ahub-state')?.value||'').trim();
+  const county=(document.getElementById('ahub-county')?.value||'').trim();
+  const terr=lookupTerritory(state,county);
+  const terrEl=document.getElementById('ahub-territory');
+  if(terrEl&&terr) terrEl.value=terr;
 }
 
 // ── ACCOUNT FILES ─────────────────────────────────────────────────────────────
