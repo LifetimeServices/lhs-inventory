@@ -37952,7 +37952,7 @@ async function _acctLoad(){
   </div>
   <div class="card" style="padding:0;margin-bottom:${_acctOpenId?'20px':'0'}">
     <div class="tw" style="margin:0"><table>
-      <thead><tr><th>Account</th>${_cfTH('accounts','type','Type',_uTypes)}<th>Phone</th>${_cfTH('accounts','owner','Owner',_uOwners)}${_cfTH('accounts','location','Location',_uLocs)}<th style="text-align:center">Open Opps</th><th>Total Revenue</th><th>Last Activity</th>${_cfTH('accounts','health','Health',_uHealths)}<th></th></tr></thead>
+      <thead><tr>${_sortTH('_sortAcct','name','Account',_acctSort)}${_cfTH('accounts','type','Type',_uTypes)}${_sortTH('_sortAcct','phone','Phone',_acctSort)}${_cfTH('accounts','owner','Owner',_uOwners)}${_cfTH('accounts','location','Location',_uLocs)}${_sortTH('_sortAcct','opps','Open Opps',_acctSort,'text-align:center')}${_sortTH('_sortAcct','revenue','Total Revenue',_acctSort)}${_sortTH('_sortAcct','activity','Last Activity',_acctSort)}${_cfTH('accounts','health','Health',_uHealths)}<th></th></tr></thead>
       <tbody>${tableRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No accounts found.</td></tr>'}</tbody>
     </table></div>
   </div>
@@ -40309,6 +40309,15 @@ function _cfFilter(tableId,field,val){
   if(!sel.length) return true;
   return sel.includes(String(val===null||val===undefined||val===''?'(Blank)':val));
 }
+// Sort-only header (no filter dropdown) — same visual style as _cfTH
+function _sortTH(sortFn,field,label,sortState,extra=''){
+  const active=sortState.field===field;
+  const icon=active?(sortState.dir===1?'▲':'▼'):'▾';
+  const style=`cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--teal);':''}${extra?extra+';':''}`;
+  return`<th style="${style}" onclick="${sortFn}('${field}')">
+    <span style="display:inline-flex;align-items:center;gap:4px">${label} <span style="font-size:10px;color:${active?'var(--teal)':'var(--muted)'}">${icon}</span></span>
+  </th>`;
+}
 // Header builder: icon + label, highlights when filter active
 function _cfTH(tableId,field,label,allVals,extra='',labelFn=null){
   const active=_cfActive(tableId,field);
@@ -40426,6 +40435,7 @@ function renderCRMLeadsTable(leads){
     const f=_leadSort.field,d=_leadSort.dir;
     if(f==='score') return d*(calcLeadScore(b)-calcLeadScore(a));
     if(f==='name') return d*((a.first_name||'')+(a.last_name||'')).localeCompare((b.first_name||'')+(b.last_name||''));
+    if(f==='phone') return d*(a.phone||'').localeCompare(b.phone||'');
     if(f==='source') return d*(a.source_category||a.source||'').localeCompare(b.source_category||b.source||'');
     if(f==='division') return d*(a.division||'').localeCompare(b.division||'');
     if(f==='assigned') return d*(a.assigned_to||'').localeCompare(b.assigned_to||'');
@@ -40443,7 +40453,7 @@ function renderCRMLeadsTable(leads){
   );
   if(!sorted.length) return`<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No leads match the active filters. <button class="btn btn-o sm" onclick="window._cfState.leads={};filterLeads(_leadStatusFilter||'All')">Clear Filters</button></div>`;
   return`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Score</th><th>Name</th><th>Phone / Email</th>${_cfTH('leads','source','Source',uSources)}${_cfTH('leads','division','Division',uDivs)}${_cfTH('leads','assigned','Assigned',uAssigned)}${_cfTH('leads','status','Status',uStatuses)}${_cfTH('leads','priority','Priority',uPriority)}<th>Est. Value</th><th>Next Follow-up</th><th></th></tr></thead>
+  <thead><tr>${_sortTH('_sortLeads','score','Score',_leadSort)}${_sortTH('_sortLeads','name','Name',_leadSort)}${_sortTH('_sortLeads','phone','Phone / Email',_leadSort)}${_cfTH('leads','source','Source',uSources)}${_cfTH('leads','division','Division',uDivs)}${_cfTH('leads','assigned','Assigned',uAssigned)}${_cfTH('leads','status','Status',uStatuses)}${_cfTH('leads','priority','Priority',uPriority)}${_sortTH('_sortLeads','value','Est. Value',_leadSort)}${_sortTH('_sortLeads','followup','Next Follow-up',_leadSort)}<th></th></tr></thead>
   <tbody>${sorted.map(l=>{const sc=calcLeadScore(l);return`<tr style="cursor:pointer" onclick="openLead('${l.id}')">
     <td>${scoreRing(sc)}</td>
     <td>
@@ -40515,7 +40525,7 @@ function renderCRMPipeline(){
   </div>
   ${!opps.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No opportunities yet.</div>'
   :`<div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Name</th><th>Customer</th>${_cfTH('opps','division','Division',_uOppDivs)}${_cfTH('opps','stage','Stage',_uOppStages)}<th>%</th><th>Est. Value</th><th>Close Date</th>${_cfTH('opps','assigned','Assigned',_uOppAssigned)}<th></th></tr></thead>
+  <thead><tr>${_sortTH('_sortOpp','name','Name',_oppSort)}${_sortTH('_sortOpp','customer','Customer',_oppSort)}${_cfTH('opps','division','Division',_uOppDivs)}${_cfTH('opps','stage','Stage',_uOppStages)}${_sortTH('_sortOpp','prob','%',_oppSort)}${_sortTH('_sortOpp','value','Est. Value',_oppSort)}${_sortTH('_sortOpp','close','Close Date',_oppSort)}${_cfTH('opps','assigned','Assigned',_uOppAssigned)}<th></th></tr></thead>
   <tbody>${opps.map(o=>`<tr style="cursor:pointer" onclick="openOpportunity('${o.id}')">
     <td style="font-weight:600">${o.name}</td>
     <td style="font-size:12px;color:var(--muted)">${esc(custName(o))}</td>
