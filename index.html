@@ -37105,7 +37105,8 @@ function bSalesBoard(){
   const period=window._sbPeriod||'mtd';
   const selDiv=window._sbDiv||'';
   const today=new Date();
-  const todayStr=today.toISOString().split('T')[0];
+  // Use LOCAL date, not UTC — avoids timezone rollover after ~8pm Eastern
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
   // Compute date range from period
   let fromStr,toStr=todayStr;
@@ -37692,9 +37693,10 @@ function _fupQueueLoad(){
   if(!el) return;
   const leads=S.get('lhs:leads')||[];
   const now=new Date();
-  const todayStr=now.toISOString().slice(0,10);
+  // Local date — avoids UTC timezone rollover after ~8pm Eastern
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const weekEnd=new Date(now);weekEnd.setDate(weekEnd.getDate()+7);
-  const weekStr=weekEnd.toISOString().slice(0,10);
+  const weekStr=`${weekEnd.getFullYear()}-${String(weekEnd.getMonth()+1).padStart(2,'0')}-${String(weekEnd.getDate()).padStart(2,'0')}`;
   const fAssigned=window._fupFAssigned||'';
   const fDiv=window._fupFDiv||'';
   const fStatus=window._fupFStatus||'';
