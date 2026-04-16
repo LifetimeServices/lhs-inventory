@@ -18772,19 +18772,32 @@ async function stPhotoImport200(){
         if(ji>0&&ji%50===0){try{token=await _stGetToken();}catch(e){}}
         // Try attachments endpoint
         const attData=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs/${job.id}/attachments`);
-        const atts=(attData.data||attData.items||attData||[]).filter(a=>{
-          const src=a.url||a.downloadUrl||'';
-          const fn=a.filename||a.name||src;
-          return src&&/\.(jpg|jpeg|png|gif|webp)/i.test(fn);
+        const rawAtts=attData.data||attData.items||(Array.isArray(attData)?attData:[]);
+        // Debug: log first job's raw response so we can see the shape
+        if(ji===0&&rawAtts.length>0){
+          log(`  [debug] First job (${job.id}) attachment sample: ${JSON.stringify(rawAtts[0]).slice(0,300)}`);
+        } else if(ji===0){
+          log(`  [debug] First job (${job.id}) attachments response keys: ${Object.keys(attData).join(',')}`);
+        }
+        const atts=rawAtts.filter(a=>{
+          const src=a.url||a.downloadUrl||a.uri||'';
+          const fn=a.filename||a.name||a.fileName||src;
+          const ct=a.contentType||a.mimeType||a.type||'';
+          // Accept if content-type is image, or filename has image extension
+          const isImg=/^image\//i.test(ct)||/\.(jpg|jpeg|png|gif|webp|heic)/i.test(fn);
+          // Also accept if ST type field indicates photo
+          const isPhoto=/photo|image/i.test(ct+' '+String(a.type||''));
+          return src&&(isImg||isPhoto);
         });
+        if(rawAtts.length>0) log(`  Job ${stJobId}: ${rawAtts.length} attachments found, ${atts.length} qualify as images`);
         for(const att of atts){
           try{
-            const src=att.url||att.downloadUrl;
+            const src=att.url||att.downloadUrl||att.uri;
             const appKey=S.get('lhs:st_app_key')||'';
             const imgR=await fetch(src,{headers:{'Authorization':'Bearer '+token,...(appKey?{'ST-App-Key':appKey}:{})}});
             if(!imgR.ok){errors++;continue;}
             const blob=await imgR.blob();
-            const fname=att.filename||att.name||`st_${att.id||Date.now()}.jpg`;
+            const fname=att.filename||att.fileName||att.name||`st_${att.id||Date.now()}.jpg`;
             const file=new File([blob],fname,{type:blob.type||'image/jpeg'});
             const path=`st-migration/${job.customerId||'unknown'}/${job.id}/${fname}`;
             const up=await lhsUploadFile(file,path);
