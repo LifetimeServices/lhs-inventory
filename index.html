@@ -12507,23 +12507,41 @@ function aUsers(){
     seen.add(key); return true;
   // Creator users are hidden from all non-Creators (and invisible as Creator even to themselves)
   }).filter(u=>u.role!=='Creator'||CU?.role==='Creator');
+  const hasSellFlags=deduped.some(u=>u.can_sell===true||u.can_sell===false);
   return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddUser()">+ Add User</button></div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division</th><th>Region</th><th>Manager</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
-  <tbody>${deduped.map((u,i)=>`<tr>
+  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division(s)</th><th>Region</th><th>Manager</th><th>Capabilities</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
+  <tbody>${deduped.map((u,i)=>{
+    // Build division pills: primary + service_divisions
+    const extraDivs=(u.service_divisions||[]).filter(d=>d&&d!==u.division);
+    const divCell=`<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">
+      ${u.division?`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;background:var(--teal);color:white">${esc(u.division)}</span>`:'<span style="color:var(--muted);font-size:12px">All</span>'}
+      ${extraDivs.map(d=>`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;background:var(--bdr);color:var(--navy)">${esc(d)}</span>`).join('')}
+    </div>`;
+    // Capability badges
+    const sellBadge=hasSellFlags
+      ?(u.can_sell!==false?`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;background:#dcfce7;color:#166534" title="Appears in Sold By, Lead Owner, Opp Assigned To">💼 Sales</span>`
+        :`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;background:#f3f4f6;color:var(--muted)">—</span>`)
+      :'';
+    const officeBadge=hasSellFlags
+      ?(u.can_office_sell!==false?`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;background:#dbeafe;color:#1e40af" title="Appears in Office Sold By">🏢 Office</span>`:'')
+      :'';
+    const capCell=`<div style="display:flex;flex-wrap:wrap;gap:3px">${sellBadge}${officeBadge}</div>`;
+    return`<tr>
     <td style="font-weight:600">${u.name}</td>
     <td style="font-size:12px;color:var(--muted)">${u.email}</td>
     <td>${bx(u.role==='Creator'?'God View':u.role,'bn')}</td>
-    <td style="font-size:12px;color:var(--muted)">${u.division||'—'}</td>
+    <td>${divCell}</td>
     <td style="font-size:12px;color:var(--muted)">${u.region||'—'}</td>
     <td style="font-size:12px;color:var(--muted)">${u.manager||'—'}</td>
+    <td>${capCell}</td>
     <td style="text-align:center">${u.include_dispatch!==false?bx('Yes','bg'):bx('No','bgr')}</td>
     <td style="text-align:center">${u.timesheet_needed!==false?bx('Yes','bg'):bx('No','bgr')}</td>
     <td style="white-space:nowrap">
       <button class="btn sm btn-o" onclick="oEditUser(${i})">Edit</button>
       <button class="btn sm btn-r" onclick="delUser(${i})">&#215;</button>
     </td>
-  </tr>`).join('')}
+  </tr>`;}).join('')}
   </tbody></table></div></div>`;
 }
 function oAddUser(){
@@ -26569,8 +26587,8 @@ function oEditWODetails(woId){
       <label>Office Sold By</label>
       <div style="position:relative">
         <input id="ewo-officesold-search" placeholder="Search users…" autocomplete="off" value="${esc(wo.office_sold_by||'')}"
-          oninput="_soldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
-          onfocus="_soldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
+          oninput="_officeSoldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
+          onfocus="_officeSoldBySearch(this.value,'ewo-officesold-search','ewo-officesold-val','ewo-officesold-drop')"
           onblur="setTimeout(()=>{const d=document.getElementById('ewo-officesold-drop');if(d)d.style.display='none'},200)"
           style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
         <input type="hidden" id="ewo-officesold-val" value="${esc(wo.office_sold_by||'')}">
@@ -41972,7 +41990,9 @@ function leadAutoTerritory(pfx){
 }
 
 function leadOwnerSearch(query,pfx){
-  var reps=(S.get('lhs:users')||[]).filter(function(u){return u.name&&u.active!==false;});
+  var allU=(S.get('lhs:users')||[]).filter(function(u){return u.name&&u.active!==false;});
+  var hasSellFlag=allU.some(function(u){return u.can_sell===true||u.can_sell===false;});
+  var reps=hasSellFlag?allU.filter(function(u){return u.can_sell!==false;}):allU;
   var drop=document.getElementById(pfx+'-rep-drop');
   var q=(query||'').toLowerCase();
   var matches=q?reps.filter(function(u){return u.name.toLowerCase().includes(q);}):reps;
@@ -46075,8 +46095,8 @@ function _showSoldByModal(estId){
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Office Sold By</label>
       <div style="position:relative">
         <input id="office-sold-search" placeholder="Search users…" autocomplete="off" value="${esc(e.office_sold_by||'')}"
-          oninput="_soldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
-          onfocus="_soldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
+          oninput="_officeSoldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
+          onfocus="_officeSoldBySearch(this.value,'office-sold-search','office-sold-val','office-sold-drop')"
           onblur="setTimeout(()=>{const d=document.getElementById('office-sold-drop');if(d)d.style.display='none'},200)"
           style="width:100%;padding:8px 10px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
         <input type="hidden" id="office-sold-val" value="${esc(e.office_sold_by||'')}">
@@ -46091,20 +46111,43 @@ function _showSoldByModal(estId){
   </div>`);
 }
 
+// ── Shared helpers: get filtered user lists by capability ──────────────────────
+function _getSalesUsers(){
+  const all=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const hasFlag=all.some(u=>u.can_sell===true||u.can_sell===false);
+  return hasFlag?all.filter(u=>u.can_sell!==false):all;
+}
+function _getOfficeUsers(){
+  const all=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
+  const hasFlag=all.some(u=>u.can_office_sell===true||u.can_office_sell===false);
+  return hasFlag?all.filter(u=>u.can_office_sell!==false):all;
+}
+function _userDropHTML(users,searchId,valId,dropId){
+  return users.map(u=>`<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
+    onmouseenter="this.style.background='#f0fafa'" onmouseleave="this.style.background=''"
+    onmousedown="_soldByPick('${u.name.replace(/'/g,"\\'")}','${searchId}','${valId}','${dropId}')">👤 ${esc(u.name)}</div>`).join('');
+}
+
 function _soldBySearch(query,searchId,valId,dropId){
-  const allUsers=(S.get('lhs:users')||[]).filter(u=>u.name&&u.active!==false);
-  // If any user has can_sell explicitly configured, filter to only those; otherwise show all (backward compat)
-  const hasSellFlag=allUsers.some(u=>u.can_sell===true||u.can_sell===false);
-  const all=hasSellFlag?allUsers.filter(u=>u.can_sell!==false):allUsers;
+  const all=_getSalesUsers();
   const q=(query||'').toLowerCase();
   const matches=q?all.filter(u=>(u.name||'').toLowerCase().includes(q)):all;
   const drop=document.getElementById(dropId);
   if(!drop) return;
   if(!matches.length){drop.style.display='none';return;}
   drop.style.display='block';
-  drop.innerHTML=matches.map(u=>`<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr)"
-    onmouseenter="this.style.background='#f0fafa'" onmouseleave="this.style.background=''"
-    onmousedown="_soldByPick('${u.name.replace(/'/g,"\\'")}','${searchId}','${valId}','${dropId}')">👤 ${esc(u.name)}</div>`).join('');
+  drop.innerHTML=_userDropHTML(matches,searchId,valId,dropId);
+}
+
+function _officeSoldBySearch(query,searchId,valId,dropId){
+  const all=_getOfficeUsers();
+  const q=(query||'').toLowerCase();
+  const matches=q?all.filter(u=>(u.name||'').toLowerCase().includes(q)):all;
+  const drop=document.getElementById(dropId);
+  if(!drop) return;
+  if(!matches.length){drop.style.display='none';return;}
+  drop.style.display='block';
+  drop.innerHTML=_userDropHTML(matches,searchId,valId,dropId);
 }
 
 function _soldByPick(name,searchId,valId,dropId){
