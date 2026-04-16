@@ -555,7 +555,7 @@ const PERM_MODS=[
   {key:'operations',label:'Operations',icon:'⚙️',perms:['view','create','edit','manage_assignments','access_sds','manage_sds','load_training','training_assigned_only','training_direct_reports_only']},
   {key:'admin',label:'Admin',icon:'🔐',perms:['view','manage_users','change_permissions','manage_integrations','view_audit','access_regions','access_territories','access_divisions','access_wo_settings','access_vendors','access_security']},
   {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook'],
-    tabs:['tab_crm_dash','tab_leads','tab_sales_accounts','tab_opps','tab_estimates','tab_pricebook','tab_followups','tab_activities','tab_email_sync','tab_marketing','tab_discounts','tab_permits','tab_sales_settings']},
+    tabs:['tab_crm_dash','tab_leads','tab_sales_accounts','tab_opps','tab_estimates','tab_pricebook','tab_followups','tab_activities','tab_email_sync','tab_marketing','tab_discounts','tab_permits','tab_sales_settings','tab_leaderboard']},
 ];
 
 const PERM_LABELS={
@@ -602,6 +602,7 @@ const PERM_LABELS={
   tab_followups:'Follow Ups',tab_activities:'Activities',tab_email_sync:'Email Sync',
   tab_marketing:'Marketing',tab_discounts:'Discounts & Promotions',
   tab_permits:'Permits & Licensing',tab_sales_settings:'Sales Settings',
+  tab_leaderboard:'Leaderboard',
 };
 
 // ── REGIONS ──────────────────────────────────────────────────────────────────
@@ -2392,6 +2393,7 @@ const _PAGE_MODULE_MAP={
   'sales-discounts':{mod:'sales',tab:'tab_discounts'},
   'sales-permits':{mod:'sales',tab:'tab_permits'},
   'sales-settings':{mod:'sales',tab:'tab_sales_settings'},
+  'sales-board':{mod:'sales',tab:'tab_leaderboard'},
 };
 // true when Creator is in a section where their God View facade shows no access
 window._creatorStealthMode=false;
@@ -3016,7 +3018,7 @@ const SALES_NAV=[
   {id:'sales-pricebook',     l:'Pricebook'},
   {id:'sales-followups',     l:'Follow Ups'},
   {id:'sales-activities',    l:'Activities'},
-  {id:'sales-board',         l:'🏆 Leaderboard'},
+  {id:'sales-board',         l:'🏆 Leaderboard',  perm:'tab_leaderboard'},
   {id:'sales-email-sync',    l:'Email Sync'},
   {id:'sales-marketing',     l:'Marketing'},
   {id:'sales-discounts',     l:'Discounts &amp; Promotions'},
@@ -3056,7 +3058,16 @@ function _renderSubNav(navMode, navArr, defaultPage){
 
 function renderDispatchNav() { _renderSubNav('dispatch', DISPATCH_NAV, 'dispatch-board'); }
 function renderAccountsNav(){ _renderSubNav('accounts', ACCOUNTS_NAV, 'customers'); }
-function renderSalesNav()   { _renderSubNav('sales',    SALES_NAV,    'sales-crm-dashboard'); }
+function renderSalesNav(){
+  const rolePermsArr=S.get('lhs:role_permissions')||[];
+  const roleRec=rolePermsArr.find(r=>r.role===(CU?.role||''));
+  const hasTabPerms=roleRec?.perms?.sales&&Object.keys(roleRec.perms.sales).some(k=>k.startsWith('tab_'));
+  const filtered=hasTabPerms
+    ? SALES_NAV.filter(n=>!n.perm||CU?.role==='Creator'||CU?.role==='God View'||hasPerm('sales',n.perm))
+    : SALES_NAV;
+  const first=filtered[0]?.id||'sales-crm-dashboard';
+  _renderSubNav('sales', filtered, first);
+}
 function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
 
 const ACCT_NAV=[
