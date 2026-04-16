@@ -37221,9 +37221,12 @@ function bSalesBoard(){
   const today=new Date();
   // Use LOCAL date, not UTC — avoids timezone rollover after ~8pm Eastern
   const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  // toStr uses tomorrow to catch estimates saved with UTC date after 8pm (e.g. April 16 UTC = April 15 local)
+  const _tom=new Date(today);_tom.setDate(_tom.getDate()+1);
+  const tomorrowStr=`${_tom.getFullYear()}-${String(_tom.getMonth()+1).padStart(2,'0')}-${String(_tom.getDate()).padStart(2,'0')}`;
 
   // Compute date range from period
-  let fromStr,toStr=todayStr;
+  let fromStr,toStr=tomorrowStr;
   if(period==='today'){
     fromStr=todayStr;
   } else if(period==='week'){
@@ -44289,7 +44292,7 @@ function oNewEstimate(prefill={}){
     <div class="fl"><label>Status</label>
       <select id="est-status">${['Draft','Sent','Accepted','Declined'].map(s=>`<option${s===(prefill.status||'Draft')?' selected':''}>${s}</option>`).join('')}</select>
     </div>
-    <div class="fl"><label>Date</label><input type="date" id="est-date" value="${prefill.estimate_date||new Date().toISOString().slice(0,10)}"></div>
+    <div class="fl"><label>Date</label><input type="date" id="est-date" value="${prefill.estimate_date||(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()}"></div>
   </div>
   <div class="fr">
     <div class="fl"><label>Customer</label>
