@@ -18743,7 +18743,7 @@ async function stPhotoImport200(){
     log('✓ Token obtained\n');
     // Fetch first LIMIT jobs
     log(`Fetching first ${LIMIT} jobs from ServiceTitan...`);prog(5);
-    const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${LIMIT}&sort=-completedOn`);
+    const d=await _stApiFetch(token,`${BASE}/jpm/v2/tenant/${tid}/jobs?page=1&pageSize=${LIMIT}&orderBy=completedOn&orderByDirection=Desc`);
     const jobs=(d.data||d.items||[]).slice(0,LIMIT);
     log(`✓ ${jobs.length} jobs fetched\n`);prog(10);
     // Build st_job_id → wo_id map
