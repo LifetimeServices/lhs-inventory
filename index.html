@@ -48051,10 +48051,17 @@ async function initTelnyxClient(){
       const call=n.call;
       if(!call) return;
       const state=call.state;
-      if(state==='ringing'&&call.direction==='inbound') phoneHandleInbound(call);
-      if(state==='active') phoneHandleActive(call);
-      if(state==='hangup'||state==='destroy') phoneHandleHangup(call);
-      if(state==='held') phoneSetStatus('On Hold','#f59e0b');
+      const dir=call.direction;
+      console.log('[Telnyx] call state:',state,'dir:',dir);
+      if(state==='new'||state==='trying'||state==='requesting') phoneSetStatus('Dialing...','#f59e0b');
+      else if(state==='ringing'){
+        if(dir==='inbound') phoneHandleInbound(call);
+        else phoneSetStatus('Ringing...','#f59e0b');
+      }
+      else if(state==='early') phoneSetStatus('Connecting...','#f59e0b');
+      else if(state==='active') phoneHandleActive(call);
+      else if(state==='hangup'||state==='destroy') phoneHandleHangup(call);
+      else if(state==='held') phoneSetStatus('On Hold','#f59e0b');
     });
     _telnyxClient.connect();
   }catch(e){
@@ -48139,10 +48146,11 @@ async function phoneInitiateCall(){
   if(!num.startsWith('+')) num='+1'+num;
   const callerId=S.get('lhs:telnyx_caller_id')||'';
   try{
-    _telnyxCall=_telnyxClient.newCall({
-      destinationNumber:num,
-      callerNumber:callerId,
-    });
+    const callOpts={destinationNumber:num};
+    if(callerId) callOpts.callerIdNumber=callerId;
+    if(CU&&CU.name) callOpts.callerIdName=CU.name;
+    console.log('[Telnyx] newCall opts:',callOpts);
+    _telnyxCall=_telnyxClient.newCall(callOpts);
     phoneSetStatus('Calling...','#f59e0b');
     _logCall({direction:'outbound',from_number:callerId,to_number:num,status:'initiated'});
   }catch(e){
