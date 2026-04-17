@@ -48007,7 +48007,7 @@ async function _telnyxGetOrCreateCredConnection(apiKey){
     const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
       method:'POST',
       headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-      body:JSON.stringify({name:'LMS WebRTC',active:true})
+      body:JSON.stringify({connection_name:'LMS WebRTC',active:true})
     });
     if(!createRes.ok){
       const err=await createRes.json().catch(()=>({}));
