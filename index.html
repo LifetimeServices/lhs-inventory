@@ -48066,18 +48066,34 @@ async function initTelnyxClient(){
   if(!apiKey){phoneSetStatus('No API key — check Integrations','#f59e0b');return;}
   phoneSetStatus('Connecting...','#f59e0b');
   try{
-    // Step 1: Get or create a Credential Connection and get its SIP credentials
-    await _telnyxGetOrCreateCredConnection(apiKey);
-    const sipUser=S.get('lhs:telnyx_sip_user')||'lmswebrtc';
-    const sipPass=S.get('lhs:telnyx_sip_pass')||'';
-    if(!sipPass){phoneSetStatus('SIP credentials missing — re-save Telnyx settings','#ef4444');return;}
+    // Step 1: Get or create a Credential Connection
+    const credConnId=await _telnyxGetOrCreateCredConnection(apiKey);
 
-    // Step 2: Init Telnyx WebRTC client with SIP credentials (more reliable than login_token)
+    // Step 2: Create a per-session telephony credential token (avoids SIP password race conditions)
+    const credRes=await fetch('https://api.telnyx.com/v2/telephony_credentials',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+      body:JSON.stringify({connection_id:credConnId})
+    });
+    if(!credRes.ok){
+      const err=await credRes.json().catch(()=>({}));
+      console.error('[Telnyx] Telephony credential error:',JSON.stringify(err));
+      phoneSetStatus('Credential error: '+((err?.errors?.[0]?.detail)||credRes.status),'#ef4444');
+      return;
+    }
+    const credData=await credRes.json();
+    const tokenRes=await fetch('https://api.telnyx.com/v2/telephony_credentials/'+credData.data.id+'/token',{
+      method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+    });
+    if(!tokenRes.ok){phoneSetStatus('Token error: '+tokenRes.status,'#ef4444');return;}
+    const token=(await tokenRes.text()).replace(/^"|"$/g,'');
+    console.log('[Telnyx] Got login token, connecting...');
+
+    // Step 3: Init Telnyx WebRTC client with login token
     const _TRTC=(typeof TelnyxWebRTC!=='undefined'&&TelnyxWebRTC.TelnyxRTC)||(typeof TelnyxRTC!=='undefined'&&TelnyxRTC)||null;
     if(!_TRTC){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
     if(_telnyxClient){try{_telnyxClient.disconnect();}catch(e){}}
-    console.log('[Telnyx] Connecting with SIP user:',sipUser);
-    _telnyxClient=new _TRTC({login:sipUser,password:sipPass});
+    _telnyxClient=new _TRTC({login_token:token});
     _telnyxClient.on('telnyx.ready',function(){
       phoneSetStatus('Ready','#4ade80');
       phoneSetConnDot('#4ade80');
