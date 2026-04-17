@@ -10759,6 +10759,44 @@ function bInt(){
         &#8212; API key found in Intermedia Control Panel &#8594; My Services &#8594; Extend &#8594; API Access
       </div>
     </div>
+    <div class="ic" style="border-color:#00e3aa;grid-column:span 2">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:#00e3aa;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#0a2540">TX</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="in2">Telnyx — Phone System (Voice, SMS, WebRTC)</div>
+            <span style="background:#00e3aa;color:#0a2540;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em">ACTIVE BUILD</span>
+          </div>
+          <div class="is2 ${(S.get('lhs:telnyx_api_key')||'').trim()?'on':'off'}">${(S.get('lhs:telnyx_api_key')||'').trim()?'&#9679; Configured':'&#9679; Not Configured'}</div>
+        </div>
+      </div>
+      <div class="id2">Powers the in-browser softphone panel — outbound click-to-call, inbound routing, call recording, SMS, and number management. No physical phones required; works with Bluetooth headsets.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">API Key <span style="color:var(--teal)">(from Telnyx Portal → API Keys)</span></div>
+          <input id="telnyx-api-key" type="password" value="${esc(S.get('lhs:telnyx_api_key')||'')}" placeholder="KEY0..." autocomplete="off"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Application ID <span style="color:var(--teal)">(Voice App → LMS Softphone)</span></div>
+          <input id="telnyx-app-id" type="text" value="${esc(S.get('lhs:telnyx_app_id')||'')}" placeholder="19-digit Application ID" autocomplete="off"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Default Caller ID <span style="color:var(--teal)">(E.164 format)</span></div>
+          <input id="telnyx-caller-id" type="text" value="${esc(S.get('lhs:telnyx_caller_id')||'')}" placeholder="+14145550100"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-n sm" onclick="saveTelnyxSettings()">Save Telnyx Settings</button>
+        ${(S.get('lhs:telnyx_api_key')||'').trim()?`<button class="btn btn-o sm" onclick="testTelnyxConnection()">&#128222; Test Connection</button>`:''}
+      </div>
+      ${(S.get('lhs:telnyx_api_key')||'').trim()
+        ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Telnyx configured — phone panel will activate once numbers are provisioned</div>`
+        :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your API Key and Application ID from the Telnyx portal, then click Save</div>`}
+      <div id="telnyx-test-result" style="margin-top:8px"></div>
+    </div>
     <div class="ic" style="border-color:#0ea5e9">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <div style="width:36px;height:36px;background:#0ea5e9;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:18px">&#9993;</div>
@@ -18198,6 +18236,41 @@ function saveBrevoSettings(){
   showPage('integrations');
 }
 
+function saveTelnyxSettings(){
+  const apiKey=(document.getElementById('telnyx-api-key')?.value||'').trim();
+  const appId=(document.getElementById('telnyx-app-id')?.value||'').trim();
+  const callerId=(document.getElementById('telnyx-caller-id')?.value||'').trim();
+  if(!apiKey||!appId){tst('API Key and Application ID are required','error');return;}
+  S.set('lhs:telnyx_api_key',apiKey);
+  S.set('lhs:telnyx_app_id',appId);
+  S.set('lhs:telnyx_caller_id',callerId);
+  try{
+    DB.from('lhs_app_settings').upsert({key:'telnyx_api_key',value:apiKey},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    DB.from('lhs_app_settings').upsert({key:'telnyx_app_id',value:appId},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    if(callerId) DB.from('lhs_app_settings').upsert({key:'telnyx_caller_id',value:callerId},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  }catch(e){console.warn('Telnyx settings Supabase sync failed:',e.message);}
+  tst('Telnyx settings saved','success');
+  showPage('admin');setTimeout(()=>{aTab('integrations',document.querySelector('.tab[onclick*="integrations"]'));},100);
+}
+async function testTelnyxConnection(){
+  const apiKey=S.get('lhs:telnyx_api_key');
+  const res=document.getElementById('telnyx-test-result');
+  if(!apiKey){tst('No API key saved','error');return;}
+  if(res) res.innerHTML='<span style="font-size:12px;color:var(--muted)">Testing connection...</span>';
+  try{
+    const r=await fetch('https://api.telnyx.com/v2/available_phone_numbers?filter[country_code]=US&filter[limit]=1',{
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+    });
+    if(r.ok){
+      if(res) res.innerHTML='<span style="font-size:12px;color:var(--green)">&#10003; Connected successfully — Telnyx API is responding</span>';
+    } else {
+      const err=await r.json().catch(()=>({}));
+      if(res) res.innerHTML=`<span style="font-size:12px;color:var(--red)">&#10005; Error ${r.status}: ${err?.errors?.[0]?.detail||'Check your API key'}</span>`;
+    }
+  }catch(e){
+    if(res) res.innerHTML=`<span style="font-size:12px;color:var(--red)">&#10005; Network error: ${e.message}</span>`;
+  }
+}
 function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
   S.set('lhs:groq_api_key',val);
