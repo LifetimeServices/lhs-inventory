@@ -48111,9 +48111,9 @@ async function initTelnyxClient(){
       if(state==='new'||state==='trying'||state==='requesting') phoneSetStatus('Dialing...','#f59e0b');
       else if(state==='ringing'){
         if(dir==='inbound') phoneHandleInbound(call);
-        else phoneSetStatus('Ringing...','#f59e0b');
+        else{phoneSetStatus('Ringing...','#f59e0b');_phonePlayRingback();}
       }
-      else if(state==='early') phoneSetStatus('Connecting...','#f59e0b');
+      else if(state==='early'){phoneSetStatus('Connecting...','#f59e0b');_phonePlayRingback();}
       else if(state==='active') phoneHandleActive(call);
       else if(state==='hangup'||state==='destroy') phoneHandleHangup(call);
       else if(state==='held') phoneSetStatus('On Hold','#f59e0b');
@@ -48147,8 +48147,60 @@ function phoneDecline(){
   _logCall({status:'missed'});
 }
 
+function _attachRemoteStream(call){
+  // Stop any ringback tone
+  _phoneStopRingback();
+  // Get the remote stream and attach it to an audio element we control
+  try{
+    const remoteStream=call.remoteStream||(call.peer&&call.peer.remoteStream)||null;
+    let audioEl=document.getElementById('phone-remote-audio');
+    if(!audioEl){
+      audioEl=document.createElement('audio');
+      audioEl.id='phone-remote-audio';
+      audioEl.autoplay=true;
+      audioEl.style.display='none';
+      document.body.appendChild(audioEl);
+    }
+    if(remoteStream){
+      audioEl.srcObject=remoteStream;
+      audioEl.play().catch(e=>console.warn('[Telnyx] Audio play error:',e));
+      console.log('[Telnyx] Remote stream attached');
+    } else {
+      // Fallback: try after short delay (stream may not be ready yet)
+      setTimeout(()=>{
+        const s=call.remoteStream||(call.peer&&call.peer.remoteStream)||null;
+        if(s){audioEl.srcObject=s;audioEl.play().catch(()=>{});}
+        console.log('[Telnyx] Remote stream attached (delayed)');
+      },500);
+    }
+  }catch(e){console.warn('[Telnyx] Stream attach error:',e);}
+}
+
+let _phoneRingbackCtx=null,_phoneRingbackNode=null;
+function _phonePlayRingback(){
+  try{
+    _phoneStopRingback();
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    _phoneRingbackCtx=ctx;
+    function beep(){
+      const o=ctx.createOscillator();
+      const g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.frequency.value=440;g.gain.value=0.15;
+      o.start();o.stop(ctx.currentTime+1);
+    }
+    beep();
+    _phoneRingbackNode=setInterval(beep,3000);
+  }catch(e){}
+}
+function _phoneStopRingback(){
+  if(_phoneRingbackNode){clearInterval(_phoneRingbackNode);_phoneRingbackNode=null;}
+  if(_phoneRingbackCtx){try{_phoneRingbackCtx.close();}catch(e){}; _phoneRingbackCtx=null;}
+}
+
 function phoneHandleActive(call){
   _telnyxCall=call;
+  _attachRemoteStream(call);
   const num=(call.remoteCallerNumber||(call.options&&call.options.remoteCallerNumber)||(document.getElementById('phone-display')&&document.getElementById('phone-display').textContent)||'');
   document.getElementById('phone-active-call').style.display='block';
   document.getElementById('phone-call-number').textContent=_fmtPhone(num);
