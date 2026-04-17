@@ -47974,17 +47974,22 @@ function phoneSetConnDot(color){
 
 async function _telnyxGetOrCreateCredConnection(apiKey){
   // Helper: assign a credential connection to the default outbound voice profile
+  // Uses PATCH on the credential connection itself with outbound_voice_profile_id
   async function _assignToOutboundProfile(connId){
     try{
       const profRes=await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=5',{headers:{Authorization:`Bearer ${apiKey}`}});
-      if(!profRes.ok) return;
+      if(!profRes.ok){console.warn('[Telnyx] Could not fetch outbound profiles:',profRes.status);return;}
       const profData=await profRes.json();
       const profId=profData.data&&profData.data[0]&&profData.data[0].id;
-      if(!profId) return;
-      const r=await fetch(`https://api.telnyx.com/v2/outbound_voice_profiles/${profId}/connections/${connId}`,{
-        method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+      if(!profId){console.warn('[Telnyx] No outbound voice profile found');return;}
+      // Patch the credential connection to point at the outbound voice profile
+      const r=await fetch(`https://api.telnyx.com/v2/credential_connections/${connId}`,{
+        method:'PATCH',
+        headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+        body:JSON.stringify({outbound_voice_profile_id:profId})
       });
-      if(r.ok||r.status===422) console.log('[Telnyx] Outbound profile assignment status:',r.status);
+      const rData=await r.json().catch(()=>({}));
+      console.log('[Telnyx] Outbound profile assignment status:',r.status,rData?.errors?.[0]?.detail||'ok');
     }catch(e){console.warn('[Telnyx] Outbound profile assign error:',e);}
   }
 
