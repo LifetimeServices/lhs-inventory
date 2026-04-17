@@ -47936,6 +47936,7 @@ function togglePhonePanel(){
   if(_phonePanelOpen){
     phoneLoadLog();
     if(!_telnyxClient) initTelnyxClient();
+    phoneLoadAudioDevices();
   }
 }
 
@@ -48269,6 +48270,49 @@ function phoneHangup(){
   phoneHandleHangup();
 }
 
+async function phoneLoadAudioDevices(){
+  try{
+    await navigator.mediaDevices.getUserMedia({audio:true}); // ensure permission granted
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const inputs=devices.filter(d=>d.kind==='audioinput');
+    const outputs=devices.filter(d=>d.kind==='audiooutput');
+    const inSel=document.getElementById('phone-input-device');
+    const outSel=document.getElementById('phone-output-device');
+    if(inSel){
+      const cur=inSel.value;
+      inSel.innerHTML='<option value="">Default microphone</option>'+
+        inputs.map(d=>`<option value="${d.deviceId}"${d.deviceId===cur?' selected':''}>${d.label||'Microphone '+d.deviceId.slice(0,6)}</option>`).join('');
+    }
+    if(outSel){
+      const cur=outSel.value;
+      outSel.innerHTML='<option value="">Default speaker</option>'+
+        outputs.map(d=>`<option value="${d.deviceId}"${d.deviceId===cur?' selected':''}>${d.label||'Speaker '+d.deviceId.slice(0,6)}</option>`).join('');
+    }
+  }catch(e){console.warn('[Telnyx] Could not enumerate audio devices:',e);}
+}
+
+function phoneSetInputDevice(deviceId){
+  // Reconnect microphone stream with selected device
+  if(_telnyxClient&&_telnyxClient.localStream){
+    navigator.mediaDevices.getUserMedia({audio:deviceId?{deviceId:{exact:deviceId}}:true}).then(stream=>{
+      const track=stream.getAudioTracks()[0];
+      if(_telnyxCall&&_telnyxCall.peer){
+        const sender=_telnyxCall.peer.getSenders().find(s=>s.track&&s.track.kind==='audio');
+        if(sender) sender.replaceTrack(track);
+      }
+    }).catch(e=>console.warn('[Telnyx] Mic switch error:',e));
+  }
+}
+
+function phoneSetOutputDevice(deviceId){
+  const audioEl=document.getElementById('phone-remote-audio');
+  if(audioEl&&audioEl.setSinkId){
+    audioEl.setSinkId(deviceId||'').then(()=>{
+      console.log('[Telnyx] Output device set to:',deviceId||'default');
+    }).catch(e=>console.warn('[Telnyx] Speaker switch error:',e));
+  }
+}
+
 function phoneToggleMute(){
   if(!_telnyxCall) return;
   _phoneMuted=!_phoneMuted;
@@ -48418,6 +48462,21 @@ async function phoneLoadLog(){
         <button id="phone-call-btn" onclick="phoneInitiateCall()" class="call-btn" style="background:var(--green)" title="Call">&#128222;</button>
         <button id="phone-hangup-btn" onclick="phoneHangup()" style="display:none;background:var(--red)" class="call-btn" title="Hang up">&#128309;</button>
         <button id="phone-hold-btn" onclick="phoneToggleHold()" style="display:none;background:#f59e0b" class="call-btn" title="Hold">&#9208;</button>
+      </div>
+      <!-- Audio device selectors -->
+      <div id="phone-audio-devices" style="width:100%;border-top:1px solid var(--bdr);padding-top:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--muted);width:52px;flex-shrink:0">🎤 Mic</span>
+          <select id="phone-input-device" onchange="phoneSetInputDevice(this.value)" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf);color:var(--navy);font-family:'DM Sans',sans-serif">
+            <option value="">Default microphone</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--muted);width:52px;flex-shrink:0">🔊 Speaker</span>
+          <select id="phone-output-device" onchange="phoneSetOutputDevice(this.value)" style="flex:1;font-size:11px;padding:4px 6px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf);color:var(--navy);font-family:'DM Sans',sans-serif">
+            <option value="">Default speaker</option>
+          </select>
+        </div>
       </div>
     </div>
     <!-- Call Log Tab -->
