@@ -12510,13 +12510,18 @@ function aUsers(){
   const hasSellFlags=deduped.some(u=>u.can_sell===true||u.can_sell===false);
   return`<div class="sh"><div></div><button class="btn btn-n" onclick="oAddUser()">+ Add User</button></div>
   <div class="card" style="padding:0"><div class="tw"><table>
-  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division(s)</th><th>Region</th><th>Manager</th><th>Capabilities</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Division(s)</th><th>Region / Territory</th><th>Manager</th><th>Capabilities</th><th>Dispatch</th><th>Timesheet</th><th></th></tr></thead>
   <tbody>${deduped.map((u,i)=>{
     // Build division pills: primary + service_divisions
     const extraDivs=(u.service_divisions||[]).filter(d=>d&&d!==u.division);
     const divCell=`<div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">
       ${u.division?`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;background:var(--teal);color:white">${esc(u.division)}</span>`:'<span style="color:var(--muted);font-size:12px">All</span>'}
       ${extraDivs.map(d=>`<span style="padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;background:var(--bdr);color:var(--navy)">${esc(d)}</span>`).join('')}
+    </div>`;
+    // Region + Territory cell
+    const regionTerr=`<div style="font-size:12px;color:var(--muted);line-height:1.6">
+      ${u.region||'—'}
+      ${u.territory?`<div><span style="background:#e8f5e9;color:#2e7d32;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px">📍 ${esc(u.territory)}</span></div>`:''}
     </div>`;
     // Capability badges
     const sellBadge=hasSellFlags
@@ -12532,7 +12537,7 @@ function aUsers(){
     <td style="font-size:12px;color:var(--muted)">${u.email}</td>
     <td>${bx(u.role==='Creator'?'God View':u.role,'bn')}</td>
     <td>${divCell}</td>
-    <td style="font-size:12px;color:var(--muted)">${u.region||'—'}</td>
+    <td>${regionTerr}</td>
     <td style="font-size:12px;color:var(--muted)">${u.manager||'—'}</td>
     <td>${capCell}</td>
     <td style="text-align:center">${u.include_dispatch!==false?bx('Yes','bg'):bx('No','bgr')}</td>
@@ -12777,6 +12782,16 @@ function oEditUser(idOrEmail){
     </div>
   </div>
   <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--bdr)">Field Work & Scheduling</div>
+  <div class="fr" style="margin-bottom:12px">
+    <div class="fl">
+      <label>Primary Territory</label>
+      <select id="eu-territory">
+        <option value="">— No territory assigned —</option>
+        ${(S.get('lhs:territories')||[]).filter(t=>t.active!==false).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(t=>`<option value="${esc(t.name)}"${(u.territory||'')===t.name?' selected':''}>${esc(t.name)}${t.region?' ('+esc(t.region)+')':''}</option>`).join('')}
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Controls which territory filter shows this tech on the dispatch board</div>
+    </div>
+  </div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Primary division is set above. Check additional divisions this person can also be scheduled for:</div>
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">
     ${DIVS.map(d=>{
@@ -12850,6 +12865,7 @@ async function svEditUser(idOrEmail){
     work_end:v('eu-wend')||'17:00',
     timezone:v('eu-tz')||'America/Chicago',
     work_days:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].filter(d=>document.getElementById('eu-wd-'+d)?.checked).join(',')||'Mon,Tue,Wed,Thu,Fri',
+    territory:document.getElementById('eu-territory')?.value||null,
     service_divisions:DIVS.filter(d=>{const el=document.getElementById('eu-sdiv-'+d.replace(/[^a-zA-Z0-9]/g,'_'));return el&&!el.disabled&&el.checked;}),
     can_sell:document.getElementById('eu-cansell')?.value!=='false',
     can_office_sell:document.getElementById('eu-canofficesell')?.value!=='false',
@@ -12865,6 +12881,7 @@ async function svEditUser(idOrEmail){
       password_hash:updated.password_hash,mfa_enabled:updated.mfa_enabled,
       work_start:updated.work_start,work_end:updated.work_end,
       timezone:updated.timezone,work_days:updated.work_days,
+      territory:updated.territory||null,
       service_divisions:updated.service_divisions,
       can_sell:updated.can_sell,can_office_sell:updated.can_office_sell};
     await dbUpdate('lhs:users',updated.id,dbFields);
