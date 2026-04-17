@@ -47973,19 +47973,23 @@ function phoneSetConnDot(color){
 }
 
 async function _telnyxGetOrCreateCredConnection(apiKey){
-  // Use cached connection ID if we already created one this session
-  let connId=S.get('lhs:telnyx_cred_conn_id');
-  if(connId) return connId;
-  // Try to find an existing credential connection
-  const listRes=await fetch('https://api.telnyx.com/v2/credential_connections?page[size]=10',{
+  // Always re-check the live list so we pick the connection that has an outbound voice profile
+  const listRes=await fetch('https://api.telnyx.com/v2/credential_connections?page[size]=20',{
     headers:{Authorization:`Bearer ${apiKey}`}
   });
   if(listRes.ok){
     const listData=await listRes.json();
-    const existing=(listData.data||[]).find(c=>c.active!==false);
-    if(existing){S.set('lhs:telnyx_cred_conn_id',existing.id);return existing.id;}
+    const active=(listData.data||[]).filter(c=>c.active!==false);
+    // Prefer a pre-existing connection (not our auto-created "LMS WebRTC") because those
+    // already have outbound voice profiles assigned in the Telnyx portal.
+    const preferred=active.find(c=>(c.connection_name||'').toLowerCase()!=='lms webrtc')||active[0];
+    if(preferred){
+      console.log('[Telnyx] Using credential connection:',preferred.connection_name,'ID:',preferred.id);
+      S.set('lhs:telnyx_cred_conn_id',preferred.id);
+      return preferred.id;
+    }
   }
-  // Create a new credential connection
+  // No existing connection — create one and auto-assign to the default outbound voice profile
   const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
     method:'POST',
     headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
@@ -47998,8 +48002,20 @@ async function _telnyxGetOrCreateCredConnection(apiKey){
   const createData=await createRes.json();
   const newId=createData.data.id;
   S.set('lhs:telnyx_cred_conn_id',newId);
-  // Also persist to Supabase so it survives across sessions
   try{DB.from('lhs_app_settings').upsert({key:'telnyx_cred_conn_id',value:newId},{onConflict:'key'}).then(()=>{}).catch(()=>{});}catch(e){}
+  // Auto-assign new connection to the first outbound voice profile so calls can route
+  try{
+    const profRes=await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=5',{headers:{Authorization:`Bearer ${apiKey}`}});
+    if(profRes.ok){
+      const profData=await profRes.json();
+      const profId=profData.data&&profData.data[0]&&profData.data[0].id;
+      if(profId){
+        await fetch(`https://api.telnyx.com/v2/outbound_voice_profiles/${profId}/connections/${newId}`,{
+          method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+        }).catch(e=>console.warn('[Telnyx] Could not assign outbound profile:',e));
+      }
+    }
+  }catch(e){console.warn('[Telnyx] Outbound profile assign error:',e);}
   return newId;
 }
 
