@@ -48310,6 +48310,13 @@ function phoneToggleMute(){
 }
 
 
+function phoneLogCallBack(number){
+  // Populate dial pad and switch to it — does NOT auto-dial
+  const disp=document.getElementById('phone-display');
+  if(disp) disp.textContent=number.replace(/[^0-9+]/g,'');
+  phoneTab('dialpad');
+}
+
 function clickToCall(number,customerName){
   const disp=document.getElementById('phone-display');
   if(disp) disp.textContent=number.replace(/[^0-9+]/g,'');
@@ -48337,18 +48344,37 @@ function _lookupContactName(number){
   return (match&&match.name)||'';
 }
 
+let _activeCallLogId=null;
+let _activeCallFrom='';
+let _activeCallTo='';
+
 async function _logCall(fields){
   try{
-    await DB.from('lhs_call_logs').insert({
+    if(fields.status==='completed'||fields.status==='missed'){
+      // Update the existing row instead of inserting a new one
+      if(_activeCallLogId){
+        await DB.from('lhs_call_logs').update({
+          status:fields.status||'completed',
+          duration_seconds:fields.duration_seconds||0,
+        }).eq('id',_activeCallLogId);
+        _activeCallLogId=null;
+      }
+      return;
+    }
+    // New call starting — insert row and save its ID
+    _activeCallFrom=fields.from_number||S.get('lhs:telnyx_caller_id')||'';
+    _activeCallTo=fields.to_number||'';
+    const{data}=await DB.from('lhs_call_logs').insert({
       direction:fields.direction||'outbound',
-      from_number:fields.from_number||S.get('lhs:telnyx_caller_id')||'',
-      to_number:fields.to_number||'',
+      from_number:_activeCallFrom,
+      to_number:_activeCallTo,
       user_email:(CU&&CU.email)||'',
       user_name:(CU&&CU.name)||'',
-      status:fields.status||'completed',
-      duration_seconds:fields.duration_seconds||0,
+      status:fields.status||'initiated',
+      duration_seconds:0,
       started_at:new Date().toISOString(),
-    });
+    }).select('id').single();
+    if(data) _activeCallLogId=data.id;
   }catch(e){console.warn('Call log failed:',e&&e.message);}
 }
 
@@ -48365,21 +48391,24 @@ async function phoneLoadLog(){
     el.innerHTML=data.map(function(c){
       const dir=c.direction==='inbound'?'&#11015;':'&#11014;';
       const num=c.direction==='inbound'?c.from_number:c.to_number;
-      const fmt=_fmtPhone(num);
-      const dur=c.duration_seconds>0?(Math.floor(c.duration_seconds/60)+':'+String(c.duration_seconds%60).padStart(2,'0')):c.status;
+      const fmt=_fmtPhone(num)||num||'—';
+      const name=_lookupContactName(num);
+      const dur=c.duration_seconds>0?(Math.floor(c.duration_seconds/60)+':'+String(c.duration_seconds%60).padStart(2,'0')):'';
       const dt=new Date(c.created_at);
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-      const statusColor=c.status==='completed'?'var(--green)':c.status==='missed'?'var(--red)':'var(--muted)';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;cursor:pointer" onclick="clickToCall(\''+num+'\',\'\')">'
-        +'<div style="display:flex;align-items:center;gap:8px">'
-        +'<span style="font-size:16px">'+dir+'</span>'
-        +'<div>'
-        +'<div style="font-size:13px;font-weight:600;color:var(--navy)">'+(fmt||'Unknown')+'</div>'
-        +'<div style="font-size:10px;color:var(--muted)">'+dateStr+'</div>'
+      const statusColor=c.status==='completed'?'var(--green)':c.status==='missed'?'var(--red)':'var(--amber)';
+      const safeNum=num?num.replace(/'/g,"\\'"):'';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">'
+        +'<div style="display:flex;align-items:center;gap:8px;min-width:0">'
+        +'<span style="font-size:15px;flex-shrink:0">'+dir+'</span>'
+        +'<div style="min-width:0">'
+        +(name?'<div style="font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+name+'</div>':'')
+        +'<div style="font-size:'+(name?'11px':'13px')+';font-weight:'+(name?'400':'600')+';color:'+(name?'var(--muted)':'var(--navy)')+'">'+fmt+'</div>'
+        +'<div style="font-size:10px;color:var(--muted)">'+dateStr+(dur?' &nbsp;·&nbsp; '+dur:'')+'</div>'
         +'</div></div>'
-        +'<div style="text-align:right">'
-        +'<div style="font-size:12px;font-weight:600;color:'+statusColor+'">'+dur+'</div>'
-        +'<div style="font-size:10px;color:var(--muted)">'+(c.user_name||'')+'</div>'
+        +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+        +'<span style="font-size:11px;font-weight:600;color:'+statusColor+'">'+c.status+'</span>'
+        +(safeNum?'<button onclick="phoneLogCallBack(\''+safeNum+'\')" style="background:var(--green);border:none;color:white;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="Call back">&#128222;</button>':'')
         +'</div></div>';
     }).join('');
   }catch(e){
