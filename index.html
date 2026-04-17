@@ -30226,26 +30226,14 @@ async function _uploadPendingItemImages(pathKey){
   const pending=window._pendingItemImages||[];
   if(!pending.length) return[];
   const uploaded=[];
-  // Get current Supabase session token to authenticate with the Worker
-  const session=(await DB.auth.getSession())?.data?.session;
-  const token=session?.access_token||'';
-  if(!token){tst('Not authenticated — images not uploaded','error');return[];}
   for(const {file,objectUrl} of pending){
     const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
     const fname=`${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
     const storagePath=`${(pathKey||'misc').replace(/[^a-zA-Z0-9_\-]/g,'_')}/${fname}`;
     try{
-      const fd=new FormData();
-      fd.append('file',file);
-      fd.append('path',storagePath);
-      const res=await fetch(CF_IMG_WORKER,{
-        method:'POST',
-        headers:{'Authorization':`Bearer ${token}`},
-        body:fd
-      });
-      if(!res.ok){const err=await res.text();console.warn('R2 upload failed',err);continue;}
-      const json=await res.json();
-      if(json.url){uploaded.push(json.url);URL.revokeObjectURL(objectUrl);}
+      const url=await r2Upload(storagePath,file);
+      uploaded.push(url);
+      URL.revokeObjectURL(objectUrl);
     }catch(e){console.warn('R2 upload exception',e.message);}
   }
   window._pendingItemImages=[];
