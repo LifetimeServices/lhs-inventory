@@ -20827,7 +20827,7 @@ function dashCard(label,value,sub,textColor,bgColor,page){
 let _dispDate=new Date().toISOString().split('T')[0];
 let _dispView='day'; // day, 2day, 3day
 let _dispRegion='all';
-let _dispTerritory='all';
+let _dispTerritories=[]; // array of selected territory IDs (empty = All)
 let _dispPinned={};
 let _dispCollapsed=[];
 let _dragApt=null;
@@ -20841,7 +20841,7 @@ try{_dispCollapsed=JSON.parse(localStorage.getItem('lms_disp_collapsed')||'[]');
 try{const _sd=localStorage.getItem('lms_disp_date'); if(_sd) _dispDate=_sd;}catch{}
 try{const _sv=localStorage.getItem('lms_disp_view'); if(_sv) _dispView=_sv;}catch{}
 try{const _sr=localStorage.getItem('lms_disp_region'); if(_sr) _dispRegion=_sr;}catch{}
-try{const _st=localStorage.getItem('lms_disp_territory'); if(_st) _dispTerritory=_st;}catch{}
+try{const _st=localStorage.getItem('lms_disp_territories'); if(_st) _dispTerritories=JSON.parse(_st)||[];}catch{}
 // Restore saved division order
 try{
   const savedOrder=JSON.parse(localStorage.getItem('lms_disp_order')||'null');
@@ -20886,7 +20886,10 @@ function bDispatch(){
         ${Object.keys(REGIONS).map(r=>`<button class="btn sm btn-o" onclick="dispSetRegion('${r}')"
           style="${_dispRegion===r?`background:${REGIONS[r].color};color:white`:`border-color:${REGIONS[r].color};color:${REGIONS[r].color}`}">${r}</button>`).join('')}
         <span style="color:var(--bdr)">|</span>
-        ${(()=>{const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));if(!terrs.length)return'';return`<select onchange="dispSetTerritory(this.value)" style="padding:4px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px;background:white"><option value="all"${_dispTerritory==='all'?' selected':''}>All Territories</option>${terrs.map(t=>`<option value="${esc(t.id)}"${_dispTerritory===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`;})()}
+        <button class="btn sm btn-o" onclick="dispClearTerritories()"
+          style="${!_dispTerritories.length?'background:var(--navy);color:var(--teal)':''}">All Territories</button>
+        ${(()=>{const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));return terrs.map(t=>`<button class="btn sm btn-o" onclick="dispToggleTerritory('${esc(t.id)}')"
+          style="${_dispTerritories.includes(t.id)?'background:var(--teal);color:var(--navy);border-color:var(--teal)':''}">&#128205; ${esc(t.name)}</button>`).join('');})()}
         <span style="color:var(--bdr)">|</span>
         <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
           style="${Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
@@ -20896,6 +20899,20 @@ function bDispatch(){
         <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
       </div>
     </div>
+    <!-- Territory filter status bar (only visible when territories are actively filtered) -->
+    ${(()=>{
+      if(!_dispTerritories.length) return '';
+      const allDisp=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false&&u.include_dispatch!=='false'&&(_dispRegion==='all'||!u.region||u.region===_dispRegion));
+      const terrNames=_dispTerritories.map(id=>(S.get('lhs:territories')||[]).find(t=>t.id===id)?.name).filter(Boolean);
+      const shownCount=allDisp.filter(u=>!u.territory||terrNames.includes(u.territory)).length;
+      const hiddenCount=allDisp.length-shownCount;
+      const selNames=terrNames.join(' & ');
+      return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0 2px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--teal);font-weight:600">&#128205; ${esc(selNames)}</span>
+        <span style="font-size:11px;color:var(--muted)">${shownCount} tech${shownCount!==1?'s':''} shown${hiddenCount>0?`, ${hiddenCount} hidden by territory filter`:''}</span>
+        <button onclick="dispClearTerritories()" style="font-size:11px;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:4px;padding:1px 8px;cursor:pointer">Clear filter ✕</button>
+      </div>`;
+    })()}
     <!-- Color legend -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">Job Type:</span>
@@ -21441,27 +21458,25 @@ function renderDispBoard(){
   const allWOs=S.get('lhs:work_orders')||[];
   let greyBlocks=S.get('lhs:grey_blocks')||[];
 
-  // Region filter controls which TECHS are shown — NOT which WOs appear.
-  // All non-cancelled WOs are eligible to show appointments on the board
-  // so that utilization % and appointment blocks are always consistent.
-  const filteredWOs=allWOs.filter(w=>w.status!=='Cancelled').filter(w=>{
-    if(_dispTerritory==='all') return true;
-    const terr=(S.get('lhs:territories')||[]).find(t=>t.id===_dispTerritory);
-    if(!terr) return true;
-    return w.territory===terr.name;
-  });
+  // Region/territory filter controls which TECHS are shown — NOT which WOs appear.
+  // All non-cancelled WOs are always eligible so utilization % stays consistent.
+  const filteredWOs=allWOs.filter(w=>w.status!=='Cancelled');
   const filteredWOIds=new Set(filteredWOs.map(w=>w.id));
+
+  // Resolve selected territory names (for tech filtering)
+  const _allTerrs=S.get('lhs:territories')||[];
+  const _selTerrNames=_dispTerritories.map(id=>_allTerrs.find(t=>t.id===id)?.name).filter(Boolean);
 
   // Group techs by division
   const users=S.get('lhs:users')||[];
   // Show users with include_dispatch=true (default true if not set)
-  // OR with field roles regardless of setting
-  // include_dispatch=true (or unset) = show on board regardless of role
   // Region filter: if a region tab is active, only show techs assigned to that region
-  // Techs with no region set appear under ALL region tabs
+  // Territory filter (multi-select): if any territories selected, only show techs whose territory matches
+  // Techs with no territory/region are always shown (unassigned)
   const techUsers=users.filter(u=>{
     if(u.include_dispatch===false||u.include_dispatch==='false') return false;
     if(_dispRegion!=='all'&&u.region&&u.region!==_dispRegion) return false;
+    if(_selTerrNames.length&&u.territory&&!_selTerrNames.includes(u.territory)) return false;
     return true;
   });
 
@@ -21485,22 +21500,17 @@ function renderDispBoard(){
     divGroups[canonDiv].apts.push(apt);
   });
 
-  // Add techs to their primary division row, plus any service_divisions they can cover
+  // Add techs to their PRIMARY division row ONLY.
+  // service_divisions means the tech can be scheduled for those division's WOs,
+  // but they always appear on the board under their home (primary) division.
+  // Their tech row shows ALL appointments regardless of which division the WO belongs to,
+  // so secondary-division work orders surface naturally in the primary row.
   techUsers.forEach(u=>{
     const rawDiv=(u.division||'').trim();
     if(!rawDiv) return;
-    // Always match to the canonical DIVS name (case-insensitive), fallback to rawDiv
     const canonDiv=DIVS.find(d=>d.trim().toLowerCase()===rawDiv.toLowerCase())||rawDiv;
     if(!divGroups[canonDiv]) divGroups[canonDiv]={apts:[],techs:new Set()};
     divGroups[canonDiv].techs.add(u.name);
-    // Also add to any additional service_divisions this user can cover
-    (u.service_divisions||[]).forEach(sd=>{
-      const canonSd=DIVS.find(d=>d.trim().toLowerCase()===sd.trim().toLowerCase())||sd.trim();
-      if(canonSd&&canonSd!==canonDiv){
-        if(!divGroups[canonSd]) divGroups[canonSd]={apts:[],techs:new Set()};
-        divGroups[canonSd].techs.add(u.name);
-      }
-    });
   });
 
   // Build sortedDivs — DIVS order first, then any extras, strictly deduplicated
@@ -21696,7 +21706,7 @@ function renderDispBoard(){
             onmouseleave="dispHideTooltip()"
             style="position:absolute;left:${leftPx}px;width:${widthPx}px;top:3px;bottom:3px;
             background:${jobTypeColor};border-radius:6px;cursor:pointer;overflow:hidden;
-            box-shadow:0 1px 4px rgba(0,0,0,.2)">
+            box-shadow:0 1px 4px rgba(0,0,0,.2);${isCrossDiv?'outline:2px dashed rgba(255,255,255,.5);':''}">
             <!-- Left resize handle -->
             <div onmousedown="dispResizeStart(event,'${apt.id}','left')" onclick="event.stopPropagation()"
               style="position:absolute;left:0;top:0;bottom:0;width:8px;cursor:w-resize;z-index:5;
@@ -21704,7 +21714,7 @@ function renderDispBoard(){
               title="Drag to move start time"></div>
             <!-- Block content -->
             <div style="padding:3px 10px 3px 10px;height:calc(100% - 4px);display:flex;flex-direction:column;justify-content:space-between;overflow:hidden">
-              <div style="font-size:10px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${wo.customer_name||wo.wo_number}${(wo.customer_city||wo.customer_state)?` — ${[(wo.customer_city||'').trim(),(wo.customer_state||'').trim()].filter(Boolean).join(', ')}`:''}</div>
+              <div style="font-size:10px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${isCrossDiv&&widthPx>60?`<span style="background:rgba(255,255,255,.25);border-radius:3px;padding:0 3px;font-size:8px;margin-right:3px" title="Cross-division: ${esc(wo.division||'')}">↗ ${esc((wo.division||'').split(' ')[0])}</span>`:''}${wo.customer_name||wo.wo_number}${(wo.customer_city||wo.customer_state)?` — ${[(wo.customer_city||'').trim(),(wo.customer_state||'').trim()].filter(Boolean).join(', ')}`:''}</div>
               ${(()=>{const tags=getWOTags().filter(t=>getTagsForWO(wo.id).includes(t.id));return tags.length&&widthPx>60?`<div style="display:flex;gap:2px;flex-wrap:nowrap;overflow:hidden;margin-top:1px">${tags.map(t=>`<span style="background:${t.color};color:white;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap">${t.abbr}</span>`).join('')}</div>`:'';})()}
               ${widthPx>80?`<div style="font-size:9px;color:rgba(255,255,255,.85);white-space:nowrap;overflow:hidden">${wo.wo_number} &middot; ${(()=>{const [hh,mm]=(apt.scheduled_time||'08:00').split(':').map(Number);const ap=hh>=12?'PM':'AM';return (hh%12||12)+':'+(mm<10?'0':'')+mm+' '+ap;})()}</div>`:''}
             </div>
@@ -21806,7 +21816,7 @@ function renderDispBoard(){
               </div>`;
             })()}
           </div>
-          ${techUser?.division?`<div style="font-size:10px;color:${techUser.division===div?'var(--muted)':'var(--amber)'};padding-left:34px">${techUser.division===div?techUser.division:'⚡ '+techUser.division}</div>`:''}
+          ${techUser?.division?`<div style="font-size:10px;color:var(--muted);padding-left:34px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">${techUser.division}${techUser?.service_divisions?.length?`<span style="color:var(--teal);font-size:9px" title="Also covers: ${(techUser.service_divisions||[]).join(', ')}">+${techUser.service_divisions.length}</span>`:''}${techUser?.territory?`<span style="background:#e8f5e9;color:#2e7d32;font-size:9px;font-weight:600;padding:1px 5px;border-radius:8px;white-space:nowrap">📍 ${esc(techUser.territory)}</span>`:''}</div>`:''}
           ${_canClockMgr?`<div style="padding-left:34px">
             ${!_isClockedIn
               ?`<button onclick="dispClockIn('${techName}')" style="font-size:10px;padding:2px 8px;background:var(--green);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600">Clock In</button>`
@@ -21887,7 +21897,7 @@ function _dispSave(){
   try{localStorage.setItem('lms_disp_date',_dispDate);}catch{}
   try{localStorage.setItem('lms_disp_view',_dispView);}catch{}
   try{localStorage.setItem('lms_disp_region',_dispRegion);}catch{}
-  try{localStorage.setItem('lms_disp_territory',_dispTerritory);}catch{}
+  try{localStorage.setItem('lms_disp_territories',JSON.stringify(_dispTerritories));}catch{}
 }
 function dispNav(dir){
   const d=new Date(_dispDate+'T12:00:00');
@@ -21898,8 +21908,13 @@ function dispNav(dir){
 function dispToday(){ _dispDate=new Date().toISOString().split('T')[0]; _dispSave(); showPage('dispatch-board'); }
 function dispSetDate(val){ if(val){ _dispDate=val; _dispSave(); showPage('dispatch-board'); } }
 function dispSetView(v){ _dispView=v; _dispSave(); showPage('dispatch-board'); }
-function dispSetRegion(r){ _dispRegion=r; _dispTerritory='all'; _dispSave(); showPage('dispatch-board'); }
-function dispSetTerritory(t){ _dispTerritory=t; _dispSave(); showPage('dispatch-board'); }
+function dispSetRegion(r){ _dispRegion=r; _dispTerritories=[]; _dispSave(); showPage('dispatch-board'); }
+function dispToggleTerritory(id){
+  const idx=_dispTerritories.indexOf(id);
+  if(idx>=0) _dispTerritories.splice(idx,1); else _dispTerritories.push(id);
+  _dispSave(); showPage('dispatch-board');
+}
+function dispClearTerritories(){ _dispTerritories=[]; _dispSave(); showPage('dispatch-board'); }
 
 function dispToggleDiv(div){
   const idx=_dispCollapsed.indexOf(div);
