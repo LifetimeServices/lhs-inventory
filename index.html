@@ -47973,50 +47973,55 @@ function phoneSetConnDot(color){
 }
 
 async function _telnyxGetOrCreateCredConnection(apiKey){
-  // Always re-check the live list so we pick the connection that has an outbound voice profile
+  // Helper: assign a credential connection to the default outbound voice profile
+  async function _assignToOutboundProfile(connId){
+    try{
+      const profRes=await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=5',{headers:{Authorization:`Bearer ${apiKey}`}});
+      if(!profRes.ok) return;
+      const profData=await profRes.json();
+      const profId=profData.data&&profData.data[0]&&profData.data[0].id;
+      if(!profId) return;
+      const r=await fetch(`https://api.telnyx.com/v2/outbound_voice_profiles/${profId}/connections/${connId}`,{
+        method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+      });
+      if(r.ok||r.status===422) console.log('[Telnyx] Outbound profile assignment status:',r.status);
+    }catch(e){console.warn('[Telnyx] Outbound profile assign error:',e);}
+  }
+
+  // Get all active credential connections
   const listRes=await fetch('https://api.telnyx.com/v2/credential_connections?page[size]=20',{
     headers:{Authorization:`Bearer ${apiKey}`}
   });
+  let targetConn=null;
   if(listRes.ok){
     const listData=await listRes.json();
     const active=(listData.data||[]).filter(c=>c.active!==false);
-    // Prefer a pre-existing connection (not our auto-created "LMS WebRTC") because those
-    // already have outbound voice profiles assigned in the Telnyx portal.
-    const preferred=active.find(c=>(c.connection_name||'').toLowerCase()!=='lms webrtc')||active[0];
-    if(preferred){
-      console.log('[Telnyx] Using credential connection:',preferred.connection_name,'ID:',preferred.id);
-      S.set('lhs:telnyx_cred_conn_id',preferred.id);
-      return preferred.id;
-    }
+    // Prefer our own "LMS WebRTC" connection — "Forward Only" is a restricted connection
+    // that cannot originate outbound PSTN calls.
+    targetConn=active.find(c=>(c.connection_name||'').toLowerCase()==='lms webrtc')||null;
+    // Fallback: any connection that is NOT "Forward Only"
+    if(!targetConn) targetConn=active.find(c=>!(c.connection_name||'').toLowerCase().includes('forward'))||null;
   }
-  // No existing connection — create one and auto-assign to the default outbound voice profile
-  const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
-    method:'POST',
-    headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-    body:JSON.stringify({name:'LMS WebRTC',active:true})
-  });
-  if(!createRes.ok){
-    const err=await createRes.json().catch(()=>({}));
-    throw new Error('Could not create credential connection: '+((err.errors&&err.errors[0]&&err.errors[0].detail)||createRes.status));
-  }
-  const createData=await createRes.json();
-  const newId=createData.data.id;
-  S.set('lhs:telnyx_cred_conn_id',newId);
-  try{DB.from('lhs_app_settings').upsert({key:'telnyx_cred_conn_id',value:newId},{onConflict:'key'}).then(()=>{}).catch(()=>{});}catch(e){}
-  // Auto-assign new connection to the first outbound voice profile so calls can route
-  try{
-    const profRes=await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=5',{headers:{Authorization:`Bearer ${apiKey}`}});
-    if(profRes.ok){
-      const profData=await profRes.json();
-      const profId=profData.data&&profData.data[0]&&profData.data[0].id;
-      if(profId){
-        await fetch(`https://api.telnyx.com/v2/outbound_voice_profiles/${profId}/connections/${newId}`,{
-          method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
-        }).catch(e=>console.warn('[Telnyx] Could not assign outbound profile:',e));
-      }
+  // Create a fresh "LMS WebRTC" connection if we still don't have one
+  if(!targetConn){
+    const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+      body:JSON.stringify({name:'LMS WebRTC',active:true})
+    });
+    if(!createRes.ok){
+      const err=await createRes.json().catch(()=>({}));
+      throw new Error('Could not create credential connection: '+((err.errors&&err.errors[0]&&err.errors[0].detail)||createRes.status));
     }
-  }catch(e){console.warn('[Telnyx] Outbound profile assign error:',e);}
-  return newId;
+    const createData=await createRes.json();
+    targetConn=createData.data;
+  }
+  console.log('[Telnyx] Using credential connection:',targetConn.connection_name,'ID:',targetConn.id);
+  S.set('lhs:telnyx_cred_conn_id',targetConn.id);
+  try{DB.from('lhs_app_settings').upsert({key:'telnyx_cred_conn_id',value:targetConn.id},{onConflict:'key'}).then(()=>{}).catch(()=>{});}catch(e){}
+  // Always ensure the chosen connection is in the outbound voice profile
+  await _assignToOutboundProfile(targetConn.id);
+  return targetConn.id;
 }
 
 async function initTelnyxClient(){
