@@ -10796,6 +10796,33 @@ function bInt(){
         ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Telnyx configured — phone panel will activate once numbers are provisioned</div>`
         :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your API Key and Application ID from the Telnyx portal, then click Save</div>`}
       <div id="telnyx-test-result" style="margin-top:8px"></div>
+      ${(S.get('lhs:telnyx_api_key')||'').trim()?`
+      <!-- Number Management -->
+      <div style="margin-top:18px;border-top:1px solid var(--bdr);padding-top:16px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px">&#128222; Phone Number Management</div>
+        <!-- Provisioned numbers list -->
+        <div id="telnyx-numbers-list" style="margin-bottom:14px">
+          <div style="font-size:12px;color:var(--muted)">Loading provisioned numbers...</div>
+        </div>
+        <!-- Search & provision new numbers -->
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Area Code</div>
+            <input id="telnyx-area-code" type="text" maxlength="3" placeholder="262"
+              style="width:80px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;text-align:center"
+              onkeydown="if(event.key==='Enter') telnyxSearchNumbers()">
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Type</div>
+            <select id="telnyx-num-type" style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
+              <option value="local">Local</option>
+              <option value="toll_free">Toll-Free</option>
+            </select>
+          </div>
+          <button class="btn btn-o sm" onclick="telnyxSearchNumbers()">&#128269; Search Available Numbers</button>
+        </div>
+        <div id="telnyx-search-results" style="margin-top:12px"></div>
+      </div>`:''}
     </div>
     <div class="ic" style="border-color:#0ea5e9">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -12528,7 +12555,7 @@ function aTab(tab,btn){
   const fns={users:aUsers,divs:aDivs,vendors:aVens,
     regions:aRegions,perms:aPerms,'wo-settings':aWOSettings,territories:aTerritories,integrations:bInt,security:aSecurityTraining,import:bAdminImport};
   if(fns[tab]) el.innerHTML=fns[tab]();
-  if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);}
+  if(tab==='integrations'){setTimeout(restoreDTCState,50);setTimeout(restoreIMXState,50);setTimeout(telnyxLoadNumbers,100);}
   if(tab==='regions'&&(!window._regSubTab||window._regSubTab==='map')) setTimeout(loadRegionMap,80);
 }
 
@@ -18270,6 +18297,106 @@ async function testTelnyxConnection(){
   }catch(e){
     if(res) res.innerHTML=`<span style="font-size:12px;color:var(--red)">&#10005; Network error: ${e.message}</span>`;
   }
+}
+async function telnyxSearchNumbers(){
+  const apiKey=S.get('lhs:telnyx_api_key');
+  if(!apiKey){tst('Save Telnyx API key first','error');return;}
+  const areaCode=(document.getElementById('telnyx-area-code')?.value||'').trim();
+  const numType=document.getElementById('telnyx-num-type')?.value||'local';
+  if(!areaCode||areaCode.length!==3){tst('Enter a 3-digit area code','error');return;}
+  const res=document.getElementById('telnyx-search-results');
+  if(res) res.innerHTML='<div style="font-size:12px;color:var(--muted)">Searching available numbers...</div>';
+  try{
+    let url=`https://api.telnyx.com/v2/available_phone_numbers?filter[country_code]=US&filter[phone_number_type]=${numType}&filter[national_destination_code]=${areaCode}&filter[features][]=voice&filter[limit]=10`;
+    const r=await fetch(url,{headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}});
+    const data=await r.json();
+    if(!r.ok){res.innerHTML=`<div style="font-size:12px;color:var(--red)">Error: ${data?.errors?.[0]?.detail||'Search failed'}</div>`;return;}
+    const nums=data.data||[];
+    if(!nums.length){res.innerHTML=`<div style="font-size:12px;color:var(--muted)">No numbers available for area code ${areaCode}. Try a different area code.</div>`;return;}
+    res.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">${nums.length} numbers available — $1.00/month each</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${nums.map(n=>{
+        const ph=n.phone_number;
+        const features=(n.features||[]).map(f=>f.name||f).join(', ');
+        const fmt=ph.replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3');
+        return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--navy);font-family:monospace">${fmt}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">${features||'Voice'} &middot; $1.00/mo</div>
+          </div>
+          <button class="btn btn-n sm" onclick="telnyxProvisionNumber('${ph}')">&#128722; Buy &amp; Provision</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }catch(e){
+    if(res) res.innerHTML=`<div style="font-size:12px;color:var(--red)">Network error: ${e.message}</div>`;
+  }
+}
+async function telnyxProvisionNumber(phoneNumber){
+  const apiKey=S.get('lhs:telnyx_api_key');
+  const appId=S.get('lhs:telnyx_app_id');
+  if(!apiKey){tst('No API key','error');return;}
+  if(!confirm(`Provision ${phoneNumber} for $1.00/month?`)) return;
+  try{
+    const r=await fetch('https://api.telnyx.com/v2/number_orders',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+      body:JSON.stringify({phone_numbers:[{phone_number:phoneNumber}],connection_id:appId||undefined})
+    });
+    const data=await r.json();
+    if(!r.ok){tst(`Failed: ${data?.errors?.[0]?.detail||'Unknown error'}`,'error');return;}
+    tst(`✓ ${phoneNumber} provisioned successfully!`,'success');
+    // Auto-set as default caller ID if none set
+    if(!S.get('lhs:telnyx_caller_id')){
+      S.set('lhs:telnyx_caller_id',phoneNumber);
+      DB.from('lhs_app_settings').upsert({key:'telnyx_caller_id',value:phoneNumber},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+    }
+    // Refresh the numbers list and clear search results
+    setTimeout(()=>{
+      telnyxLoadNumbers();
+      const sr=document.getElementById('telnyx-search-results');
+      if(sr) sr.innerHTML='';
+    },1500);
+  }catch(e){
+    tst(`Network error: ${e.message}`,'error');
+  }
+}
+async function telnyxLoadNumbers(){
+  const apiKey=S.get('lhs:telnyx_api_key');
+  const el=document.getElementById('telnyx-numbers-list');
+  if(!el||!apiKey) return;
+  try{
+    const r=await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=20',{
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+    });
+    const data=await r.json();
+    const nums=data.data||[];
+    if(!nums.length){
+      el.innerHTML='<div style="font-size:12px;color:var(--muted);font-style:italic">No numbers provisioned yet.</div>';
+      return;
+    }
+    el.innerHTML=`<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Provisioned Numbers (${nums.length})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${nums.map(n=>{
+        const ph=n.phone_number;
+        const fmt=ph.replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3');
+        const isDefault=S.get('lhs:telnyx_caller_id')===ph;
+        return`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:${isDefault?'#e8f5e9':'var(--surf)'};border:1px solid ${isDefault?'var(--green)':'var(--bdr)'};border-radius:8px">
+          <span style="font-size:13px;font-weight:700;color:var(--navy);font-family:monospace">${fmt}</span>
+          ${isDefault?'<span style="font-size:10px;font-weight:700;color:var(--green)">DEFAULT</span>':''}
+          ${!isDefault?`<button onclick="telnyxSetDefault('${ph}')" style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0">Set default</button>`:''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }catch(e){
+    el.innerHTML='<div style="font-size:12px;color:var(--muted)">Could not load numbers</div>';
+  }
+}
+function telnyxSetDefault(ph){
+  S.set('lhs:telnyx_caller_id',ph);
+  DB.from('lhs_app_settings').upsert({key:'telnyx_caller_id',value:ph},{onConflict:'key'}).then(()=>{}).catch(()=>{});
+  tst(`Default caller ID set to ${ph}`,'success');
+  telnyxLoadNumbers();
 }
 function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
