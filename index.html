@@ -47996,21 +47996,28 @@ async function _telnyxGetOrCreateCredConnection(apiKey){
   if(listRes.ok){
     const listData=await listRes.json();
     const active=(listData.data||[]).filter(c=>c.active!==false);
+    console.log('[Telnyx] Available credential connections:',active.map(c=>({id:c.id,name:c.connection_name,record:c.record_type})));
     // Prefer our own "LMS WebRTC" connection — "Forward Only" is a restricted connection
     // that cannot originate outbound PSTN calls.
     targetConn=active.find(c=>(c.connection_name||'').toLowerCase()==='lms webrtc')||null;
     // Fallback: any connection that is NOT "Forward Only"
     if(!targetConn) targetConn=active.find(c=>!(c.connection_name||'').toLowerCase().includes('forward'))||null;
+  }else{
+    console.warn('[Telnyx] GET credential_connections failed:',listRes.status);
   }
   // Create a fresh "LMS WebRTC" connection if we still don't have one
   if(!targetConn){
+    console.log('[Telnyx] No usable connection found — creating LMS WebRTC...');
+    const createBody={connection_name:'LMS WebRTC',active:true};
+    console.log('[Telnyx] Create body:',JSON.stringify(createBody));
     const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
       method:'POST',
       headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-      body:JSON.stringify({connection_name:'LMS WebRTC',active:true})
+      body:JSON.stringify(createBody)
     });
     if(!createRes.ok){
       const err=await createRes.json().catch(()=>({}));
+      console.error('[Telnyx] Create 422 detail:',JSON.stringify(err));
       throw new Error('Could not create credential connection: '+((err.errors&&err.errors[0]&&err.errors[0].detail)||createRes.status));
     }
     const createData=await createRes.json();
