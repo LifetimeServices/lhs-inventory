@@ -48163,8 +48163,6 @@ function phoneHandleHangup(){
   _phoneMuted=false;
   _phoneOnHold=false;
   _phoneCallSeconds=0;
-  const disp=document.getElementById('phone-display');
-  if(disp) disp.textContent='';
 }
 
 async function phoneInitiateCall(){
@@ -48179,6 +48177,7 @@ async function phoneInitiateCall(){
     if(callerId) callOpts.callerIdNumber=callerId;
     if(CU&&CU.name) callOpts.callerIdName=CU.name;
     console.log('[Telnyx] newCall opts:',callOpts);
+    tst('Dialing '+num,'info');
     _telnyxCall=_telnyxClient.newCall(callOpts);
     phoneSetStatus('Calling...','#f59e0b');
     _logCall({direction:'outbound',from_number:callerId,to_number:num,status:'initiated'});
