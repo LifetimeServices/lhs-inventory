@@ -48196,7 +48196,7 @@ function phoneHandleActive(call){
   document.getElementById('phone-call-name').textContent=(call.remoteCallerName||_lookupContactName(num)||'');
   document.getElementById('phone-mute-btn').style.display='flex';
   document.getElementById('phone-hangup-btn').style.display='flex';
-  document.getElementById('phone-hold-btn').style.display='flex';
+
   document.getElementById('phone-call-btn').style.display='none';
   const dot=document.getElementById('phone-active-dot');
   if(dot) dot.style.display='block';
@@ -48218,7 +48218,7 @@ function phoneHandleHangup(){
   document.getElementById('phone-active-call').style.display='none';
   document.getElementById('phone-mute-btn').style.display='none';
   document.getElementById('phone-hangup-btn').style.display='none';
-  document.getElementById('phone-hold-btn').style.display='none';
+
   document.getElementById('phone-call-btn').style.display='flex';
   document.getElementById('incoming-call-banner').style.display='none';
   const dot=document.getElementById('phone-active-dot');
@@ -48309,14 +48309,6 @@ function phoneToggleMute(){
   if(btn){btn.textContent=_phoneMuted?'🔇':'🎤';btn.style.background=_phoneMuted?'#fee2e2':'#f3f4f6';}
 }
 
-function phoneToggleHold(){
-  if(!_telnyxCall) return;
-  _phoneOnHold=!_phoneOnHold;
-  if(_phoneOnHold) _telnyxCall.hold(); else _telnyxCall.unhold();
-  const btn=document.getElementById('phone-hold-btn');
-  if(btn){btn.style.background=_phoneOnHold?'#fef3c7':'#f59e0b';}
-  phoneSetStatus(_phoneOnHold?'On Hold':'On Call',_phoneOnHold?'#f59e0b':'#4ade80');
-}
 
 function clickToCall(number,customerName){
   const disp=document.getElementById('phone-display');
@@ -48449,7 +48441,6 @@ async function phoneLoadLog(){
         <button id="phone-mute-btn" onclick="phoneToggleMute()" style="display:none;background:#f3f4f6" class="call-btn" title="Mute">&#127908;</button>
         <button id="phone-call-btn" onclick="phoneInitiateCall()" class="call-btn" style="background:var(--green)" title="Call">&#128222;</button>
         <button id="phone-hangup-btn" onclick="phoneHangup()" style="display:none;background:var(--red)" class="call-btn" title="Hang up">&#128309;</button>
-        <button id="phone-hold-btn" onclick="phoneToggleHold()" style="display:none;background:#f59e0b" class="call-btn" title="Hold">&#9208;</button>
       </div>
       <!-- Audio device selectors -->
       <div id="phone-audio-devices" style="width:100%;border-top:1px solid var(--bdr);padding-top:12px;display:flex;flex-direction:column;gap:8px">
