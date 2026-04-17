@@ -201,7 +201,7 @@ tr:hover td{background:#faf9f6}
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <!-- EmailJS removed — replaced by Brevo API -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.23.1/lib/bundle/telnyx-webrtc.min.js"></script>
+<script src="https://unpkg.com/@telnyx/webrtc@2.26.2/lib/bundle.js"></script>
 <script>
 const SUPA_URL = 'https://vuwcnqvrgmdknvbajhtt.supabase.co';
 const SUPA_KEY = 'sb_publishable_Pr4OYz2a2rvhEtRjH_Nqkg_8PHTIeCb';
@@ -48035,9 +48035,10 @@ async function initTelnyxClient(){
     const token=tokenRaw.replace(/^"|"$/g,''); // strip quotes if plain string
 
     // Step 4: Init Telnyx WebRTC client with the token
-    if(typeof TelnyxRTC==='undefined'){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
+    const _TRTC=(typeof TelnyxWebRTC!=='undefined'&&TelnyxWebRTC.TelnyxRTC)||(typeof TelnyxRTC!=='undefined'&&TelnyxRTC)||null;
+    if(!_TRTC){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
     if(_telnyxClient){try{_telnyxClient.disconnect();}catch(e){}}
-    _telnyxClient=new TelnyxRTC({login_token:token});
+    _telnyxClient=new _TRTC({login_token:token});
     _telnyxClient.on('telnyx.ready',function(){
       phoneSetStatus('Ready','#4ade80');
       phoneSetConnDot('#4ade80');
