@@ -20879,17 +20879,13 @@ function bDispatch(){
             style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;pointer-events:none">
         </div>
       </div>
+      <!-- Row 1: View + Region + Actions -->
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${['day','2day','3day'].map(v=>`<button class="btn sm ${_dispView===v?'btn-n':'btn-o'}" onclick="dispSetView('${v}')">${v==='day'?'Day':v==='2day'?'2 Day':'3 Day'}</button>`).join('')}
         <span style="color:var(--bdr)">|</span>
         <button class="btn sm btn-o" onclick="dispSetRegion('all')" style="${_dispRegion==='all'?'background:var(--navy);color:var(--teal)':''}">All</button>
         ${Object.keys(REGIONS).map(r=>`<button class="btn sm btn-o" onclick="dispSetRegion('${r}')"
           style="${_dispRegion===r?`background:${REGIONS[r].color};color:white`:`border-color:${REGIONS[r].color};color:${REGIONS[r].color}`}">${r}</button>`).join('')}
-        <span style="color:var(--bdr)">|</span>
-        <button class="btn sm btn-o" onclick="dispClearTerritories()"
-          style="${!_dispTerritories.length?'background:var(--navy);color:var(--teal)':''}">All Territories</button>
-        ${(()=>{const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));return terrs.map(t=>`<button class="btn sm btn-o" onclick="dispToggleTerritory('${esc(t.id)}')"
-          style="${_dispTerritories.includes(t.id)?'background:var(--teal);color:var(--navy);border-color:var(--teal)':''}">&#128205; ${esc(t.name)}</button>`).join('');})()}
         <span style="color:var(--bdr)">|</span>
         <button class="btn sm" id="pin-all-btn" onclick="dispPinAll()"
           style="${Object.keys(_dispPinned).filter(k=>k!=='__region__').length>0?'background:var(--teal);color:var(--navy);border-color:var(--teal)':'background:transparent;color:var(--teal);border:1px solid var(--teal)'}"
@@ -20899,18 +20895,21 @@ function bDispatch(){
         <button class="btn btn-n sm" onclick="oAddGreyBlock()">+ Task Block</button>
       </div>
     </div>
-    <!-- Territory filter status bar (only visible when territories are actively filtered) -->
+    <!-- Row 2: Territory multi-select (always shown as its own row) -->
     ${(()=>{
-      if(!_dispTerritories.length) return '';
+      const terrs=(S.get('lhs:territories')||[]).filter(t=>t.active!==false&&(_dispRegion==='all'||t.region===_dispRegion));
       const allDisp=(S.get('lhs:users')||[]).filter(u=>u.include_dispatch!==false&&u.include_dispatch!=='false'&&(_dispRegion==='all'||!u.region||u.region===_dispRegion));
-      const terrNames=_dispTerritories.map(id=>(S.get('lhs:territories')||[]).find(t=>t.id===id)?.name).filter(Boolean);
-      const shownCount=allDisp.filter(u=>!u.territory||terrNames.includes(u.territory)).length;
+      const terrNames=_dispTerritories.map(id=>terrs.find(t=>t.id===id)?.name).filter(Boolean);
+      const shownCount=_dispTerritories.length?allDisp.filter(u=>!u.territory||terrNames.includes(u.territory)).length:allDisp.length;
       const hiddenCount=allDisp.length-shownCount;
-      const selNames=terrNames.join(' & ');
-      return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0 2px;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--teal);font-weight:600">&#128205; ${esc(selNames)}</span>
-        <span style="font-size:11px;color:var(--muted)">${shownCount} tech${shownCount!==1?'s':''} shown${hiddenCount>0?`, ${hiddenCount} hidden by territory filter`:''}</span>
-        <button onclick="dispClearTerritories()" style="font-size:11px;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:4px;padding:1px 8px;cursor:pointer">Clear filter ✕</button>
+      return`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid rgba(0,0,0,.06)">
+        <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Territory:</span>
+        <button class="btn sm btn-o" onclick="dispClearTerritories()"
+          style="${!_dispTerritories.length?'background:var(--navy);color:var(--teal)':''}">All</button>
+        ${terrs.map(t=>`<button class="btn sm btn-o" onclick="dispToggleTerritory('${esc(t.id)}')"
+          style="${_dispTerritories.includes(t.id)?'background:var(--teal);color:var(--navy);border-color:var(--teal)':''}">&#128205; ${esc(t.name)}</button>`).join('')}
+        ${_dispTerritories.length?`<span style="font-size:11px;color:var(--muted);margin-left:4px">${shownCount} shown${hiddenCount>0?`, ${hiddenCount} hidden`:''}</span>
+        <button onclick="dispClearTerritories()" style="font-size:11px;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:4px;padding:1px 8px;cursor:pointer;margin-left:2px">Clear ✕</button>`:''}
       </div>`;
     })()}
     <!-- Color legend -->
