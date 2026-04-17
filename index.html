@@ -48014,8 +48014,8 @@ async function _telnyxGetOrCreateCredConnection(apiKey){
   if(!targetConn){
     console.log('[Telnyx] No usable connection found — creating LMS WebRTC...');
     const _rndPw=()=>Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
-    const createBody={connection_name:'LMS WebRTC',active:true,user_name:'lmswebrtc',password:_rndPw()};
-    console.log('[Telnyx] Create body:',JSON.stringify(createBody));
+    const sipPw=_rndPw();
+    const createBody={connection_name:'LMS WebRTC',active:true,user_name:'lmswebrtc',password:sipPw};
     const createRes=await fetch('https://api.telnyx.com/v2/credential_connections',{
       method:'POST',
       headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
@@ -48023,15 +48023,39 @@ async function _telnyxGetOrCreateCredConnection(apiKey){
     });
     if(!createRes.ok){
       const err=await createRes.json().catch(()=>({}));
-      console.error('[Telnyx] Create 422 detail:',JSON.stringify(err));
+      console.error('[Telnyx] Create error:',JSON.stringify(err));
       throw new Error('Could not create credential connection: '+((err.errors&&err.errors[0]&&err.errors[0].detail)||createRes.status));
     }
     const createData=await createRes.json();
     targetConn=createData.data;
+    // Save SIP credentials so we can use them for WebRTC login
+    S.set('lhs:telnyx_sip_user','lmswebrtc');
+    S.set('lhs:telnyx_sip_pass',sipPw);
   }
   console.log('[Telnyx] Using credential connection:',targetConn.connection_name,'ID:',targetConn.id);
   S.set('lhs:telnyx_cred_conn_id',targetConn.id);
   try{DB.from('lhs_app_settings').upsert({key:'telnyx_cred_conn_id',value:targetConn.id},{onConflict:'key'}).then(()=>{}).catch(()=>{});}catch(e){}
+  // If we don't have the SIP password cached, reset it to a known value via PATCH
+  if(!S.get('lhs:telnyx_sip_pass')){
+    const _rndPw=()=>Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+    const newPw=_rndPw();
+    const sipUser=(targetConn.user_name||'lmswebrtc');
+    try{
+      const patchRes=await fetch(`https://api.telnyx.com/v2/credential_connections/${targetConn.id}`,{
+        method:'PATCH',
+        headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+        body:JSON.stringify({password:newPw,user_name:sipUser})
+      });
+      if(patchRes.ok){
+        S.set('lhs:telnyx_sip_user',sipUser);
+        S.set('lhs:telnyx_sip_pass',newPw);
+        console.log('[Telnyx] SIP credentials reset, user:',sipUser);
+      }else{
+        const e=await patchRes.json().catch(()=>({}));
+        console.warn('[Telnyx] Could not reset SIP password:',patchRes.status,e?.errors?.[0]?.detail);
+      }
+    }catch(e){console.warn('[Telnyx] SIP password reset error:',e);}
+  }
   // Always ensure the chosen connection is in the outbound voice profile
   await _assignToOutboundProfile(targetConn.id);
   return targetConn.id;
@@ -48042,37 +48066,18 @@ async function initTelnyxClient(){
   if(!apiKey){phoneSetStatus('No API key — check Integrations','#f59e0b');return;}
   phoneSetStatus('Connecting...','#f59e0b');
   try{
-    // Step 1: Get or create a Credential Connection (needed for WebRTC SIP auth)
-    const credConnId=await _telnyxGetOrCreateCredConnection(apiKey);
+    // Step 1: Get or create a Credential Connection and get its SIP credentials
+    await _telnyxGetOrCreateCredConnection(apiKey);
+    const sipUser=S.get('lhs:telnyx_sip_user')||'lmswebrtc';
+    const sipPass=S.get('lhs:telnyx_sip_pass')||'';
+    if(!sipPass){phoneSetStatus('SIP credentials missing — re-save Telnyx settings','#ef4444');return;}
 
-    // Step 2: Create a per-session telephony credential on that connection
-    const credRes=await fetch('https://api.telnyx.com/v2/telephony_credentials',{
-      method:'POST',
-      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-      body:JSON.stringify({connection_id:credConnId,name:(CU&&(CU.name||CU.email)||'LMS User')+' '+Date.now()})
-    });
-    if(!credRes.ok){
-      const err=await credRes.json().catch(()=>({}));
-      phoneSetStatus('Credential error: '+((err&&err.errors&&err.errors[0]&&err.errors[0].detail)||credRes.status),'#ef4444');
-      return;
-    }
-    const credData=await credRes.json();
-    const cred=credData.data;
-
-    // Step 3: Exchange credential for a WebRTC login token
-    const tokenRes=await fetch('https://api.telnyx.com/v2/telephony_credentials/'+cred.id+'/token',{
-      method:'POST',
-      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
-    });
-    if(!tokenRes.ok){phoneSetStatus('Token error: '+tokenRes.status,'#ef4444');return;}
-    const tokenRaw=await tokenRes.text();
-    const token=tokenRaw.replace(/^"|"$/g,''); // strip quotes if plain string
-
-    // Step 4: Init Telnyx WebRTC client with the token
+    // Step 2: Init Telnyx WebRTC client with SIP credentials (more reliable than login_token)
     const _TRTC=(typeof TelnyxWebRTC!=='undefined'&&TelnyxWebRTC.TelnyxRTC)||(typeof TelnyxRTC!=='undefined'&&TelnyxRTC)||null;
     if(!_TRTC){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
     if(_telnyxClient){try{_telnyxClient.disconnect();}catch(e){}}
-    _telnyxClient=new _TRTC({login_token:token});
+    console.log('[Telnyx] Connecting with SIP user:',sipUser);
+    _telnyxClient=new _TRTC({login:sipUser,password:sipPass});
     _telnyxClient.on('telnyx.ready',function(){
       phoneSetStatus('Ready','#4ade80');
       phoneSetConnDot('#4ade80');
