@@ -30284,10 +30284,83 @@ async function openCustomer(id){
       <td><button class="btn sm btn-n" onclick="cMod();openWO('${w.id}')">Open</button></td>
     </tr>`).join('')}</tbody>
   </table></div>`:'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;border:1px dashed var(--bdr);border-radius:8px">No work orders yet</div>'}
+  <div style="margin-top:20px">
+    <div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:10px">📞 Communication Timeline</div>
+    <div id="cust-comm-timeline" style="font-size:13px;color:var(--muted)">Loading…</div>
+  </div>
   <div class="brow" style="margin-top:16px">
     <button class="btn btn-o" onclick="cMod()">Close</button>
   </div>`;
   document.getElementById('mo').classList.add('open');
+  // Load communication timeline (calls + texts) asynchronously
+  setTimeout(()=>{try{custTimelineLoad(id);}catch(e){console.warn(e);}},30);
+}
+
+// ─── CUSTOMER COMMUNICATION TIMELINE (Phase 3b) ─────────────────────────────
+async function custTimelineLoad(customerId){
+  const el=document.getElementById('cust-comm-timeline');
+  if(!el) return;
+  try{
+    const [calls,sms]=await Promise.all([
+      DB.from('lhs_phone_calls').select('*').eq('customer_id',customerId).order('started_at',{ascending:false}).limit(100),
+      DB.from('lhs_sms_messages').select('*,lhs_sms_threads!inner(customer_id,remote_number,our_number)').eq('lhs_sms_threads.customer_id',customerId).order('created_at',{ascending:false}).limit(100),
+    ]);
+    const callRows=(calls.data||[]).map(c=>({
+      kind:'call', at:c.started_at||c.created_at, direction:c.direction, duration:c.duration_seconds,
+      notes:c.notes, disposition:c.disposition, follow_up:c.follow_up_date,
+      from:c.from_number, to:c.to_number, status:c.status,
+    }));
+    const smsRows=(sms.data||[]).map(m=>({
+      kind:'sms', at:m.created_at, direction:m.direction, body:m.body,
+      media:(m.media_urls||[]).length, status:m.status,
+    }));
+    const combined=[...callRows,...smsRows].sort((a,b)=>new Date(b.at)-new Date(a.at));
+    if(!combined.length){
+      el.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);background:var(--surf);border:1px dashed var(--bdr);border-radius:8px">No calls or texts logged yet.</div>';
+      return;
+    }
+    el.innerHTML=`<div style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">${
+      combined.map(r=>{
+        const when=r.at?new Date(r.at):null;
+        const dt=when?when.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—';
+        if(r.kind==='call'){
+          const icon=r.direction==='inbound'?'📲':'📞';
+          const dir=r.direction==='inbound'?'Inbound':'Outbound';
+          const dur=r.duration?Math.floor(r.duration/60)+':'+String(r.duration%60).padStart(2,'0'):'';
+          const badge=r.status==='missed'?'<span style="font-size:10px;color:var(--red);font-weight:700;margin-left:6px">MISSED</span>':'';
+          const disp=r.disposition?`<span style="background:var(--bg2);font-size:11px;padding:2px 7px;border-radius:10px;color:var(--navy);margin-left:6px">${esc(r.disposition)}</span>`:'';
+          const follow=r.follow_up?`<div style="font-size:11px;color:var(--amber);margin-top:2px">⏰ Follow-up: ${r.follow_up}</div>`:'';
+          const notes=r.notes?`<div style="font-size:12px;color:var(--navy);margin-top:4px;white-space:pre-wrap">${esc(r.notes)}</div>`:'';
+          return `<div style="padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:15px">${icon}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--navy)">${dir}</span>
+              ${dur?`<span style="font-size:11px;color:var(--muted)">· ${dur}</span>`:''}
+              ${badge}${disp}
+              <span style="font-size:11px;color:var(--muted);margin-left:auto">${dt}</span>
+            </div>
+            ${notes}${follow}
+          </div>`;
+        } else {
+          const icon=r.direction==='inbound'?'💬':'📤';
+          const dir=r.direction==='inbound'?'Text Received':'Text Sent';
+          const blocked=r.status==='blocked'?'<span style="font-size:10px;color:var(--red);font-weight:700;margin-left:6px">BLOCKED</span>':'';
+          const media=r.media>0?`<span style="font-size:11px;color:var(--teal);margin-left:6px">🖼 ${r.media}</span>`:'';
+          return `<div style="padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:15px">${icon}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--navy)">${dir}</span>
+              ${media}${blocked}
+              <span style="font-size:11px;color:var(--muted);margin-left:auto">${dt}</span>
+            </div>
+            ${r.body?`<div style="font-size:13px;color:var(--navy);margin-top:4px;white-space:pre-wrap">${esc(r.body)}</div>`:''}
+          </div>`;
+        }
+      }).join('')
+    }</div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--muted);font-size:12px">Could not load timeline: '+esc(e.message||e)+'</div>';
+  }
 }
 
 // ── GLOBAL SEARCH ────────────────────────────────────────────────────────────
@@ -48655,9 +48728,44 @@ function phoneHandleInbound(call){
   const name=call.remoteCallerName||'';
   document.getElementById('incoming-caller-id').textContent=_fmtPhone(from);
   document.getElementById('incoming-caller-name').textContent=name;
+  // Customer match by phone number (Phase 3b)
+  _phoneMatchCustomer(from);
   document.getElementById('incoming-call-banner').style.display='block';
   phoneSetStatus('Incoming call...','#4ade80');
   _logCall({direction:'inbound',from_number:from,to_number:S.get('lhs:telnyx_caller_id')||'',status:'ringing'});
+}
+
+// ─── CUSTOMER MATCH & SCREEN-POP (Phase 3b) ─────────────────────────────────
+// Matches a phone number (E.164 or loose) to a customer record by comparing
+// digits-only. Sets window._phoneMatchedCustomer for subsequent handlers.
+let _phoneMatchedCustomer=null;
+function _phoneMatchCustomer(rawNumber){
+  const matchBox=document.getElementById('incoming-customer-match');
+  _phoneMatchedCustomer=null;
+  if(!matchBox||!rawNumber) return;
+  matchBox.style.display='none';
+  const digits=String(rawNumber).replace(/\D/g,'').replace(/^1/,'');
+  if(digits.length<10) return;
+  const custs=S.get('lhs:customers')||[];
+  // Prefer exact 10-digit match; fall back to suffix match
+  const match=custs.find(c=>{
+    const d=(c.phone||'').replace(/\D/g,'').replace(/^1/,'');
+    return d===digits;
+  })||custs.find(c=>{
+    const d=(c.phone||'').replace(/\D/g,'');
+    return d && (d.endsWith(digits)||digits.endsWith(d));
+  });
+  if(!match) return;
+  _phoneMatchedCustomer=match;
+  const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.customer_id===match.id);
+  document.getElementById('incoming-cust-name').textContent=`${match.first_name||''} ${match.last_name||''}`.trim()+(match.company?` (${match.company})`:'');
+  document.getElementById('incoming-cust-addr').textContent=`${match.address||''}${match.city?', '+match.city:''}${match.state?' '+match.state:''}`;
+  document.getElementById('incoming-cust-stats').textContent=`${wos.length} work order${wos.length===1?'':'s'}${match.do_not_contact?' · ⛔ DO NOT CONTACT':''}`;
+  matchBox.style.display='block';
+}
+
+function phoneOpenMatchedCustomer(){
+  if(_phoneMatchedCustomer) openCustomer(_phoneMatchedCustomer.id);
 }
 
 function phoneAnswer(){
@@ -48726,9 +48834,11 @@ function phoneHandleActive(call){
   _telnyxCall=call;
   _attachRemoteStream(call);
   const num=(call.remoteCallerNumber||(call.options&&call.options.remoteCallerNumber)||(document.getElementById('phone-display')&&document.getElementById('phone-display').textContent)||'');
+  // Match to a customer so the post-call notes modal can populate on hangup
+  if(!_phoneMatchedCustomer) _phoneMatchedCustomer=_matchCustomerByNumber(num);
   document.getElementById('phone-active-call').style.display='block';
   document.getElementById('phone-call-number').textContent=_fmtPhone(num);
-  document.getElementById('phone-call-name').textContent=(call.remoteCallerName||_lookupContactName(num)||'');
+  document.getElementById('phone-call-name').textContent=(call.remoteCallerName||_lookupContactName(num)||(_phoneMatchedCustomer?`${_phoneMatchedCustomer.first_name||''} ${_phoneMatchedCustomer.last_name||''}`.trim():''));
   document.getElementById('phone-mute-btn').style.display='flex';
   document.getElementById('phone-hangup-btn').style.display='flex';
 
@@ -48760,11 +48870,100 @@ function phoneHandleHangup(){
   if(dot) dot.style.display='none';
   phoneSetStatus('Ready','#4ade80');
   phoneSetConnDot('#4ade80');
-  _logCall({status:'completed',duration_seconds:_phoneCallSeconds});
+  const endedSec=_phoneCallSeconds;
+  _logCall({status:'completed',duration_seconds:endedSec});
+  // Post-call notes modal if the call connected (>= 5s) and we matched a customer
+  if(endedSec>=5 && _phoneMatchedCustomer){
+    setTimeout(()=>postCallNotesOpen(_phoneMatchedCustomer,endedSec),400);
+  }
   _telnyxCall=null;
   _phoneMuted=false;
   _phoneOnHold=false;
   _phoneCallSeconds=0;
+  _phoneMatchedCustomer=null;
+}
+
+// ─── POST-CALL NOTES MODAL (Phase 3b) ───────────────────────────────────────
+// Fires automatically on hangup when the call was answered (>=5s) and matched
+// to a customer. Lets the rep add notes, pick a disposition, and optionally
+// set a follow-up date. Saves to the active lhs_phone_calls row.
+function postCallNotesOpen(customer,duration){
+  const name=`${customer.first_name||''} ${customer.last_name||''}`.trim();
+  const mins=Math.floor(duration/60), secs=duration%60;
+  const dur=mins+':'+String(secs).padStart(2,'0');
+  const today=new Date();
+  const tomorrow=new Date(today.getTime()+86400000).toISOString().slice(0,10);
+  const body=`
+  <div style="max-width:520px">
+    <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px">
+      <span style="color:var(--muted)">Call with </span><b>${esc(name)}</b>
+      <span style="color:var(--muted)"> · ${dur}</span>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Disposition</div>
+      <select id="pcn-disp" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+        <option value="">— Select outcome —</option>
+        <option>Spoke with customer</option>
+        <option>Left voicemail</option>
+        <option>No answer</option>
+        <option>Scheduled appointment</option>
+        <option>Provided quote</option>
+        <option>Follow-up required</option>
+        <option>Not interested</option>
+        <option>Wrong number</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Call Notes</div>
+      <textarea id="pcn-notes" rows="5" placeholder="What was discussed, next steps, etc."
+        style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:'DM Sans',sans-serif"></textarea>
+    </div>
+    <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+        <input id="pcn-follow" type="checkbox" onchange="document.getElementById('pcn-follow-date').disabled=!this.checked">
+        Schedule follow-up
+      </label>
+      <input id="pcn-follow-date" type="date" value="${tomorrow}" disabled
+        style="padding:6px 10px;border:1px solid var(--bdr);border-radius:6px;font-size:13px">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-o sm" onclick="cMod()">Skip</button>
+      <button class="btn btn-n sm" onclick="postCallNotesSave('${customer.id}',${duration})">💾 Save &amp; Close</button>
+    </div>
+  </div>`;
+  oMod(`📋 Log Call — ${esc(name)}`, body);
+}
+
+async function postCallNotesSave(customerId,duration){
+  const notes=(g('pcn-notes')?.value||'').trim();
+  const disp=g('pcn-disp')?.value||'';
+  const follow=g('pcn-follow')?.checked?g('pcn-follow-date')?.value:null;
+  try{
+    // Update the most recent call row for this customer if it exists, else insert
+    const update={notes:notes||null,disposition:disp||null,follow_up_date:follow||null};
+    if(_activeCallLogId){
+      // Legacy table update (existing _logCall flow uses lhs_call_logs)
+      await DB.from('lhs_call_logs').update(update).eq('id',_activeCallLogId).then(()=>{}).catch(()=>{});
+    }
+    // Also write a structured row to the new lhs_phone_calls table tied to the customer
+    await DB.from('lhs_phone_calls').insert({
+      direction:'inbound',
+      customer_id:customerId,
+      user_id:CU?.id||null,
+      status:'completed',
+      duration_seconds:duration,
+      notes:notes||null,
+      disposition:disp||null,
+      follow_up_date:follow||null,
+      started_at:new Date(Date.now()-duration*1000).toISOString(),
+      ended_at:new Date().toISOString(),
+    });
+    tst('✓ Call logged to customer record','success');
+    cMod();
+  }catch(e){
+    tst('Save failed: '+(e.message||e),'error');
+  }
 }
 
 async function phoneInitiateCall(){
@@ -48773,6 +48972,11 @@ async function phoneInitiateCall(){
   if(!num){tst('Enter a number to call','error');return;}
   if(!_telnyxClient){tst('Phone not connected — open Phone panel first','error');return;}
   if(!num.startsWith('+')) num='+1'+num;
+  // Respect communication bells: if dialed number matches a customer who has
+  // calls turned off, block the call and notify the user.
+  const match=_matchCustomerByNumber(num);
+  if(match && commBlockIfDisabled(match,'call')) return;
+  _phoneMatchedCustomer=match||null;
   const callerId=S.get('lhs:telnyx_caller_id')||'';
   try{
     const callOpts={destinationNumber:num};
@@ -48886,7 +49090,7 @@ let _activeCallTo='';
 async function _logCall(fields){
   try{
     if(fields.status==='completed'||fields.status==='missed'){
-      // Update the existing row instead of inserting a new one
+      // Update the existing legacy row
       if(_activeCallLogId){
         await DB.from('lhs_call_logs').update({
           status:fields.status||'completed',
@@ -48894,13 +49098,31 @@ async function _logCall(fields){
         }).eq('id',_activeCallLogId);
         _activeCallLogId=null;
       }
+      // Also write a row to the new lhs_phone_calls table (customer-linked)
+      // for missed calls so they surface in the customer timeline.
+      if(fields.status==='missed'){
+        const matchedId=_phoneMatchedCustomer?.id||_matchCustomerByNumber(_activeCallFrom||_activeCallTo)?.id||null;
+        try{
+          await DB.from('lhs_phone_calls').insert({
+            direction:_activeCallDir||'inbound',
+            from_number:_activeCallFrom||null,
+            to_number:_activeCallTo||null,
+            customer_id:matchedId,
+            user_id:CU?.id||null,
+            status:'missed',
+            duration_seconds:0,
+            started_at:new Date().toISOString(),
+          });
+        }catch(e){/* table may not exist yet in some envs */}
+      }
       return;
     }
-    // New call starting — insert row and save its ID
+    // New call starting — insert legacy row and save its ID
     _activeCallFrom=fields.from_number||S.get('lhs:telnyx_caller_id')||'';
     _activeCallTo=fields.to_number||'';
+    _activeCallDir=fields.direction||'outbound';
     const{data}=await DB.from('lhs_call_logs').insert({
-      direction:fields.direction||'outbound',
+      direction:_activeCallDir,
       from_number:_activeCallFrom,
       to_number:_activeCallTo,
       user_email:(CU&&CU.email)||'',
@@ -48911,6 +49133,19 @@ async function _logCall(fields){
     }).select('id').single();
     if(data) _activeCallLogId=data.id;
   }catch(e){console.warn('Call log failed:',e&&e.message);}
+}
+
+let _activeCallDir='outbound';
+// Match a phone number to a customer (digits-only, last-10 suffix match).
+function _matchCustomerByNumber(raw){
+  if(!raw) return null;
+  const digits=String(raw).replace(/\D/g,'').replace(/^1/,'');
+  if(digits.length<10) return null;
+  const custs=S.get('lhs:customers')||[];
+  return custs.find(c=>{
+    const d=(c.phone||'').replace(/\D/g,'').replace(/^1/,'');
+    return d===digits;
+  })||null;
 }
 
 async function phoneLoadLog(){
@@ -49035,6 +49270,13 @@ async function phoneLoadLog(){
   <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Incoming Call</div>
   <div id="incoming-caller-id" style="font-size:16px;font-weight:700;color:var(--navy)"></div>
   <div id="incoming-caller-name" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+  <div id="incoming-customer-match" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--teal);border-radius:8px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--teal);margin-bottom:2px">&#9733; Customer Match</div>
+    <div id="incoming-cust-name" style="font-size:14px;font-weight:700;color:var(--navy)"></div>
+    <div id="incoming-cust-addr" style="font-size:11px;color:var(--muted);margin-top:1px"></div>
+    <div id="incoming-cust-stats" style="font-size:11px;color:var(--muted);margin-top:3px"></div>
+    <button id="incoming-cust-open" onclick="phoneOpenMatchedCustomer()" style="margin-top:6px;padding:4px 10px;background:var(--teal);color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Open Customer &rarr;</button>
+  </div>
   <div style="display:flex;gap:10px;margin-top:12px">
     <button onclick="phoneAnswer()" style="flex:1;padding:10px;background:var(--green);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px">&#128222; Answer</button>
     <button onclick="phoneDecline()" style="flex:1;padding:10px;background:var(--red);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px">&#128309; Decline</button>
