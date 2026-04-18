@@ -39684,7 +39684,15 @@ function bAccountHub(){
 
     if(_acctHubTab==='activity'){
       const aIcon=a=>{const t=a.activity_type||a.type||'';return t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':t.includes('Stage')||t.includes('stage')?'🔄':t.includes('Created')||t.includes('created')?'✨':'📋';};
-      return`<div class="card" style="padding:20px">
+      // Kick off async load for calls/voicemails/SMS from the new telephony tables
+      setTimeout(()=>{try{acctHubPhoneLoad('${id}');}catch(e){console.warn(e);}},30);
+      return`<div class="card" style="padding:20px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:700;color:var(--navy)">📞 Calls, Texts &amp; Voicemails</div>
+        </div>
+        <div id="acct-hub-phone-list" style="font-size:13px;color:var(--muted)">Loading…</div>
+      </div>
+      <div class="card" style="padding:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
           <div style="font-size:14px;font-weight:700;color:var(--navy)">Activity Timeline</div>
           <button class="btn btn-o sm" onclick="oAddActivity(null,null,'${id}')">+ Log Activity</button>
@@ -39844,6 +39852,82 @@ async function acctHubSaveAddrAsProp(id){
   S.set('lhs:props',props);
   tst('Address saved as service location','success');
   showPage('account-hub');
+}
+
+// ─── ACCOUNT HUB — PHONE/SMS LOAD (Phase 3b) ────────────────────────────────
+async function acctHubPhoneLoad(customerId){
+  const el=document.getElementById('acct-hub-phone-list');
+  if(!el) return;
+  try{
+    const [calls,vms,sms]=await Promise.all([
+      DB.from('lhs_phone_calls').select('*').eq('customer_id',customerId).order('started_at',{ascending:false}).limit(100),
+      DB.from('lhs_voicemails').select('*').eq('customer_id',customerId).order('created_at',{ascending:false}).limit(50),
+      DB.from('lhs_sms_messages').select('*,lhs_sms_threads!inner(customer_id)').eq('lhs_sms_threads.customer_id',customerId).order('created_at',{ascending:false}).limit(100),
+    ]);
+    const callRows=(calls.data||[]).map(c=>({kind:'call',at:c.started_at||c.created_at,data:c}));
+    const vmRows=(vms.data||[]).map(v=>({kind:'vm',at:v.created_at,data:v}));
+    const smsRows=(sms.data||[]).map(m=>({kind:'sms',at:m.created_at,data:m}));
+    const combined=[...callRows,...vmRows,...smsRows].sort((a,b)=>new Date(b.at)-new Date(a.at));
+    if(!combined.length){
+      el.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);background:var(--surf);border:1px dashed var(--bdr);border-radius:8px">No phone activity yet.</div>';
+      return;
+    }
+    el.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto">${
+      combined.map(r=>{
+        const when=r.at?new Date(r.at):null;
+        const dt=when?when.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—';
+        if(r.kind==='call'){
+          const c=r.data;
+          const icon=c.direction==='inbound'?'📲':'📞';
+          const dir=c.direction==='inbound'?'Inbound':'Outbound';
+          const dur=c.duration_seconds?Math.floor(c.duration_seconds/60)+':'+String(c.duration_seconds%60).padStart(2,'0'):'';
+          const badge=c.status==='missed'?'<span style="font-size:10px;color:var(--red);font-weight:700;margin-left:6px">MISSED</span>':'';
+          const disp=c.disposition?`<span style="background:var(--bg2);font-size:11px;padding:2px 7px;border-radius:10px;color:var(--navy);margin-left:6px">${esc(c.disposition)}</span>`:'';
+          const follow=c.follow_up_date?`<div style="font-size:11px;color:var(--amber);margin-top:2px">⏰ Follow-up: ${c.follow_up_date}</div>`:'';
+          const notes=c.notes?`<div style="font-size:12px;color:var(--navy);margin-top:4px;white-space:pre-wrap">${esc(c.notes)}</div>`:'';
+          const rec=c.recording_url?`<div style="margin-top:6px"><audio controls preload="none" src="${esc(c.recording_url)}" style="height:32px;width:100%"></audio></div>`:'';
+          return `<div style="padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:15px">${icon}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--navy)">${dir} Call</span>
+              ${dur?`<span style="font-size:11px;color:var(--muted)">· ${dur}</span>`:''}
+              ${badge}${disp}
+              <span style="font-size:11px;color:var(--muted);margin-left:auto">${dt}</span>
+            </div>
+            ${notes}${rec}${follow}
+          </div>`;
+        } else if(r.kind==='vm'){
+          const v=r.data;
+          const st=v.status==='closed_out'?'Closed':v.status==='listened'?'Listened':'New';
+          const stColor=v.status==='closed_out'?'var(--green)':v.status==='listened'?'var(--muted)':'var(--red)';
+          return `<div style="padding:10px 12px;background:var(--surf);border:1px solid var(--amber);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:15px">📬</span>
+              <span style="font-size:12px;font-weight:600;color:var(--navy)">Voicemail</span>
+              <span style="font-size:10px;font-weight:700;color:${stColor};margin-left:4px">${st.toUpperCase()}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:auto">${dt}</span>
+            </div>
+            ${v.transcript?`<div style="font-size:12px;color:var(--navy);margin-top:4px;font-style:italic">"${esc(v.transcript)}"</div>`:''}
+            ${v.r2_url?`<div style="margin-top:6px"><audio controls preload="none" src="${esc(v.r2_url)}" style="height:32px;width:100%"></audio></div>`:''}
+          </div>`;
+        } else {
+          const m=r.data;
+          const icon=m.direction==='inbound'?'💬':'📤';
+          const dir=m.direction==='inbound'?'Text Received':'Text Sent';
+          return `<div style="padding:10px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:15px">${icon}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--navy)">${dir}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:auto">${dt}</span>
+            </div>
+            ${m.body?`<div style="font-size:13px;color:var(--navy);margin-top:4px;white-space:pre-wrap">${esc(m.body)}</div>`:''}
+          </div>`;
+        }
+      }).join('')
+    }</div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--muted);font-size:12px">Could not load phone activity: '+esc(e.message||e)+'</div>';
+  }
 }
 
 async function acctHubSave(id){
