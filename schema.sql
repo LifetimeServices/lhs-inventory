@@ -130,12 +130,167 @@ create table if not exists lhs_audit_log (
   old_values jsonb, new_values jsonb, created_at timestamptz default now()
 );
 
+-- ── TELEPHONY (Phase 3) ─────────────────────────────────────────────────────
+-- Phone numbers provisioned on Telnyx. Routing type + per-number config.
+create table if not exists lhs_phone_numbers (
+  id uuid primary key default gen_random_uuid(),
+  e164 text unique not null,                       -- "+14145550100"
+  telnyx_id text,                                  -- Telnyx phone number resource id
+  label text,                                      -- human name: "Green Bay Main"
+  number_type text default 'local',                -- 'local' | 'toll_free'
+  route_type text default 'call_center',           -- 'call_center' | 'direct_rep'
+  assigned_user_id uuid references lhs_users(id),  -- for direct_rep type
+  ring_seconds integer default 25,                 -- ring duration before voicemail
+  timezone text default 'America/Chicago',
+  business_hours jsonb,                            -- {mon:{start:"08:00",end:"17:00"}, ...}
+  record_calls boolean default true,
+  recording_announcement boolean default true,     -- play "this call may be recorded"
+  voicemail_enabled boolean default true,
+  voicemail_greeting_id uuid,                      -- → lhs_voicemail_greetings
+  voicemail_notify_emails text[],                  -- extra emails notified on VM
+  voicemail_notify_user_ids uuid[],                -- in-app notifications
+  sms_enabled boolean default true,
+  shared_inbox boolean default true,               -- replies fan into shared inbox
+  a2p_campaign_id text,                            -- Telnyx 10DLC campaign id once assigned
+  active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Voicemail greetings (audio stored in Cloudflare R2). Can be assigned to any number.
+create table if not exists lhs_voicemail_greetings (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,                              -- "Main Office After Hours"
+  r2_path text not null,                           -- R2 object key
+  r2_url text,                                     -- public URL
+  duration_seconds numeric(6,2),
+  created_by uuid references lhs_users(id),
+  created_at timestamptz default now()
+);
+
+-- Call log — every inbound and outbound call.
+create table if not exists lhs_phone_calls (
+  id uuid primary key default gen_random_uuid(),
+  telnyx_call_control_id text,                     -- Telnyx call-control id
+  telnyx_leg_id text,
+  direction text not null,                         -- 'inbound' | 'outbound'
+  from_number text,
+  to_number text,
+  phone_number_id uuid references lhs_phone_numbers(id),
+  customer_id uuid references lhs_customers(id),
+  user_id uuid references lhs_users(id),           -- which rep handled (if any)
+  status text,                                     -- 'ringing' | 'answered' | 'missed' | 'voicemail' | 'completed' | 'failed'
+  started_at timestamptz,
+  answered_at timestamptz,
+  ended_at timestamptz,
+  duration_seconds integer,
+  recording_r2_path text,
+  recording_url text,
+  notes text,
+  follow_up_date date,
+  disposition text,                                -- outcome tag set by rep
+  created_at timestamptz default now()
+);
+
+-- Voicemail messages left by callers.
+create table if not exists lhs_voicemails (
+  id uuid primary key default gen_random_uuid(),
+  call_id uuid references lhs_phone_calls(id),
+  phone_number_id uuid references lhs_phone_numbers(id),
+  from_number text,
+  customer_id uuid references lhs_customers(id),
+  r2_path text,
+  r2_url text,
+  duration_seconds integer,
+  transcript text,
+  status text default 'new',                       -- 'new' | 'listened' | 'closed_out'
+  closed_out_by uuid references lhs_users(id),
+  closed_out_at timestamptz,
+  closed_out_notes text,
+  created_at timestamptz default now()
+);
+
+-- SMS threads — one per (our_number, remote_number) pair.
+create table if not exists lhs_sms_threads (
+  id uuid primary key default gen_random_uuid(),
+  phone_number_id uuid references lhs_phone_numbers(id),
+  our_number text not null,
+  remote_number text not null,
+  customer_id uuid references lhs_customers(id),
+  last_message_at timestamptz,
+  last_message_preview text,
+  last_direction text,                             -- 'inbound' | 'outbound'
+  last_user_id uuid references lhs_users(id),      -- who sent the last outbound
+  unread_count integer default 0,
+  is_shared boolean default true,                  -- mirrors lhs_phone_numbers.shared_inbox
+  archived boolean default false,
+  created_at timestamptz default now(),
+  unique(our_number, remote_number)
+);
+
+-- SMS messages (individual texts). MMS media stored in R2.
+create table if not exists lhs_sms_messages (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid references lhs_sms_threads(id) on delete cascade,
+  telnyx_message_id text,
+  direction text not null,                         -- 'inbound' | 'outbound'
+  body text,
+  media_r2_paths text[],                           -- R2 paths for MMS attachments
+  media_urls text[],
+  status text,                                     -- 'queued' | 'sent' | 'delivered' | 'failed' | 'blocked'
+  sent_by_user_id uuid references lhs_users(id),   -- null for inbound
+  blocked_reason text,                             -- when status='blocked'
+  created_at timestamptz default now()
+);
+
+-- Agent presence for the Call Center Monitor.
+create table if not exists lhs_phone_presence (
+  user_id uuid primary key references lhs_users(id) on delete cascade,
+  state text default 'available',                  -- available | on_call | wrap_up | break | meeting | away
+  state_since timestamptz default now(),
+  current_call_id uuid references lhs_phone_calls(id),
+  last_heartbeat_at timestamptz default now()
+);
+
+-- SMS opt-out log (STOP compliance).
+create table if not exists lhs_sms_optouts (
+  id uuid primary key default gen_random_uuid(),
+  remote_number text not null,
+  our_number text,
+  reason text default 'STOP',
+  created_at timestamptz default now(),
+  unique(remote_number, our_number)
+);
+
+-- Outbound SMS templates for automated triggers.
+create table if not exists lhs_sms_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  trigger_event text,                              -- 'wo_created' | 'tech_en_route' | 'appt_reminder' etc.
+  body text not null,                              -- supports {{merge_fields}}
+  active boolean default true,
+  from_phone_number_id uuid references lhs_phone_numbers(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Customer communication preferences ("bells"). Add if missing on existing table.
+do $$ begin
+  alter table lhs_customers add column if not exists allow_calls boolean default true;
+  alter table lhs_customers add column if not exists allow_sms boolean default true;
+  alter table lhs_customers add column if not exists allow_email boolean default true;
+  alter table lhs_customers add column if not exists do_not_contact boolean default false;
+  alter table lhs_customers add column if not exists sms_opted_out_at timestamptz;
+end $$;
+
 -- Row Level Security
 do $$ declare t text; begin
   foreach t in array array['lhs_users','lhs_divisions','lhs_vendors','lhs_locations',
     'lhs_items','lhs_location_stock','lhs_van_inventory','lhs_purchase_orders',
     'lhs_po_lines','lhs_transfers','lhs_testers','lhs_customers','lhs_work_orders',
-    'lhs_wo_materials','lhs_schedule','lhs_audit_log','lhs_po_sequence']
+    'lhs_wo_materials','lhs_schedule','lhs_audit_log','lhs_po_sequence',
+    'lhs_phone_numbers','lhs_voicemail_greetings','lhs_phone_calls','lhs_voicemails',
+    'lhs_sms_threads','lhs_sms_messages','lhs_phone_presence','lhs_sms_optouts','lhs_sms_templates']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists allow_all on %I', t);
