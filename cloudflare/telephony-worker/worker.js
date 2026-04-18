@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v5' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v6' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -134,11 +134,18 @@ async function onCallInitiated(p, env) {
   const result = await telnyxApi(env, 'POST', '/v2/calls', {
     connection_id: webrtcConnId,
     to:   `sip:lmswebrtc@sip.telnyx.com`,
-    from: fromNumber,
+    // The `from` must be a number owned by the account — use the LMS number.
+    // Preserve the original caller for screen-pop via a custom SIP header.
+    from: toNumber,
+    from_display_name: fromNumber || '',
     timeout_secs: cfg.ring_seconds || 25,
     answering_machine_detection: 'disabled',
     client_state: b64(callControlId),         // carries inbound-leg id
     webhook_url: `${env.WORKER_URL}/telnyx/call-events`,
+    custom_headers: [
+      { name: 'X-LMS-Original-Caller', value: fromNumber || '' },
+      { name: 'X-LMS-Inbound-CallId',  value: callControlId     },
+    ],
   });
   if (result?.error) {
     console.error('Originate failed:', result.error);
