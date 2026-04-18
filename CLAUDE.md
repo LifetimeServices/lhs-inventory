@@ -92,6 +92,9 @@ roadmap, or something new) and update Current Status + Open Threads.
 
 ## Things to remember about the user's preferences
 
+- **Not an experienced coder/developer.** Explain in plain English, avoid
+  jargon. When technical terms are unavoidable, define them briefly. Lead with
+  what the user needs to *do* or *decide*, not with how the code works.
 - Prefers short, direct answers over long explanations.
 - Wants decisions/direction changes captured in writing, not just in chat.
 - Works across multiple sessions — assume no memory between them.
