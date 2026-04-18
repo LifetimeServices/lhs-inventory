@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v7' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v8' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -191,6 +191,26 @@ async function onCallHangup(p, env) {
   const callControlId = p.call_control_id;
   const direction = p.direction;
   const cause = p.hangup_cause || '';
+  const clientState = p.client_state;
+
+  // Outgoing leg hung up → if it was the WebRTC dial and was never bridged,
+  // fall through to voicemail on the inbound leg.
+  if (direction === 'outgoing' && clientState) {
+    const inboundId = unb64(clientState);
+    console.log('Outbound hangup — cause:', cause, 'source:', p.hangup_source, 'inbound:', inboundId);
+    if (!inboundId) return json({ ok: true });
+    const rows = await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${inboundId}&select=*`);
+    const inboundRow = rows?.[0];
+    if (inboundRow && !inboundRow.answered_at) {
+      console.log('Routing inbound to voicemail');
+      const cfgRows = inboundRow.phone_number_id
+        ? await supa(env, `/lhs_phone_numbers?id=eq.${inboundRow.phone_number_id}&select=*`)
+        : null;
+      const cfg = cfgRows?.[0] || { label: 'our office' };
+      await playVoicemailPrompt(env, inboundId, cfg);
+    }
+    return json({ ok: true });
+  }
 
   // Only finalize on the inbound leg hangup
   if (direction !== 'incoming') return json({ ok: true });
@@ -198,14 +218,12 @@ async function onCallHangup(p, env) {
   // Look up call row to compute duration
   const rows = await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}&select=*`);
   const row = rows?.[0];
-  const started = row?.started_at ? new Date(row.started_at) : null;
   const answered = row?.answered_at ? new Date(row.answered_at) : null;
   const now = new Date();
   const duration = answered ? Math.max(0, Math.round((now - answered) / 1000)) : 0;
   const wasAnswered = !!answered;
   const finalStatus = wasAnswered ? 'completed'
                     : cause === 'call_rejected' ? 'missed'
-                    : cause === 'normal_clearing' ? 'missed'
                     : 'missed';
 
   await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
