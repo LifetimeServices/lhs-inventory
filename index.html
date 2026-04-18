@@ -1814,7 +1814,7 @@ async function warmCache(){
     // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
     try{
       const WO_PAGE=1000;
-      const WO_MAX=5000; // Cap at 5000 most recent — older WOs searchable via WO page Supabase query
+      const WO_MAX=500; // Cap at 500 most recent — older WOs searchable via WO page Supabase query
       // Step 1: lightweight count
       const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
       const totalToLoad=Math.min(count||0,WO_MAX);
@@ -47664,7 +47664,7 @@ async function applyWOFilters(){
   };
   window._woFilters=newFilters;
   // When a search term is present, also query Supabase directly so historical
-  // records beyond the 5000-row cache are findable (e.g. ST-imported jobs)
+  // records beyond the 500-row cache are findable (e.g. ST-imported jobs)
   if(newFilters.search){
     try{
       const words=[...new Set(newFilters.search.trim().split(/\s+/).filter(w=>w.length>0))];
