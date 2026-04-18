@@ -78,6 +78,12 @@ body{font-family:'DM Sans',sans-serif;background:#f0ece3;color:var(--text);min-h
 .page{display:none}.page.active{display:block}
 .pt{font-size:22px;font-weight:700;color:var(--navy);margin-bottom:6px}
 .ps{font-size:14px;color:var(--muted);margin-bottom:24px}
+/* Phone module (Phase 3) */
+.ph{padding:14px 18px;border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pht{font-size:18px;font-weight:700;color:var(--navy)}
+.phs{font-size:12px;color:var(--muted);margin-top:2px}
+.pc{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;margin:10px 0}
+.pb{padding:16px 18px}
 /* CARDS */
 .card{background:var(--white);border-radius:var(--rl);padding:24px;box-shadow:var(--sh);margin-bottom:20px}
 .ct{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px}
@@ -576,6 +582,8 @@ const PERM_MODS=[
   {key:'admin',label:'Admin',icon:'🔐',perms:['view','manage_users','change_permissions','manage_integrations','view_audit','access_regions','access_territories','access_divisions','access_wo_settings','access_vendors','access_security']},
   {key:'sales',label:'CRM / Sales',icon:'🎯',perms:['view_leads','create_leads','edit_leads','delete_leads','view_opportunities','create_opportunities','view_marketing','manage_marketing','view_pricebook','edit_pricebook'],
     tabs:['tab_crm_dash','tab_leads','tab_sales_accounts','tab_opps','tab_estimates','tab_pricebook','tab_followups','tab_activities','tab_email_sync','tab_marketing','tab_discounts','tab_permits','tab_sales_settings','tab_leaderboard']},
+  {key:'phone',label:'Phone',icon:'📞',perms:['view_monitor','manage_numbers','access_softphone','supervise_calls','listen_whisper_barge','view_texts','view_all_texts','send_texts','view_voicemail','close_voicemail','view_recordings','manage_templates','manage_settings','manage_integrations_phone'],
+    tabs:['tab_phone_monitor','tab_phone_numbers','tab_phone_messages','tab_phone_voicemail','tab_phone_calls','tab_phone_templates','tab_phone_settings']},
 ];
 
 const PERM_LABELS={
@@ -623,6 +631,25 @@ const PERM_LABELS={
   tab_marketing:'Marketing',tab_discounts:'Discounts & Promotions',
   tab_permits:'Permits & Licensing',tab_sales_settings:'Sales Settings',
   tab_leaderboard:'Leaderboard',
+  // ── Phone module ──────────────────────────────────────────────────────────
+  view_monitor:'Can View Call Center Monitor',
+  manage_numbers:'Can Provision & Manage Phone Numbers',
+  access_softphone:'Can Use Softphone (Make/Receive Calls)',
+  supervise_calls:'Can Supervise Live Calls',
+  listen_whisper_barge:'Can Listen / Whisper / Barge on Calls',
+  view_texts:'Can View Own & Shared Text Conversations',
+  view_all_texts:'Can View All Text Conversations (Manager Monitor)',
+  send_texts:'Can Send Outbound Texts',
+  view_voicemail:'Can View & Listen to Voicemails',
+  close_voicemail:'Can Close Out (Resolve) Voicemails',
+  view_recordings:'Can Listen to Call Recordings',
+  manage_templates:'Can Edit Automated SMS Templates',
+  manage_settings:'Can Edit Phone System Settings',
+  manage_integrations_phone:'Can Access Telnyx Integration Settings',
+  tab_phone_monitor:'Call Center Monitor',tab_phone_numbers:'Phone Numbers',
+  tab_phone_messages:'Messages',tab_phone_voicemail:'Voicemails',
+  tab_phone_calls:'Call Recordings',tab_phone_templates:'SMS Templates',
+  tab_phone_settings:'Phone Settings',
 };
 
 // ── REGIONS ──────────────────────────────────────────────────────────────────
@@ -1597,21 +1624,21 @@ function getClassifications(division, jobType, subtype){
 // Note: chatter, mytasks, tasks, customers, properties = universal access (not in matrix)
 const DEFAULT_PERMS={
   // ── New roles ────────────────────────────────────────────────────────────────
-  'Creator':           {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'God View':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Director':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Admin':             {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1},
-  'Regional Director': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1},
-  'Regional Manager':  {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
-  'Operations Manager':{dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1},
-  'Territory Manager': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
-  'Dispatcher':        {dashboard:1,dispatch:1,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Technician':        {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Sales':             {dashboard:1,dispatch:0,workorders:0,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
+  'Creator':           {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,phone:1},
+  'God View':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,phone:1},
+  'Director':          {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,phone:1},
+  'Admin':             {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:1,sales:1,phone:1},
+  'Regional Director': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:1,accounting:1,reports:1,operations:1,admin:0,sales:1,phone:1},
+  'Regional Manager':  {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:1,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1,phone:1},
+  'Operations Manager':{dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:1,phone:1},
+  'Territory Manager': {dashboard:1,dispatch:1,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0,phone:1},
+  'Dispatcher':        {dashboard:1,dispatch:1,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,phone:1},
+  'Technician':        {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,phone:0},
+  'Sales':             {dashboard:1,dispatch:0,workorders:0,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1,phone:1},
   // ── Legacy aliases — keeps existing DB users working during role migration ──
-  'Van Tech':          {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0},
-  'Sales Rep':         {dashboard:1,dispatch:0,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1},
-  'Location Manager':  {dashboard:1,dispatch:0,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0},
+  'Van Tech':          {dashboard:0,dispatch:0,workorders:1,closeout:0,accounts:0,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:1,admin:0,sales:0,phone:0},
+  'Sales Rep':         {dashboard:1,dispatch:0,workorders:1,closeout:0,accounts:1,inventory:0,hr:0,payroll:0,accounting:0,reports:0,operations:0,admin:0,sales:1,phone:1},
+  'Location Manager':  {dashboard:1,dispatch:0,workorders:1,closeout:1,accounts:1,inventory:1,hr:0,payroll:0,accounting:0,reports:1,operations:1,admin:0,sales:0,phone:1},
 };
 
 let WH=['Green Bay WI','Brookfield WI','Colorado'];
@@ -1787,7 +1814,7 @@ async function warmCache(){
     // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
     try{
       const WO_PAGE=1000;
-      const WO_MAX=5000; // Cap at 5000 most recent — older WOs searchable via WO page Supabase query
+      const WO_MAX=500; // Cap at 500 most recent — older WOs searchable via WO page Supabase query
       // Step 1: lightweight count
       const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
       const totalToLoad=Math.min(count||0,WO_MAX);
@@ -2853,6 +2880,14 @@ async function startApp(){
     <div class="page" id="p-admin-security"></div>
     <div class="page" id="p-admin-import"></div>
     <div class="page" id="p-sales-board"></div>
+    <div class="page" id="p-phone"></div>
+    <div class="page" id="p-phone-monitor"></div>
+    <div class="page" id="p-phone-numbers"></div>
+    <div class="page" id="p-phone-messages"></div>
+    <div class="page" id="p-phone-voicemail"></div>
+    <div class="page" id="p-phone-calls"></div>
+    <div class="page" id="p-phone-templates"></div>
+    <div class="page" id="p-phone-settings"></div>
   `;
   seed(); buildNav();
   // Restore last visited page, fall back to dashboard
@@ -2865,7 +2900,8 @@ async function startApp(){
     'hr','hr-payroll','hr-employees','hr-state','hr-timeoff','hr-radon','hr-trir','hr-settings',
     'my-timeoff',
     'payroll','accounting','acct-dashboard','acct-division','acct-invoices','acct-ar','acct-ap','acct-coa','acct-journal','acct-bank','acct-receipts','acct-settings',
-    'reports','operations','admin','admin-security','admin-import','sales-board'];
+    'reports','operations','admin','admin-security','admin-import','sales-board',
+    'phone','phone-monitor','phone-numbers','phone-messages','phone-voicemail','phone-calls','phone-templates','phone-settings'];
   // Replace current history entry with a base dashboard state so back never leaves the app
   try{ window.history.replaceState({lmsPage:'dashboard'},document.title,'#dashboard'); }catch{}
   // Check if vendor clicked a confirm link before logging in
@@ -2919,6 +2955,7 @@ const MAIN_NAV=[
   {id:'closeout',    l:'Closeout'},
   {id:'accounts',    l:'Rolodex'},
   {id:'sales',       l:'Sales'},
+  {id:'phone',       l:'Phone'},
   {id:'inventory',   l:'Inventory'},
   {id:'hr',          l:'HR'},
   {id:'accounting',  l:'Accounting'},
@@ -3048,6 +3085,16 @@ const SALES_NAV=[
   {id:'sales-tax-settings',  l:'Tax Settings'},
 ];
 
+const PHONE_NAV=[
+  {id:'phone-monitor',     l:'📞 Call Center Monitor', perm:'view_monitor'},
+  {id:'phone-numbers',     l:'☎️ Phone Numbers',       perm:'manage_numbers'},
+  {id:'phone-messages',    l:'💬 Messages',            perm:'view_texts'},
+  {id:'phone-voicemail',   l:'📬 Voicemails',          perm:'view_voicemail'},
+  {id:'phone-calls',       l:'🎙️ Call Recordings',    perm:'view_recordings'},
+  {id:'phone-templates',   l:'📝 SMS Templates',       perm:'manage_templates'},
+  {id:'phone-settings',    l:'⚙️ Phone Settings',      perm:'manage_settings'},
+];
+
 const HR_NAV=[
   {id:'hr-payroll',        l:'Payroll'},
   {id:'hr-employees',      l:'Employee Info'},
@@ -3091,6 +3138,16 @@ function renderSalesNav(){
   _renderSubNav('sales', filtered, first);
 }
 function renderHRNav()      { _renderSubNav('hr',       HR_NAV,       'hr-payroll'); }
+function renderPhoneNav(){
+  const rolePermsArr=S.get('lhs:role_permissions')||[];
+  const roleRec=rolePermsArr.find(r=>r.role===(CU?.role||''));
+  const hasTabPerms=roleRec?.perms?.phone&&Object.keys(roleRec.perms.phone).some(k=>k.startsWith('tab_')||['view_monitor','manage_numbers','view_texts','view_voicemail','view_recordings','manage_templates','manage_settings'].includes(k));
+  const filtered=hasTabPerms
+    ? PHONE_NAV.filter(n=>!n.perm||CU?.role==='Creator'||CU?.role==='God View'||hasPerm('phone',n.perm))
+    : PHONE_NAV;
+  const first=filtered[0]?.id||'phone-monitor';
+  _renderSubNav('phone', filtered, first);
+}
 
 const ACCT_NAV=[
   {id:'acct-dashboard', l:'&#128200; Dashboard',   perm:'tab_acct_dash'},
@@ -3149,6 +3206,7 @@ function renderMainNav(){
       else if(n.id==='sales') renderSalesNav();
       else if(n.id==='accounts') renderAccountsNav();
       else if(n.id==='hr') renderHRNav();
+      else if(n.id==='phone') renderPhoneNav();
       else showPage(n.id);
     };
     c.appendChild(b);
@@ -3340,6 +3398,8 @@ function showPage(id){
   if(id==='sales-discounts') setTimeout(_discPageLoad,60);
   // Van Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='vans') setTimeout(refreshVanInvPage,0);
+  // Phone Numbers page — lazy-load Telnyx numbers + local config
+  if(id==='phone-numbers') setTimeout(()=>{try{phoneNumbersLoad();}catch(e){console.warn(e);}},30);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
@@ -3436,6 +3496,15 @@ function buildPage(id){
     payroll:bPayroll,
     reports:bReports, operations:bOperations, admin:bAdmin, 'admin-security':aSecurityTraining, 'admin-import':bAdminImport,
     'sales-board':bSalesBoard,
+    // ── Phone module pages ──────────────────────────────────────────────────
+    phone:bPhone,
+    'phone-monitor':bPhoneMonitor,
+    'phone-numbers':bPhoneNumbers,
+    'phone-messages':bPhoneMessages,
+    'phone-voicemail':bPhoneVoicemail,
+    'phone-calls':bPhoneCallRecordings,
+    'phone-templates':bPhoneTemplates,
+    'phone-settings':bPhoneSettings,
   };
   return (pages[id]||bDash)();
 }
@@ -10817,31 +10886,10 @@ function bInt(){
         :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your API Key and Application ID from the Telnyx portal, then click Save</div>`}
       <div id="telnyx-test-result" style="margin-top:8px"></div>
       ${(S.get('lhs:telnyx_api_key')||'').trim()?`
-      <!-- Number Management -->
-      <div style="margin-top:18px;border-top:1px solid var(--bdr);padding-top:16px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px">&#128222; Phone Number Management</div>
-        <!-- Provisioned numbers list -->
-        <div id="telnyx-numbers-list" style="margin-bottom:14px">
-          <div style="font-size:12px;color:var(--muted)">Loading provisioned numbers...</div>
-        </div>
-        <!-- Search & provision new numbers -->
-        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-          <div>
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Area Code</div>
-            <input id="telnyx-area-code" type="text" maxlength="3" placeholder="262"
-              style="width:80px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;text-align:center"
-              onkeydown="if(event.key==='Enter') telnyxSearchNumbers()">
-          </div>
-          <div>
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Type</div>
-            <select id="telnyx-num-type" style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
-              <option value="local">Local</option>
-              <option value="toll_free">Toll-Free</option>
-            </select>
-          </div>
-          <button class="btn btn-o sm" onclick="telnyxSearchNumbers()">&#128269; Search Available Numbers</button>
-        </div>
-        <div id="telnyx-search-results" style="margin-top:12px"></div>
+      <div style="margin-top:14px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;display:flex;align-items:center;gap:10px;font-size:12px">
+        <span style="font-size:18px">&#128222;</span>
+        <div style="flex:1">Number provisioning, routing, voicemail, and call recording settings have moved.</div>
+        <button class="btn btn-o sm" onclick="renderPhoneNav();showPage('phone-numbers')">Open Phone → Numbers →</button>
       </div>`:''}
     </div>
     <div class="ic" style="border-color:#0ea5e9">
@@ -18373,7 +18421,10 @@ async function telnyxProvisionNumber(phoneNumber){
     }
     // Refresh the numbers list and clear search results
     setTimeout(()=>{
-      telnyxLoadNumbers();
+      // Phone tab page (new location) — preferred
+      if(typeof phoneNumbersLoad==='function') phoneNumbersLoad();
+      // Legacy Integrations card (still called if someone buys from there)
+      if(typeof telnyxLoadNumbers==='function') telnyxLoadNumbers();
       const sr=document.getElementById('telnyx-search-results');
       if(sr) sr.innerHTML='';
     },1500);
@@ -18418,6 +18469,470 @@ function telnyxSetDefault(ph){
   tst(`Default caller ID set to ${ph}`,'success');
   telnyxLoadNumbers();
 }
+
+// ─── PHONE MODULE (Phase 3) ─────────────────────────────────────────────────
+// Top-level nav sections for the Phone system. Each sub-page is a thin stub
+// that will be filled in during sub-phases 3a → 3e. The container page ("phone")
+// redirects into the monitor by default.
+
+function _phoneHeader(title,subtitle){
+  return `<div class="ph">
+    <div class="phl"><div class="pht">${title}</div>
+    ${subtitle?`<div class="phs">${esc(subtitle)}</div>`:''}</div>
+  </div>`;
+}
+function _phoneStub(title,note){
+  return `<div class="pc">
+    ${_phoneHeader(title)}
+    <div class="pb"><div style="padding:40px 20px;text-align:center;color:var(--muted);font-size:13px">
+      <div style="font-size:42px;margin-bottom:10px;opacity:.5">🚧</div>
+      <div style="font-weight:600;color:var(--navy);margin-bottom:6px">${esc(title)} — coming soon</div>
+      <div style="max-width:480px;margin:0 auto;line-height:1.5">${esc(note||'')}</div>
+    </div></div>
+  </div>`;
+}
+function bPhone(){ setTimeout(()=>showPage('phone-monitor'),0); return _phoneStub('Phone','Redirecting to Call Center Monitor…'); }
+function bPhoneMonitor(){ return _phoneStub('Call Center Monitor','Live agent availability, active calls, and supervisor listen/whisper/barge controls. Built in Phase 3c.'); }
+function bPhoneNumbers(){ return bPhoneNumbersPage(); }
+function bPhoneMessages(){ return _phoneStub('Messages','Shared inbox for call-center numbers, 1-to-1 threads, MMS. Built in Phase 3d.'); }
+function bPhoneVoicemail(){ return _phoneStub('Voicemails','Voicemail inbox with audio playback, transcription, and close-out workflow. Built in Phase 3b.'); }
+function bPhoneCallRecordings(){ return _phoneStub('Call Recordings','Searchable recording archive with permission-gated playback. 5-year retention. Built in Phase 3b.'); }
+function bPhoneTemplates(){ return _phoneStub('SMS Templates','Automated work-order and dispatch text templates with merge fields and on/off toggles. Built in Phase 3e.'); }
+function bPhoneSettings(){ return _phoneStub('Phone Settings','Global recording retention, business-hours presets, default greetings, and agent-presence defaults. Built across 3b–3e.'); }
+
+// ─── PHONE NUMBERS PAGE (Phase 3a) ──────────────────────────────────────────
+// Admin page for provisioning, listing, and configuring phone numbers.
+// Replaces the provisioning block previously on the Integrations page.
+
+function bPhoneNumbersPage(){
+  const apiKey=(S.get('lhs:telnyx_api_key')||'').trim();
+  if(!apiKey){
+    return `<div class="pc">
+      ${_phoneHeader('Phone Numbers')}
+      <div class="pb"><div style="padding:40px 20px;text-align:center">
+        <div style="font-size:42px;margin-bottom:10px;opacity:.5">☎️</div>
+        <div style="font-weight:600;color:var(--navy);margin-bottom:6px">Telnyx not configured</div>
+        <div style="color:var(--muted);font-size:13px;max-width:440px;margin:0 auto 14px;line-height:1.5">Enter your Telnyx API key and Application ID in Admin → Integrations before provisioning numbers here.</div>
+        <button class="btn btn-o sm" onclick="showPage('admin');setTimeout(()=>aTab('integrations',document.querySelector('.tab[onclick*=integrations]')),100)">Open Integrations →</button>
+      </div></div>
+    </div>`;
+  }
+  const canManage=hasPerm('phone','manage_numbers');
+  return `<div class="pc">
+    ${_phoneHeader('Phone Numbers','Provision new numbers, assign to call center or rep, and configure per-number routing.')}
+    <div class="pb">
+      <!-- Provisioned numbers list -->
+      <div id="phone-numbers-list" style="margin-bottom:18px">
+        <div style="font-size:12px;color:var(--muted)">Loading provisioned numbers…</div>
+      </div>
+      ${canManage?`
+      <!-- Provisioning: search & buy -->
+      <div style="border-top:1px solid var(--bdr);padding-top:16px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px">🔍 Provision a New Number</div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Area Code</div>
+            <input id="telnyx-area-code" type="text" maxlength="3" placeholder="262"
+              style="width:80px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;text-align:center"
+              onkeydown="if(event.key==='Enter') telnyxSearchNumbers()">
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Type</div>
+            <select id="telnyx-num-type" style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
+              <option value="local">Local</option>
+              <option value="toll_free">Toll-Free</option>
+            </select>
+          </div>
+          <button class="btn btn-o sm" onclick="telnyxSearchNumbers()">🔍 Search Available Numbers</button>
+        </div>
+        <div id="telnyx-search-results"></div>
+      </div>`:`<div style="font-size:12px;color:var(--muted);font-style:italic;padding-top:10px;border-top:1px solid var(--bdr)">You don't have permission to provision new numbers. Contact an admin.</div>`}
+    </div>
+  </div>
+  `;
+}
+
+// Load & render the provisioned-numbers list enriched with local config.
+async function phoneNumbersLoad(){
+  const apiKey=S.get('lhs:telnyx_api_key');
+  const el=document.getElementById('phone-numbers-list');
+  if(!el||!apiKey) return;
+  try{
+    // Pull Telnyx-provisioned numbers
+    const r=await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=50',{
+      headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'}
+    });
+    const data=await r.json();
+    const nums=data.data||[];
+    // Pull our local config records
+    let localCfg=[];
+    try{
+      const {data:rows}=await DB.from('lhs_phone_numbers').select('*');
+      localCfg=rows||[];
+    }catch(e){/* table may not exist yet */}
+    if(!nums.length){
+      el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;background:var(--bg2);border:1px dashed var(--bdr);border-radius:10px">No numbers provisioned yet. Use the search below to buy your first number.</div>`;
+      return;
+    }
+    const users=S.get('lhs:users')||[];
+    el.innerHTML=`<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:10px">Provisioned Numbers (${nums.length})</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${nums.map(n=>{
+        const ph=n.phone_number;
+        const fmt=ph.replace(/^\\+1(\\d{3})(\\d{3})(\\d{4})$/,'($1) $2-$3');
+        const cfg=localCfg.find(c=>c.e164===ph);
+        const routeType=cfg?.route_type||'—';
+        const routeLabel=routeType==='call_center'?'📞 Call Center':routeType==='direct_rep'?'👤 Direct to Rep':'⚠️ Unconfigured';
+        const assignee=cfg?.assigned_user_id?(users.find(u=>u.id===cfg.assigned_user_id)?.name||'unknown user'):'';
+        const label=cfg?.label||'—';
+        return`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;gap:12px;flex-wrap:wrap">
+          <div style="min-width:160px">
+            <div style="font-size:15px;font-weight:700;color:var(--navy);font-family:monospace">${fmt}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(label)}</div>
+          </div>
+          <div style="font-size:12px;color:var(--navy)">${routeLabel}${assignee?` · <span style="color:var(--muted)">${esc(assignee)}</span>`:''}</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-o sm" onclick="phoneNumberConfig('${ph}')">⚙️ Configure</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }catch(e){
+    el.innerHTML=`<div style="font-size:12px;color:var(--red)">Could not load numbers: ${esc(e.message)}</div>`;
+  }
+}
+
+function phoneNumberConfig(ph){
+  // Fetch existing config (if any) and greetings in parallel, then open modal.
+  Promise.all([
+    DB.from('lhs_phone_numbers').select('*').eq('e164',ph).maybeSingle(),
+    DB.from('lhs_voicemail_greetings').select('*').order('created_at',{ascending:false}),
+  ]).then(([{data:cfg},{data:greetings}])=>{
+    _phoneNumConfigRender(ph, cfg||{e164:ph}, greetings||[]);
+  }).catch(e=>{
+    // Fallback: open with empty config if tables don't exist yet
+    _phoneNumConfigRender(ph, {e164:ph}, []);
+  });
+}
+
+function _phoneNumConfigRender(ph, cfg, greetings){
+  const fmt=ph.replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3');
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  const tzs=[
+    ['America/New_York','Eastern (ET)'],
+    ['America/Chicago','Central (CT)'],
+    ['America/Denver','Mountain (MT)'],
+    ['America/Phoenix','Arizona (no DST)'],
+    ['America/Los_Angeles','Pacific (PT)'],
+    ['America/Anchorage','Alaska (AKT)'],
+    ['Pacific/Honolulu','Hawaii (HAT)'],
+  ];
+  const bh=cfg.business_hours||{mon:{start:'08:00',end:'17:00',closed:false},tue:{start:'08:00',end:'17:00',closed:false},wed:{start:'08:00',end:'17:00',closed:false},thu:{start:'08:00',end:'17:00',closed:false},fri:{start:'08:00',end:'17:00',closed:false},sat:{start:'09:00',end:'13:00',closed:true},sun:{start:'09:00',end:'13:00',closed:true}};
+  const days=[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+  const notifyEmails=(cfg.voicemail_notify_emails||[]).join(', ');
+  const notifyUserIds=new Set(cfg.voicemail_notify_user_ids||[]);
+  const body=`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:780px">
+    <!-- Basics -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Basics</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Number</div>
+          <div style="font-size:15px;font-weight:700;color:var(--navy);font-family:monospace">${fmt}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Label</div>
+          <input id="pn-label" value="${esc(cfg.label||'')}" placeholder="Green Bay Main"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+    </div>
+
+    <!-- Routing -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Routing</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Route Type</div>
+          <select id="pn-route-type" onchange="document.getElementById('pn-user-row').style.display=this.value==='direct_rep'?'block':'none'"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+            <option value="call_center" ${cfg.route_type==='call_center'||!cfg.route_type?'selected':''}>📞 Call Center (ring all)</option>
+            <option value="direct_rep" ${cfg.route_type==='direct_rep'?'selected':''}>👤 Direct to Rep</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Ring Seconds</div>
+          <input id="pn-ring" type="number" min="10" max="60" value="${cfg.ring_seconds||25}"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Timezone</div>
+          <select id="pn-tz" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+            ${tzs.map(([v,l])=>`<option value="${v}" ${cfg.timezone===v||(!cfg.timezone&&v==='America/Chicago')?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="pn-user-row" style="margin-top:10px;display:${cfg.route_type==='direct_rep'?'block':'none'}">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Assigned Rep</div>
+        <select id="pn-user" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+          <option value="">— Select a user —</option>
+          ${users.map(u=>`<option value="${u.id}" ${cfg.assigned_user_id===u.id?'selected':''}>${esc(u.name)} (${esc(u.role||'')})</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <!-- Business hours -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Business Hours <span style="color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;font-size:11px">(outside hours → voicemail)</span></div>
+      <div style="display:grid;grid-template-columns:60px 1fr 1fr 80px;gap:6px;align-items:center">
+        <div></div><div style="font-size:11px;color:var(--muted);font-weight:600">Start</div><div style="font-size:11px;color:var(--muted);font-weight:600">End</div><div></div>
+        ${days.map(([k,l])=>`
+          <div style="font-size:12px;font-weight:600;color:var(--navy)">${l}</div>
+          <input id="pn-bh-${k}-start" type="time" value="${bh[k]?.start||'08:00'}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+          <input id="pn-bh-${k}-end" type="time" value="${bh[k]?.end||'17:00'}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)"><input id="pn-bh-${k}-closed" type="checkbox" ${bh[k]?.closed?'checked':''}> Closed</label>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Voicemail -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Voicemail</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input id="pn-vm-enabled" type="checkbox" ${cfg.voicemail_enabled!==false?'checked':''}> Enabled</label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Greeting</div>
+          <div style="display:flex;gap:6px">
+            <select id="pn-vm-greeting" style="flex:1;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+              <option value="">— Default TTS (name + please leave message) —</option>
+              ${greetings.map(g=>`<option value="${g.id}" ${cfg.voicemail_greeting_id===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}
+            </select>
+            <button class="btn btn-o sm" onclick="vmGreetingNew()">🎙️ New</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Notify Emails <span style="color:var(--muted);font-weight:500">(comma-separated)</span></div>
+          <input id="pn-vm-emails" value="${esc(notifyEmails)}" placeholder="alerts@example.com, mgr@example.com"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Notify Users (in-app)</div>
+        <div style="max-height:120px;overflow-y:auto;background:var(--surf);border:1px solid var(--bdr);border-radius:7px;padding:6px 10px">
+          ${users.map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0">
+            <input type="checkbox" data-pn-vm-user="${u.id}" ${notifyUserIds.has(u.id)?'checked':''}> ${esc(u.name)}
+          </label>`).join('')||'<div style="color:var(--muted);font-size:12px">No users</div>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Recording + SMS -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Recording &amp; Texting</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-rec" type="checkbox" ${cfg.record_calls!==false?'checked':''}> Record all calls on this number (stored in Cloudflare R2, 5-year retention)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-rec-ann" type="checkbox" ${cfg.recording_announcement!==false?'checked':''}> Play recording announcement to caller ("this call may be recorded")</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-sms" type="checkbox" ${cfg.sms_enabled!==false?'checked':''}> SMS enabled on this number</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-shared" type="checkbox" ${cfg.shared_inbox!==false?'checked':''}> Inbound texts go to shared inbox (uncheck only for purely personal numbers)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-active" type="checkbox" ${cfg.active!==false?'checked':''}> Number is active</label>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+    <button class="btn btn-o sm" onclick="cMod()">Cancel</button>
+    <button class="btn btn-n sm" onclick="phoneNumberSave('${ph}')">💾 Save Configuration</button>
+  </div>`;
+  oMod(`⚙️ Configure ${fmt}`, body);
+}
+
+async function phoneNumberSave(ph){
+  const bh={};
+  ['mon','tue','wed','thu','fri','sat','sun'].forEach(k=>{
+    bh[k]={
+      start:g('pn-bh-'+k+'-start')?.value||'08:00',
+      end:g('pn-bh-'+k+'-end')?.value||'17:00',
+      closed:!!g('pn-bh-'+k+'-closed')?.checked,
+    };
+  });
+  const notifyUsers=[...document.querySelectorAll('[data-pn-vm-user]')]
+    .filter(el=>el.checked).map(el=>el.dataset.pnVmUser);
+  const emails=(g('pn-vm-emails')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const row={
+    e164:ph,
+    label:g('pn-label')?.value||null,
+    route_type:g('pn-route-type')?.value||'call_center',
+    assigned_user_id:g('pn-user')?.value||null,
+    ring_seconds:parseInt(g('pn-ring')?.value||'25',10),
+    timezone:g('pn-tz')?.value||'America/Chicago',
+    business_hours:bh,
+    voicemail_enabled:!!g('pn-vm-enabled')?.checked,
+    voicemail_greeting_id:g('pn-vm-greeting')?.value||null,
+    voicemail_notify_emails:emails,
+    voicemail_notify_user_ids:notifyUsers,
+    record_calls:!!g('pn-rec')?.checked,
+    recording_announcement:!!g('pn-rec-ann')?.checked,
+    sms_enabled:!!g('pn-sms')?.checked,
+    shared_inbox:!!g('pn-shared')?.checked,
+    active:!!g('pn-active')?.checked,
+    updated_at:new Date().toISOString(),
+  };
+  try{
+    const {error}=await DB.from('lhs_phone_numbers').upsert(row,{onConflict:'e164'});
+    if(error) throw error;
+    tst('✓ Number configuration saved','success');
+    cMod();
+    phoneNumbersLoad();
+  }catch(e){
+    tst('Save failed: '+(e.message||e),'error');
+    console.error(e);
+  }
+}
+
+// ─── VOICEMAIL GREETING RECORDER (Phase 3a) ─────────────────────────────────
+// In-browser recorder using MediaRecorder API. Audio is uploaded to R2 and a
+// row is inserted into lhs_voicemail_greetings.
+
+let _vmRecorder=null;
+let _vmChunks=[];
+let _vmStartedAt=0;
+let _vmTimerInt=null;
+
+function vmGreetingNew(){
+  const body=`
+  <div style="max-width:520px">
+    <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Greeting Name</div>
+      <input id="vm-g-name" placeholder="e.g. Main Office After Hours"
+        style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="vm-g-rec-btn" class="btn btn-n sm" onclick="vmRecToggle()">🎙️ Start Recording</button>
+        <span id="vm-g-timer" style="font-family:monospace;font-size:14px;color:var(--navy);font-weight:700">0:00</span>
+        <span id="vm-g-status" style="font-size:12px;color:var(--muted)">Press record and speak into your mic</span>
+      </div>
+      <audio id="vm-g-preview" controls style="width:100%;margin-top:12px;display:none"></audio>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Or upload an MP3/WAV file:</div>
+        <input id="vm-g-file" type="file" accept="audio/*" onchange="vmFileSelected(event)"
+          style="font-size:12px">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-o sm" onclick="vmCancelRec()">Cancel</button>
+      <button id="vm-g-save-btn" class="btn btn-n sm" onclick="vmGreetingSave()" disabled>💾 Save Greeting</button>
+    </div>
+  </div>`;
+  oMod('🎙️ New Voicemail Greeting', body);
+}
+
+async function vmRecToggle(){
+  const btn=g('vm-g-rec-btn');
+  const st=g('vm-g-status');
+  if(_vmRecorder&&_vmRecorder.state==='recording'){
+    _vmRecorder.stop();
+    if(_vmTimerInt){clearInterval(_vmTimerInt);_vmTimerInt=null;}
+    if(btn){btn.textContent='🎙️ Start Recording';btn.classList.remove('btn-r');}
+    if(st) st.textContent='Recording stopped — preview below';
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _vmChunks=[];
+    const mime=MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/ogg';
+    _vmRecorder=new MediaRecorder(stream,{mimeType:mime});
+    _vmRecorder.ondataavailable=e=>{if(e.data.size>0)_vmChunks.push(e.data);};
+    _vmRecorder.onstop=()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(_vmChunks,{type:mime});
+      const url=URL.createObjectURL(blob);
+      const a=g('vm-g-preview');
+      if(a){a.src=url;a.style.display='block';}
+      window._vmGreetingBlob=blob;
+      window._vmGreetingExt=mime.includes('webm')?'webm':'ogg';
+      const saveBtn=g('vm-g-save-btn');if(saveBtn)saveBtn.disabled=false;
+    };
+    _vmRecorder.start();
+    _vmStartedAt=Date.now();
+    _vmTimerInt=setInterval(()=>{
+      const s=Math.floor((Date.now()-_vmStartedAt)/1000);
+      const t=g('vm-g-timer');
+      if(t) t.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+      if(s>=120){vmRecToggle();} // auto-stop at 2 min
+    },250);
+    if(btn){btn.textContent='⏹ Stop Recording';btn.classList.add('btn-r');}
+    if(st) st.textContent='Recording…';
+  }catch(e){
+    tst('Microphone access denied: '+e.message,'error');
+  }
+}
+
+function vmFileSelected(e){
+  const f=e.target.files?.[0];if(!f) return;
+  const a=g('vm-g-preview');
+  if(a){a.src=URL.createObjectURL(f);a.style.display='block';}
+  window._vmGreetingBlob=f;
+  const m=(f.name.split('.').pop()||'mp3').toLowerCase();
+  window._vmGreetingExt=['mp3','wav','ogg','m4a','webm'].includes(m)?m:'mp3';
+  const saveBtn=g('vm-g-save-btn');if(saveBtn)saveBtn.disabled=false;
+  g('vm-g-status').textContent='File selected: '+f.name;
+}
+
+function vmCancelRec(){
+  if(_vmRecorder&&_vmRecorder.state==='recording'){try{_vmRecorder.stop();}catch{}}
+  if(_vmTimerInt){clearInterval(_vmTimerInt);_vmTimerInt=null;}
+  window._vmGreetingBlob=null;
+  cMod();
+}
+
+async function vmGreetingSave(){
+  const name=(g('vm-g-name')?.value||'').trim();
+  const blob=window._vmGreetingBlob;
+  const ext=window._vmGreetingExt||'webm';
+  if(!name){tst('Enter a greeting name','error');return;}
+  if(!blob){tst('Record or upload audio first','error');return;}
+  const saveBtn=g('vm-g-save-btn');if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Uploading…';}
+  try{
+    const path=`voicemail-greetings/${Date.now()}-${name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()}.${ext}`;
+    const url=await r2Upload(path,blob);
+    const {data,error}=await DB.from('lhs_voicemail_greetings').insert({
+      name,r2_path:path,r2_url:url,
+      created_by:CU?.id||null,
+    }).select().single();
+    if(error) throw error;
+    tst('✓ Greeting saved — now assign it to a number','success');
+    window._vmGreetingBlob=null;
+    cMod();
+    // If a config modal was open, refresh it to show the new greeting
+    if(document.getElementById('mo')?.classList.contains('open')===false){
+      // no-op
+    }
+  }catch(e){
+    tst('Save failed: '+(e.message||e),'error');
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='💾 Save Greeting';}
+  }
+}
+
+
+// ─── COMMUNICATION BELLS (Phase 3a) ─────────────────────────────────────────
+// Check if a channel is allowed for a customer. Returns {allowed:bool, reason:string}.
+function commAllowed(customer,channel){
+  if(!customer) return {allowed:true};
+  if(customer.do_not_contact) return {allowed:false,reason:'Customer is marked Do Not Contact'};
+  const map={call:'allow_calls',sms:'allow_sms',email:'allow_email'};
+  const key=map[channel];
+  if(!key) return {allowed:true};
+  if(customer[key]===false) return {allowed:false,reason:`Customer has ${channel} turned off`};
+  return {allowed:true};
+}
+// Thin wrapper: returns true if blocked, shows a toast, and the caller should abort.
+function commBlockIfDisabled(customer,channel){
+  const r=commAllowed(customer,channel);
+  if(!r.allowed){ tst(`⛔ ${r.reason}`,'error'); return true; }
+  return false;
+}
+
 function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
   S.set('lhs:groq_api_key',val);
@@ -29354,6 +29869,18 @@ function custForm(c,saveFn){
     </div>
     <div class="fl"><label>Notes</label><input id="cf-notes" value="${c.notes||''}" placeholder="Optional notes"></div>
   </div>
+  <div class="fr" style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-top:6px">
+    <div class="fl" style="grid-column:span 3">
+      <label style="font-weight:700;color:var(--navy);margin-bottom:6px">🔔 Communication Preferences</label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-call" type="checkbox" ${c.allow_calls!==false?'checked':''}> 📞 Allow calls</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-sms" type="checkbox" ${c.allow_sms!==false?'checked':''}> 💬 Allow texts</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-email" type="checkbox" ${c.allow_email!==false?'checked':''}> ✉️ Allow email</label>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--red);font-weight:600"><input id="cf-dnc" type="checkbox" ${c.do_not_contact?'checked':''}> ⛔ Do Not Contact</label>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">When a channel is off, the system blocks outbound calls/texts/emails on that channel and notifies the user.</div>
+    </div>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="${saveFn}()">Save Customer</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -29602,6 +30129,10 @@ async function svAddCustomer(){
     state:state||null,zip:v('cf-zip')||null,
     region:region||null,division:v('cf-div')||null,
     notes:v('cf-notes')||null,
+    allow_calls:!!g('cf-allow-call')?.checked,
+    allow_sms:!!g('cf-allow-sms')?.checked,
+    allow_email:!!g('cf-allow-email')?.checked,
+    do_not_contact:!!g('cf-dnc')?.checked,
     source:'Manual',
     customer_number:custNum,
     created_at:new Date().toISOString()
@@ -29658,7 +30189,11 @@ async function svEditCustomer(){
     phone:v('cf-ph')||null,email:v('cf-em')||null,
     address:v('cf-ad')||null,city:v('cf-ct')||null,
     state:state||null,zip:v('cf-zip')||null,
-    region:region||null,division:v('cf-div')||null,notes:v('cf-notes')||null};
+    region:region||null,division:v('cf-div')||null,notes:v('cf-notes')||null,
+    allow_calls:!!g('cf-allow-call')?.checked,
+    allow_sms:!!g('cf-allow-sms')?.checked,
+    allow_email:!!g('cf-allow-email')?.checked,
+    do_not_contact:!!g('cf-dnc')?.checked};
   await dbUpdate('lhs:customers',id,updates);
   const custs=S.get('lhs:customers')||[];
   const idx=custs.findIndex(c=>c.id===id);
@@ -47129,7 +47664,7 @@ async function applyWOFilters(){
   };
   window._woFilters=newFilters;
   // When a search term is present, also query Supabase directly so historical
-  // records beyond the 5000-row cache are findable (e.g. ST-imported jobs)
+  // records beyond the 500-row cache are findable (e.g. ST-imported jobs)
   if(newFilters.search){
     try{
       const words=[...new Set(newFilters.search.trim().split(/\s+/).filter(w=>w.length>0))];
