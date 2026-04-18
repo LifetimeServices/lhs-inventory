@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v8' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v9' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -53,7 +53,12 @@ async function handleCallEvent(request, env) {
   const event = body.data || body;
   const eventType = event.event_type;
   const payload = event.payload || {};
-  console.log('📞', eventType, payload.call_control_id || '', payload.to || '', payload.direction || '');
+  if (eventType === 'call.hangup') {
+    console.log('📞', eventType, payload.call_control_id || '', payload.to || '', payload.direction || '',
+      'cause:', payload.hangup_cause || '(none)', 'source:', payload.hangup_source || '(none)');
+  } else {
+    console.log('📞', eventType, payload.call_control_id || '', payload.to || '', payload.direction || '');
+  }
   try {
     switch (eventType) {
       case 'call.initiated':        return await onCallInitiated(payload, env);
