@@ -21,7 +21,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':               return json({ ok: true, v: 'phase3b-v2' });
+        case '/health':               return json({ ok: true, v: 'phase3b-v3' });
         case '/telnyx/texml/inbound': return await handleInbound(request, env);
         case '/telnyx/texml/voicemail': return await handleVoicemailPrompt(request, env);
         case '/telnyx/recording':     return await handleRecording(request, env);
@@ -94,7 +94,13 @@ async function handleInbound(request, env) {
   const announce = (cfg.record_calls && cfg.recording_announcement)
     ? `<Say voice="alice">This call may be recorded for quality assurance.</Say>`
     : '';
-  const dialList = targets.map(t => `<Client>${t}</Client>`).join('');
+  // SIP credential-based WebRTC clients are dialed with <Sip>user@sip.telnyx.com</Sip>.
+  // Call Control client-SDK targets would use <Client>, but this app uses credential login.
+  const dialList = targets.map(t => {
+    if (t.includes('@')) return `<Sip>${t}</Sip>`;           // already a full SIP URI
+    if (/^\+?[0-9]+$/.test(t)) return `<Number>${t}</Number>`;// PSTN forwarding
+    return `<Sip>${t}@sip.telnyx.com</Sip>`;                  // bare SIP username
+  }).join('');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
