@@ -21,7 +21,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':               return json({ ok: true, v: 'phase3b-v1' });
+        case '/health':               return json({ ok: true, v: 'phase3b-v2' });
         case '/telnyx/texml/inbound': return await handleInbound(request, env);
         case '/telnyx/texml/voicemail': return await handleVoicemailPrompt(request, env);
         case '/telnyx/recording':     return await handleRecording(request, env);
@@ -30,7 +30,18 @@ export default {
         default:                      return new Response('Not found', { status: 404 });
       }
     } catch (err) {
+      // Always return valid TeXML for call-control endpoints so Telnyx doesn't
+      // play its default "application error" message — instead the error is
+      // spoken to the caller so we can debug over the phone.
       console.error('Worker error:', err.stack || err.message);
+      const msg = (err.message || 'Unknown error').slice(0, 180).replace(/[<>&"']/g, ' ');
+      if (url.pathname.startsWith('/telnyx/')) {
+        return texml(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Debug message. ${msg}</Say>
+  <Hangup/>
+</Response>`);
+      }
       return new Response('Internal error: ' + err.message, { status: 500 });
     }
   },
