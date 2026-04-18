@@ -10886,31 +10886,10 @@ function bInt(){
         :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your API Key and Application ID from the Telnyx portal, then click Save</div>`}
       <div id="telnyx-test-result" style="margin-top:8px"></div>
       ${(S.get('lhs:telnyx_api_key')||'').trim()?`
-      <!-- Number Management -->
-      <div style="margin-top:18px;border-top:1px solid var(--bdr);padding-top:16px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--navy);margin-bottom:12px">&#128222; Phone Number Management</div>
-        <!-- Provisioned numbers list -->
-        <div id="telnyx-numbers-list" style="margin-bottom:14px">
-          <div style="font-size:12px;color:var(--muted)">Loading provisioned numbers...</div>
-        </div>
-        <!-- Search & provision new numbers -->
-        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-          <div>
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Area Code</div>
-            <input id="telnyx-area-code" type="text" maxlength="3" placeholder="262"
-              style="width:80px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;text-align:center"
-              onkeydown="if(event.key==='Enter') telnyxSearchNumbers()">
-          </div>
-          <div>
-            <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Type</div>
-            <select id="telnyx-num-type" style="padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
-              <option value="local">Local</option>
-              <option value="toll_free">Toll-Free</option>
-            </select>
-          </div>
-          <button class="btn btn-o sm" onclick="telnyxSearchNumbers()">&#128269; Search Available Numbers</button>
-        </div>
-        <div id="telnyx-search-results" style="margin-top:12px"></div>
+      <div style="margin-top:14px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;display:flex;align-items:center;gap:10px;font-size:12px">
+        <span style="font-size:18px">&#128222;</span>
+        <div style="flex:1">Number provisioning, routing, voicemail, and call recording settings have moved.</div>
+        <button class="btn btn-o sm" onclick="renderPhoneNav();showPage('phone-numbers')">Open Phone → Numbers →</button>
       </div>`:''}
     </div>
     <div class="ic" style="border-color:#0ea5e9">
@@ -18442,7 +18421,10 @@ async function telnyxProvisionNumber(phoneNumber){
     }
     // Refresh the numbers list and clear search results
     setTimeout(()=>{
-      telnyxLoadNumbers();
+      // Phone tab page (new location) — preferred
+      if(typeof phoneNumbersLoad==='function') phoneNumbersLoad();
+      // Legacy Integrations card (still called if someone buys from there)
+      if(typeof telnyxLoadNumbers==='function') telnyxLoadNumbers();
       const sr=document.getElementById('telnyx-search-results');
       if(sr) sr.innerHTML='';
     },1500);
@@ -18621,10 +18603,317 @@ async function phoneNumbersLoad(){
 }
 
 function phoneNumberConfig(ph){
-  tst('Per-number configuration modal — coming in this phase','info');
-  // TODO (3a): open modal with route_type, assigned_user, ring_seconds, timezone,
-  // business_hours, voicemail_enabled, voicemail_greeting_id, recording toggles.
+  // Fetch existing config (if any) and greetings in parallel, then open modal.
+  Promise.all([
+    DB.from('lhs_phone_numbers').select('*').eq('e164',ph).maybeSingle(),
+    DB.from('lhs_voicemail_greetings').select('*').order('created_at',{ascending:false}),
+  ]).then(([{data:cfg},{data:greetings}])=>{
+    _phoneNumConfigRender(ph, cfg||{e164:ph}, greetings||[]);
+  }).catch(e=>{
+    // Fallback: open with empty config if tables don't exist yet
+    _phoneNumConfigRender(ph, {e164:ph}, []);
+  });
 }
+
+function _phoneNumConfigRender(ph, cfg, greetings){
+  const fmt=ph.replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3');
+  const users=(S.get('lhs:users')||[]).filter(u=>u.active!==false);
+  const tzs=[
+    ['America/New_York','Eastern (ET)'],
+    ['America/Chicago','Central (CT)'],
+    ['America/Denver','Mountain (MT)'],
+    ['America/Phoenix','Arizona (no DST)'],
+    ['America/Los_Angeles','Pacific (PT)'],
+    ['America/Anchorage','Alaska (AKT)'],
+    ['Pacific/Honolulu','Hawaii (HAT)'],
+  ];
+  const bh=cfg.business_hours||{mon:{start:'08:00',end:'17:00',closed:false},tue:{start:'08:00',end:'17:00',closed:false},wed:{start:'08:00',end:'17:00',closed:false},thu:{start:'08:00',end:'17:00',closed:false},fri:{start:'08:00',end:'17:00',closed:false},sat:{start:'09:00',end:'13:00',closed:true},sun:{start:'09:00',end:'13:00',closed:true}};
+  const days=[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+  const notifyEmails=(cfg.voicemail_notify_emails||[]).join(', ');
+  const notifyUserIds=new Set(cfg.voicemail_notify_user_ids||[]);
+  const body=`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:780px">
+    <!-- Basics -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Basics</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Number</div>
+          <div style="font-size:15px;font-weight:700;color:var(--navy);font-family:monospace">${fmt}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Label</div>
+          <input id="pn-label" value="${esc(cfg.label||'')}" placeholder="Green Bay Main"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+    </div>
+
+    <!-- Routing -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Routing</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Route Type</div>
+          <select id="pn-route-type" onchange="document.getElementById('pn-user-row').style.display=this.value==='direct_rep'?'block':'none'"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+            <option value="call_center" ${cfg.route_type==='call_center'||!cfg.route_type?'selected':''}>📞 Call Center (ring all)</option>
+            <option value="direct_rep" ${cfg.route_type==='direct_rep'?'selected':''}>👤 Direct to Rep</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Ring Seconds</div>
+          <input id="pn-ring" type="number" min="10" max="60" value="${cfg.ring_seconds||25}"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Timezone</div>
+          <select id="pn-tz" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+            ${tzs.map(([v,l])=>`<option value="${v}" ${cfg.timezone===v||(!cfg.timezone&&v==='America/Chicago')?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="pn-user-row" style="margin-top:10px;display:${cfg.route_type==='direct_rep'?'block':'none'}">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Assigned Rep</div>
+        <select id="pn-user" style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+          <option value="">— Select a user —</option>
+          ${users.map(u=>`<option value="${u.id}" ${cfg.assigned_user_id===u.id?'selected':''}>${esc(u.name)} (${esc(u.role||'')})</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <!-- Business hours -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Business Hours <span style="color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;font-size:11px">(outside hours → voicemail)</span></div>
+      <div style="display:grid;grid-template-columns:60px 1fr 1fr 80px;gap:6px;align-items:center">
+        <div></div><div style="font-size:11px;color:var(--muted);font-weight:600">Start</div><div style="font-size:11px;color:var(--muted);font-weight:600">End</div><div></div>
+        ${days.map(([k,l])=>`
+          <div style="font-size:12px;font-weight:600;color:var(--navy)">${l}</div>
+          <input id="pn-bh-${k}-start" type="time" value="${bh[k]?.start||'08:00'}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+          <input id="pn-bh-${k}-end" type="time" value="${bh[k]?.end||'17:00'}" style="padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)"><input id="pn-bh-${k}-closed" type="checkbox" ${bh[k]?.closed?'checked':''}> Closed</label>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Voicemail -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy)">Voicemail</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input id="pn-vm-enabled" type="checkbox" ${cfg.voicemail_enabled!==false?'checked':''}> Enabled</label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Greeting</div>
+          <div style="display:flex;gap:6px">
+            <select id="pn-vm-greeting" style="flex:1;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+              <option value="">— Default TTS (name + please leave message) —</option>
+              ${greetings.map(g=>`<option value="${g.id}" ${cfg.voicemail_greeting_id===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}
+            </select>
+            <button class="btn btn-o sm" onclick="vmGreetingNew()">🎙️ New</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Notify Emails <span style="color:var(--muted);font-weight:500">(comma-separated)</span></div>
+          <input id="pn-vm-emails" value="${esc(notifyEmails)}" placeholder="alerts@example.com, mgr@example.com"
+            style="width:100%;padding:7px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">Notify Users (in-app)</div>
+        <div style="max-height:120px;overflow-y:auto;background:var(--surf);border:1px solid var(--bdr);border-radius:7px;padding:6px 10px">
+          ${users.map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0">
+            <input type="checkbox" data-pn-vm-user="${u.id}" ${notifyUserIds.has(u.id)?'checked':''}> ${esc(u.name)}
+          </label>`).join('')||'<div style="color:var(--muted);font-size:12px">No users</div>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Recording + SMS -->
+    <div style="grid-column:1/-1;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:10px">Recording &amp; Texting</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-rec" type="checkbox" ${cfg.record_calls!==false?'checked':''}> Record all calls on this number (stored in Cloudflare R2, 5-year retention)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-rec-ann" type="checkbox" ${cfg.recording_announcement!==false?'checked':''}> Play recording announcement to caller ("this call may be recorded")</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-sms" type="checkbox" ${cfg.sms_enabled!==false?'checked':''}> SMS enabled on this number</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-shared" type="checkbox" ${cfg.shared_inbox!==false?'checked':''}> Inbound texts go to shared inbox (uncheck only for purely personal numbers)</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input id="pn-active" type="checkbox" ${cfg.active!==false?'checked':''}> Number is active</label>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+    <button class="btn btn-o sm" onclick="cMod()">Cancel</button>
+    <button class="btn btn-n sm" onclick="phoneNumberSave('${ph}')">💾 Save Configuration</button>
+  </div>`;
+  oMod(`⚙️ Configure ${fmt}`, body);
+}
+
+async function phoneNumberSave(ph){
+  const bh={};
+  ['mon','tue','wed','thu','fri','sat','sun'].forEach(k=>{
+    bh[k]={
+      start:g('pn-bh-'+k+'-start')?.value||'08:00',
+      end:g('pn-bh-'+k+'-end')?.value||'17:00',
+      closed:!!g('pn-bh-'+k+'-closed')?.checked,
+    };
+  });
+  const notifyUsers=[...document.querySelectorAll('[data-pn-vm-user]')]
+    .filter(el=>el.checked).map(el=>el.dataset.pnVmUser);
+  const emails=(g('pn-vm-emails')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const row={
+    e164:ph,
+    label:g('pn-label')?.value||null,
+    route_type:g('pn-route-type')?.value||'call_center',
+    assigned_user_id:g('pn-user')?.value||null,
+    ring_seconds:parseInt(g('pn-ring')?.value||'25',10),
+    timezone:g('pn-tz')?.value||'America/Chicago',
+    business_hours:bh,
+    voicemail_enabled:!!g('pn-vm-enabled')?.checked,
+    voicemail_greeting_id:g('pn-vm-greeting')?.value||null,
+    voicemail_notify_emails:emails,
+    voicemail_notify_user_ids:notifyUsers,
+    record_calls:!!g('pn-rec')?.checked,
+    recording_announcement:!!g('pn-rec-ann')?.checked,
+    sms_enabled:!!g('pn-sms')?.checked,
+    shared_inbox:!!g('pn-shared')?.checked,
+    active:!!g('pn-active')?.checked,
+    updated_at:new Date().toISOString(),
+  };
+  try{
+    const {error}=await DB.from('lhs_phone_numbers').upsert(row,{onConflict:'e164'});
+    if(error) throw error;
+    tst('✓ Number configuration saved','success');
+    cMod();
+    phoneNumbersLoad();
+  }catch(e){
+    tst('Save failed: '+(e.message||e),'error');
+    console.error(e);
+  }
+}
+
+// ─── VOICEMAIL GREETING RECORDER (Phase 3a) ─────────────────────────────────
+// In-browser recorder using MediaRecorder API. Audio is uploaded to R2 and a
+// row is inserted into lhs_voicemail_greetings.
+
+let _vmRecorder=null;
+let _vmChunks=[];
+let _vmStartedAt=0;
+let _vmTimerInt=null;
+
+function vmGreetingNew(){
+  const body=`
+  <div style="max-width:520px">
+    <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Greeting Name</div>
+      <input id="vm-g-name" placeholder="e.g. Main Office After Hours"
+        style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="vm-g-rec-btn" class="btn btn-n sm" onclick="vmRecToggle()">🎙️ Start Recording</button>
+        <span id="vm-g-timer" style="font-family:monospace;font-size:14px;color:var(--navy);font-weight:700">0:00</span>
+        <span id="vm-g-status" style="font-size:12px;color:var(--muted)">Press record and speak into your mic</span>
+      </div>
+      <audio id="vm-g-preview" controls style="width:100%;margin-top:12px;display:none"></audio>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Or upload an MP3/WAV file:</div>
+        <input id="vm-g-file" type="file" accept="audio/*" onchange="vmFileSelected(event)"
+          style="font-size:12px">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-o sm" onclick="vmCancelRec()">Cancel</button>
+      <button id="vm-g-save-btn" class="btn btn-n sm" onclick="vmGreetingSave()" disabled>💾 Save Greeting</button>
+    </div>
+  </div>`;
+  oMod('🎙️ New Voicemail Greeting', body);
+}
+
+async function vmRecToggle(){
+  const btn=g('vm-g-rec-btn');
+  const st=g('vm-g-status');
+  if(_vmRecorder&&_vmRecorder.state==='recording'){
+    _vmRecorder.stop();
+    if(_vmTimerInt){clearInterval(_vmTimerInt);_vmTimerInt=null;}
+    if(btn){btn.textContent='🎙️ Start Recording';btn.classList.remove('btn-r');}
+    if(st) st.textContent='Recording stopped — preview below';
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _vmChunks=[];
+    const mime=MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/ogg';
+    _vmRecorder=new MediaRecorder(stream,{mimeType:mime});
+    _vmRecorder.ondataavailable=e=>{if(e.data.size>0)_vmChunks.push(e.data);};
+    _vmRecorder.onstop=()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(_vmChunks,{type:mime});
+      const url=URL.createObjectURL(blob);
+      const a=g('vm-g-preview');
+      if(a){a.src=url;a.style.display='block';}
+      window._vmGreetingBlob=blob;
+      window._vmGreetingExt=mime.includes('webm')?'webm':'ogg';
+      const saveBtn=g('vm-g-save-btn');if(saveBtn)saveBtn.disabled=false;
+    };
+    _vmRecorder.start();
+    _vmStartedAt=Date.now();
+    _vmTimerInt=setInterval(()=>{
+      const s=Math.floor((Date.now()-_vmStartedAt)/1000);
+      const t=g('vm-g-timer');
+      if(t) t.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+      if(s>=120){vmRecToggle();} // auto-stop at 2 min
+    },250);
+    if(btn){btn.textContent='⏹ Stop Recording';btn.classList.add('btn-r');}
+    if(st) st.textContent='Recording…';
+  }catch(e){
+    tst('Microphone access denied: '+e.message,'error');
+  }
+}
+
+function vmFileSelected(e){
+  const f=e.target.files?.[0];if(!f) return;
+  const a=g('vm-g-preview');
+  if(a){a.src=URL.createObjectURL(f);a.style.display='block';}
+  window._vmGreetingBlob=f;
+  const m=(f.name.split('.').pop()||'mp3').toLowerCase();
+  window._vmGreetingExt=['mp3','wav','ogg','m4a','webm'].includes(m)?m:'mp3';
+  const saveBtn=g('vm-g-save-btn');if(saveBtn)saveBtn.disabled=false;
+  g('vm-g-status').textContent='File selected: '+f.name;
+}
+
+function vmCancelRec(){
+  if(_vmRecorder&&_vmRecorder.state==='recording'){try{_vmRecorder.stop();}catch{}}
+  if(_vmTimerInt){clearInterval(_vmTimerInt);_vmTimerInt=null;}
+  window._vmGreetingBlob=null;
+  cMod();
+}
+
+async function vmGreetingSave(){
+  const name=(g('vm-g-name')?.value||'').trim();
+  const blob=window._vmGreetingBlob;
+  const ext=window._vmGreetingExt||'webm';
+  if(!name){tst('Enter a greeting name','error');return;}
+  if(!blob){tst('Record or upload audio first','error');return;}
+  const saveBtn=g('vm-g-save-btn');if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Uploading…';}
+  try{
+    const path=`voicemail-greetings/${Date.now()}-${name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()}.${ext}`;
+    const url=await r2Upload(path,blob);
+    const {data,error}=await DB.from('lhs_voicemail_greetings').insert({
+      name,r2_path:path,r2_url:url,
+      created_by:CU?.id||null,
+    }).select().single();
+    if(error) throw error;
+    tst('✓ Greeting saved — now assign it to a number','success');
+    window._vmGreetingBlob=null;
+    cMod();
+    // If a config modal was open, refresh it to show the new greeting
+    if(document.getElementById('mo')?.classList.contains('open')===false){
+      // no-op
+    }
+  }catch(e){
+    tst('Save failed: '+(e.message||e),'error');
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='💾 Save Greeting';}
+  }
+}
+
 
 // ─── COMMUNICATION BELLS (Phase 3a) ─────────────────────────────────────────
 // Check if a channel is allowed for a customer. Returns {allowed:bool, reason:string}.
@@ -29580,6 +29869,18 @@ function custForm(c,saveFn){
     </div>
     <div class="fl"><label>Notes</label><input id="cf-notes" value="${c.notes||''}" placeholder="Optional notes"></div>
   </div>
+  <div class="fr" style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-top:6px">
+    <div class="fl" style="grid-column:span 3">
+      <label style="font-weight:700;color:var(--navy);margin-bottom:6px">🔔 Communication Preferences</label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-call" type="checkbox" ${c.allow_calls!==false?'checked':''}> 📞 Allow calls</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-sms" type="checkbox" ${c.allow_sms!==false?'checked':''}> 💬 Allow texts</label>
+        <label style="display:flex;align-items:center;gap:6px"><input id="cf-allow-email" type="checkbox" ${c.allow_email!==false?'checked':''}> ✉️ Allow email</label>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--red);font-weight:600"><input id="cf-dnc" type="checkbox" ${c.do_not_contact?'checked':''}> ⛔ Do Not Contact</label>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">When a channel is off, the system blocks outbound calls/texts/emails on that channel and notifies the user.</div>
+    </div>
+  </div>
   <div class="br2">
     <button class="btn btn-n" onclick="${saveFn}()">Save Customer</button>
     <button class="btn btn-o" onclick="cMod()">Cancel</button>
@@ -29828,6 +30129,10 @@ async function svAddCustomer(){
     state:state||null,zip:v('cf-zip')||null,
     region:region||null,division:v('cf-div')||null,
     notes:v('cf-notes')||null,
+    allow_calls:!!g('cf-allow-call')?.checked,
+    allow_sms:!!g('cf-allow-sms')?.checked,
+    allow_email:!!g('cf-allow-email')?.checked,
+    do_not_contact:!!g('cf-dnc')?.checked,
     source:'Manual',
     customer_number:custNum,
     created_at:new Date().toISOString()
@@ -29884,7 +30189,11 @@ async function svEditCustomer(){
     phone:v('cf-ph')||null,email:v('cf-em')||null,
     address:v('cf-ad')||null,city:v('cf-ct')||null,
     state:state||null,zip:v('cf-zip')||null,
-    region:region||null,division:v('cf-div')||null,notes:v('cf-notes')||null};
+    region:region||null,division:v('cf-div')||null,notes:v('cf-notes')||null,
+    allow_calls:!!g('cf-allow-call')?.checked,
+    allow_sms:!!g('cf-allow-sms')?.checked,
+    allow_email:!!g('cf-allow-email')?.checked,
+    do_not_contact:!!g('cf-dnc')?.checked};
   await dbUpdate('lhs:customers',id,updates);
   const custs=S.get('lhs:customers')||[];
   const idx=custs.findIndex(c=>c.id===id);
