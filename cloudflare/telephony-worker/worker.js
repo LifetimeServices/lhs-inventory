@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v6' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v7' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -313,9 +313,13 @@ function isWithinBusinessHours(cfg) {
 }
 
 async function downloadToR2(env, srcUrl, key, contentType) {
-  const res = await fetch(srcUrl, {
-    headers: env.TELNYX_API_KEY ? { Authorization: `Bearer ${env.TELNYX_API_KEY}` } : {},
-  });
+  // Presigned S3 URLs (including Telnyx's recording bucket) must NOT receive
+  // an Authorization header — the signature is carried in query params and
+  // adding Bearer auth triggers a 403.
+  const isPresigned = /amazonaws\.com|X-Amz-Signature=/i.test(srcUrl);
+  const headers = (!isPresigned && env.TELNYX_API_KEY)
+    ? { Authorization: `Bearer ${env.TELNYX_API_KEY}` } : {};
+  const res = await fetch(srcUrl, { headers });
   if (!res.ok) throw new Error(`R2 fetch ${srcUrl}: ${res.status}`);
   const buf = await res.arrayBuffer();
   await env.R2_BUCKET.put(key, buf, { httpMetadata: { contentType } });
