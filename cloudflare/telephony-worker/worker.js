@@ -1,18 +1,32 @@
-// ─── LMS Telephony Worker ───────────────────────────────────────────────────
-// Handles Telnyx webhooks for:
-//   • Inbound call routing (TeXML) — ring config, voicemail fallback
-//   • Call recording capture → Cloudflare R2 + Supabase
-//   • Voicemail capture → Cloudflare R2 + Supabase
+// ─── LMS Telephony Worker v5 — Call Control API ─────────────────────────────
+// Call flow (Call Control API, not TeXML):
+//   1. Caller dials the LMS number → Telnyx Call Control App webhook → this
+//      Worker's /telnyx/call-events endpoint (JSON event payloads).
+//   2. On call.initiated: answer the inbound leg, log to lhs_phone_calls,
+//      check business hours, optionally start recording, then originate a
+//      parallel call to the WebRTC credential via /v2/calls using the
+//      credential connection_id. The outbound call's client_state carries
+//      the inbound call_control_id so we can bridge them when the WebRTC
+//      client answers.
+//   3. On call.answered (outgoing leg): bridge to the inbound leg.
+//   4. If the WebRTC client doesn't answer within ring_seconds (or outside
+//      business hours): play the voicemail greeting + start a single-channel
+//      record for up to 3 minutes.
+//   5. On call.recording.saved: download from Telnyx, upload to R2, patch
+//      lhs_phone_calls.recording_url (or insert lhs_voicemails if the call
+//      was not bridged).
+//   6. On call.hangup: finalize lhs_phone_calls (status, ended_at, duration).
 //
-// Environment bindings (set in Cloudflare dashboard → Settings → Variables):
-//   SUPABASE_URL           — e.g. https://vuwcnqvrgmdknvbajhtt.supabase.co
+// Environment bindings (Cloudflare Dashboard → Settings → Variables):
+//   SUPABASE_URL           — https://vuwcnqvrgmdknvbajhtt.supabase.co
 //   SUPABASE_SERVICE_KEY   — service_role key (secret)
-//   TELNYX_API_KEY         — Telnyx API key (secret, for recording fetch)
-//   WORKER_URL             — this Worker's public URL (e.g. https://lms-telephony.<acct>.workers.dev)
-//   R2_PUBLIC_URL          — public R2 URL prefix, OR empty to use lhs-r2-proxy
-//
-// R2 binding (set in Cloudflare dashboard → Settings → Variables → R2 Bindings):
-//   R2_BUCKET              — bound to your R2 bucket (same one the main app uses)
+//   TELNYX_API_KEY         — Telnyx API key (secret)
+//   WORKER_URL             — public URL of this Worker
+//   R2_PUBLIC_URL          — public R2 URL prefix (or lhs-r2-proxy domain)
+//   WEBRTC_CONNECTION_ID   — Telnyx Connection ID of the "LMS WebRTC"
+//                            credential connection (e.g. 2940059800060298749).
+// R2 binding:
+//   R2_BUCKET              — bound to the main app's R2 bucket.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default {
@@ -21,47 +35,59 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':               return json({ ok: true, v: 'phase3b-v4' });
-        case '/telnyx/texml/inbound': return await handleInbound(request, env);
-        case '/telnyx/texml/voicemail': return await handleVoicemailPrompt(request, env);
-        case '/telnyx/recording':     return await handleRecording(request, env);
-        case '/telnyx/voicemail-done': return await handleVoicemailDone(request, env);
-        case '/telnyx/status':        return await handleStatus(request, env);
-        default:                      return new Response('Not found', { status: 404 });
+        case '/health':             return json({ ok: true, v: 'phase3b-v5' });
+        case '/telnyx/call-events': return await handleCallEvent(request, env);
+        case '/telnyx/recording':   return await handleRecording(request, env);
+        default:                    return new Response('Not found', { status: 404 });
       }
     } catch (err) {
-      // Always return valid TeXML for call-control endpoints so Telnyx doesn't
-      // play its default "application error" message — instead the error is
-      // spoken to the caller so we can debug over the phone.
       console.error('Worker error:', err.stack || err.message);
-      const msg = (err.message || 'Unknown error').slice(0, 180).replace(/[<>&"']/g, ' ');
-      if (url.pathname.startsWith('/telnyx/')) {
-        return texml(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="alice">Debug message. ${msg}</Say>
-  <Hangup/>
-</Response>`);
-      }
       return new Response('Internal error: ' + err.message, { status: 500 });
     }
   },
 };
 
-// ─── INBOUND CALL ROUTING (TeXML) ────────────────────────────────────────────
-async function handleInbound(request, env) {
-  const p = await parseBody(request);
-  const toNumber = p.To || p.to;
-  const fromNumber = p.From || p.from;
-  const callControlId = p.CallControlId || p.call_control_id || p.CallSid;
+// ─── EVENT DISPATCH ──────────────────────────────────────────────────────────
+async function handleCallEvent(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const event = body.data || body;
+  const eventType = event.event_type;
+  const payload = event.payload || {};
+  console.log('📞', eventType, payload.call_control_id || '', payload.to || '', payload.direction || '');
+  try {
+    switch (eventType) {
+      case 'call.initiated':        return await onCallInitiated(payload, env);
+      case 'call.answered':         return await onCallAnswered(payload, env);
+      case 'call.hangup':           return await onCallHangup(payload, env);
+      case 'call.recording.saved':  return await onRecordingSaved(payload, env);
+      // Acks — just 200 OK so Telnyx doesn't retry
+      default:                      return json({ ok: true, ignored: eventType });
+    }
+  } catch (err) {
+    console.error('Event handler error for', eventType, ':', err.stack || err.message);
+    return json({ ok: false, error: err.message });
+  }
+}
 
-  // Look up the number's config
+// ─── call.initiated ──────────────────────────────────────────────────────────
+async function onCallInitiated(p, env) {
+  const callControlId = p.call_control_id;
+  const toNumber   = p.to;
+  const fromNumber = p.from;
+  if (p.direction !== 'incoming') return json({ ok: true });
+
+  // Look up number config
   const rows = await supa(env, `/lhs_phone_numbers?e164=eq.${encodeURIComponent(toNumber)}&select=*`);
   const cfg = rows?.[0];
   if (!cfg || !cfg.active) {
-    return texml(`<?xml version="1.0"?><Response><Reject reason="rejected"/></Response>`);
+    await ctl(env, callControlId, 'hangup');
+    return json({ ok: true, reason: 'no-config-or-inactive' });
   }
 
-  // Log call start (fire-and-forget)
+  // Match customer by caller digits
+  const customerId = await lookupCustomerId(env, fromNumber);
+
+  // Log inbound call
   await supa(env, '/lhs_phone_calls', {
     method: 'POST',
     prefer: 'return=minimal',
@@ -70,169 +96,196 @@ async function handleInbound(request, env) {
       from_number: fromNumber,
       to_number: toNumber,
       phone_number_id: cfg.id,
+      customer_id: customerId,
       status: 'ringing',
       started_at: new Date().toISOString(),
       telnyx_call_control_id: callControlId,
     }),
-  }).catch(() => {});
+  }).catch(e => console.warn('Call row insert failed:', e.message));
 
-  const voicemailUrl = `${env.WORKER_URL}/telnyx/texml/voicemail?number_id=${cfg.id}`;
+  // Answer inbound leg
+  await ctl(env, callControlId, 'answer');
 
-  // After business hours → straight to voicemail
+  // Outside business hours → straight to voicemail
   if (!isWithinBusinessHours(cfg)) {
-    return texml(await voicemailXml(env, cfg));
+    await playVoicemailPrompt(env, callControlId, cfg);
+    return json({ ok: true, branch: 'after-hours-vm' });
   }
 
-  // Ring configured target(s). If none → voicemail.
-  const targets = await getRingTargets(env, cfg);
-  if (!targets.length) return texml(await voicemailXml(env, cfg));
-
-  const ringSecs = cfg.ring_seconds || 25;
-  const recordAttrs = cfg.record_calls
-    ? ` record="record-from-answer" recordingStatusCallback="${env.WORKER_URL}/telnyx/recording"`
-    : '';
-  const announce = (cfg.record_calls && cfg.recording_announcement)
-    ? `<Say voice="alice">This call may be recorded for quality assurance.</Say>`
-    : '';
-  // SIP credential-based WebRTC clients register in two ways depending on SDK
-  // auth mode: SIP REGISTER (credential login) or Call Control client (JWT login).
-  // Dial both forms in parallel — Telnyx bridges whichever connects first.
-  const dialList = targets.map(t => {
-    if (t.includes('@')) return `<Sip>${t}</Sip>`;           // already a full SIP URI
-    if (/^\+?[0-9]+$/.test(t)) return `<Number>${t}</Number>`;// PSTN forwarding
-    return `<Sip>${t}@sip.telnyx.com</Sip><Client>${t}</Client>`;
-  }).join('');
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  ${announce}
-  <Dial timeout="${ringSecs}" action="${voicemailUrl}"${recordAttrs}>${dialList}</Dial>
-</Response>`;
-  return texml(xml);
-}
-
-// ─── VOICEMAIL PROMPT (TeXML) ────────────────────────────────────────────────
-async function handleVoicemailPrompt(request, env) {
-  const url = new URL(request.url);
-  const numberId = url.searchParams.get('number_id');
-  const cfg = numberId
-    ? (await supa(env, `/lhs_phone_numbers?id=eq.${numberId}&select=*`))?.[0]
-    : null;
-  return texml(await voicemailXml(env, cfg || {}));
-}
-
-async function voicemailXml(env, cfg) {
-  let greeting = `<Say voice="alice">You've reached ${cfg.label || 'our office'}. Please leave a message after the beep.</Say>`;
-  if (cfg.voicemail_greeting_id) {
-    const g = await supa(env, `/lhs_voicemail_greetings?id=eq.${cfg.voicemail_greeting_id}&select=r2_url`);
-    if (g?.[0]?.r2_url) greeting = `<Play>${g[0].r2_url}</Play>`;
+  // Recording announcement (if enabled)
+  if (cfg.record_calls && cfg.recording_announcement) {
+    await ctl(env, callControlId, 'speak', {
+      language: 'en-US', voice: 'female',
+      payload: 'This call may be recorded for quality assurance.',
+    });
   }
-  const doneUrl = `${env.WORKER_URL}/telnyx/voicemail-done?number_id=${cfg.id || ''}`;
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  ${greeting}
-  <Record maxLength="180" playBeep="true" action="${doneUrl}" recordingStatusCallback="${doneUrl}" />
-  <Say voice="alice">We didn't receive a message. Goodbye.</Say>
-  <Hangup/>
-</Response>`;
-}
+  // Start dual-channel recording if enabled — captures both legs once bridged
+  if (cfg.record_calls) {
+    await ctl(env, callControlId, 'record_start', { format: 'mp3', channels: 'dual' });
+  }
 
-// ─── RECORDING CAPTURE (call recording from <Dial record>) ───────────────────
-async function handleRecording(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const payload = body.data?.payload || body;
-  const recordingUrl = payload.recording_urls?.mp3 || payload.public_recording_urls?.mp3 || payload.RecordingUrl || payload.url;
-  const callControlId = payload.call_control_id || payload.CallSid;
-  if (!recordingUrl || !callControlId) return json({ skipped: true });
-
-  const key = `call-recordings/${new Date().toISOString().slice(0, 10)}/${callControlId}.mp3`;
-  const publicUrl = await downloadToR2(env, recordingUrl, key, 'audio/mpeg');
-
-  await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
-    method: 'PATCH',
-    prefer: 'return=minimal',
-    body: JSON.stringify({ recording_r2_path: key, recording_url: publicUrl }),
+  // Originate outbound leg to the WebRTC client via the credential connection
+  const webrtcConnId = env.WEBRTC_CONNECTION_ID;
+  if (!webrtcConnId) {
+    console.error('WEBRTC_CONNECTION_ID env var missing');
+    await playVoicemailPrompt(env, callControlId, cfg);
+    return json({ ok: true, branch: 'no-webrtc-conn' });
+  }
+  const result = await telnyxApi(env, 'POST', '/v2/calls', {
+    connection_id: webrtcConnId,
+    to:   `sip:lmswebrtc@sip.telnyx.com`,
+    from: fromNumber,
+    timeout_secs: cfg.ring_seconds || 25,
+    answering_machine_detection: 'disabled',
+    client_state: b64(callControlId),         // carries inbound-leg id
+    webhook_url: `${env.WORKER_URL}/telnyx/call-events`,
   });
+  if (result?.error) {
+    console.error('Originate failed:', result.error);
+    await playVoicemailPrompt(env, callControlId, cfg);
+    return json({ ok: true, branch: 'originate-failed' });
+  }
 
+  // Store outbound call_control_id so we can cancel it if the caller hangs up
+  const outboundId = result?.data?.call_control_id;
+  if (outboundId) {
+    await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
+      method: 'PATCH', prefer: 'return=minimal',
+      body: JSON.stringify({ telnyx_leg_id: outboundId }),
+    }).catch(() => {});
+  }
+
+  return json({ ok: true, branch: 'dialing-webrtc' });
+}
+
+// ─── call.answered ───────────────────────────────────────────────────────────
+// Fires on BOTH legs. Only the outbound (WebRTC) answered event triggers a bridge.
+async function onCallAnswered(p, env) {
+  const callControlId = p.call_control_id;
+  if (p.direction !== 'outgoing' || !p.client_state) return json({ ok: true });
+
+  const inboundId = unb64(p.client_state);
+  if (!inboundId) return json({ ok: true });
+
+  // Bridge the two call legs
+  const res = await ctl(env, callControlId, 'bridge', { call_control_id: inboundId });
+  if (res?.error) console.error('Bridge failed:', res.error);
+
+  // Mark inbound call as answered
+  await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${inboundId}`, {
+    method: 'PATCH', prefer: 'return=minimal',
+    body: JSON.stringify({ status: 'answered', answered_at: new Date().toISOString() }),
+  }).catch(() => {});
   return json({ ok: true });
 }
 
-// ─── VOICEMAIL DONE (after <Record>) ─────────────────────────────────────────
-async function handleVoicemailDone(request, env) {
-  const url = new URL(request.url);
-  const numberId = url.searchParams.get('number_id');
-  const p = await parseBody(request);
-  const recordingUrl = p.RecordingUrl || p.recording_url || p.public_recording_urls?.mp3;
-  const duration = parseInt(p.RecordingDuration || p.duration || '0', 10);
-  const fromNumber = p.From || p.from;
+// ─── call.hangup ─────────────────────────────────────────────────────────────
+async function onCallHangup(p, env) {
+  const callControlId = p.call_control_id;
+  const direction = p.direction;
+  const cause = p.hangup_cause || '';
 
-  if (recordingUrl) {
-    const ts = Date.now();
-    const key = `voicemails/${new Date().toISOString().slice(0, 10)}/${numberId || 'unknown'}-${ts}.mp3`;
-    const publicUrl = await downloadToR2(env, recordingUrl, key, 'audio/mpeg');
+  // Only finalize on the inbound leg hangup
+  if (direction !== 'incoming') return json({ ok: true });
 
+  // Look up call row to compute duration
+  const rows = await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}&select=*`);
+  const row = rows?.[0];
+  const started = row?.started_at ? new Date(row.started_at) : null;
+  const answered = row?.answered_at ? new Date(row.answered_at) : null;
+  const now = new Date();
+  const duration = answered ? Math.max(0, Math.round((now - answered) / 1000)) : 0;
+  const wasAnswered = !!answered;
+  const finalStatus = wasAnswered ? 'completed'
+                    : cause === 'call_rejected' ? 'missed'
+                    : cause === 'normal_clearing' ? 'missed'
+                    : 'missed';
+
+  await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
+    method: 'PATCH', prefer: 'return=minimal',
+    body: JSON.stringify({
+      status: finalStatus,
+      ended_at: now.toISOString(),
+      duration_seconds: duration,
+    }),
+  }).catch(() => {});
+  return json({ ok: true });
+}
+
+// ─── call.recording.saved ────────────────────────────────────────────────────
+async function onRecordingSaved(p, env) {
+  const callControlId = p.call_control_id;
+  const recUrl = p.recording_urls?.mp3 || p.public_recording_urls?.mp3 || p.recording_url;
+  if (!recUrl || !callControlId) return json({ ok: true });
+
+  // Check whether this recording belongs to a bridged call or a voicemail
+  const rows = await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}&select=*`);
+  const row = rows?.[0];
+  const wasAnswered = !!row?.answered_at;
+
+  const key = `${wasAnswered ? 'call-recordings' : 'voicemails'}/${new Date().toISOString().slice(0,10)}/${callControlId}.mp3`;
+  const publicUrl = await downloadToR2(env, recUrl, key, 'audio/mpeg');
+
+  if (wasAnswered) {
+    await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
+      method: 'PATCH', prefer: 'return=minimal',
+      body: JSON.stringify({ recording_r2_path: key, recording_url: publicUrl }),
+    });
+  } else if (row) {
     await supa(env, '/lhs_voicemails', {
-      method: 'POST',
-      prefer: 'return=minimal',
+      method: 'POST', prefer: 'return=minimal',
       body: JSON.stringify({
-        phone_number_id: numberId || null,
-        from_number: fromNumber || null,
+        call_id: row.id,
+        phone_number_id: row.phone_number_id,
+        from_number: row.from_number,
+        customer_id: row.customer_id,
         r2_path: key,
         r2_url: publicUrl,
-        duration_seconds: duration || null,
+        duration_seconds: p.recording_duration_millis ? Math.round(p.recording_duration_millis / 1000) : null,
         status: 'new',
       }),
     });
-
-    // TODO: email notify via Brevo using cfg.voicemail_notify_emails
-  }
-
-  return texml(`<?xml version="1.0"?><Response><Say voice="alice">Thank you. Goodbye.</Say><Hangup/></Response>`);
-}
-
-// ─── STATUS CALLBACK (optional) ──────────────────────────────────────────────
-async function handleStatus(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const payload = body.data?.payload || body;
-  const callControlId = payload.call_control_id;
-  const state = payload.state || payload.CallStatus;
-
-  if (!callControlId) return json({ skipped: true });
-
-  const patch = {};
-  if (state === 'answered') patch.answered_at = new Date().toISOString();
-  if (state === 'hangup' || state === 'completed') {
-    patch.ended_at = new Date().toISOString();
-    patch.status = state === 'hangup' ? 'completed' : state;
-    if (payload.call_duration_secs) patch.duration_seconds = payload.call_duration_secs;
-  }
-  if (Object.keys(patch).length) {
-    await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
-      method: 'PATCH',
-      prefer: 'return=minimal',
-      body: JSON.stringify(patch),
-    }).catch(() => {});
   }
   return json({ ok: true });
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
-async function getRingTargets(env, cfg) {
-  // direct_rep → the assigned user's SIP credential (derived from email local-part)
-  if (cfg.route_type === 'direct_rep' && cfg.assigned_user_id) {
-    const u = await supa(env, `/lhs_users?id=eq.${cfg.assigned_user_id}&select=email,id`);
-    if (u?.[0]) return [sipIdForUser(u[0])];
-    return [];
-  }
-  // call_center → for now, the shared "lmswebrtc" credential (multi-registered clients
-  // will all ring). Replace with per-user credentials in a future pass for true
-  // fanout accounting.
-  return ['lmswebrtc'];
+// ─── /telnyx/recording (kept as a legacy fallback) ───────────────────────────
+async function handleRecording(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const payload = body.data?.payload || body;
+  return await onRecordingSaved(payload, env);
 }
 
-function sipIdForUser(u) {
-  // Use email local-part, alphanumeric only, lowercased
-  return (u.email || '').split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase() || 'lmswebrtc';
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+async function playVoicemailPrompt(env, callControlId, cfg) {
+  let greetingUrl = null;
+  if (cfg.voicemail_greeting_id) {
+    const g = await supa(env, `/lhs_voicemail_greetings?id=eq.${cfg.voicemail_greeting_id}&select=r2_url`);
+    greetingUrl = g?.[0]?.r2_url;
+  }
+  if (greetingUrl) {
+    await ctl(env, callControlId, 'playback_start', { audio_url: greetingUrl });
+  } else {
+    await ctl(env, callControlId, 'speak', {
+      language: 'en-US', voice: 'female',
+      payload: `You've reached ${cfg.label || 'our office'}. Please leave a message after the beep.`,
+    });
+  }
+  // Record the voicemail. record_start before the tone so beep is captured.
+  await ctl(env, callControlId, 'record_start', {
+    format: 'mp3', channels: 'single', max_length: 180,
+  });
+}
+
+async function lookupCustomerId(env, fromNumber) {
+  if (!fromNumber) return null;
+  const digits = String(fromNumber).replace(/\D/g, '').replace(/^1/, '');
+  if (digits.length < 10) return null;
+  // Match against the last 10 digits of the customer's phone field
+  const rows = await supa(env, `/lhs_customers?select=id,phone&phone=ilike.*${digits}*&limit=5`).catch(() => []);
+  if (!rows?.length) return null;
+  const exact = rows.find(r => String(r.phone || '').replace(/\D/g, '').replace(/^1/, '') === digits);
+  return (exact || rows[0]).id || null;
 }
 
 function isWithinBusinessHours(cfg) {
@@ -247,7 +300,7 @@ function isWithinBusinessHours(cfg) {
   const day = cfg.business_hours[weekday];
   if (!day || day.closed) return false;
   const [sh, sm] = (day.start || '08:00').split(':').map(Number);
-  const [eh, em] = (day.end || '17:00').split(':').map(Number);
+  const [eh, em] = (day.end   || '17:00').split(':').map(Number);
   const cur = h * 60 + m;
   return cur >= (sh * 60 + sm) && cur <= (eh * 60 + em);
 }
@@ -256,41 +309,53 @@ async function downloadToR2(env, srcUrl, key, contentType) {
   const res = await fetch(srcUrl, {
     headers: env.TELNYX_API_KEY ? { Authorization: `Bearer ${env.TELNYX_API_KEY}` } : {},
   });
-  if (!res.ok) throw new Error(`Fetch ${srcUrl}: ${res.status}`);
+  if (!res.ok) throw new Error(`R2 fetch ${srcUrl}: ${res.status}`);
   const buf = await res.arrayBuffer();
   await env.R2_BUCKET.put(key, buf, { httpMetadata: { contentType } });
   return (env.R2_PUBLIC_URL || '').replace(/\/$/, '') + '/' + key;
 }
 
-async function supa(env, path, opts = {}) {
-  const url = env.SUPABASE_URL + '/rest/v1' + path;
-  const headers = {
-    apikey: env.SUPABASE_SERVICE_KEY,
-    Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
-    'Content-Type': 'application/json',
-    Prefer: opts.prefer || 'return=representation',
-    ...(opts.headers || {}),
-  };
-  const res = await fetch(url, { method: opts.method || 'GET', headers, body: opts.body });
+// Telnyx Call Control action shorthand: POST /v2/calls/{id}/actions/{action}
+async function ctl(env, callControlId, action, body = {}) {
+  return await telnyxApi(env, 'POST', `/v2/calls/${callControlId}/actions/${action}`, body);
+}
+async function telnyxApi(env, method, path, body) {
+  if (!env.TELNYX_API_KEY) return { error: 'TELNYX_API_KEY missing' };
+  const res = await fetch(`https://api.telnyx.com${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${env.TELNYX_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Supabase ${res.status}: ${txt}`);
+    console.error(`Telnyx ${method} ${path} → ${res.status}:`, text.slice(0, 500));
+    return { error: `${res.status}: ${text.slice(0, 200)}` };
   }
+  return text ? JSON.parse(text) : {};
+}
+
+async function supa(env, path, opts = {}) {
+  const res = await fetch(env.SUPABASE_URL + '/rest/v1' + path, {
+    method: opts.method || 'GET',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY,
+      'Content-Type': 'application/json',
+      Prefer: opts.prefer || 'return=representation',
+      ...(opts.headers || {}),
+    },
+    body: opts.body,
+  });
+  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
 
-async function parseBody(request) {
-  const ctype = request.headers.get('content-type') || '';
-  if (ctype.includes('application/json')) return await request.json().catch(() => ({}));
-  const text = await request.text();
-  const out = {};
-  text.split('&').forEach(pair => {
-    const [k, v = ''] = pair.split('=');
-    if (k) out[decodeURIComponent(k.replace(/\+/g, ' '))] = decodeURIComponent(v.replace(/\+/g, ' '));
-  });
-  return out;
-}
+function b64(s) { return btoa(String(s)); }
+function unb64(s) { try { return atob(String(s)); } catch { return ''; } }
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -300,9 +365,6 @@ const CORS = {
 function cors(res) {
   Object.entries(CORS).forEach(([k, v]) => res.headers.set(k, v));
   return res;
-}
-function texml(xml) {
-  return cors(new Response(xml, { headers: { 'Content-Type': 'application/xml' } }));
 }
 function json(obj) {
   return cors(new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } }));
