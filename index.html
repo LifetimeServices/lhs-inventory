@@ -1813,8 +1813,8 @@ async function warmCache(){
     Object.keys(_C).filter(k=>k.startsWith('lhs:')).forEach(k=>delete _C[k]);
     // Load WOs — parallel paginated batches (Supabase caps single requests at 1000 rows).
     try{
-      const WO_PAGE=1000;
       const WO_MAX=500; // Cap at 500 most recent — older WOs searchable via WO page Supabase query
+      const WO_PAGE=Math.min(1000,WO_MAX); // Never fetch more per page than the cap
       // Step 1: lightweight count
       const{count}=await DB.from(WO_TBL).select('*',{count:'exact',head:true});
       const totalToLoad=Math.min(count||0,WO_MAX);
