@@ -40083,7 +40083,7 @@ function bSalesFollowupQueue(){
   <div id="fup-queue-content"><div style="text-align:center;padding:40px;color:var(--muted)">Loading...</div></div>`;
 }
 
-function _fupQueueLoad(){
+async function _fupQueueLoad(){
   const el=document.getElementById('fup-queue-content');
   if(!el) return;
   const leads=S.get('lhs:leads')||[];
@@ -40098,7 +40098,40 @@ function _fupQueueLoad(){
   const fSearch=(window._fupFSearch||'').toLowerCase();
   const fRange=window._fupFRange||'week';
 
-  let withFup=leads.filter(l=>l.next_followup_at&&l.status!=='Converted');
+  // Fetch phone-call follow-ups (set via post-call notes modal) and join
+  // with customer cache so they render alongside lead-based follow-ups.
+  let callFups=[];
+  try{
+    const{data}=await DB.from('lhs_phone_calls')
+      .select('id,customer_id,follow_up_date,disposition,notes,user_id,direction')
+      .not('follow_up_date','is',null)
+      .order('follow_up_date',{ascending:true});
+    const custs=S.get('lhs:customers')||[];
+    const users=S.get('lhs:users')||[];
+    callFups=(data||[]).filter(c=>c.customer_id).map(c=>{
+      const cust=custs.find(x=>x.id===c.customer_id)||{};
+      const user=users.find(u=>u.id===c.user_id);
+      return {
+        _src:'call',
+        id:c.id,
+        customer_id:c.customer_id,
+        first_name:cust.first_name||cust.name||'',
+        last_name:cust.last_name||'',
+        company:cust.company||'',
+        division:cust.division||'',
+        status:c.disposition||'Follow-up',
+        assigned_to:user?.name||'',
+        next_followup_at:c.follow_up_date,
+        estimated_value:0,
+        _notes:c.notes||'',
+      };
+    });
+  }catch(e){console.warn('Phone-call follow-ups fetch:',e?.message);}
+
+  let withFup=[
+    ...leads.filter(l=>l.next_followup_at&&l.status!=='Converted'),
+    ...callFups,
+  ];
   if(fAssigned) withFup=withFup.filter(l=>(l.assigned_to||'')===fAssigned);
   if(fDiv) withFup=withFup.filter(l=>(l.division||'')===fDiv);
   if(fStatus) withFup=withFup.filter(l=>(l.status||'')===fStatus);
@@ -40123,8 +40156,10 @@ function _fupQueueLoad(){
         </div>
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-n sm" onclick="oAddActivity('${l.id}',null)">Log Activity</button>
-        <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>
+        ${l._src==='call'
+          ?`<button class="btn btn-o sm" onclick="window._acctHubId='${l.customer_id}';showPage('account-hub')">Open Account</button>`
+          :`<button class="btn btn-n sm" onclick="oAddActivity('${l.id}',null)">Log Activity</button>
+            <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>`}
       </div>
     </div>`;
 
@@ -40139,7 +40174,9 @@ function _fupQueueLoad(){
         <td style="color:${color==='var(--red)'?'var(--red)':'inherit'};font-weight:${color==='var(--red)'?700:400}">${new Date(l.next_followup_at+'T00:00:00').toLocaleDateString()}</td>
         <td>${esc(l.assigned_to||'—')}</td>
         <td style="font-weight:700">${l.estimated_value?'$'+Number(l.estimated_value).toLocaleString():'—'}</td>
-        <td><button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button></td>
+        <td>${l._src==='call'
+          ?`<button class="btn btn-n sm" onclick="window._acctHubId='${l.customer_id}';showPage('account-hub')">Open Account</button>`
+          :`<button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button>`}</td>
       </tr>`).join('')}</tbody>
     </table></div>`:'';
 
