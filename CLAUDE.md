@@ -39,11 +39,12 @@ customers, work_orders, wo_materials, schedule, audit_log.
 
 ## Current Status
 
-- **Active branch:** `claude/lms-system-planning-SO2EW`
-- **Last shipped:** ✅ **Inbound calling end-to-end works** (Worker v12).
-  Bridge audio both ways, clean hangup propagation, recording kicks in
-  after bridge, caller ID + customer match, Safari autoplay cleared.
-- **Actively working on:** TBD — inbound is done, pick next direction.
+- **Active branch:** `claude/review-claude-md-czd9X`
+- **Last shipped:** ✅ **Search finds property addresses everywhere.**
+  Top-of-app search, Customers list filter, and Properties list filter
+  all now do loose word-gap matching ("129 N Beebe" → "129 North Beebe
+  Street") and skip single-letter noise words.
+- **Actively working on:** TBD — pick next open thread.
 
 ---
 
@@ -82,12 +83,15 @@ customers, work_orders, wo_materials, schedule, audit_log.
 
 _Populate as items come up. Close out or move to "Shipped" when done._
 
-- [ ] **Global search bar doesn't surface addresses from account pages.**
-  Example: `129 North Beebe Street, Marshall, WI 53559` is on the Tyler Fish
-  account page, but typing that address into the top-of-app search returns
-  nothing. Search should match against customer addresses, not just names /
-  WO numbers / phone numbers. Check whatever function powers the top search
-  input (likely looks at a limited set of fields).
+- [x] ~~**Global search bar doesn't surface addresses from account pages.**~~
+  ✅ **RESOLVED 2026-04-19.** Three fixes in the top-of-app search (`globalSearch`
+  / `_gsAsync` / `_gsRender`) plus the Customers and Properties list filters:
+  (1) also query `lhs_properties` in Supabase, not just customers/WOs;
+  (2) loose-pattern address ilike (`%129%N%Beebe%` matches "129 North Beebe
+  Street" even with gaps between tokens); (3) drop single-letter words from
+  name/company/city clauses so "N" and "St" don't match the entire table;
+  (4) re-ordered results so Properties → Customers → WOs, and address-shaped
+  queries skip WO-number substring hits.
 
 - [ ] **Invoice-from-dispatch-closeout flow regressed.** Previously when a
   dispatch user closed a work order, a popup offered "Create Invoice" that
@@ -117,6 +121,21 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-19 — Address search fixed across top-search + list filters
+User reported "129 N Beebe" not finding "129 North Beebe Street" (Tyler
+Fish's property). Root causes were stacked: the top-of-app search wasn't
+querying `lhs_properties` at all; the ilike patterns used the literal
+query as a substring, so "N" had to sit adjacent to "Beebe" (it doesn't
+— "North" is between); and the Customers/Properties list filters ORed
+single-letter words like "N" and "St" across every name field, matching
+50k+ customers. Fixes: added a Supabase property query to the global
+search, switched address patterns to `%129%N%Beebe%` so word gaps are
+allowed, restricted name/company/city clauses to words of length ≥2,
+and re-ordered global-search results to Properties → Customers → WOs
+with WO-number substring hits demoted on address-shaped queries. Next:
+pick another open thread (invoice-from-closeout regression, or phone
+panel must-be-open to accept calls).
 
 ### 2026-04-18 evening — Phone tab build-out + research-mode setup
 Inbound `user_busy` debug stalled out (Worker v9 + SIP-creds login both
