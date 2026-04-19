@@ -50249,9 +50249,12 @@ function phoneHandleHangup(){
   phoneSetConnDot('#4ade80');
   const endedSec=_phoneCallSeconds;
   _logCall({status:'completed',duration_seconds:endedSec});
-  // Post-call notes modal if the call connected (>= 5s) and we matched a customer
-  if(endedSec>=5 && _phoneMatchedCustomer){
-    setTimeout(()=>postCallNotesOpen(_phoneMatchedCustomer,endedSec),400);
+  // Post-call notes modal if the call connected (>= 5s) and we matched a customer.
+  // Capture _phoneMatchedCustomer BEFORE it's reset below — the setTimeout closure
+  // reads the variable at callback time and would otherwise see null.
+  const _pcnCust=_phoneMatchedCustomer;
+  if(endedSec>=5 && _pcnCust){
+    setTimeout(()=>postCallNotesOpen(_pcnCust,endedSec),400);
   }
   _telnyxCall=null;
   _phoneMuted=false;
@@ -50265,6 +50268,7 @@ function phoneHandleHangup(){
 // to a customer. Lets the rep add notes, pick a disposition, and optionally
 // set a follow-up date. Saves to the active lhs_phone_calls row.
 function postCallNotesOpen(customer,duration){
+  if(!customer){console.warn('postCallNotesOpen: no customer — skipping modal');return;}
   const name=`${customer.first_name||''} ${customer.last_name||''}`.trim();
   const mins=Math.floor(duration/60), secs=duration%60;
   const dur=mins+':'+String(secs).padStart(2,'0');
