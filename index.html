@@ -45217,7 +45217,7 @@ function openOpportunity(id){
           </div>
           <div style="font-size:14px;font-weight:800;color:var(--teal)">$${Number(total).toLocaleString()}</div>
           <div style="font-size:12px;font-weight:700;color:${stColor(e.status)}">${e.status||'Draft'}</div>
-          <button class="btn sm btn-o" onclick="svEstimate('${e.id}')">Open</button>
+          <button class="btn sm btn-o" onclick="openEstimate('${e.id}')">Open</button>
         </div>`;
       }).join('')}
     </div>`;
@@ -47392,6 +47392,16 @@ function estToDb(obj){return Object.fromEntries(Object.entries(obj).filter(([k])
 
 // ── SAVE ESTIMATE ──────────────────────────────────────────────────────────────
 async function svEstimate(){
+  // Guard: svEstimate reads every field from DOM IDs inside the estimate form.
+  // If the form isn't mounted (e.g. someone wired this function to an Open
+  // button elsewhere, as happened once on the Opportunity linked-estimates
+  // row), every lookup returns '' and we'd silently insert a blank ghost row.
+  // Bail loudly instead.
+  if(!document.getElementById('est-num')){
+    console.warn('svEstimate called without estimate form mounted — refusing blank save');
+    tst('Cannot save — estimate form not open','error');
+    return;
+  }
   // Lock check — block save if estimate is locked as Final
   const _earlyEditId=window._estEditId||null;
   if(_earlyEditId){
