@@ -16030,6 +16030,9 @@ async function svEmailInvoice(id){
   if(!to){tst('Enter a recipient email','error');return;}
   const inv=(S.get('lhs:acct_invoices')||[]).find(x=>x.id===id);
   if(!inv) return;
+  // Respect communication bells before sending.
+  const _invCust=inv.customer_id?(S.get('lhs:customers')||[]).find(c=>c.id===inv.customer_id):null;
+  if(_invCust && commBlockIfDisabled(_invCust,'email')) return;
   const lines=inv.line_items?(typeof inv.line_items==='string'?JSON.parse(inv.line_items||'[]'):(inv.line_items||[])):[];
   const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const lineItemsHTML=lines.length?`
@@ -31053,6 +31056,22 @@ async function openCustomer(id){
         ${c.division?`<span style="color:var(--muted)">Division</span><span>${c.division}</span>`:''}
         ${c.notes?`<span style="color:var(--muted)">Notes</span><span>${c.notes}</span>`:''}
       </div>
+      ${(()=>{
+        // Communication preferences — show when any channel is restricted.
+        const dnc=!!c.do_not_contact;
+        const noCall=c.allow_calls===false;
+        const noSMS=c.allow_sms===false;
+        const noEmail=c.allow_email===false;
+        if(!dnc && !noCall && !noSMS && !noEmail) return '';
+        const pill=(txt,bg,fg)=>`<span style="display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:${bg};color:${fg};margin-right:6px;margin-top:4px">${txt}</span>`;
+        return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🔔 Comm Preferences</div>
+          ${dnc?pill('⛔ Do Not Contact','#fee','#b91c1c'):''}
+          ${noCall?pill('📞 No Calls','#fef3c7','#92400e'):''}
+          ${noSMS?pill('💬 No Texts','#fef3c7','#92400e'):''}
+          ${noEmail?pill('✉️ No Email','#fef3c7','#92400e'):''}
+        </div>`;
+      })()}
       <div class="brow" style="margin-top:12px">
         <button class="btn btn-o sm" onclick="oEditCustomer('${id}')">Edit</button>
         <button class="btn btn-n sm" onclick="cMod();oCreateWO()">+ New WO</button>
@@ -47807,6 +47826,8 @@ async function svEmailEstimate(id){
   const e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
   if(!e){tst('Estimate not found','error');return;}
   const cust=(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id);
+  // Respect communication bells before sending.
+  if(cust && commBlockIfDisabled(cust,'email')) return;
   const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
   const printLines=lines.filter(l=>(l.label||l.name||'').trim()||(l.price||0)!==0);
   const svcLines=printLines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
