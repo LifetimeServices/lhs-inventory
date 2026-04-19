@@ -49885,6 +49885,7 @@ function _phoneStopRingback(){
 
 function phoneHandleActive(call){
   _telnyxCall=call;
+  try{ window._lastCall=call; }catch(e){}
   _phoneStopRingback();
   _phoneStopInboundRing();
   // The SDK's remoteElement option doesn't reliably attach the stream on
