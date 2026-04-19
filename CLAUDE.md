@@ -40,12 +40,10 @@ customers, work_orders, wo_materials, schedule, audit_log.
 ## Current Status
 
 - **Active branch:** `claude/lms-system-planning-SO2EW`
-- **Last shipped:** Voicemails / Call Recordings / SMS Templates / Phone
-  Settings tabs all built out (`d144466`). Phone module went 1/7 → 5/7
-  real tabs.
-- **Actively working on:** Autonomous research session on the inbound
-  `user_busy` problem (Telnyx WebRTC routing). Goal: avoid 12 more
-  hours of trial-and-error by reading docs end-to-end first.
+- **Last shipped:** ✅ **Inbound calling end-to-end works** (Worker v12).
+  Bridge audio both ways, clean hangup propagation, recording kicks in
+  after bridge, caller ID + customer match, Safari autoplay cleared.
+- **Actively working on:** TBD — inbound is done, pick next direction.
 
 ---
 
@@ -98,10 +96,20 @@ _Populate as items come up. Close out or move to "Shipped" when done._
   the prompt + autopopulate path. Should be preserved going forward — don't
   delete during phone/other refactors.
 
-- [ ] **Inbound call audio still broken.** Caller ID + routing now work
-  (huge win), but after answering: no audio either direction, no ringtone
-  alerting the rep that a call is coming in, and hangup from the caller's
-  cell doesn't visually reset the browser panel. Active work.
+- [x] ~~**Inbound call audio broken.**~~ ✅ **RESOLVED 2026-04-19.** Root cause:
+  Telnyx sends `direction: null` on `call.answered` webhooks, but the
+  worker was checking `direction === 'outgoing'` before bridging — so
+  the bridge call was being skipped entirely on every call. Fix: drop the
+  direction check; `client_state` presence alone identifies the outbound
+  leg we need to bridge (worker v12). Also moved `record_start` from
+  pre-bridge to post-bridge so it doesn't interfere with the handshake.
+  Client-side: audio attachment now uses `pc.getReceivers()` (standard
+  WebRTC) rather than SDK-specific paths; works reliably in Safari.
+
+- [ ] **Phone panel must be open to accept calls.** Currently the WebRTC
+  client only initializes when the Phone panel is opened. Needs: init at
+  app load, global incoming-call banner anywhere in the app, accept/decline
+  without needing to open the panel first. Medium-sized refactor.
 
 ---
 
