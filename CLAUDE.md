@@ -40,10 +40,12 @@ customers, work_orders, wo_materials, schedule, audit_log.
 ## Current Status
 
 - **Active branch:** `claude/lms-system-planning-SO2EW`
-- **Last shipped:** Worker v9 (`bca48ca`) + SIP login swap (`3538de2`) —
-  neither fixed the inbound `user_busy`. See Open Threads.
-- **Actively working on:** Shifting to other Phone-tab features while
-  inbound routing is parked.
+- **Last shipped:** Voicemails / Call Recordings / SMS Templates / Phone
+  Settings tabs all built out (`d144466`). Phone module went 1/7 → 5/7
+  real tabs.
+- **Actively working on:** Autonomous research session on the inbound
+  `user_busy` problem (Telnyx WebRTC routing). Goal: avoid 12 more
+  hours of trial-and-error by reading docs end-to-end first.
 
 ---
 
@@ -114,6 +116,22 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-18 evening — Phone tab build-out + research-mode setup
+Inbound `user_busy` debug stalled out (Worker v9 + SIP-creds login both
+shipped, neither fixed it — full notes in Open Threads). Pivoted to
+building out the Phone module's coming-soon stubs. **Shipped tonight:**
+Voicemails inbox (filter tabs, audio playback, close-out workflow);
+Call Recordings (search, direction filter, audio playback, audit-logged
+listens, download); SMS Templates (CRUD with trigger events, click-to-
+insert merge fields, GSM segment counter); Phone Settings (recording
+retention, new-number defaults including business hours, agent presence,
+SMS opt-out auto-reply). Went from 1/7 real Phone sub-tabs to 5/7. Two
+remaining stubs (Messages, Call Center Monitor) need infrastructure
+(SMS pipeline, presence tracking) before they can be built. Set up
+`.claude/settings.json` with research-mode permissions so Claude can do
+multi-hour autonomous research on the inbound `user_busy` problem
+without needing user permission grants.
 
 ### 2026-04-18 — CLAUDE.md bootstrapped
 Stood up this file so future sessions start with context. No code changes
