@@ -49541,14 +49541,26 @@ async function initTelnyxClient(){
     const _TRTC=(typeof TelnyxWebRTC!=='undefined'&&TelnyxWebRTC.TelnyxRTC)||(typeof TelnyxRTC!=='undefined'&&TelnyxRTC)||null;
     if(!_TRTC){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
     if(_telnyxClient){try{_telnyxClient.disconnect();}catch(e){}}
+    // Create remote audio element before client init — SDK will auto-attach
+    // incoming media to it, which handles Safari's autoplay gesture rules.
+    let audioEl=document.getElementById('phone-remote-audio');
+    if(!audioEl){
+      audioEl=document.createElement('audio');
+      audioEl.id='phone-remote-audio';
+      audioEl.autoplay=true;
+      audioEl.playsInline=true;
+      audioEl.style.display='none';
+      document.body.appendChild(audioEl);
+    }
     const sipUser=S.get('lhs:telnyx_sip_user');
     const sipPass=S.get('lhs:telnyx_sip_pass');
+    const clientOpts={remoteElement:audioEl};
     if(sipUser&&sipPass){
       console.log('[Telnyx] Logging in with SIP credentials as',sipUser);
-      _telnyxClient=new _TRTC({login:sipUser,password:sipPass});
+      _telnyxClient=new _TRTC({login:sipUser,password:sipPass,...clientOpts});
     }else{
       console.log('[Telnyx] No SIP creds stored — falling back to login_token');
-      _telnyxClient=new _TRTC({login_token:token});
+      _telnyxClient=new _TRTC({login_token:token,...clientOpts});
     }
     _telnyxClient.on('telnyx.ready',function(){
       phoneSetStatus('Ready','#4ade80');
@@ -49594,7 +49606,34 @@ function phoneHandleInbound(call){
   _phoneMatchCustomer(from);
   document.getElementById('incoming-call-banner').style.display='block';
   phoneSetStatus('Incoming call...','#4ade80');
+  _phonePlayInboundRing();
   _logCall({direction:'inbound',from_number:from,to_number:S.get('lhs:telnyx_caller_id')||'',status:'ringing'});
+}
+
+// Audible alert while an inbound call is ringing. US-style two-tone cadence
+// (440/480 Hz, 2s on / 4s off). Stopped by phoneAnswer / phoneDecline / hangup.
+let _phoneInboundRingCtx=null,_phoneInboundRingInt=null;
+function _phonePlayInboundRing(){
+  try{
+    _phoneStopInboundRing();
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    _phoneInboundRingCtx=ctx;
+    const burst=()=>{
+      const o1=ctx.createOscillator();const o2=ctx.createOscillator();
+      const g=ctx.createGain();
+      o1.frequency.value=440;o2.frequency.value=480;g.gain.value=0.18;
+      o1.connect(g);o2.connect(g);g.connect(ctx.destination);
+      const t=ctx.currentTime;
+      o1.start(t);o2.start(t);
+      o1.stop(t+2);o2.stop(t+2);
+    };
+    burst();
+    _phoneInboundRingInt=setInterval(burst,6000);
+  }catch(e){console.warn('[Telnyx] Inbound ring error:',e);}
+}
+function _phoneStopInboundRing(){
+  if(_phoneInboundRingInt){clearInterval(_phoneInboundRingInt);_phoneInboundRingInt=null;}
+  if(_phoneInboundRingCtx){try{_phoneInboundRingCtx.close();}catch(e){}_phoneInboundRingCtx=null;}
 }
 
 // Extract the real originating caller from a Telnyx inbound call.
@@ -49647,11 +49686,19 @@ function phoneOpenMatchedCustomer(){
 }
 
 function phoneAnswer(){
+  _phoneStopInboundRing();
   document.getElementById('incoming-call-banner').style.display='none';
+  // Answering is a user gesture — use it to prime the audio element so Safari
+  // doesn't block autoplay when the remote stream attaches asynchronously.
+  try{
+    const el=document.getElementById('phone-remote-audio');
+    if(el) el.play().catch(()=>{});
+  }catch(e){}
   if(_telnyxCall) _telnyxCall.answer();
 }
 
 function phoneDecline(){
+  _phoneStopInboundRing();
   document.getElementById('incoming-call-banner').style.display='none';
   if(_telnyxCall){_telnyxCall.hangup();_telnyxCall=null;}
   _logCall({status:'missed'});
@@ -49775,6 +49822,8 @@ function phoneHandleActive(call){
 }
 
 function phoneHandleHangup(){
+  _phoneStopInboundRing();
+  _phoneStopRingback();
   clearInterval(_phoneCallTimer);
   document.getElementById('phone-active-call').style.display='none';
   document.getElementById('phone-mute-btn').style.display='none';

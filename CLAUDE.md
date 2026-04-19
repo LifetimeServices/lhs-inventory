@@ -84,31 +84,24 @@ customers, work_orders, wo_materials, schedule, audit_log.
 
 _Populate as items come up. Close out or move to "Shipped" when done._
 
-- [ ] **Inbound WebRTC calls return `user_busy`** — parked 2026-04-18 evening.
-  - **Symptom:** call to `+12629560031` answers the recording announcement,
-    then Telnyx returns `user_busy` / source: `unknown` on the outbound dial
-    to `sip:lmswebrtc@sip.telnyx.com`. Phone panel never rings. Voicemail
-    fallback also not firing after the busy.
-  - **Outbound still works** (can dial out from the Phone panel).
-  - **Tried:**
-    1. Worker v9 (`bca48ca`) — added `hangup_cause`/`hangup_source` to the
-       main log line so we could see why. Confirmed `user_busy`.
-    2. SIP login fix (`3538de2`) — swapped WebRTC SDK login from
-       `login_token` (JWT) to SIP user/password so the session registers as
-       `lmswebrtc` on the credential connection. **Did not fix it.**
-  - **Next ideas to try tomorrow:**
-    - Check Telnyx dashboard → Credential Connection "LMS WebRTC": is there
-      a live registration for `lmswebrtc`? If yes, is it ours or stale?
-    - Confirm `WEBRTC_CONNECTION_ID` in the Cloudflare Worker env vars
-      matches the ID of the credential connection the SDK is using.
-    - Try originating with `to: "lmswebrtc"` (bare username) instead of
-      `to: "sip:lmswebrtc@sip.telnyx.com"` on the credential connection.
-    - Check browser console on the LMS Phone panel for any
-      `[Telnyx] call state: ...` lines during the test call — would tell us
-      if the SDK saw the INVITE at all.
-    - Fix voicemail fallback separately: `onCallHangup` should play VM on
-      the inbound leg after `user_busy`, but it didn't. Check if
-      `client_state` was actually present on that hangup payload.
+- [ ] **Global search bar doesn't surface addresses from account pages.**
+  Example: `129 North Beebe Street, Marshall, WI 53559` is on the Tyler Fish
+  account page, but typing that address into the top-of-app search returns
+  nothing. Search should match against customer addresses, not just names /
+  WO numbers / phone numbers. Check whatever function powers the top search
+  input (likely looks at a limited set of fields).
+
+- [ ] **Invoice-from-dispatch-closeout flow regressed.** Previously when a
+  dispatch user closed a work order, a popup offered "Create Invoice" that
+  took them to the Invoice page with WO data pre-populated. User reports
+  this used to work and doesn't now. Find the WO closeout handler, restore
+  the prompt + autopopulate path. Should be preserved going forward — don't
+  delete during phone/other refactors.
+
+- [ ] **Inbound call audio still broken.** Caller ID + routing now work
+  (huge win), but after answering: no audio either direction, no ringtone
+  alerting the rep that a call is coming in, and hangup from the caller's
+  cell doesn't visually reset the browser panel. Active work.
 
 ---
 
