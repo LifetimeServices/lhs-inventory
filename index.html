@@ -29707,8 +29707,8 @@ function _rdxPage(key,title,subtitle,emptyMsg,extraCols){
         <td style="font-weight:600">${esc(((r.first_name||'')+' '+(r.last_name||'')).trim()||'—')}<br>
           <span style="font-size:11px;color:var(--muted);font-weight:400">${esc(r.title||'')}</span></td>
         <td style="font-size:13px">${esc(r.company_name||r.company||'—')}</td>
-        <td style="font-size:13px">${r.phone?`<a href="tel:${esc(r.phone)}" onclick="event.stopPropagation()">${esc(r.phone)}</a>`:'—'}</td>
-        <td style="font-size:13px">${r.email?`<a href="mailto:${esc(r.email)}" onclick="event.stopPropagation()">${esc(r.email)}</a>`:'—'}</td>
+        <td style="font-size:13px">${r.phone?`<a href="javascript:void(0)" onclick="event.stopPropagation();clickToCall('${esc(r.phone)}','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">${esc(r.phone)}</a>`:'—'}</td>
+        <td style="font-size:13px">${r.email?`<a href="javascript:void(0)" onclick="event.stopPropagation();clickToEmail('${esc(r.email)}','','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">${esc(r.email)}</a>`:'—'}</td>
         <td style="font-size:12px;color:var(--muted)">${esc([r.city,r.state].filter(Boolean).join(', ')||'—')}</td>
         ${extraCols.map(c=>`<td style="font-size:12px;color:var(--muted)">${esc(r[c.field]||'—')}</td>`).join('')}
         <td>${statusBadge(r.account_status||'Active')}</td>
@@ -29764,9 +29764,9 @@ function _rdxRenderProfile(key,r){
       <div>
         <div style="${_RDX_SEC}">Contact Info</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${field('Phone',r.phone?`<a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>`:null)}
-          ${field('Mobile',r.mobile?`<a href="tel:${esc(r.mobile)}">${esc(r.mobile)}</a>`:null)}
-          ${field('Email',r.email?`<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`:null)}
+          ${field('Phone',r.phone?`<a href="javascript:void(0)" onclick="clickToCall('${esc(r.phone)}','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">${esc(r.phone)}</a>`:null)}
+          ${field('Mobile',r.mobile?`<a href="javascript:void(0)" onclick="clickToCall('${esc(r.mobile)}','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">${esc(r.mobile)}</a>`:null)}
+          ${field('Email',r.email?`<a href="javascript:void(0)" onclick="clickToEmail('${esc(r.email)}','','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">${esc(r.email)}</a>`:null)}
           ${field('Website',r.website?`<a href="${esc(r.website)}" target="_blank">${esc(r.website)}</a>`:null)}
         </div>
       </div>
@@ -29868,8 +29868,8 @@ function _rdxRenderProfile(key,r){
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-      ${r.phone?`<a href="tel:${esc(r.phone)}" class="btn sm btn-n" style="text-decoration:none">📞 Call</a>`:''}
-      ${r.email?`<a href="mailto:${esc(r.email)}" class="btn sm btn-n" style="text-decoration:none">📧 Email</a>`:''}
+      ${r.phone?`<button class="btn sm btn-n" onclick="clickToCall('${esc(r.phone)}','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">📞 Call</button>`:''}
+      ${r.email?`<button class="btn sm btn-n" onclick="clickToEmail('${esc(r.email)}','','${esc(((r.first_name||'')+' '+(r.last_name||'')).trim())}')">📧 Email</button>`:''}
       <button class="btn sm btn-o" onclick="_rdxOpenEditFromProfile('${key}','${id}')">✏️ Edit</button>
     </div>
   </div>
@@ -40397,8 +40397,8 @@ function _renderAcctDetail(id,opps,activities,leads){
         ${c.address?`<span style="color:var(--muted);font-weight:600">Address</span><span>${esc(c.address)}${c.city?', '+esc(c.city):''}${c.state?' '+esc(c.state):''}${c.zip?' '+esc(c.zip):''}</span>`:''}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${c.phone||c.primary_phone?`<button class="btn btn-o sm">📞 Call</button>`:''}
-        ${c.email?`<button class="btn btn-o sm">✉️ Email</button>`:''}
+        ${c.phone||c.primary_phone?`<button class="btn btn-o sm" onclick="clickToCall('${esc(c.phone||c.primary_phone)}','${esc(c.name||'')}')">📞 Call</button>`:''}
+        ${c.email?`<button class="btn btn-o sm" onclick="clickToEmail('${esc(c.email)}','${id}','${esc(c.name||'')}')">✉️ Email</button>`:''}
         <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ New Opportunity</button>
         <button class="btn btn-o sm" onclick="openCustomer('${id}')">Edit Account</button>
       </div>
@@ -40509,7 +40509,7 @@ function bAccountHub(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px">
           ${fld('Full Name',esc(((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||''))}
           ${fld('Company',esc(c.company||''))}
-          ${fld('Email',c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--teal)">${esc(c.email)}</a>`:'')}
+          ${fld('Email',c.email?`<a href="javascript:void(0)" onclick="clickToEmail('${esc(c.email)}','${id}','${esc(((c.first_name||'')+' '+(c.last_name||'')).trim())}')" style="color:var(--teal)">${esc(c.email)}</a>`:'')}
           ${fld('Phone',(c.phone||c.primary_phone)?`<a href="javascript:void(0)" onclick="clickToCall('${esc(c.phone||c.primary_phone)}','${esc(name)}')" style="color:var(--teal)">${esc(c.phone||c.primary_phone)}</a>`:'')}
           ${fld('Address',esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||''))}
           ${fld('Territory',esc(c.territory||''))}
@@ -40714,7 +40714,7 @@ function bAccountHub(){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
         ${(c.phone||c.primary_phone)?`<button class="btn btn-o sm" onclick="clickToCall('${esc(c.phone||c.primary_phone)}','${esc(name)}')">📞 Call</button>`:''}
-        ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
+        ${c.email?`<button class="btn btn-o sm" onclick="clickToEmail('${esc(c.email)}','${id}','${esc(name)}')">✉️ Email</button>`:''}
         <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ Opportunity</button>
         <button class="btn btn-o sm" onclick="window._acctHubEditing=true;showPage('account-hub')">✏️ Edit</button>
       </div>
@@ -50431,6 +50431,20 @@ function phoneLogCallBack(number){
   const disp=document.getElementById('phone-display');
   if(disp) disp.textContent=number.replace(/[^0-9+]/g,'');
   phoneTab('dialpad');
+}
+
+// Click-to-email helper — mirrors clickToCall. If a customerId is provided,
+// the comm-bell block check runs against that customer's allow_email /
+// do_not_contact flags and the send is refused if disallowed. Otherwise
+// (e.g. rolodex realtor contacts, vendors) it falls through to mailto:.
+function clickToEmail(email,customerId,name){
+  if(!email){tst('No email address on file','error');return;}
+  if(customerId){
+    const cust=(S.get('lhs:customers')||[]).find(c=>c.id===customerId);
+    if(cust && commBlockIfDisabled(cust,'email')) return;
+  }
+  const subj=name?`Re: ${name}`:'';
+  window.location.href='mailto:'+encodeURIComponent(email)+(subj?'?subject='+encodeURIComponent(subj):'');
 }
 
 function clickToCall(number,customerName){
