@@ -40929,11 +40929,29 @@ async function acctHubSave(id){
     do_not_contact:!!document.getElementById('ahub-dnc')?.checked,
     updated_at:new Date().toISOString(),
   };
+  // Supabase update — surface errors to the user. If a column doesn't exist
+  // yet (schema drift), progressively retry without the newer columns so
+  // the core fields (phone, email, name, address) still save.
+  let {error}=await DB.from('lhs_customers').update(updates).eq('id',id);
+  if(error){
+    console.warn('acctHubSave attempt 1:',error.message,error.details);
+    const fallback={...updates};
+    delete fallback.territory;delete fallback.source;delete fallback.updated_at;delete fallback.county;
+    const r2=await DB.from('lhs_customers').update(fallback).eq('id',id);
+    if(r2.error){
+      console.error('acctHubSave attempt 2:',r2.error.message);
+      tst('Save failed: '+r2.error.message,'error');
+      return;
+    }
+    // Attempt 2 succeeded — warn the user some fields didn't persist.
+    Object.keys(fallback).forEach(k=>updates[k]=fallback[k]);
+    tst('Saved (some newer fields skipped — run DB migration)','warning');
+  } else {
+    tst('Account updated','success');
+  }
   const custs=S.get('lhs:customers')||[];
   const idx=custs.findIndex(x=>x.id===id);
   if(idx>=0){Object.assign(custs[idx],updates);S.set('lhs:customers',custs);}
-  try{await DB.from('lhs_customers').update(updates).eq('id',id);}catch(e){console.warn('acctHubSave:',e.message);}
-  tst('Account updated','success');
   window._acctHubEditing=false;
   showPage('account-hub');
 }
