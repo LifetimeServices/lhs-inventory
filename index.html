@@ -2324,6 +2324,12 @@ async function sendBrevoEmail({to,toName='',subject,html,cc='',replyTo=''}){
   });
   if(!resp.ok){
     const err=await resp.json().catch(()=>({}));
+    // Brevo returns 401 "Key not found" when the stored key is revoked,
+    // mistyped, or from a different Brevo account. Rewrite to something
+    // actionable instead of the raw SDK message.
+    if(resp.status===401){
+      throw new Error('Brevo API key is invalid or revoked. Go to Admin → Integrations → Brevo to paste a fresh key.');
+    }
     throw new Error(err.message||`Brevo error ${resp.status}`);
   }
   return resp.json();
@@ -40558,7 +40564,7 @@ function bAccountHub(){
             <th style="padding:6px 8px;text-align:right;font-weight:700">Amount</th>
             <th style="padding:6px 8px;text-align:left;font-weight:700">Date</th>
           </tr></thead>
-          <tbody>${wos.slice(0,50).map(w=>`<tr style="border-bottom:1px solid var(--bdr)">
+          <tbody>${wos.slice(0,50).map(w=>`<tr style="border-bottom:1px solid var(--bdr);cursor:pointer" onclick="openWO('${w.id}')" onmouseover="this.style.background='var(--surf)'" onmouseout="this.style.background=''">
             <td style="padding:8px;font-family:monospace;font-size:12px">${esc(w.wo_number||'—')}</td>
             <td style="padding:8px">${esc(w.division||'—')}</td>
             <td style="padding:8px">${esc(w.job_type||'—')}</td>
