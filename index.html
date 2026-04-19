@@ -28399,7 +28399,11 @@ async function propLoadPage(){
     const from=_propPage*_PROP_PAGE_SIZE;
     const to=from+_PROP_PAGE_SIZE-1;
     let query=DB.from('lhs_properties').select('*',{count:'exact'});
-    if(q) query=query.or(`address.ilike.%${q}%,city.ilike.%${q}%,zip.ilike.%${q}%`);
+    if(q){
+      // Loose pattern so "129 N Beebe" matches "129 North Beebe Street".
+      const qLoose=q.split(/\s+/).filter(Boolean).join('%');
+      query=query.or(`address.ilike.%${qLoose}%,city.ilike.%${q}%,zip.ilike.%${q}%`);
+    }
     if(fType) query=query.eq('property_type',fType);
     if(fRegion) query=query.eq('region',fRegion);
     query=query.order('address',{ascending:true}).range(from,to);
@@ -28416,7 +28420,11 @@ async function propLoadPage(){
         // Apply filters locally
         const ql=q.toLowerCase();
         let filtered=allLocal;
-        if(q) filtered=filtered.filter(p=>(p.address||'').toLowerCase().includes(ql)||(p.city||'').toLowerCase().includes(ql)||(p.zip||'').includes(q));
+        if(q){
+          const qWords=ql.split(/\s+/).filter(Boolean);
+          const addrHas=s=>{let pos=0;const t=(s||'').toLowerCase();for(const w of qWords){const i=t.indexOf(w,pos);if(i<0)return false;pos=i+w.length;}return true;};
+          filtered=filtered.filter(p=>addrHas(p.address)||(p.city||'').toLowerCase().includes(ql)||(p.zip||'').includes(q));
+        }
         if(fType) filtered=filtered.filter(p=>p.property_type===fType);
         if(fRegion) filtered=filtered.filter(p=>p.region===fRegion);
         const totalLocal=filtered.length;
@@ -30535,13 +30543,21 @@ async function custLoadPage(){
     const to=from+_CUST_PAGE_SIZE-1;
     let query=DB.from('lhs_customers').select('*',{count:'exact'});
     if(q){
-      // Split into words so "James Sebastian" matches first_name=James AND last_name=Sebastian
-      const words=[...new Set(q.split(/\s+/).filter(w=>w.length>0))];
-      const clauses=words.flatMap(w=>[
-        `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
-        `email.ilike.%${w}%`,`phone.ilike.%${w}%`,
-        `address.ilike.%${w}%`,`city.ilike.%${w}%`,`company.ilike.%${w}%`
-      ]);
+      // Words of length 2+ match name/company/city (single letters like "N"
+      // in "129 N Beebe" would match half the table otherwise).
+      const words=[...new Set(q.split(/\s+/).filter(w=>w.length>=2))];
+      // Loose address pattern: "129 N Beebe St" → %129%N%Beebe%St% so gaps
+      // between stored tokens (e.g. "129 North Beebe Street") still match.
+      const qLoose=q.split(/\s+/).filter(Boolean).join('%');
+      const digits=q.replace(/\D/g,'');
+      const clauses=[
+        ...words.flatMap(w=>[
+          `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
+          `email.ilike.%${w}%`,`company.ilike.%${w}%`,`city.ilike.%${w}%`,
+        ]),
+        `address.ilike.%${qLoose}%`,
+        ...(digits.length>=3?[`phone.ilike.%${digits}%`]:[]),
+      ];
       query=query.or(clauses.join(','));
     }
     query=query.order('last_name',{ascending:true}).range(from,to);
