@@ -49542,14 +49542,23 @@ async function initTelnyxClient(){
     if(!_TRTC){phoneSetStatus('SDK not loaded — try refreshing','#ef4444');return;}
     if(_telnyxClient){try{_telnyxClient.disconnect();}catch(e){}}
     // Create remote audio element before client init — SDK will auto-attach
-    // incoming media to it, which handles Safari's autoplay gesture rules.
+    // incoming media to it. Safari plays hidden <audio> elements inconsistently;
+    // keep it in the DOM but off-screen rather than display:none, and leave
+    // volume + unmuted explicit so no legacy attribute state sneaks in.
     let audioEl=document.getElementById('phone-remote-audio');
     if(!audioEl){
       audioEl=document.createElement('audio');
       audioEl.id='phone-remote-audio';
       audioEl.autoplay=true;
       audioEl.playsInline=true;
-      audioEl.style.display='none';
+      audioEl.controls=false;
+      audioEl.muted=false;
+      audioEl.volume=1.0;
+      audioEl.style.position='fixed';
+      audioEl.style.left='-9999px';
+      audioEl.style.top='-9999px';
+      audioEl.style.width='1px';
+      audioEl.style.height='1px';
       document.body.appendChild(audioEl);
     }
     const sipUser=S.get('lhs:telnyx_sip_user');
@@ -49767,6 +49776,34 @@ function _attachRemoteStream(call){
   },200);
 }
 
+// Ensure the remote <audio> element is playing once the SDK attaches the stream.
+// Safari blocks autoplay if the gesture chain is lost — call this from inside
+// the click handler so .play() resolves, then poll until srcObject is live.
+function _phoneKickAudio(){
+  const el=document.getElementById('phone-remote-audio');
+  if(!el) return;
+  const tryPlay=()=>{
+    const p=el.play&&el.play();
+    if(p&&p.catch) p.catch(e=>console.warn('[Telnyx] Audio play blocked:',e?.name||e));
+  };
+  tryPlay();
+  // Poll up to 4s for the SDK to populate srcObject, kick play each time it
+  // changes (Safari sometimes doesn't auto-start after srcObject is set).
+  let lastSrc=el.srcObject;
+  let tries=0;
+  const iv=setInterval(()=>{
+    tries++;
+    if(el.srcObject && el.srcObject!==lastSrc){
+      lastSrc=el.srcObject;
+      tryPlay();
+      console.log('[Telnyx] Audio kicked after srcObject changed');
+    } else if(el.paused && el.srcObject){
+      tryPlay();
+    }
+    if(tries>=20) clearInterval(iv);
+  },200);
+}
+
 let _phoneRingbackCtx=null,_phoneRingbackNode=null;
 function _phonePlayRingback(){
   try{
@@ -49791,7 +49828,12 @@ function _phoneStopRingback(){
 
 function phoneHandleActive(call){
   _telnyxCall=call;
-  _attachRemoteStream(call);
+  _phoneStopRingback();
+  _phoneStopInboundRing();
+  // Trust the SDK's remoteElement attachment — don't fight it with manual
+  // srcObject sets. Just make sure the element is actually playing (Safari
+  // sometimes needs an explicit .play() kick after the stream attaches).
+  _phoneKickAudio();
   // For inbound calls, prefer the real caller number from our custom SIP header
   // (since From: is pinned to the LMS number). For outbound, use what we dialed.
   const num=(call.direction==='inbound')
