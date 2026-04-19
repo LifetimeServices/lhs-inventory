@@ -40510,7 +40510,7 @@ function bAccountHub(){
           ${fld('Full Name',esc(((c.first_name||'')+(c.last_name?' '+c.last_name:'')).trim()||c.name||''))}
           ${fld('Company',esc(c.company||''))}
           ${fld('Email',c.email?`<a href="mailto:${esc(c.email)}" style="color:var(--teal)">${esc(c.email)}</a>`:'')}
-          ${fld('Phone',(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" style="color:var(--teal)">${esc(c.phone||c.primary_phone)}</a>`:'')}
+          ${fld('Phone',(c.phone||c.primary_phone)?`<a href="javascript:void(0)" onclick="clickToCall('${esc(c.phone||c.primary_phone)}','${esc(name)}')" style="color:var(--teal)">${esc(c.phone||c.primary_phone)}</a>`:'')}
           ${fld('Address',esc([c.address,c.city,c.state,c.zip].filter(Boolean).join(', ')||''))}
           ${fld('Territory',esc(c.territory||''))}
           ${fld('County',esc(c.county||''))}
@@ -40713,7 +40713,7 @@ function bAccountHub(){
         ${(()=>{const pills=commBellPills(c,'lg');return pills?`<div style="margin-top:8px">${pills}</div>`:'';})()}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-        ${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" class="btn btn-o sm">📞 Call</a>`:''}
+        ${(c.phone||c.primary_phone)?`<button class="btn btn-o sm" onclick="clickToCall('${esc(c.phone||c.primary_phone)}','${esc(name)}')">📞 Call</button>`:''}
         ${c.email?`<a href="mailto:${esc(c.email)}" class="btn btn-o sm">✉️ Email</a>`:''}
         <button class="btn btn-n sm" onclick="oAddOpportunity({customer_id:'${id}'})">+ Opportunity</button>
         <button class="btn btn-o sm" onclick="window._acctHubEditing=true;showPage('account-hub')">✏️ Edit</button>
