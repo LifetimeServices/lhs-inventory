@@ -27128,6 +27128,10 @@ async function svAddAppointment(woId,num){
 
 async function updateWOStatus(woId,status){
   if(status==='Cancelled'){ oCancelWO(woId); return; }
+  // "Closed with Dispatch" has its own prompt flow: lock estimate, optionally
+  // auto-generate invoice, log Radon WL. Route through closeoutWO so those
+  // side-effects all fire instead of silently flipping the status.
+  if(status==='Closed with Dispatch'){ closeoutWO(woId); return; }
   const wos=S.get('lhs:work_orders')||[];
   const wo=wos.find(w=>w.id===woId);
   const prev=wo?.status;
