@@ -50489,9 +50489,19 @@ async function _logCall(fields){
         }).eq('id',_activeCallLogId);
         _activeCallLogId=null;
       }
-      // Also write a row to the new lhs_phone_calls table (customer-linked)
-      // for missed calls so they surface in the customer timeline.
-      if(fields.status==='missed'){
+      // Update the customer-linked row in lhs_phone_calls so this call
+      // shows up on the customer's activity timeline. If we don't have an
+      // active row (e.g. missed inbound before insert), create one.
+      if(_activePhoneCallId){
+        try{
+          await DB.from('lhs_phone_calls').update({
+            status:fields.status||'completed',
+            duration_seconds:fields.duration_seconds||0,
+            ended_at:new Date().toISOString(),
+          }).eq('id',_activePhoneCallId);
+        }catch(e){/* table may not exist yet in some envs */}
+        _activePhoneCallId=null;
+      } else if(fields.status==='missed'){
         const matchedId=_phoneMatchedCustomer?.id||_matchCustomerByNumber(_activeCallFrom||_activeCallTo)?.id||null;
         try{
           await DB.from('lhs_phone_calls').insert({
@@ -50508,10 +50518,13 @@ async function _logCall(fields){
       }
       return;
     }
-    // New call starting — insert legacy row and save its ID
+    // New call starting — insert into both tables so the legacy call log
+    // stays populated AND the customer timeline surfaces the call.
     _activeCallFrom=fields.from_number||S.get('lhs:telnyx_caller_id')||'';
     _activeCallTo=fields.to_number||'';
     _activeCallDir=fields.direction||'outbound';
+    const _matchSource=_activeCallDir==='inbound'?_activeCallFrom:_activeCallTo;
+    const matchedId=_phoneMatchedCustomer?.id||_matchCustomerByNumber(_matchSource)?.id||null;
     const{data}=await DB.from('lhs_call_logs').insert({
       direction:_activeCallDir,
       from_number:_activeCallFrom,
@@ -50523,8 +50536,23 @@ async function _logCall(fields){
       started_at:new Date().toISOString(),
     }).select('id').single();
     if(data) _activeCallLogId=data.id;
+    try{
+      const{data:pc}=await DB.from('lhs_phone_calls').insert({
+        direction:_activeCallDir,
+        from_number:_activeCallFrom,
+        to_number:_activeCallTo,
+        customer_id:matchedId,
+        user_id:CU?.id||null,
+        status:fields.status||'initiated',
+        duration_seconds:0,
+        started_at:new Date().toISOString(),
+      }).select('id').single();
+      if(pc) _activePhoneCallId=pc.id;
+    }catch(e){/* table may not exist yet in some envs */}
   }catch(e){console.warn('Call log failed:',e&&e.message);}
 }
+
+let _activePhoneCallId=null;
 
 let _activeCallDir='outbound';
 // Match a phone number to a customer (digits-only, last-10 suffix match).
