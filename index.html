@@ -2796,6 +2796,12 @@ async function startApp(){
   document.querySelector('.main').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:16px"><div style="width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="color:var(--muted);font-size:14px">Loading data…</div></div>';
   await warmCache();
   await _syncTemplatesFromDB();
+  // Init softphone at login so incoming calls reach the user from anywhere
+  // in the app (not just when the Phone panel is open). initTelnyxClient is
+  // idempotent-enough — togglePhonePanel also calls it if still null.
+  if(DEFAULT_PERMS[CU.role]?.phone && S.get('lhs:telnyx_api_key') && !_telnyxClient){
+    initTelnyxClient().catch(e=>console.warn('Phone auto-init failed:',e?.message));
+  }
   // Load dispatch pins from Supabase user row (overrides localStorage so pins sync across devices)
   if(CU?.dispatch_pins&&Object.keys(CU.dispatch_pins).length>0){
     _dispPinned=CU.dispatch_pins;
@@ -49806,6 +49812,9 @@ function phoneAnswer(){
     if(el) el.play().catch(()=>{});
   }catch(e){}
   if(_telnyxCall) _telnyxCall.answer();
+  // If the user answered from the global banner, open the Phone panel so
+  // they can see the active-call UI (mute, hangup, transfer, timer).
+  if(!_phonePanelOpen) togglePhonePanel();
 }
 
 function phoneDecline(){
