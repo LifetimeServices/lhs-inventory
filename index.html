@@ -31155,21 +31155,33 @@ function _gsRender(q,supaCustomers,supaWOs){
     action:`openWO('${w.id}')`}));
   // Customers — Supabase results first (relevance-sorted), then any local cache hits not already included
   const seenIds=new Set();
+  const custSub=c=>{
+    // Prefer showing the address in the subtitle when it matched the query,
+    // otherwise fall back to phone + city/state.
+    const addr=`${c.address||''}${c.city?', '+c.city:''}${c.state?' '+c.state:''}${c.zip?' '+c.zip:''}`.trim();
+    const addrMatch=addr&&addr.toLowerCase().includes(ql);
+    if(addrMatch) return addr;
+    return `${c.phone||''} ${c.city||''} ${c.state||''}`.trim();
+  };
   supaCustomers.forEach(c=>{
     seenIds.add(c.id);
     results.push({type:'Customer',icon:'&#128100;',
       title:`${c.first_name||''} ${c.last_name||''}${c.company?' ('+c.company+')':''}`.trim(),
-      sub:`${c.phone||''} ${c.city||''} ${c.state||''}`.trim(),
+      sub:custSub(c),
       action:`openCustomer('${c.id}')`});
   });
-  (S.get('lhs:customers')||[]).filter(c=>
-    !seenIds.has(c.id)&&(
-      `${c.first_name||''} ${c.last_name||''}`.toLowerCase().includes(ql)||
-      (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||
-      (c.email||'').toLowerCase().includes(ql))
-  ).slice(0,3).forEach(c=>results.push({type:'Customer',icon:'&#128100;',
+  (S.get('lhs:customers')||[]).filter(c=>{
+    if(seenIds.has(c.id)) return false;
+    const name=`${c.first_name||''} ${c.last_name||''}`.toLowerCase();
+    const addr=`${c.address||''} ${c.city||''} ${c.state||''} ${c.zip||''}`.toLowerCase();
+    return name.includes(ql)
+      || (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))
+      || (c.email||'').toLowerCase().includes(ql)
+      || (c.company||'').toLowerCase().includes(ql)
+      || addr.includes(ql);
+  }).slice(0,3).forEach(c=>results.push({type:'Customer',icon:'&#128100;',
     title:`${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}`,
-    sub:`${c.phone||''} ${c.city||''} ${c.state||''}`.trim(),
+    sub:custSub(c),
     action:`openCustomer('${c.id}')`}));
   // Properties from cache
   (S.get('lhs:props')||[]).filter(p=>
@@ -31203,24 +31215,29 @@ async function _gsAsync(q){
     const words=[...new Set(q.trim().split(/\s+/).filter(w=>w.length>0))];
     const custClauses=words.flatMap(w=>[
       `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
-      `company.ilike.%${w}%`,`phone.ilike.%${w}%`
+      `company.ilike.%${w}%`,`phone.ilike.%${w}%`,
+      `address.ilike.%${w}%`,`city.ilike.%${w}%`,`state.ilike.%${w}%`,`zip.ilike.%${w}%`
     ]);
     const woClauses=words.flatMap(w=>[
       `customer_name.ilike.%${w}%`,`wo_number.ilike.%${w}%`
     ]);
     const[custRes,woRes]=await Promise.all([
-      DB.from('lhs_customers').select('id,first_name,last_name,company,phone,city,state')
+      DB.from('lhs_customers').select('id,first_name,last_name,company,phone,address,city,state,zip')
         .or(custClauses.join(',')).range(0,19),
       DB.from('lhs_work_orders').select('id,wo_number,customer_name,division,status,st_job_id')
         .or(woClauses.join(',')).limit(5)
     ]);
     const cur=(document.getElementById('gsearch')?.value||'').trim();
     if(cur!==q.trim()) return;
-    // Sort customers by relevance — how many query words match full name
+    // Sort customers by relevance — name matches and full-address matches both
+    // count; a row that matches on name AND address ranks highest.
     const ql=q.toLowerCase();
     const score=c=>{
       const full=`${c.first_name||''} ${c.last_name||''}`.toLowerCase();
-      return words.filter(w=>full.includes(w.toLowerCase())).length;
+      const addr=`${c.address||''} ${c.city||''} ${c.state||''} ${c.zip||''}`.toLowerCase();
+      const nameHits=words.filter(w=>full.includes(w.toLowerCase())).length;
+      const addrHits=words.filter(w=>addr.includes(w.toLowerCase())).length;
+      return nameHits*2 + addrHits;
     };
     const sorted=(custRes.data||[]).sort((a,b)=>score(b)-score(a)).slice(0,5);
     _gsRender(q,sorted,woRes.data||[]);
