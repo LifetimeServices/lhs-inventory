@@ -40,9 +40,10 @@ customers, work_orders, wo_materials, schedule, audit_log.
 ## Current Status
 
 - **Active branch:** `claude/lms-system-planning-SO2EW`
-- **Last shipped:** Phase 3b Track B — Cloudflare Worker + Account Hub phone tab
-  (commit `3e3a422` — voicemail fallback + hangup-cause logging)
-- **Actively working on:** TBD — pending user direction for this session
+- **Last shipped:** Worker v9 (`bca48ca`) + SIP login swap (`3538de2`) —
+  neither fixed the inbound `user_busy`. See Open Threads.
+- **Actively working on:** Shifting to other Phone-tab features while
+  inbound routing is parked.
 
 ---
 
@@ -74,7 +75,31 @@ customers, work_orders, wo_materials, schedule, audit_log.
 
 _Populate as items come up. Close out or move to "Shipped" when done._
 
-- [ ] (placeholder — add real items as they come up)
+- [ ] **Inbound WebRTC calls return `user_busy`** — parked 2026-04-18 evening.
+  - **Symptom:** call to `+12629560031` answers the recording announcement,
+    then Telnyx returns `user_busy` / source: `unknown` on the outbound dial
+    to `sip:lmswebrtc@sip.telnyx.com`. Phone panel never rings. Voicemail
+    fallback also not firing after the busy.
+  - **Outbound still works** (can dial out from the Phone panel).
+  - **Tried:**
+    1. Worker v9 (`bca48ca`) — added `hangup_cause`/`hangup_source` to the
+       main log line so we could see why. Confirmed `user_busy`.
+    2. SIP login fix (`3538de2`) — swapped WebRTC SDK login from
+       `login_token` (JWT) to SIP user/password so the session registers as
+       `lmswebrtc` on the credential connection. **Did not fix it.**
+  - **Next ideas to try tomorrow:**
+    - Check Telnyx dashboard → Credential Connection "LMS WebRTC": is there
+      a live registration for `lmswebrtc`? If yes, is it ours or stale?
+    - Confirm `WEBRTC_CONNECTION_ID` in the Cloudflare Worker env vars
+      matches the ID of the credential connection the SDK is using.
+    - Try originating with `to: "lmswebrtc"` (bare username) instead of
+      `to: "sip:lmswebrtc@sip.telnyx.com"` on the credential connection.
+    - Check browser console on the LMS Phone panel for any
+      `[Telnyx] call state: ...` lines during the test call — would tell us
+      if the SDK saw the INVITE at all.
+    - Fix voicemail fallback separately: `onCallHangup` should play VM on
+      the inbound leg after `user_busy`, but it didn't. Check if
+      `client_state` was actually present on that hangup payload.
 
 ---
 
