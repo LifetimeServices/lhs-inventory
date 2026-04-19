@@ -41,15 +41,21 @@ customers, work_orders, wo_materials, schedule, audit_log.
 
 - **Active branch:** `claude/review-claude-md-czd9X`
 - **Last shipped:**
-  1. ✅ **Softphone auto-inits at login** — incoming calls now ring
-     anywhere in the app (Dashboard, Dispatch, etc), not only when the
-     Phone panel is open. Answer from the banner auto-opens the panel.
-  2. ✅ **Detail views pre-fetch on-demand data** — opportunity, WO,
-     property, lead, estimate, business and commercial detail modals
-     now fetch their primary record + linked customer from Supabase if
-     not already in local cache, so every user sees the same fields
-     regardless of what they've loaded in their session.
-- **Actively working on:** TBD — pick next open thread.
+  1. ✅ **Comm bells end-to-end** — checkboxes in custForm and Account
+     hub edit form, persisted to Supabase, enforced on outbound call
+     (softphone) and outbound email (Estimate + Invoice). Pills shown
+     on customer modal, Account hub header, Account hub Details tab,
+     and Opportunity detail modal. `commBellPills(c,size)` helper.
+  2. ✅ **Brevo verification workflow** — added "Test Key" button that
+     calls Brevo `/v3/account` to validate the stored API key without
+     sending mail. Actionable 401 toast directs user to Integrations.
+  3. ✅ **Account hub save hardened** — `acctHubSave` now catches
+     Supabase column-not-exists errors, parses the offending column
+     out of the error message, retries without it, and reports dropped
+     columns in the toast. Cache only mirrors what the DB accepted.
+  4. ✅ **Account hub WO rows clickable.**
+- **Actively working on:** TBD — pick next Phase 3 item (per-number
+  config modal is next per plan; SMS pipeline is the other big item).
 
 ---
 
@@ -135,6 +141,32 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-19 night — Comm bells end-to-end + Brevo validation + schema drift
+Phase 3a comm-bell work closed out. UI: added `commBellPills(c,size)`
+helper and rendered pills in four surfaces (customer modal Contact Info
+card, Account hub header, Account hub Details tab, Opportunity detail
+modal). Toggles: added the four checkboxes (allow_calls / allow_sms /
+allow_email / do_not_contact) to the Account hub edit form. Enforcement:
+`svEmailEstimate` and `svEmailInvoice` now call `commBlockIfDisabled`
+before sending, matching the `phoneInitiateCall` behavior shipped
+earlier. **Brevo side-quest:** user hit "Email failed: Key not found"
+on first estimate send — turned out the stored API key was invalid.
+Added a Test Key button to Integrations that pings `/v3/account` to
+validate without sending, and rewrote the 401 error to direct the user
+to regenerate. User generated a new key, tested, confirmed send works.
+**Account hub save bug:** user edited phone/email, toast said "Account
+updated", but re-render showed old values. Root cause: `acctHubSave`
+swallowed Supabase errors silently. Rewrote with a recursive `attempt()`
+that parses missing-column errors from the Supabase response, drops
+just that column, retries — so on schema-drift DBs, the core fields
+still save and the toast names the dropped columns. User's Supabase
+was missing the comm-bell columns entirely; gave them the `alter table
+if not exists` SQL from schema.sql to run once. Confirmed working
+end-to-end. **Also small:** Account hub Work Orders table rows are now
+clickable (matches Opportunities/Locations/Activity tabs). Next: per-
+number config modal (unlocks Phase 3b ring-all routing) or SMS
+pipeline (Phase 3d).
 
 ### 2026-04-19 late evening — Phone auto-init + cross-user data parity
 Two shipped. **(1) Phone panel must be open to accept calls** — turned
