@@ -40157,7 +40157,8 @@ async function _fupQueueLoad(){
       </div>
       <div style="display:flex;gap:6px">
         ${l._src==='call'
-          ?`<button class="btn btn-o sm" onclick="window._acctHubId='${l.customer_id}';showPage('account-hub')">Open Account</button>`
+          ?`<button class="btn btn-n sm" onclick="openFollowUp('${l.id}')">Manage</button>
+            <button class="btn btn-o sm" onclick="window._acctHubId='${l.customer_id}';showPage('account-hub')">Open Account</button>`
           :`<button class="btn btn-n sm" onclick="oAddActivity('${l.id}',null)">Log Activity</button>
             <button class="btn btn-o sm" onclick="openLead('${l.id}')">Open</button>`}
       </div>
@@ -40175,7 +40176,7 @@ async function _fupQueueLoad(){
         <td>${esc(l.assigned_to||'—')}</td>
         <td style="font-weight:700">${l.estimated_value?'$'+Number(l.estimated_value).toLocaleString():'—'}</td>
         <td>${l._src==='call'
-          ?`<button class="btn btn-n sm" onclick="window._acctHubId='${l.customer_id}';showPage('account-hub')">Open Account</button>`
+          ?`<button class="btn btn-n sm" onclick="openFollowUp('${l.id}')">Manage</button>`
           :`<button class="btn btn-n sm" onclick="openLead('${l.id}')">Open</button>`}</td>
       </tr>`).join('')}</tbody>
     </table></div>`:'';
@@ -40192,6 +40193,81 @@ async function _fupQueueLoad(){
   ${leadsTable(show.week,'📆 This Week','var(--navy)')}
   ${leadsTable(show.all,'📋 All Follow-ups','var(--navy)')}
   ${!show.overdue.length&&!show.today.length&&!show.week.length&&!show.all.length?'<div class="card" style="text-align:center;padding:32px;color:var(--muted)">No follow-ups match your filters.</div>':''}`;
+}
+
+// Open / manage a phone-call-based follow-up. Sales reps can edit the
+// disposition + notes, pick a new follow-up date, mark it complete (clears
+// the date), or jump to the customer account.
+async function openFollowUp(callId){
+  let row=null;
+  try{
+    const{data,error}=await DB.from('lhs_phone_calls').select('*').eq('id',callId).maybeSingle();
+    if(error) throw error;
+    row=data;
+  }catch(e){tst('Could not load follow-up: '+(e.message||e),'error');return;}
+  if(!row){tst('Follow-up not found','error');return;}
+  const custs=S.get('lhs:customers')||[];
+  let cust=custs.find(c=>c.id===row.customer_id);
+  if(!cust && row.customer_id){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',row.customer_id).maybeSingle();
+      if(data){cust=data;custs.push(data);S.set('lhs:customers',custs);}
+    }catch{}
+  }
+  const name=cust?`${cust.first_name||''} ${cust.last_name||''}`.trim():(row.from_number||row.to_number||'Unknown');
+  const dispositions=['Spoke with customer','Left voicemail','No answer','Scheduled appointment','Provided quote','Follow-up required','Not interested'];
+  oMod(`⏰ Follow-up — ${esc(name)}`,`
+    <div style="max-width:520px">
+      <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--muted)">
+        ${row.direction==='inbound'?'Inbound':'Outbound'} call
+        ${row.started_at?' · '+new Date(row.started_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''}
+        ${row.duration_seconds?` · ${Math.floor(row.duration_seconds/60)}:${String(row.duration_seconds%60).padStart(2,'0')}`:''}
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Disposition</div>
+        <select id="fup-disp" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+          <option value="">— Select —</option>
+          ${dispositions.map(d=>`<option${d===row.disposition?' selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Notes</div>
+        <textarea id="fup-notes" rows="4" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;resize:vertical;font-family:inherit">${esc(row.notes||'')}</textarea>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Next Follow-up Date</div>
+        <input type="date" id="fup-date" value="${esc(row.follow_up_date||'')}" style="padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:13px">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-n sm" onclick="saveFollowUp('${callId}','${row.customer_id||''}')">💾 Save Changes</button>
+        <button class="btn btn-o sm" onclick="completeFollowUp('${callId}','${row.customer_id||''}')">✓ Mark Complete</button>
+        ${row.customer_id?`<button class="btn btn-o sm" onclick="cMod();window._acctHubId='${row.customer_id}';showPage('account-hub')">Open Account</button>`:''}
+        <button class="btn btn-o sm" onclick="cMod()">Close</button>
+      </div>
+    </div>`);
+}
+
+async function saveFollowUp(callId,customerId){
+  const notes=(document.getElementById('fup-notes')?.value||'').trim();
+  const disp=document.getElementById('fup-disp')?.value||'';
+  const date=document.getElementById('fup-date')?.value||null;
+  const{error}=await DB.from('lhs_phone_calls').update({
+    notes:notes||null,disposition:disp||null,follow_up_date:date||null,
+  }).eq('id',callId);
+  if(error){tst('Save failed: '+error.message,'error');return;}
+  tst('Follow-up updated','success');
+  cMod();
+  _fupQueueLoad();
+  if(customerId&&typeof acctHubPhoneLoad==='function') setTimeout(()=>acctHubPhoneLoad(customerId),100);
+}
+
+async function completeFollowUp(callId,customerId){
+  const{error}=await DB.from('lhs_phone_calls').update({follow_up_date:null}).eq('id',callId);
+  if(error){tst('Update failed: '+error.message,'error');return;}
+  tst('Follow-up marked complete','success');
+  cMod();
+  _fupQueueLoad();
+  if(customerId&&typeof acctHubPhoneLoad==='function') setTimeout(()=>acctHubPhoneLoad(customerId),100);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -40874,10 +40950,14 @@ async function acctHubPhoneLoad(customerId){
   if(!el) return;
   try{
     const [calls,vms,sms]=await Promise.all([
-      DB.from('lhs_phone_calls').select('*').eq('customer_id',customerId).order('started_at',{ascending:false}).limit(100),
+      DB.from('lhs_phone_calls').select('*').eq('customer_id',customerId).order('started_at',{ascending:false,nullsFirst:false}).limit(100),
       DB.from('lhs_voicemails').select('*').eq('customer_id',customerId).order('created_at',{ascending:false}).limit(50),
       DB.from('lhs_sms_messages').select('*,lhs_sms_threads!inner(customer_id)').eq('lhs_sms_threads.customer_id',customerId).order('created_at',{ascending:false}).limit(100),
     ]);
+    if(calls.error) console.warn('acctHubPhoneLoad calls error:',calls.error.message);
+    if(vms.error) console.warn('acctHubPhoneLoad vms error:',vms.error.message);
+    if(sms.error) console.warn('acctHubPhoneLoad sms error:',sms.error.message);
+    console.log('acctHubPhoneLoad',customerId,'calls:',calls.data?.length||0,'vms:',vms.data?.length||0,'sms:',sms.data?.length||0);
     const callRows=(calls.data||[]).map(c=>({kind:'call',at:c.started_at||c.created_at,data:c}));
     const vmRows=(vms.data||[]).map(v=>({kind:'vm',at:v.created_at,data:v}));
     const smsRows=(sms.data||[]).map(m=>({kind:'sms',at:m.created_at,data:m}));
@@ -50366,6 +50446,8 @@ async function postCallNotesSave(customerId,duration){
     // we don't duplicate. If no active row (initial insert failed), fall
     // back to inserting a fresh row tied to the customer.
     const basePayload={notes:notes||null,disposition:disp||null,follow_up_date:follow||null,ended_at:new Date().toISOString(),duration_seconds:duration,status:'completed'};
+    // Always stamp customer_id in case the dial-time match was null.
+    basePayload.customer_id=customerId;
     let saveErr=null;
     if(_activePhoneCallId){
       const r=await DB.from('lhs_phone_calls').update(basePayload).eq('id',_activePhoneCallId);
