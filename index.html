@@ -25249,6 +25249,15 @@ async function openWO(woId){
     }catch(e){}
   }
   if(!wo){tst('Work order not found','error');return}
+  // Pre-fetch customer if not cached — lhs_customers is on-demand, so users
+  // who haven't loaded this customer this session would see blank contact
+  // fields on the WO detail.
+  if(wo.customer_id && !(S.get('lhs:customers')||[]).find(c=>c.id===wo.customer_id)){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',wo.customer_id).maybeSingle();
+      if(data){const cs=S.get('lhs:customers')||[];cs.push(data);S.set('lhs:customers',cs);}
+    }catch{}
+  }
   const apts=(S.get('lhs:appointments')||[]).filter(a=>a.wo_id===woId);
   const techs=(S.get('lhs:apt_techs')||[]).filter(t=>t.wo_id===woId);
   const payments=(S.get('lhs:payments')||[]).filter(p=>p.wo_id===woId);
@@ -28718,8 +28727,15 @@ async function svEditBusiness(){
   try{await DB.from('lhs_business_accounts').update(rec).eq('id',id);}catch{}
   cMod();tst(`${name} updated`,'success');showPage('business');
 }
-function openBusiness(id){
-  const b=(S.get('lhs:biz_accounts')||[]).find(x=>x.id===id);if(!b) return;
+async function openBusiness(id){
+  let b=(S.get('lhs:biz_accounts')||[]).find(x=>x.id===id);
+  if(!b){
+    try{
+      const{data}=await DB.from('lhs_business_accounts').select('*').eq('id',id).maybeSingle();
+      if(data){b=data;const bs=S.get('lhs:biz_accounts')||[];bs.unshift(data);S.set('lhs:biz_accounts',bs);}
+    }catch{}
+  }
+  if(!b) return;
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.business_account_id===id);
   oMod(`${b.business_name}`,`
   <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
@@ -28941,8 +28957,15 @@ async function svEditCommercial(){
   try{await DB.from('lhs_commercial_accounts').update(rec).eq('id',id);}catch{}
   cMod();tst(`${name} updated`,'success');showPage('commercial');
 }
-function openCommercial(id){
-  const c=(S.get('lhs:comm_accounts')||[]).find(x=>x.id===id);if(!c) return;
+async function openCommercial(id){
+  let c=(S.get('lhs:comm_accounts')||[]).find(x=>x.id===id);
+  if(!c){
+    try{
+      const{data}=await DB.from('lhs_commercial_accounts').select('*').eq('id',id).maybeSingle();
+      if(data){c=data;const cs=S.get('lhs:comm_accounts')||[];cs.unshift(data);S.set('lhs:comm_accounts',cs);}
+    }catch{}
+  }
+  if(!c) return;
   const wos=(S.get('lhs:work_orders')||[]).filter(w=>w.commercial_account_id===id);
   const catColor=c.account_category==='Commercial Business'?{bg:'#dbeafe',color:'#1e40af'}:{bg:'#fef3c7',color:'#92400e'};
   oMod(`${c.account_name}`,`
@@ -30245,6 +30268,14 @@ async function openProperty(id){
     }catch(e){console.warn('openProperty fetch:',e?.message);}
   }
   if(!p){tst('Property not found','error');return;}
+  // Pre-fetch the owning customer if not cached (lhs_customers is on-demand).
+  const _ownerId=p.current_customer_id||p.customer_id;
+  if(_ownerId && !(S.get('lhs:customers')||[]).find(c=>c.id===_ownerId)){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',_ownerId).maybeSingle();
+      if(data){const cs=S.get('lhs:customers')||[];cs.push(data);S.set('lhs:customers',cs);}
+    }catch{}
+  }
   const wos=(S.get('lhs:work_orders')||[])
     .filter(w=>w.property_id===id)
     .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -44650,9 +44681,23 @@ function oLogActivity(){oAddActivity(null,null);}
 
 
 // ── NOTIFICATION SYSTEM ───────────────────────────────────────────────────────
-function openLead(id){
-  const l=(S.get('lhs:leads')||[]).find(x=>x.id===id);
+async function openLead(id){
+  let l=(S.get('lhs:leads')||[]).find(x=>x.id===id);
+  if(!l){
+    // Outside the 2000-row load cap — fetch directly.
+    try{
+      const{data}=await DB.from('lhs_leads').select('*').eq('id',id).maybeSingle();
+      if(data){l=data;const ls=S.get('lhs:leads')||[];ls.unshift(data);S.set('lhs:leads',ls);}
+    }catch{}
+  }
   if(!l) return;
+  // Pre-fetch linked customer if not cached.
+  if(l.customer_id && !(S.get('lhs:customers')||[]).find(c=>c.id===l.customer_id)){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',l.customer_id).maybeSingle();
+      if(data){const cs=S.get('lhs:customers')||[];cs.push(data);S.set('lhs:customers',cs);}
+    }catch{}
+  }
   const acts=(S.get('lhs:activities')||[]).filter(a=>a.lead_id===id)
     .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
   const opps=(S.get('lhs:opportunities')||[]).filter(o=>o.lead_id===id);
@@ -47610,9 +47655,23 @@ function estSaveTemplate(){
 }
 
 // ── OPEN EXISTING ESTIMATE ────────────────────────────────────────────────────
-function openEstimate(id){
-  const e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
+async function openEstimate(id){
+  let e=(S.get('lhs:estimates')||[]).find(x=>x.id===id);
+  if(!e){
+    // Outside the 1000-row load cap — fetch directly.
+    try{
+      const{data}=await DB.from('lhs_estimates').select('*').eq('id',id).maybeSingle();
+      if(data){e=data;const es=S.get('lhs:estimates')||[];es.unshift(data);S.set('lhs:estimates',es);}
+    }catch{}
+  }
   if(!e) return;
+  // Pre-fetch linked customer if not cached (so address/phone/email display).
+  if(e.customer_id && !(S.get('lhs:customers')||[]).find(c=>c.id===e.customer_id)){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',e.customer_id).maybeSingle();
+      if(data){const cs=S.get('lhs:customers')||[];cs.push(data);S.set('lhs:customers',cs);}
+    }catch{}
+  }
   const lines=typeof e.line_items==='string'?JSON.parse(e.line_items||'[]'):(e.line_items||[]);
   const statusColor=s=>s==='Draft'?'bn':s==='Sent'?'ba':s==='Accepted'?'bg':s==='Declined'?'br':'bgr';
   const svcLines=lines.filter(l=>l.type!=='Discount'&&l.type!=='discount');
