@@ -98,12 +98,16 @@ _Populate as items come up. Close out or move to "Shipped" when done._
   (4) re-ordered results so Properties → Customers → WOs, and address-shaped
   queries skip WO-number substring hits.
 
-- [ ] **Invoice-from-dispatch-closeout flow regressed.** Previously when a
-  dispatch user closed a work order, a popup offered "Create Invoice" that
-  took them to the Invoice page with WO data pre-populated. User reports
-  this used to work and doesn't now. Find the WO closeout handler, restore
-  the prompt + autopopulate path. Should be preserved going forward — don't
-  delete during phone/other refactors.
+- [x] ~~**Invoice-from-dispatch-closeout flow regressed.**~~ ✅ **RESOLVED
+  (commit `5271a28`).** Two code paths were setting a WO to "Closed with
+  Dispatch": the Dispatch board's Close button (which routed through
+  `closeoutWO()` and showed the Create-Invoice prompt — worked), and
+  the WO detail page's status buttons (which called `updateWOStatus`
+  directly — silently flipped status, no prompt, no estimate lock).
+  Fix: route the detail-page path through `closeoutWO()` too, so every
+  close-with-dispatch gets the same treatment regardless of where the
+  user triggered it. Follow-up in commit `418a45e` handled single-char
+  search queries and no-estimate WOs so the path is robust.
 
 - [x] ~~**Inbound call audio broken.**~~ ✅ **RESOLVED 2026-04-19.** Root cause:
   Telnyx sends `direction: null` on `call.answered` webhooks, but the
