@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v11' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v12' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -170,11 +170,15 @@ async function onCallInitiated(p, env) {
 }
 
 // ─── call.answered ───────────────────────────────────────────────────────────
-// Fires on BOTH legs. Only the outbound (WebRTC) answered event triggers a bridge.
+// Fires on BOTH legs. Only the outbound (WebRTC) answered event triggers a
+// bridge. We identify the outbound leg by presence of our client_state —
+// Telnyx doesn't always populate `direction` on this webhook, so checking
+// direction is unreliable. client_state is only set by our originate call,
+// so its presence is a sufficient (and reliable) marker.
 async function onCallAnswered(p, env) {
   const callControlId = p.call_control_id;
   console.log('🤝 call.answered — dir:', p.direction, 'leg:', callControlId, 'client_state present:', !!p.client_state);
-  if (p.direction !== 'outgoing' || !p.client_state) return json({ ok: true });
+  if (!p.client_state) return json({ ok: true });
 
   const inboundId = unb64(p.client_state);
   if (!inboundId) { console.warn('🤝 client_state decoded empty'); return json({ ok: true }); }
