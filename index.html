@@ -50536,19 +50536,31 @@ async function _logCall(fields){
       started_at:new Date().toISOString(),
     }).select('id').single();
     if(data) _activeCallLogId=data.id;
-    try{
-      const{data:pc}=await DB.from('lhs_phone_calls').insert({
+    // Customer-linked row. Retry without user_id if the FK constraint
+    // rejects CU.id (e.g. Creator / God View facade users whose CU.id
+    // isn't a real lhs_users.id row).
+    const _insertPhoneCall=async(includeUser)=>{
+      const row={
         direction:_activeCallDir,
         from_number:_activeCallFrom,
         to_number:_activeCallTo,
         customer_id:matchedId,
-        user_id:CU?.id||null,
         status:fields.status||'initiated',
         duration_seconds:0,
         started_at:new Date().toISOString(),
-      }).select('id').single();
-      if(pc) _activePhoneCallId=pc.id;
-    }catch(e){/* table may not exist yet in some envs */}
+      };
+      if(includeUser) row.user_id=CU?.id||null;
+      return DB.from('lhs_phone_calls').insert(row).select('id').single();
+    };
+    let pcRes=await _insertPhoneCall(true);
+    if(pcRes.error){
+      console.warn('lhs_phone_calls insert (with user_id) failed:',pcRes.error.message,pcRes.error.details);
+      // Retry without user_id
+      pcRes=await _insertPhoneCall(false);
+      if(pcRes.error) console.warn('lhs_phone_calls insert (no user_id) failed:',pcRes.error.message,pcRes.error.details);
+    }
+    if(pcRes.data) _activePhoneCallId=pcRes.data.id;
+    else console.warn('Call not linked to customer timeline. matchedId=',matchedId,'dir=',_activeCallDir);
   }catch(e){console.warn('Call log failed:',e&&e.message);}
 }
 
