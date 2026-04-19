@@ -19741,6 +19741,23 @@ function commBlockIfDisabled(customer,channel){
   if(!r.allowed){ tst(`⛔ ${r.reason}`,'error'); return true; }
   return false;
 }
+// Renders comm-preference pills for a customer. Returns empty string if no
+// restrictions apply, so detail views can inline it without conditionals.
+function commBellPills(c,size='sm'){
+  if(!c) return '';
+  const dnc=!!c.do_not_contact;
+  const noCall=c.allow_calls===false;
+  const noSMS=c.allow_sms===false;
+  const noEmail=c.allow_email===false;
+  if(!dnc && !noCall && !noSMS && !noEmail) return '';
+  const pad=size==='lg'?'3px 10px':'2px 8px';
+  const fs=size==='lg'?'12px':'11px';
+  const pill=(txt,bg,fg)=>`<span style="display:inline-block;font-size:${fs};font-weight:700;padding:${pad};border-radius:10px;background:${bg};color:${fg};margin-right:6px">${txt}</span>`;
+  return (dnc?pill('⛔ Do Not Contact','#fee','#b91c1c'):'')
+    +(noCall?pill('📞 No Calls','#fef3c7','#92400e'):'')
+    +(noSMS?pill('💬 No Texts','#fef3c7','#92400e'):'')
+    +(noEmail?pill('✉️ No Email','#fef3c7','#92400e'):'');
+}
 
 function saveGroqKey(){
   const val=(document.getElementById('groq-key-input')?.value||'').trim();
@@ -40682,6 +40699,7 @@ function bAccountHub(){
         <div style="font-size:24px;font-weight:800;color:var(--navy)">${esc(name)}</div>
         ${c.company?`<div style="font-size:13px;color:var(--muted);margin-top:2px">${esc(c.company)}</div>`:''}
         <div style="font-size:13px;color:var(--muted);margin-top:2px">${cityState||'No address on file'}</div>
+        ${(()=>{const pills=commBellPills(c,'lg');return pills?`<div style="margin-top:8px">${pills}</div>`:'';})()}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
         ${(c.phone||c.primary_phone)?`<a href="tel:${esc(c.phone||c.primary_phone)}" class="btn btn-o sm">📞 Call</a>`:''}
@@ -45203,8 +45221,12 @@ async function openOpportunity(id){
   const custName=o.name||'Opportunity';
   const aIcon=t=>{t=t||'';return t==='Call'?'📞':t==='Email'?'✉️':t==='Text'?'💬':t==='Visit'||t==='Site Visit'?'🏠':t==='Meeting'?'📅':t.includes('Stage')||t.includes('stage')?'🔄':t.includes('Created')?'✨':'📋';};
 
+  const _oppCust=o.customer_id?(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id):null;
+  const _oppBells=commBellPills(_oppCust,'lg');
   oMod(custName,`
   <div style="max-height:80vh;overflow-y:auto;padding-right:4px">
+
+  ${_oppBells?`<div style="margin-bottom:12px">${_oppBells}</div>`:''}
 
   <!-- Stage Path Bar (Salesforce style) -->
   <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:14px 16px;margin-bottom:16px">
