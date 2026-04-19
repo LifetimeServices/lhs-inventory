@@ -68,6 +68,13 @@ customers, work_orders, wo_materials, schedule, audit_log.
 - **R2 for binaries.** Don't upload media into Supabase Storage.
 - **Telephony via Telnyx Call Control API** (not TeXML) — see commit `66ab527`.
 - **WebRTC targets dialed via `<Sip>`** (not `<Client>`) — see commit `be70196`.
+- **Claude pushes to GitHub directly.** The user has authorized Claude to
+  push commits to the working branch AND to fast-forward `main` so changes
+  go live on `lifetimemanagementsystem.com` without the user running
+  `deploy.sh` manually. Workflow: commit → `git push origin <branch>` →
+  `git push origin <branch>:main`. Use force-push only if main has
+  diverged (rare); otherwise fast-forward. Always tell the user to
+  hard-refresh (⌥⌘R on Safari) after deploying.
 
 ---
 
