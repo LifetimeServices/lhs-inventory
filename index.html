@@ -45078,9 +45078,23 @@ async function svAddOpportunity(leadId){
   cMod();tst(`Opportunity: ${name} created`,'success');showPage('sales-opps');
 }
 
-function openOpportunity(id){
+async function openOpportunity(id){
   const o=(S.get('lhs:opportunities')||[]).find(x=>x.id===id);
   if(!o) return;
+  // lhs_customers is an on-demand table (not bulk-loaded), so a user who
+  // hasn't already loaded this customer (via search, list page, etc) won't
+  // have them in cache and the Property Address + other customer-derived
+  // fields render blank. Pre-fetch before rendering so every user sees the
+  // same data regardless of what they've loaded in this session.
+  if(o.customer_id && !(S.get('lhs:customers')||[]).find(c=>c.id===o.customer_id)){
+    try{
+      const{data}=await DB.from('lhs_customers').select('*').eq('id',o.customer_id).single();
+      if(data){
+        const cs=S.get('lhs:customers')||[];
+        cs.push(data); S.set('lhs:customers',cs);
+      }
+    }catch{}
+  }
   const acts=(S.get('lhs:activities')||[]).filter(a=>a.opportunity_id===id)
     .sort((a,b)=>new Date(b.performed_at||b.created_at)-new Date(a.performed_at||a.created_at));
   const stages=getSalesSettings().opp_stages||OPP_STAGES;
