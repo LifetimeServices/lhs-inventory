@@ -10940,7 +10940,11 @@ function bInt(){
         <input id="brevo-name-input" type="text" value="${esc(S.get('lhs:brevo_sender_name')||'Lifetime Home Services')}" placeholder="Lifetime Home Services"
           style="width:240px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif">
       </div>
-      <button class="btn btn-n sm" style="margin-top:10px" onclick="saveBrevoSettings()">Save Brevo Settings</button>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-n sm" onclick="saveBrevoSettings()">Save Brevo Settings</button>
+        <button class="btn btn-o sm" onclick="testBrevoKey()">✉️ Test Key</button>
+        <span id="brevo-test-result" style="font-size:12px;font-weight:600"></span>
+      </div>
       ${(S.get('lhs:brevo_api_key')||'').trim()
         ?`<div style="font-size:11px;color:var(--green);margin-top:6px">&#10003; Brevo configured — all emails will route through Brevo</div>`
         :`<div style="font-size:11px;color:var(--amber);margin-top:6px">&#9888; Enter your Brevo API key, verified sender email, and sender name, then click Save</div>`}
@@ -18334,6 +18338,32 @@ function stopVAListening(){
 function clearVAHistory(){_vaHistory=[];_vaRender();}
 function vaKeydown(e){
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const v=document.getElementById('va-input')?.value||'';if(v.trim())sendVAMessage(v);}
+}
+
+async function testBrevoKey(){
+  // Read whatever is currently in the input (may not be saved yet) so the
+  // user can validate before persisting. Fall back to the saved key.
+  const key=((document.getElementById('brevo-key-input')?.value)||S.get('lhs:brevo_api_key')||'').trim();
+  const resEl=document.getElementById('brevo-test-result');
+  if(!key){if(resEl){resEl.textContent='⚠️ Enter an API key first';resEl.style.color='#f59e0b';}return;}
+  if(resEl){resEl.textContent='Testing…';resEl.style.color='var(--muted)';}
+  try{
+    const resp=await fetch('https://api.brevo.com/v3/account',{
+      headers:{'api-key':key,'Content-Type':'application/json'}
+    });
+    if(resp.ok){
+      const data=await resp.json().catch(()=>({}));
+      const email=data?.email||'key valid';
+      if(resEl){resEl.textContent=`✓ Key valid — account ${email}`;resEl.style.color='var(--green)';}
+    } else if(resp.status===401){
+      if(resEl){resEl.textContent='✗ Brevo rejected the key (401) — regenerate at app.brevo.com';resEl.style.color='var(--red)';}
+    } else {
+      const err=await resp.json().catch(()=>({}));
+      if(resEl){resEl.textContent=`✗ ${err.message||'Brevo error '+resp.status}`;resEl.style.color='var(--red)';}
+    }
+  }catch(e){
+    if(resEl){resEl.textContent='✗ Network error: '+e.message;resEl.style.color='var(--red)';}
+  }
 }
 
 function saveBrevoSettings(){
