@@ -54,6 +54,21 @@ customers, work_orders, wo_materials, schedule, audit_log.
      out of the error message, retries without it, and reports dropped
      columns in the toast. Cache only mirrors what the DB accepted.
   4. ✅ **Account hub WO rows clickable.**
+  5. ✅ **Platform-wide call/email routing** — every customer-facing
+     `tel:` swapped to `clickToCall` (softphone, caller ID, recording,
+     comm-bell enforcement), every `mailto:` swapped to new
+     `clickToEmail` helper that checks bells when a customer ID is
+     known. Rolodex + Customer Card + Account hub all consistent. Old
+     Customer Card Call/Email buttons (previously dead — no onclick)
+     are now wired.
+  6. ✅ **Toast z-index fix** — toast was `z-index:999`, phone panel
+     was `8500`. Block/error messages (⛔ Customer has call turned off)
+     were rendering behind the panel and invisible. Bumped toast to
+     `9999`.
+  7. ✅ **Call log dual-write** — `_logCall` now writes to both the
+     legacy `lhs_call_logs` table AND `lhs_phone_calls` (customer-
+     linked). Completed outbound calls now appear on the customer's
+     Activity tab, not just missed inbound.
 - **Actively working on:** TBD — pick next Phase 3 item (per-number
   config modal is next per plan; SMS pipeline is the other big item).
 
@@ -141,6 +156,34 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-19 late night — Platform-wide comm routing + call-log gap
+Three things. **(1)** User reported the Call button on the Account hub
+was opening FaceTime. It was an `<a href="tel:...">` link. macOS hands
+`tel:` URLs to FaceTime (or Contacts), bypassing our softphone. Fixed
+the Account hub, then user asked for a platform-wide pass so every
+call/email/text feature operates the same way everywhere. Added a new
+`clickToEmail(email, customerId, name)` helper that checks comm bells
+when `customerId` is provided (so Account hub email clicks respect
+bells; rolodex realtor clicks skip bell check because they aren't
+customers). Swept rolodex (list rows, profile modal, profile header),
+old Customer Card (two dead Call/Email buttons that had no onclick at
+all), and all Account hub email links. Left alone: vendor PO page
+external "Contact Us" link; `svEmailEstimate` / `svEmailInvoice`
+which already bell-guard through Brevo. SMS has no action buttons
+anywhere — Phase 3d clean slate. **(2)** User clicked Call on a
+blocked customer (⛔ No Calls) but saw nothing happen. Root cause:
+toast was `z-index:999` and the phone panel was `z-index:8500`.
+Toasts pop bottom-right where the 340px panel lives — so every toast
+fired from the softphone was invisible. Bumped toast to 9999.
+**(3)** User called a customer, connected, hung up — no entry on the
+customer timeline. Traced to `_logCall`: it wrote completed/outbound
+calls to legacy `lhs_call_logs`, but the Account hub's "Calls, Texts
+& Voicemails" section reads from `lhs_phone_calls` (customer-linked),
+which was only being populated for missed inbound. Refactored
+`_logCall` to dual-write both tables on every call and update both
+rows on hangup. Past calls won't retroactively appear. Next: per-
+number config modal or SMS pipeline (Phase 3d).
 
 ### 2026-04-19 night — Comm bells end-to-end + Brevo validation + schema drift
 Phase 3a comm-bell work closed out. UI: added `commBellPills(c,size)`
