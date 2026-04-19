@@ -3406,6 +3406,8 @@ function showPage(id){
   if(id==='phone-calls') setTimeout(()=>{try{callRecordingsLoad();}catch(e){console.warn(e);}},30);
   // SMS Templates page — lazy-load template list
   if(id==='phone-templates') setTimeout(()=>{try{smsTemplatesLoad();}catch(e){console.warn(e);}},30);
+  // Phone Settings page — lazy-load global settings
+  if(id==='phone-settings') setTimeout(()=>{try{phoneSettingsLoad();}catch(e){console.warn(e);}},30);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
@@ -18504,7 +18506,7 @@ function bPhoneMessages(){ return _phoneStub('Messages','Shared inbox for call-c
 function bPhoneVoicemail(){ return bPhoneVoicemailPage(); }
 function bPhoneCallRecordings(){ return bPhoneCallRecordingsPage(); }
 function bPhoneTemplates(){ return bPhoneTemplatesPage(); }
-function bPhoneSettings(){ return _phoneStub('Phone Settings','Global recording retention, business-hours presets, default greetings, and agent-presence defaults. Built across 3b–3e.'); }
+function bPhoneSettings(){ return bPhoneSettingsPage(); }
 
 // ─── VOICEMAILS PAGE (Phase 3b) ─────────────────────────────────────────────
 // Inbox of voicemail messages left by callers. Audio playback, customer
@@ -19083,6 +19085,183 @@ async function smsTemplateDelete(id,name){
     if(error) throw error;
     smsTemplatesLoad();
   }catch(e){ alert('Delete failed: '+(e.message||'unknown error')); }
+}
+
+// ─── PHONE SETTINGS PAGE (Phase 3b–3e) ──────────────────────────────────────
+// Global defaults applied across the Phone module. Stored as a single JSON
+// value in lhs_app_settings under key 'phone_global_settings'.
+
+const PHONE_SETTINGS_DEFAULTS={
+  recording_retention_days:1825,
+  recording_announcement:'This call may be recorded for quality assurance.',
+  default_ring_seconds:25,
+  default_timezone:'America/Chicago',
+  default_business_hours:{
+    mon:{start:'08:00',end:'17:00',closed:false},
+    tue:{start:'08:00',end:'17:00',closed:false},
+    wed:{start:'08:00',end:'17:00',closed:false},
+    thu:{start:'08:00',end:'17:00',closed:false},
+    fri:{start:'08:00',end:'17:00',closed:false},
+    sat:{start:'09:00',end:'13:00',closed:true},
+    sun:{start:'09:00',end:'13:00',closed:true},
+  },
+  presence_default_state:'available',
+  presence_auto_away_minutes:15,
+  sms_optout_autoreply:'You have been unsubscribed. Reply START to resubscribe.',
+};
+
+function bPhoneSettingsPage(){
+  if(!hasPerm('phone','manage_settings')){
+    return `<div class="pc">${_phoneHeader('Phone Settings')}
+      <div class="pb"><div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+        You don't have permission to manage phone settings. Contact an admin.
+      </div></div></div>`;
+  }
+  return `<div class="pc">
+    ${_phoneHeader('Phone Settings','Global defaults for the phone system. Individual phone numbers can override most of these on the Phone Numbers page.')}
+    <div class="pb">
+      <div id="ps-form"><div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Loading settings…</div></div>
+    </div>
+  </div>`;
+}
+
+async function phoneSettingsLoad(){
+  const el=document.getElementById('ps-form');
+  if(!el) return;
+  try{
+    const {data}=await DB.from('lhs_app_settings').select('value').eq('key','phone_global_settings').maybeSingle();
+    const saved=(data&&data.value)?(typeof data.value==='string'?JSON.parse(data.value):data.value):{};
+    const s={...PHONE_SETTINGS_DEFAULTS,...saved,default_business_hours:{...PHONE_SETTINGS_DEFAULTS.default_business_hours,...(saved.default_business_hours||{})}};
+    el.innerHTML=_phoneSettingsForm(s);
+  }catch(e){
+    console.error('phoneSettingsLoad:',e);
+    el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Could not load settings: ${esc(e.message||'unknown error')}</div>`;
+  }
+}
+
+function _phoneSettingsForm(s){
+  const tzs=[
+    ['America/New_York','Eastern (ET)'],
+    ['America/Chicago','Central (CT)'],
+    ['America/Denver','Mountain (MT)'],
+    ['America/Phoenix','Arizona (no DST)'],
+    ['America/Los_Angeles','Pacific (PT)'],
+    ['America/Anchorage','Alaska (AKT)'],
+    ['Pacific/Honolulu','Hawaii (HAT)'],
+  ];
+  const days=[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+  const bh=s.default_business_hours||{};
+  const presenceStates=[['available','Available'],['away','Away / DND'],['break','Break'],['meeting','Meeting']];
+  const section=(title,inner)=>`
+    <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin-bottom:12px">${title}</div>
+      ${inner}
+    </div>`;
+  return `
+  <div style="max-width:780px">
+    ${section('🎙️ Call Recording', `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Retention (days)</div>
+          <input id="ps-retention" type="number" min="30" max="3650" value="${s.recording_retention_days}"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Recordings older than this are eligible for deletion. Default 1825 (5 years).</div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Recording Announcement</div>
+          <input id="ps-rec-announce" value="${esc(s.recording_announcement||'')}"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Spoken to caller before recording starts.</div>
+        </div>
+      </div>
+    `)}
+    ${section('☎️ New Number Defaults', `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Default Ring Seconds</div>
+          <input id="ps-ring" type="number" min="10" max="60" value="${s.default_ring_seconds}"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Default Timezone</div>
+          <select id="ps-tz" style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+            ${tzs.map(([v,l])=>`<option value="${v}" ${s.default_timezone===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Default Business Hours</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+        ${days.map(([k,lbl])=>{
+          const d=bh[k]||{};
+          return `<div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:8px">
+            <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:4px">${lbl}</div>
+            <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);margin-bottom:4px">
+              <input type="checkbox" id="ps-bh-${k}-closed" ${d.closed?'checked':''}> Closed
+            </label>
+            <input type="time" id="ps-bh-${k}-start" value="${d.start||'08:00'}" style="width:100%;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px;box-sizing:border-box;margin-bottom:3px">
+            <input type="time" id="ps-bh-${k}-end"   value="${d.end  ||'17:00'}" style="width:100%;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px;font-size:11px;box-sizing:border-box">
+          </div>`;
+        }).join('')}
+      </div>
+    `)}
+    ${section('🟢 Agent Presence', `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Default State at Login</div>
+          <select id="ps-presence-default" style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">
+            ${presenceStates.map(([v,l])=>`<option value="${v}" ${s.presence_default_state===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Auto-Away After (minutes idle)</div>
+          <input id="ps-presence-idle" type="number" min="0" max="180" value="${s.presence_auto_away_minutes}"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">0 = never auto-away.</div>
+        </div>
+      </div>
+    `)}
+    ${section('💬 SMS', `
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Opt-Out Auto-Reply</div>
+        <textarea id="ps-optout" rows="2"
+          style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box;resize:vertical">${esc(s.sms_optout_autoreply||'')}</textarea>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Sent to recipients who text STOP or similar opt-out keywords.</div>
+      </div>
+    `)}
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 0">
+      <button class="btn btn-o sm" onclick="phoneSettingsLoad()">Reset</button>
+      <button class="btn sm" onclick="phoneSettingsSave()">💾 Save Settings</button>
+    </div>
+  </div>`;
+}
+
+async function phoneSettingsSave(){
+  const days=['mon','tue','wed','thu','fri','sat','sun'];
+  const bh={};
+  days.forEach(k=>{
+    bh[k]={
+      start:document.getElementById('ps-bh-'+k+'-start').value||'08:00',
+      end:  document.getElementById('ps-bh-'+k+'-end'  ).value||'17:00',
+      closed:document.getElementById('ps-bh-'+k+'-closed').checked,
+    };
+  });
+  const val={
+    recording_retention_days:parseInt(document.getElementById('ps-retention').value,10)||1825,
+    recording_announcement:(document.getElementById('ps-rec-announce').value||'').trim(),
+    default_ring_seconds:parseInt(document.getElementById('ps-ring').value,10)||25,
+    default_timezone:document.getElementById('ps-tz').value,
+    default_business_hours:bh,
+    presence_default_state:document.getElementById('ps-presence-default').value,
+    presence_auto_away_minutes:parseInt(document.getElementById('ps-presence-idle').value,10)||0,
+    sms_optout_autoreply:(document.getElementById('ps-optout').value||'').trim(),
+  };
+  try{
+    const {error}=await DB.from('lhs_app_settings').upsert({key:'phone_global_settings',value:val},{onConflict:'key'});
+    if(error) throw error;
+    if(typeof toast==='function') toast('Phone settings saved'); else alert('Phone settings saved.');
+  }catch(e){
+    alert('Save failed: '+(e.message||'unknown error'));
+  }
 }
 
 // ─── PHONE NUMBERS PAGE (Phase 3a) ──────────────────────────────────────────
