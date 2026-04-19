@@ -3404,6 +3404,8 @@ function showPage(id){
   if(id==='phone-voicemail') setTimeout(()=>{try{voicemailsLoad();}catch(e){console.warn(e);}},30);
   // Call Recordings page — lazy-load recording archive
   if(id==='phone-calls') setTimeout(()=>{try{callRecordingsLoad();}catch(e){console.warn(e);}},30);
+  // SMS Templates page — lazy-load template list
+  if(id==='phone-templates') setTimeout(()=>{try{smsTemplatesLoad();}catch(e){console.warn(e);}},30);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
@@ -18501,7 +18503,7 @@ function bPhoneNumbers(){ return bPhoneNumbersPage(); }
 function bPhoneMessages(){ return _phoneStub('Messages','Shared inbox for call-center numbers, 1-to-1 threads, MMS. Built in Phase 3d.'); }
 function bPhoneVoicemail(){ return bPhoneVoicemailPage(); }
 function bPhoneCallRecordings(){ return bPhoneCallRecordingsPage(); }
-function bPhoneTemplates(){ return _phoneStub('SMS Templates','Automated work-order and dispatch text templates with merge fields and on/off toggles. Built in Phase 3e.'); }
+function bPhoneTemplates(){ return bPhoneTemplatesPage(); }
 function bPhoneSettings(){ return _phoneStub('Phone Settings','Global recording retention, business-hours presets, default greetings, and agent-presence defaults. Built across 3b–3e.'); }
 
 // ─── VOICEMAILS PAGE (Phase 3b) ─────────────────────────────────────────────
@@ -18827,6 +18829,260 @@ function _crLogListen(callId){
   try{
     if(typeof logAudit==='function') logAudit('recording_listened',{call_id:callId});
   }catch{}
+}
+
+// ─── SMS TEMPLATES PAGE (Phase 3e scaffolding) ──────────────────────────────
+// Library of outbound SMS templates keyed to trigger events. Event firing
+// is wired in Phase 3e proper; this tab lets admins author templates now.
+
+const SMS_TRIGGER_EVENTS=[
+  {k:'manual',        l:'Manual Send',               d:'Picked by a rep from a list when sending a text.'},
+  {k:'wo_created',    l:'Work Order Created',        d:'Fires when a WO is created for a customer.'},
+  {k:'tech_en_route', l:'Tech En Route',             d:'Fires when a tech is dispatched.'},
+  {k:'tech_arrived',  l:'Tech Arrived',              d:'Fires when a tech marks themselves on-site.'},
+  {k:'appt_reminder', l:'Appointment Reminder',      d:'Fires the day before a scheduled appointment.'},
+  {k:'wo_completed',  l:'Work Order Completed',      d:'Fires when a WO is closed out.'},
+  {k:'quote_sent',    l:'Quote Sent Follow-up',      d:'Fires after a quote is emailed.'},
+  {k:'invoice_sent',  l:'Invoice Sent',              d:'Fires when an invoice goes out.'},
+  {k:'follow_up',     l:'Post-Service Follow-up',    d:'Fires a few days after completion.'},
+];
+const SMS_MERGE_FIELDS=[
+  ['{{customer_name}}',      'Full customer name'],
+  ['{{customer_first_name}}','Customer first name'],
+  ['{{tech_name}}',          "Assigned tech's name"],
+  ['{{wo_number}}',          'Work order number'],
+  ['{{appt_date}}',          'Appointment date'],
+  ['{{appt_time}}',          'Appointment time'],
+  ['{{company_name}}',       'Lifetime Home Services'],
+  ['{{office_phone}}',       'Office callback number'],
+];
+
+function bPhoneTemplatesPage(){
+  if(!hasPerm('phone','manage_templates')){
+    return `<div class="pc">${_phoneHeader('SMS Templates')}
+      <div class="pb"><div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+        You don't have permission to manage SMS templates. Contact an admin.
+      </div></div></div>`;
+  }
+  return `<div class="pc">
+    ${_phoneHeader('SMS Templates','Author outbound text templates for automated triggers (WO created, tech en route, appointment reminder, etc.) and manual use.')}
+    <div class="pb">
+      <style>
+        .st-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:10px}
+        .st-card.off{opacity:.55}
+        .st-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+        .st-name{font-size:15px;font-weight:700;color:var(--navy)}
+        .st-trigger{font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+        .st-body{font-size:13px;color:var(--navy);background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;line-height:1.5}
+        .st-pill{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:10px;letter-spacing:.04em}
+        .st-pill.on{background:#dcfce7;color:#14532d}
+        .st-pill.off{background:#e5e7eb;color:#374151}
+        .st-actions{display:flex;gap:6px;flex-wrap:wrap}
+        .st-chip{display:inline-block;background:var(--surf);border:1px solid var(--bdr);border-radius:6px;padding:3px 7px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;margin:2px}
+        .st-chip:hover{background:var(--bg2)}
+      </style>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap">
+        <div style="font-size:12px;color:var(--muted)">Merge fields like <code style="background:var(--surf);padding:1px 5px;border-radius:4px">{{customer_first_name}}</code> are replaced at send time.</div>
+        <button class="btn sm" onclick="smsTemplateNew()">➕ New Template</button>
+      </div>
+      <div id="st-list"><div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Loading templates…</div></div>
+    </div>
+  </div>`;
+}
+
+async function smsTemplatesLoad(){
+  const el=document.getElementById('st-list');
+  if(!el) return;
+  try{
+    const [tplRes,phRes]=await Promise.all([
+      DB.from('lhs_sms_templates').select('*').order('name',{ascending:true}),
+      DB.from('lhs_phone_numbers').select('id,e164,label'),
+    ]);
+    if(tplRes.error) throw tplRes.error;
+    const rows=tplRes.data||[];
+    const phMap=Object.fromEntries((phRes.data||[]).map(p=>[p.id,p]));
+    if(!rows.length){
+      el.innerHTML=`<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+        <div style="font-size:36px;opacity:.4;margin-bottom:8px">📝</div>
+        No templates yet. Click <strong>New Template</strong> to create your first one.
+      </div>`;
+      return;
+    }
+    el.innerHTML=rows.map(t=>_smsTemplateCard(t,phMap)).join('');
+  }catch(e){
+    console.error('smsTemplatesLoad:',e);
+    el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Could not load templates: ${esc(e.message||'unknown error')}</div>`;
+  }
+}
+
+function _smsTemplateCard(t,phMap){
+  const trig=SMS_TRIGGER_EVENTS.find(e=>e.k===t.trigger_event);
+  const trigLabel=trig?trig.l:(t.trigger_event||'—');
+  const ph=t.from_phone_number_id?phMap[t.from_phone_number_id]:null;
+  const phLabel=ph?(ph.label||_fmtPhone(ph.e164)):'(any)';
+  const active=!!t.active;
+  return `<div class="st-card ${active?'':'off'}">
+    <div class="st-row">
+      <div style="min-width:0;flex:1">
+        <div class="st-name">${esc(t.name)}</div>
+        <div class="st-trigger">🎯 ${esc(trigLabel)} · ✉️ From ${esc(phLabel)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="st-pill ${active?'on':'off'}">${active?'Active':'Off'}</span>
+      </div>
+    </div>
+    <div class="st-body">${esc(t.body||'')}</div>
+    <div class="st-actions" style="margin-top:10px">
+      <button class="btn btn-o sm" onclick="smsTemplateEdit('${t.id}')">✏️ Edit</button>
+      <button class="btn btn-o sm" onclick="smsTemplateToggle('${t.id}',${active?'false':'true'})">${active?'⏸️ Turn Off':'▶️ Turn On'}</button>
+      <button class="btn btn-o sm" onclick="smsTemplateDelete('${t.id}','${esc(t.name).replace(/'/g,"&#39;")}')" style="color:var(--red)">🗑️ Delete</button>
+    </div>
+  </div>`;
+}
+
+function smsTemplateNew(){ _smsTemplateEditRender({active:true,trigger_event:'manual',body:''}, null); }
+
+async function smsTemplateEdit(id){
+  try{
+    const [tplRes,phRes]=await Promise.all([
+      DB.from('lhs_sms_templates').select('*').eq('id',id).maybeSingle(),
+      DB.from('lhs_phone_numbers').select('id,e164,label').order('label',{ascending:true}),
+    ]);
+    if(tplRes.error) throw tplRes.error;
+    _smsTemplateEditRender(tplRes.data||{}, phRes.data||[]);
+  }catch(e){
+    alert('Could not load template: '+(e.message||'unknown error'));
+  }
+}
+
+function _smsTemplateEditRender(t,phoneNumbers){
+  // Lazy-pull phone numbers on Create if not provided
+  if(!phoneNumbers){
+    DB.from('lhs_phone_numbers').select('id,e164,label').order('label',{ascending:true}).then(({data})=>{
+      _smsTemplateEditRender(t,data||[]);
+    });
+    return;
+  }
+  const id=t.id||'';
+  const triggerOpts=SMS_TRIGGER_EVENTS.map(e=>`<option value="${e.k}" ${t.trigger_event===e.k?'selected':''}>${esc(e.l)}</option>`).join('');
+  const triggerHint=(SMS_TRIGGER_EVENTS.find(e=>e.k===(t.trigger_event||'manual'))||{}).d||'';
+  const phoneOpts=`<option value="">(Any — pick at send time)</option>`+
+    phoneNumbers.map(p=>`<option value="${p.id}" ${t.from_phone_number_id===p.id?'selected':''}>${esc(p.label||_fmtPhone(p.e164)||p.e164)}</option>`).join('');
+  const chips=SMS_MERGE_FIELDS.map(([tag,desc])=>`<span class="st-chip" title="${esc(desc)}" onclick="_smsInsertMerge('${tag}')">${esc(tag)}</span>`).join('');
+  const body=`
+  <div style="max-width:620px">
+    <div style="display:grid;gap:12px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Template Name</div>
+        <input id="st-name" value="${esc(t.name||'')}" placeholder="e.g. Tech En Route — standard"
+          style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Trigger Event</div>
+          <select id="st-trigger" onchange="_smsTriggerHint()"
+            style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">${triggerOpts}</select>
+          <div id="st-trigger-hint" style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">${esc(triggerHint)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Send From</div>
+          <select id="st-from" style="width:100%;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px">${phoneOpts}</select>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:600;color:var(--muted)">Message Body</div>
+          <div style="font-size:10px;color:var(--muted)"><span id="st-charct">0</span> chars · <span id="st-segct">1</span> segment(s)</div>
+        </div>
+        <textarea id="st-body" oninput="_smsBodyCount()" rows="5" placeholder="Hi {{customer_first_name}}, your tech {{tech_name}} is on the way and should arrive around {{appt_time}}."
+          style="width:100%;padding:10px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;box-sizing:border-box;resize:vertical">${esc(t.body||'')}</textarea>
+        <div style="margin-top:8px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Click to insert a merge field:</div>
+          ${chips}
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer">
+        <input id="st-active" type="checkbox" ${t.active!==false?'checked':''}>
+        Active — template is eligible for sending
+      </label>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:14px;border-top:1px solid var(--bdr)">
+      <button class="btn btn-o sm" onclick="cMod()">Cancel</button>
+      <button class="btn sm" onclick="_smsTemplateSave('${id}')">💾 Save</button>
+    </div>
+  </div>`;
+  oMod(id?'✏️ Edit SMS Template':'➕ New SMS Template',body);
+  setTimeout(_smsBodyCount,0);
+}
+
+function _smsTriggerHint(){
+  const sel=document.getElementById('st-trigger');
+  if(!sel) return;
+  const ev=SMS_TRIGGER_EVENTS.find(e=>e.k===sel.value);
+  const hint=document.getElementById('st-trigger-hint');
+  if(hint) hint.textContent=ev?ev.d:'';
+}
+
+function _smsInsertMerge(tag){
+  const ta=document.getElementById('st-body');
+  if(!ta) return;
+  const s=ta.selectionStart||ta.value.length;
+  const e=ta.selectionEnd||s;
+  ta.value=ta.value.slice(0,s)+tag+ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart=ta.selectionEnd=s+tag.length;
+  _smsBodyCount();
+}
+
+function _smsBodyCount(){
+  const ta=document.getElementById('st-body');
+  if(!ta) return;
+  const n=ta.value.length;
+  // GSM-7 approximation: 160 chars per segment; 153 for multi-part
+  const seg=n===0?1:n<=160?1:Math.ceil(n/153);
+  const c=document.getElementById('st-charct'); if(c) c.textContent=n;
+  const s=document.getElementById('st-segct'); if(s) s.textContent=seg;
+}
+
+async function _smsTemplateSave(id){
+  const name=(document.getElementById('st-name').value||'').trim();
+  const trigger=document.getElementById('st-trigger').value;
+  const fromId=document.getElementById('st-from').value||null;
+  const body=(document.getElementById('st-body').value||'').trim();
+  const active=document.getElementById('st-active').checked;
+  if(!name){alert('Template name is required.');return;}
+  if(!body){alert('Message body is required.');return;}
+  const row={name,trigger_event:trigger,from_phone_number_id:fromId,body,active,updated_at:new Date().toISOString()};
+  try{
+    if(id){
+      const {error}=await DB.from('lhs_sms_templates').update(row).eq('id',id);
+      if(error) throw error;
+    }else{
+      const {error}=await DB.from('lhs_sms_templates').insert(row);
+      if(error) throw error;
+    }
+    cMod();
+    smsTemplatesLoad();
+  }catch(e){
+    alert('Save failed: '+(e.message||'unknown error'));
+  }
+}
+
+async function smsTemplateToggle(id,toActive){
+  try{
+    const {error}=await DB.from('lhs_sms_templates').update({active:!!toActive,updated_at:new Date().toISOString()}).eq('id',id);
+    if(error) throw error;
+    smsTemplatesLoad();
+  }catch(e){ alert('Could not update: '+(e.message||'unknown error')); }
+}
+
+async function smsTemplateDelete(id,name){
+  if(!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+  try{
+    const {error}=await DB.from('lhs_sms_templates').delete().eq('id',id);
+    if(error) throw error;
+    smsTemplatesLoad();
+  }catch(e){ alert('Delete failed: '+(e.message||'unknown error')); }
 }
 
 // ─── PHONE NUMBERS PAGE (Phase 3a) ──────────────────────────────────────────
