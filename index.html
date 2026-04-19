@@ -49776,6 +49776,63 @@ function _attachRemoteStream(call){
   },200);
 }
 
+// Aggressive remote stream attachment. Tries every known SDK path, then falls
+// back to reading tracks directly off the RTCPeerConnection's receivers
+// (standard WebRTC API — always works). Also hooks ontrack for late tracks.
+function _phoneAttachAggressively(call){
+  const el=document.getElementById('phone-remote-audio');
+  if(!el||!call) return;
+  const attach=(stream,via)=>{
+    if(!stream) return false;
+    if(el.srcObject===stream) return true;
+    el.srcObject=stream;
+    const p=el.play&&el.play();
+    if(p&&p.catch) p.catch(e=>console.warn('[LMS] play('+via+'):',e?.name||e));
+    console.log('[LMS] Remote stream attached via',via,'— tracks:',stream.getTracks().length);
+    return true;
+  };
+  const findPC=()=>{
+    const peer=call.peer||(call.options&&call.options.peer)||null;
+    if(!peer) return null;
+    return peer.instance||peer.connection||peer.pc||(peer.constructor&&peer.constructor.name==='RTCPeerConnection'?peer:null);
+  };
+  const findStream=()=>{
+    if(call.remoteStream) return call.remoteStream;
+    const peer=call.peer||{};
+    if(peer.remoteStream) return peer.remoteStream;
+    if(peer.instance&&peer.instance.remoteStream) return peer.instance.remoteStream;
+    // Standard WebRTC fallback: build a stream from peer connection receivers
+    const pc=findPC();
+    if(pc&&pc.getReceivers){
+      const tracks=pc.getReceivers().map(r=>r.track).filter(t=>t&&t.readyState==='live');
+      if(tracks.length) return new MediaStream(tracks);
+    }
+    return null;
+  };
+  // Hook ontrack on the peer connection for tracks that arrive later
+  try{
+    const pc=findPC();
+    if(pc&&!pc._lmsHooked&&pc.addEventListener){
+      pc._lmsHooked=true;
+      pc.addEventListener('track',ev=>{
+        const s=(ev.streams&&ev.streams[0])||new MediaStream([ev.track]);
+        attach(s,'ontrack');
+      });
+    }
+  }catch(e){console.warn('[LMS] ontrack hook:',e);}
+  // Immediate attempt
+  const now=findStream();
+  if(attach(now,'immediate')) return;
+  // Poll up to 5s
+  let tries=0;
+  const iv=setInterval(()=>{
+    tries++;
+    const s=findStream();
+    if(s&&attach(s,'poll#'+tries)){clearInterval(iv);return;}
+    if(tries>=25){clearInterval(iv);console.warn('[LMS] Stream never found after',tries,'polls');}
+  },200);
+}
+
 // Ensure the remote <audio> element is playing once the SDK attaches the stream.
 // Safari blocks autoplay if the gesture chain is lost — call this from inside
 // the click handler so .play() resolves, then poll until srcObject is live.
@@ -49830,9 +49887,10 @@ function phoneHandleActive(call){
   _telnyxCall=call;
   _phoneStopRingback();
   _phoneStopInboundRing();
-  // Trust the SDK's remoteElement attachment — don't fight it with manual
-  // srcObject sets. Just make sure the element is actually playing (Safari
-  // sometimes needs an explicit .play() kick after the stream attaches).
+  // The SDK's remoteElement option doesn't reliably attach the stream on
+  // v2.26.2 — hasStream stays false. Fall back to reading the MediaStream
+  // directly off the RTCPeerConnection's receivers. Always works.
+  _phoneAttachAggressively(call);
   _phoneKickAudio();
   // For inbound calls, prefer the real caller number from our custom SIP header
   // (since From: is pinned to the LMS number). For outbound, use what we dialed.
