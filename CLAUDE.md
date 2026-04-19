@@ -40,11 +40,17 @@ customers, work_orders, wo_materials, schedule, audit_log.
 ## Current Status
 
 - **Active branch:** `claude/review-claude-md-czd9X`
-- **Last shipped:** ✅ **Search finds property addresses everywhere.**
-  Top-of-app search, Customers list filter, and Properties list filter
-  all now do loose word-gap matching ("129 N Beebe" → "129 North Beebe
-  Street") and skip single-letter noise words.
+- **Last shipped:** ✅ **Estimates save properly again.** Root cause was
+  the Opportunity linked-estimates "Open" button wired to `svEstimate`
+  (the save function) instead of `openEstimate` — every click on Open
+  inserted a blank ghost row (empty estimate_number, null customer_id,
+  no lines, $0). Fixed the wiring and added a DOM guard in `svEstimate`
+  that refuses to save when the form isn't mounted, so this class of
+  wiring mistake can't silently corrupt data again.
 - **Actively working on:** TBD — pick next open thread.
+- **One-time cleanup needed:** purge ghost blank rows in `lhs_estimates`
+  where `estimate_number=''` AND `customer_id IS NULL` AND `total_price=0`.
+  Run once in Supabase SQL editor.
 
 ---
 
@@ -121,6 +127,22 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-19 evening — Estimate blank-ghost save bug fixed
+User reported estimates weren't saving — opening a saved estimate showed
+no customer, no lines, $0, blank estimate number. Traced it to a single
+bad wiring: the "Open" button on the Opportunity detail page's linked-
+estimates row called `svEstimate` (the SAVE function) instead of
+`openEstimate`. `svEstimate` reads every field from DOM IDs inside the
+estimate form; on the Opportunity page none of those exist, so every
+click inserted a new row full of empties. Real estimates were fine —
+users were looking at ghost rows that the Open button had manufactured.
+Two fixes: (1) change onclick at line 45220 to `openEstimate`;
+(2) defensive guard at the top of `svEstimate` that bails with a toast
+if the est-num input isn't in the DOM, so similar wiring mistakes can't
+silently corrupt data in the future. Ghost rows already in `lhs_estimates`
+need a one-time SQL cleanup (empty estimate_number + null customer_id +
+total_price=0).
 
 ### 2026-04-19 — Address search fixed across top-search + list filters
 User reported "129 N Beebe" not finding "129 North Beebe Street" (Tyler
