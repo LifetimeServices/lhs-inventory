@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v10' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v11' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -124,10 +124,9 @@ async function onCallInitiated(p, env) {
       payload: 'This call may be recorded for quality assurance.',
     });
   }
-  // Start dual-channel recording if enabled — captures both legs once bridged
-  if (cfg.record_calls) {
-    await ctl(env, callControlId, 'record_start', { format: 'mp3', channels: 'dual' });
-  }
+  // NOTE: record_start deliberately deferred to onCallAnswered (after bridge).
+  // Starting a recording on the inbound leg before the bridge was interfering
+  // with the bridge succeeding and caused outbound-leg audio to arrive silent.
 
   // Originate outbound leg to the WebRTC client via the credential connection
   const webrtcConnId = env.WEBRTC_CONNECTION_ID;
@@ -174,20 +173,39 @@ async function onCallInitiated(p, env) {
 // Fires on BOTH legs. Only the outbound (WebRTC) answered event triggers a bridge.
 async function onCallAnswered(p, env) {
   const callControlId = p.call_control_id;
+  console.log('🤝 call.answered — dir:', p.direction, 'leg:', callControlId, 'client_state present:', !!p.client_state);
   if (p.direction !== 'outgoing' || !p.client_state) return json({ ok: true });
 
   const inboundId = unb64(p.client_state);
-  if (!inboundId) return json({ ok: true });
+  if (!inboundId) { console.warn('🤝 client_state decoded empty'); return json({ ok: true }); }
 
   // Bridge the two call legs
+  console.log('🤝 Bridging outgoing', callControlId, '↔ inbound', inboundId);
   const res = await ctl(env, callControlId, 'bridge', { call_control_id: inboundId });
-  if (res?.error) console.error('Bridge failed:', res.error);
+  console.log('🤝 Bridge result:', JSON.stringify(res).slice(0, 300));
+  if (res?.error) console.error('🤝 Bridge FAILED:', res.error);
 
   // Mark inbound call as answered
   await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${inboundId}`, {
     method: 'PATCH', prefer: 'return=minimal',
     body: JSON.stringify({ status: 'answered', answered_at: new Date().toISOString() }),
   }).catch(() => {});
+
+  // Start dual-channel call recording AFTER the bridge is up, so we don't
+  // interfere with the bridge handshake. Look up the phone-number config to
+  // decide whether recording is enabled.
+  try {
+    const rows = await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${inboundId}&select=phone_number_id`);
+    const pnId = rows?.[0]?.phone_number_id;
+    if (pnId) {
+      const cfgRows = await supa(env, `/lhs_phone_numbers?id=eq.${pnId}&select=record_calls`);
+      if (cfgRows?.[0]?.record_calls) {
+        await ctl(env, inboundId, 'record_start', { format: 'mp3', channels: 'dual' });
+        console.log('🎙️ Recording started on bridged call');
+      }
+    }
+  } catch (e) { console.warn('🎙️ record_start after bridge failed:', e?.message); }
+
   return json({ ok: true });
 }
 
