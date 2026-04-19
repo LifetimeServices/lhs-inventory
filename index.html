@@ -31216,15 +31216,24 @@ function _gsRender(q,supaCustomers,supaWOs){
 }
 async function _gsAsync(q){
   try{
-    const words=[...new Set(q.trim().split(/\s+/).filter(w=>w.length>0))];
-    const custClauses=words.flatMap(w=>[
-      `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,
-      `company.ilike.%${w}%`,`phone.ilike.%${w}%`,
-      `address.ilike.%${w}%`,`city.ilike.%${w}%`,`state.ilike.%${w}%`,`zip.ilike.%${w}%`
-    ]);
+    // Only words with 2+ chars go into per-word name matching — single
+    // letters (e.g. the "N" in "129 N") match half the database and crowd
+    // out the intended result. Use the full query as a substring for
+    // address/city/state/zip since that's how humans type addresses.
+    const words=[...new Set(q.trim().split(/\s+/).filter(w=>w.length>=2))];
+    const qEsc=q.trim();
+    const digits=q.replace(/\D/g,'');
+    const custClauses=[
+      ...words.flatMap(w=>[
+        `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,`company.ilike.%${w}%`,
+      ]),
+      `address.ilike.%${qEsc}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,
+      ...(digits.length>=3?[`phone.ilike.%${digits}%`]:[]),
+    ];
     const woClauses=words.flatMap(w=>[
       `customer_name.ilike.%${w}%`,`wo_number.ilike.%${w}%`
     ]);
+    if(!custClauses.length&&!woClauses.length) return;
     const[custRes,woRes]=await Promise.all([
       DB.from('lhs_customers').select('id,first_name,last_name,company,phone,address,city,state,zip')
         .or(custClauses.join(',')).range(0,19),
@@ -32398,20 +32407,29 @@ async function closeoutWO(woId){
   const hasInvoice=!!(est?.invoice_id);
   const estTotal=est?.total_price||wo.total_price||0;
   const fmt=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  // Offer invoice creation unless an invoice already exists for this job.
+  // When there's a linked estimate we pre-fill its line items; otherwise the
+  // invoice opens blank-but-customer-linked so the rep can enter charges.
+  const canInvoice=!hasInvoice;
+  const promptBox=canInvoice?(est?`
+    <div style="background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;padding:12px 14px;font-size:13px;color:#0d47a1;margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:4px">&#128196; Create Invoice?</div>
+      <div>This job has an estimate totaling <strong>${fmt(estTotal)}</strong>. Close and generate an invoice at the same time.</div>
+    </div>`:`
+    <div style="background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;padding:12px 14px;font-size:13px;color:#0d47a1;margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:4px">&#128196; Create Invoice?</div>
+      <div>No linked estimate found. We'll open a new invoice pre-filled with the customer and WO details so you can add line items.</div>
+    </div>`):'';
   oMod('Close Work Order',`
     <div style="text-align:center;padding:8px 0 16px">
       <div style="font-size:36px;margin-bottom:10px">&#10003;</div>
       <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Mark as Closed with Dispatch?</div>
       <div style="font-size:13px;color:var(--muted)">WO #${esc(wo.wo_number||'')} &middot; ${esc(wo.customer_name||'')}</div>
     </div>
-    ${est&&!hasInvoice?`
-    <div style="background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;padding:12px 14px;font-size:13px;color:#0d47a1;margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:4px">&#128196; Create Invoice?</div>
-      <div>This job has an estimate totaling <strong>${fmt(estTotal)}</strong>. Close and generate an invoice at the same time.</div>
-    </div>`:''}
+    ${promptBox}
     <div class="br2">
       <button class="btn btn-n" onclick="_doCloseoutWO('${woId}',false)">Close Job Only</button>
-      ${est&&!hasInvoice?`<button class="btn btn-g" onclick="_doCloseoutWO('${woId}',true)">Close + Create Invoice</button>`:''}
+      ${canInvoice?`<button class="btn btn-g" onclick="_doCloseoutWO('${woId}',true)">Close + Create Invoice</button>`:''}
       <button class="btn btn-o" onclick="cMod()">Cancel</button>
     </div>`);
 }
@@ -32482,7 +32500,9 @@ async function _doCloseoutWO(woId,createInvoice){
     }
   }
   tst('Work order closed','success');
-  if(createInvoice&&wo?.estimate_id){
+  if(createInvoice&&wo){
+    // Allow invoice creation even without a linked estimate — the invoice
+    // opens with customer + WO pre-filled so the rep can add line items.
     setTimeout(()=>_createInvoiceFromWO(woId),200);
   } else {
     refreshDispBoard();showPage('closeout');
