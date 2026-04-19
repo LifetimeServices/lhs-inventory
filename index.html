@@ -31141,7 +31141,7 @@ function globalSearch(q){
   clearTimeout(_gsTimer);
   _gsTimer=setTimeout(()=>_gsAsync(q),200);
 }
-function _gsRender(q,supaCustomers,supaWOs){
+function _gsRender(q,supaCustomers,supaWOs,supaProps){
   const res=document.getElementById('gsresults');
   if(!res) return;
   const ql=q.toLowerCase();
@@ -31187,19 +31187,24 @@ function _gsRender(q,supaCustomers,supaWOs){
     title:`${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}`,
     sub:custSub(c),
     action:`openCustomer('${c.id}')`}));
-  // Properties from cache
-  (S.get('lhs:props')||[]).filter(p=>
+  // Properties — Supabase first (covers addresses not in local cache),
+  // then local cache hits not already included.
+  const seenPropIds=new Set();
+  const custs=S.get('lhs:customers')||[];
+  const propRender=p=>{
+    const cust=custs.find(c=>c.id===p.current_customer_id||c.id===p.customer_id);
+    results.push({type:'Property',icon:'&#127968;',
+      title:`${p.address||''}${p.city?', '+p.city:''}${p.state?' '+p.state:''}`.trim(),
+      sub:`${p.property_type||''}${p.foundation_type?' · '+p.foundation_type:''}${cust?' · '+(cust.first_name||'')+' '+(cust.last_name||''):''}`.trim(),
+      action:`openProperty('${p.id}')`});
+  };
+  (supaProps||[]).forEach(p=>{seenPropIds.add(p.id);propRender(p);});
+  (S.get('lhs:props')||[]).filter(p=>!seenPropIds.has(p.id)&&(
     (p.address||'').toLowerCase().includes(ql)||
     (p.city||'').toLowerCase().includes(ql)||
     (p.zip||'').includes(q)||
     (p.county||'').toLowerCase().includes(ql)
-  ).slice(0,3).forEach(p=>{
-    const cust=(S.get('lhs:customers')||[]).find(c=>c.id===p.current_customer_id);
-    results.push({type:'Property',icon:'&#127968;',
-      title:`${p.address}, ${p.city} ${p.state}`,
-      sub:`${p.property_type||''}${p.foundation_type?' · '+p.foundation_type:''}${cust?' · '+cust.first_name+' '+cust.last_name:''}`,
-      action:`openProperty('${p.id}')`});
-  });
+  )).slice(0,3).forEach(propRender);
   res.style.display='block';
   if(!results.length){
     res.innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No results found</div>';return;}
@@ -31233,12 +31238,17 @@ async function _gsAsync(q){
     const woClauses=words.flatMap(w=>[
       `customer_name.ilike.%${w}%`,`wo_number.ilike.%${w}%`
     ]);
+    const propClauses=[
+      `address.ilike.%${qEsc}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,`county.ilike.%${qEsc}%`,
+    ];
     if(!custClauses.length&&!woClauses.length) return;
-    const[custRes,woRes]=await Promise.all([
+    const[custRes,woRes,propRes]=await Promise.all([
       DB.from('lhs_customers').select('id,first_name,last_name,company,phone,address,city,state,zip')
         .or(custClauses.join(',')).range(0,19),
       DB.from('lhs_work_orders').select('id,wo_number,customer_name,division,status,st_job_id')
-        .or(woClauses.join(',')).limit(5)
+        .or(woClauses.join(',')).limit(5),
+      DB.from('lhs_properties').select('id,address,city,state,zip,county,property_type,foundation_type,current_customer_id,customer_id')
+        .or(propClauses.join(',')).limit(10),
     ]);
     const cur=(document.getElementById('gsearch')?.value||'').trim();
     if(cur!==q.trim()) return;
@@ -31253,7 +31263,7 @@ async function _gsAsync(q){
       return nameHits*2 + addrHits;
     };
     const sorted=(custRes.data||[]).sort((a,b)=>score(b)-score(a)).slice(0,5);
-    _gsRender(q,sorted,woRes.data||[]);
+    _gsRender(q,sorted,woRes.data||[],propRes.data||[]);
   }catch{}
 }
 
