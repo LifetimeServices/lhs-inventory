@@ -40485,6 +40485,16 @@ function bAccountHub(){
           <div style="margin-bottom:14px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted)">Notes</label><br>
             <textarea id="ahub-notes" style="${inpStyle};height:80px;resize:vertical">${esc(c.notes||'')}</textarea>
           </div>
+          <div style="background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--navy);letter-spacing:.05em;display:block;margin-bottom:8px">🔔 Communication Preferences</label>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px">
+              <label style="display:flex;align-items:center;gap:6px"><input id="ahub-allow-call" type="checkbox" ${c.allow_calls!==false?'checked':''}> 📞 Allow calls</label>
+              <label style="display:flex;align-items:center;gap:6px"><input id="ahub-allow-sms" type="checkbox" ${c.allow_sms!==false?'checked':''}> 💬 Allow texts</label>
+              <label style="display:flex;align-items:center;gap:6px"><input id="ahub-allow-email" type="checkbox" ${c.allow_email!==false?'checked':''}> ✉️ Allow email</label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--red);font-weight:600"><input id="ahub-dnc" type="checkbox" ${c.do_not_contact?'checked':''}> ⛔ Do Not Contact</label>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">When a channel is off, outbound calls/texts/emails on that channel are blocked and a toast is shown.</div>
+          </div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-n" onclick="acctHubSave('${id}')">Save Changes</button>
             <button class="btn btn-o" onclick="window._acctHubEditing=false;showPage('account-hub')">Cancel</button>
@@ -40509,6 +40519,7 @@ function bAccountHub(){
           ${fld('Account Rep',esc(c.assigned_to||c.rep||''))}
           ${c.sold_by?fld('Sold By',`<span style="color:var(--green);font-weight:600">🏆 ${esc(c.sold_by)}</span>`):''}
           ${c.office_sold_by?fld('Office Sold By',`<span style="color:var(--teal);font-weight:600">${esc(c.office_sold_by)}</span>`):''}
+          ${fld('Comm Preferences',commBellPills(c,'sm')||'<span style="color:var(--green);font-size:12px">✓ All channels allowed</span>')}
 
         </div>
         ${c.notes?`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bdr)">
@@ -40912,6 +40923,10 @@ async function acctHubSave(id){
     territory:document.getElementById('ahub-territory')?.value||null,
     notes:document.getElementById('ahub-notes')?.value||null,
     source:document.getElementById('ahub-src')?.value||null,
+    allow_calls:document.getElementById('ahub-allow-call')?document.getElementById('ahub-allow-call').checked:true,
+    allow_sms:document.getElementById('ahub-allow-sms')?document.getElementById('ahub-allow-sms').checked:true,
+    allow_email:document.getElementById('ahub-allow-email')?document.getElementById('ahub-allow-email').checked:true,
+    do_not_contact:!!document.getElementById('ahub-dnc')?.checked,
     updated_at:new Date().toISOString(),
   };
   const custs=S.get('lhs:customers')||[];
