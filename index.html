@@ -31146,24 +31146,48 @@ function _gsRender(q,supaCustomers,supaWOs,supaProps){
   if(!res) return;
   const ql=q.toLowerCase();
   const results=[];
-  // Work orders — Supabase results first (covers historical/imported), then cache
-  const seenWoIds=new Set();
-  (supaWOs||[]).forEach(w=>{seenWoIds.add(w.id);results.push({type:'WO',icon:'&#128203;',
-    title:w.wo_number,sub:`${w.customer_name||''} — ${w.division||w.status||''}`,
-    action:`openWO('${w.id}')`});});
-  (S.get('lhs:work_orders')||[]).filter(w=>!seenWoIds.has(w.id)&&(
-    w.wo_number?.toLowerCase().includes(ql)||
-    w.customer_name?.toLowerCase().includes(ql))
-  ).slice(0,3).forEach(w=>results.push({type:'WO',icon:'&#128203;',
-    title:w.wo_number,sub:`${w.customer_name} — ${w.division}`,
-    action:`openWO('${w.id}')`}));
+  // If the query looks address-shaped (starts with digits, has a space + word),
+  // demote WO-number substring matches — the digits in "129 N Beebe" would
+  // otherwise flood the list with every WO number containing "129".
+  const addrLike=/^\d+\s+\S/.test(q.trim());
+  // Word-based address matcher: every query word must appear in the field
+  // (in order). Mirrors the Supabase "loose" ilike pattern so caches match too.
+  const qWordsLC=q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const allWordsIn=(s)=>{
+    const t=(s||'').toLowerCase();
+    let pos=0;
+    for(const w of qWordsLC){
+      const i=t.indexOf(w,pos);
+      if(i<0) return false;
+      pos=i+w.length;
+    }
+    return true;
+  };
+  // Properties first — addresses are a strong, specific signal.
+  // Supabase results (covers uncached rows), then local cache backfill.
+  const seenPropIds=new Set();
+  const custs=S.get('lhs:customers')||[];
+  const propRender=p=>{
+    const cust=custs.find(c=>c.id===p.current_customer_id||c.id===p.customer_id);
+    results.push({type:'Property',icon:'&#127968;',
+      title:`${p.address||''}${p.city?', '+p.city:''}${p.state?' '+p.state:''}`.trim(),
+      sub:`${p.property_type||''}${p.foundation_type?' · '+p.foundation_type:''}${cust?' · '+(cust.first_name||'')+' '+(cust.last_name||''):''}`.trim(),
+      action:`openProperty('${p.id}')`});
+  };
+  (supaProps||[]).forEach(p=>{seenPropIds.add(p.id);propRender(p);});
+  (S.get('lhs:props')||[]).filter(p=>!seenPropIds.has(p.id)&&(
+    allWordsIn(p.address)||
+    (p.city||'').toLowerCase().includes(ql)||
+    (p.zip||'').includes(q)||
+    (p.county||'').toLowerCase().includes(ql)
+  )).slice(0,3).forEach(propRender);
   // Customers — Supabase results first (relevance-sorted), then any local cache hits not already included
   const seenIds=new Set();
   const custSub=c=>{
     // Prefer showing the address in the subtitle when it matched the query,
     // otherwise fall back to phone + city/state.
     const addr=`${c.address||''}${c.city?', '+c.city:''}${c.state?' '+c.state:''}${c.zip?' '+c.zip:''}`.trim();
-    const addrMatch=addr&&addr.toLowerCase().includes(ql);
+    const addrMatch=addr&&(addr.toLowerCase().includes(ql)||allWordsIn(addr));
     if(addrMatch) return addr;
     return `${c.phone||''} ${c.city||''} ${c.state||''}`.trim();
   };
@@ -31177,34 +31201,32 @@ function _gsRender(q,supaCustomers,supaWOs,supaProps){
   (S.get('lhs:customers')||[]).filter(c=>{
     if(seenIds.has(c.id)) return false;
     const name=`${c.first_name||''} ${c.last_name||''}`.toLowerCase();
-    const addr=`${c.address||''} ${c.city||''} ${c.state||''} ${c.zip||''}`.toLowerCase();
+    const addr=`${c.address||''} ${c.city||''} ${c.state||''} ${c.zip||''}`;
     return name.includes(ql)
       || (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))
       || (c.email||'').toLowerCase().includes(ql)
       || (c.company||'').toLowerCase().includes(ql)
-      || addr.includes(ql);
+      || allWordsIn(addr);
   }).slice(0,3).forEach(c=>results.push({type:'Customer',icon:'&#128100;',
     title:`${c.first_name} ${c.last_name}${c.company?' ('+c.company+')':''}`,
     sub:custSub(c),
     action:`openCustomer('${c.id}')`}));
-  // Properties — Supabase first (covers addresses not in local cache),
-  // then local cache hits not already included.
-  const seenPropIds=new Set();
-  const custs=S.get('lhs:customers')||[];
-  const propRender=p=>{
-    const cust=custs.find(c=>c.id===p.current_customer_id||c.id===p.customer_id);
-    results.push({type:'Property',icon:'&#127968;',
-      title:`${p.address||''}${p.city?', '+p.city:''}${p.state?' '+p.state:''}`.trim(),
-      sub:`${p.property_type||''}${p.foundation_type?' · '+p.foundation_type:''}${cust?' · '+(cust.first_name||'')+' '+(cust.last_name||''):''}`.trim(),
-      action:`openProperty('${p.id}')`});
-  };
-  (supaProps||[]).forEach(p=>{seenPropIds.add(p.id);propRender(p);});
-  (S.get('lhs:props')||[]).filter(p=>!seenPropIds.has(p.id)&&(
-    (p.address||'').toLowerCase().includes(ql)||
-    (p.city||'').toLowerCase().includes(ql)||
-    (p.zip||'').includes(q)||
-    (p.county||'').toLowerCase().includes(ql)
-  )).slice(0,3).forEach(propRender);
+  // Work orders last — and for address-like queries, only keep WOs whose
+  // customer_name actually matches a query word (skip WO-number noise).
+  const qWords=q.toLowerCase().split(/\s+/).filter(w=>w.length>=2);
+  const woNameHit=w=>qWords.some(word=>(w.customer_name||'').toLowerCase().includes(word));
+  const seenWoIds=new Set();
+  const woCap=addrLike?3:5;
+  (supaWOs||[]).filter(w=>!addrLike||woNameHit(w)).slice(0,woCap).forEach(w=>{
+    seenWoIds.add(w.id);results.push({type:'WO',icon:'&#128203;',
+    title:w.wo_number,sub:`${w.customer_name||''} — ${w.division||w.status||''}`,
+    action:`openWO('${w.id}')`});});
+  (S.get('lhs:work_orders')||[]).filter(w=>!seenWoIds.has(w.id)&&(
+    (!addrLike&&w.wo_number?.toLowerCase().includes(ql))||
+    w.customer_name?.toLowerCase().includes(ql))
+  ).slice(0,3).forEach(w=>results.push({type:'WO',icon:'&#128203;',
+    title:w.wo_number,sub:`${w.customer_name} — ${w.division}`,
+    action:`openWO('${w.id}')`}));
   res.style.display='block';
   if(!results.length){
     res.innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No results found</div>';return;}
@@ -31227,19 +31249,22 @@ async function _gsAsync(q){
     // address/city/state/zip since that's how humans type addresses.
     const words=[...new Set(q.trim().split(/\s+/).filter(w=>w.length>=2))];
     const qEsc=q.trim();
+    // Loose address pattern: "129 N Beebe" → "%129%N%Beebe%" so it matches
+    // "129 North Beebe Street" even though N and Beebe aren't adjacent there.
+    const qLoose=q.trim().split(/\s+/).filter(Boolean).join('%');
     const digits=q.replace(/\D/g,'');
     const custClauses=[
       ...words.flatMap(w=>[
         `first_name.ilike.%${w}%`,`last_name.ilike.%${w}%`,`company.ilike.%${w}%`,
       ]),
-      `address.ilike.%${qEsc}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,
+      `address.ilike.%${qLoose}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,
       ...(digits.length>=3?[`phone.ilike.%${digits}%`]:[]),
     ];
     const woClauses=words.flatMap(w=>[
       `customer_name.ilike.%${w}%`,`wo_number.ilike.%${w}%`
     ]);
     const propClauses=[
-      `address.ilike.%${qEsc}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,`county.ilike.%${qEsc}%`,
+      `address.ilike.%${qLoose}%`,`city.ilike.%${qEsc}%`,`state.ilike.%${qEsc}%`,`zip.ilike.%${qEsc}%`,`county.ilike.%${qEsc}%`,
     ];
     if(!custClauses.length&&!woClauses.length) return;
     const[custRes,woRes,propRes]=await Promise.all([
