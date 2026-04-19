@@ -40929,29 +40929,44 @@ async function acctHubSave(id){
     do_not_contact:!!document.getElementById('ahub-dnc')?.checked,
     updated_at:new Date().toISOString(),
   };
-  // Supabase update — surface errors to the user. If a column doesn't exist
-  // yet (schema drift), progressively retry without the newer columns so
-  // the core fields (phone, email, name, address) still save.
-  let {error}=await DB.from('lhs_customers').update(updates).eq('id',id);
-  if(error){
-    console.warn('acctHubSave attempt 1:',error.message,error.details);
-    const fallback={...updates};
-    delete fallback.territory;delete fallback.source;delete fallback.updated_at;delete fallback.county;
-    const r2=await DB.from('lhs_customers').update(fallback).eq('id',id);
-    if(r2.error){
-      console.error('acctHubSave attempt 2:',r2.error.message);
-      tst('Save failed: '+r2.error.message,'error');
-      return;
+  // Supabase update — if a column doesn't exist yet (schema drift), parse
+  // the offending column out of the error and retry without it. Keep going
+  // until the update succeeds or we've stripped every newer column.
+  const attempt=async(payload,dropped=[])=>{
+    const{error}=await DB.from('lhs_customers').update(payload).eq('id',id);
+    if(!error) return {ok:true,dropped};
+    console.warn('acctHubSave error:',error.message,error.details);
+    // Typical messages:
+    //   "Could not find the 'territory' column of 'lhs_customers' in the schema cache"
+    //   "column 'updated_at' of relation 'lhs_customers' does not exist"
+    const m=(error.message||'').match(/'([^']+)'\s+column|column\s+'?([a-z_]+)'?\s+of/i);
+    const col=m?(m[1]||m[2]):null;
+    if(col && payload[col]!==undefined){
+      const next={...payload};delete next[col];
+      return attempt(next,[...dropped,col]);
     }
-    // Attempt 2 succeeded — warn the user some fields didn't persist.
-    Object.keys(fallback).forEach(k=>updates[k]=fallback[k]);
-    tst('Saved (some newer fields skipped — run DB migration)','warning');
+    return {ok:false,error,dropped};
+  };
+  const res=await attempt(updates);
+  if(!res.ok){
+    tst('Save failed: '+res.error.message,'error');
+    return;
+  }
+  if(res.dropped.length){
+    tst(`Saved — DB missing columns: ${res.dropped.join(', ')}. Run schema migration to keep these fields.`,'warning');
   } else {
     tst('Account updated','success');
   }
   const custs=S.get('lhs:customers')||[];
   const idx=custs.findIndex(x=>x.id===id);
-  if(idx>=0){Object.assign(custs[idx],updates);S.set('lhs:customers',custs);}
+  if(idx>=0){
+    // Only mirror saved columns into cache — don't keep local values for
+    // columns the DB rejected, or users see a false-positive on re-render.
+    const saved={...updates};
+    res.dropped.forEach(k=>delete saved[k]);
+    Object.assign(custs[idx],saved);
+    S.set('lhs:customers',custs);
+  }
   window._acctHubEditing=false;
   showPage('account-hub');
 }
