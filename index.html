@@ -3402,6 +3402,8 @@ function showPage(id){
   if(id==='phone-numbers') setTimeout(()=>{try{phoneNumbersLoad();}catch(e){console.warn(e);}},30);
   // Voicemails page — lazy-load voicemail inbox
   if(id==='phone-voicemail') setTimeout(()=>{try{voicemailsLoad();}catch(e){console.warn(e);}},30);
+  // Call Recordings page — lazy-load recording archive
+  if(id==='phone-calls') setTimeout(()=>{try{callRecordingsLoad();}catch(e){console.warn(e);}},30);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
@@ -18498,7 +18500,7 @@ function bPhoneMonitor(){ return _phoneStub('Call Center Monitor','Live agent av
 function bPhoneNumbers(){ return bPhoneNumbersPage(); }
 function bPhoneMessages(){ return _phoneStub('Messages','Shared inbox for call-center numbers, 1-to-1 threads, MMS. Built in Phase 3d.'); }
 function bPhoneVoicemail(){ return bPhoneVoicemailPage(); }
-function bPhoneCallRecordings(){ return _phoneStub('Call Recordings','Searchable recording archive with permission-gated playback. 5-year retention. Built in Phase 3b.'); }
+function bPhoneCallRecordings(){ return bPhoneCallRecordingsPage(); }
 function bPhoneTemplates(){ return _phoneStub('SMS Templates','Automated work-order and dispatch text templates with merge fields and on/off toggles. Built in Phase 3e.'); }
 function bPhoneSettings(){ return _phoneStub('Phone Settings','Global recording retention, business-hours presets, default greetings, and agent-presence defaults. Built across 3b–3e.'); }
 
@@ -18669,6 +18671,162 @@ async function voicemailCloseOut(id){
   }catch(e){
     alert('Could not close out: '+(e.message||'unknown error'));
   }
+}
+
+// ─── CALL RECORDINGS PAGE (Phase 3b) ────────────────────────────────────────
+// Searchable archive of recorded calls. Filter by direction, search by
+// number/customer, audio playback, jump to customer record.
+
+let _crFilter='all';       // 'inbound' | 'outbound' | 'all'
+let _crSearch='';
+
+function bPhoneCallRecordingsPage(){
+  if(!hasPerm('phone','view_recordings')){
+    return `<div class="pc">${_phoneHeader('Call Recordings')}
+      <div class="pb"><div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+        You don't have permission to view call recordings. Contact an admin.
+      </div></div></div>`;
+  }
+  const tab=(k,l)=>`<button class="cr-tab${_crFilter===k?' on':''}" onclick="callRecordingsSetFilter('${k}')">${l}</button>`;
+  return `<div class="pc">
+    ${_phoneHeader('Call Recordings','Searchable archive of recorded calls. Playback is permission-gated and every listen is audit-logged.')}
+    <div class="pb">
+      <style>
+        .cr-tab{background:var(--bg2);border:1px solid var(--bdr);color:var(--navy);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .cr-tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+        .cr-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:10px}
+        .cr-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+        .cr-dir{font-size:20px;flex-shrink:0}
+        .cr-num{font-size:15px;font-weight:700;color:var(--navy);font-family:monospace}
+        .cr-name{font-size:12px;color:var(--muted);margin-top:1px}
+        .cr-meta{font-size:11px;color:var(--muted)}
+        .cr-pill{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:10px;letter-spacing:.04em;background:#e5e7eb;color:#374151}
+        .cr-pill.completed{background:#dcfce7;color:#14532d}
+        .cr-pill.missed{background:#fee2e2;color:#7f1d1d}
+        .cr-pill.failed{background:#fef3c7;color:#78350f}
+        .cr-audio{width:100%;margin:8px 0;height:36px}
+        .cr-actions{display:flex;gap:8px;flex-wrap:wrap}
+      </style>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+        ${tab('all','📁 All')}
+        ${tab('inbound','⬇️ Inbound')}
+        ${tab('outbound','⬆️ Outbound')}
+        <input id="cr-search" type="text" placeholder="Search number or name…" oninput="callRecordingsSearchDebounced()"
+          style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif"
+          value="${esc(_crSearch)}">
+      </div>
+      <div id="cr-list"><div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Loading recordings…</div></div>
+    </div>
+  </div>`;
+}
+
+function callRecordingsSetFilter(f){
+  _crFilter=f;
+  document.querySelectorAll('.cr-tab').forEach(b=>b.classList.remove('on'));
+  const active=document.querySelector(`.cr-tab[onclick*="'${f}'"]`);
+  if(active) active.classList.add('on');
+  callRecordingsLoad();
+}
+
+let _crSearchTimer=null;
+function callRecordingsSearchDebounced(){
+  const inp=document.getElementById('cr-search');
+  if(!inp) return;
+  _crSearch=inp.value||'';
+  clearTimeout(_crSearchTimer);
+  _crSearchTimer=setTimeout(callRecordingsLoad,250);
+}
+
+async function callRecordingsLoad(){
+  const el=document.getElementById('cr-list');
+  if(!el) return;
+  try{
+    // Only rows with an actual recording
+    let q=DB.from('lhs_phone_calls').select('*').not('recording_url','is',null)
+      .order('started_at',{ascending:false,nullsFirst:false}).limit(200);
+    if(_crFilter!=='all') q=q.eq('direction',_crFilter);
+    const {data:rows,error}=await q;
+    if(error) throw error;
+
+    // Client-side search across from/to/customer name
+    const phoneIds=[...new Set((rows||[]).map(r=>r.phone_number_id).filter(Boolean))];
+    const custIds =[...new Set((rows||[]).map(r=>r.customer_id     ).filter(Boolean))];
+    const userIds =[...new Set((rows||[]).map(r=>r.user_id         ).filter(Boolean))];
+    const [phRes,cuRes,uRes]=await Promise.all([
+      phoneIds.length?DB.from('lhs_phone_numbers').select('id,e164,label').in('id',phoneIds):{data:[]},
+      custIds.length ?DB.from('lhs_customers').select('id,first_name,last_name,phone').in('id',custIds):{data:[]},
+      userIds.length ?DB.from('lhs_users').select('id,name').in('id',userIds):{data:[]},
+    ]);
+    const phMap=Object.fromEntries((phRes.data||[]).map(p=>[p.id,p]));
+    const cuMap=Object.fromEntries((cuRes.data||[]).map(c=>[c.id,c]));
+    const uMap =Object.fromEntries((uRes.data ||[]).map(u=>[u.id,u]));
+
+    const needle=_crSearch.trim().toLowerCase();
+    const filtered=(rows||[]).filter(r=>{
+      if(!needle) return true;
+      const cust=r.customer_id?cuMap[r.customer_id]:null;
+      const hay=[
+        r.from_number||'', r.to_number||'',
+        cust?`${cust.first_name||''} ${cust.last_name||''}`:'',
+        r.disposition||''
+      ].join(' ').toLowerCase();
+      return hay.includes(needle);
+    });
+
+    if(!filtered.length){
+      el.innerHTML=`<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+        <div style="font-size:36px;opacity:.4;margin-bottom:8px">🎙️</div>
+        ${needle?'No recordings match that search.':'No recordings yet.'}
+      </div>`;
+      return;
+    }
+    el.innerHTML=filtered.map(r=>_callRecordingCard(r,phMap,cuMap,uMap)).join('');
+  }catch(e){
+    console.error('callRecordingsLoad:',e);
+    el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Could not load recordings: ${esc(e.message||'unknown error')}</div>`;
+  }
+}
+
+function _callRecordingCard(r,phMap,cuMap,uMap){
+  const dirArrow=r.direction==='inbound'?'⬇️':'⬆️';
+  const remote=r.direction==='inbound'?r.from_number:r.to_number;
+  const local =r.direction==='inbound'?r.to_number  :r.from_number;
+  const remoteFmt=_fmtPhone(remote)||remote||'Unknown';
+  const localFmt =_fmtPhone(local) ||local ||'';
+  const cust=r.customer_id?cuMap[r.customer_id]:null;
+  const custName=cust?`${cust.first_name||''} ${cust.last_name||''}`.trim():'';
+  const user=r.user_id?uMap[r.user_id]:null;
+  const dt=r.started_at?new Date(r.started_at):(r.created_at?new Date(r.created_at):null);
+  const dateStr=dt?(dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})):'—';
+  const dur=r.duration_seconds>0?`${Math.floor(r.duration_seconds/60)}:${String(r.duration_seconds%60).padStart(2,'0')}`:'';
+  const status=r.status||'completed';
+  return `<div class="cr-card">
+    <div class="cr-row">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <span class="cr-dir">${dirArrow}</span>
+        <div style="min-width:0">
+          <div class="cr-num">${esc(remoteFmt)}</div>
+          ${custName?`<div class="cr-name">👤 ${esc(custName)}</div>`:''}
+          <div class="cr-meta">${esc(dateStr)}${dur?` · ${dur}`:''}${localFmt?` · via ${esc(localFmt)}`:''}${user?` · ${esc(user.name)}`:''}</div>
+        </div>
+      </div>
+      <span class="cr-pill ${status}">${status}</span>
+    </div>
+    <audio class="cr-audio" controls preload="none" src="${esc(r.recording_url)}"
+      onplay="_crLogListen('${r.id}')"></audio>
+    <div class="cr-actions">
+      ${remote?`<button class="btn btn-o sm" onclick="clickToCall('${esc(remote)}',${custName?`'${esc(custName)}'`:'\'\''})">📞 Call Back</button>`:''}
+      ${cust?`<button class="btn btn-o sm" onclick="openCustomer('${r.customer_id}')">👤 Open Customer</button>`:''}
+      <a class="btn btn-o sm" href="${esc(r.recording_url)}" download style="text-decoration:none">⬇️ Download</a>
+    </div>
+  </div>`;
+}
+
+// Audit-log each recording listen (best effort — don't block playback)
+function _crLogListen(callId){
+  try{
+    if(typeof logAudit==='function') logAudit('recording_listened',{call_id:callId});
+  }catch{}
 }
 
 // ─── PHONE NUMBERS PAGE (Phase 3a) ──────────────────────────────────────────
