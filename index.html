@@ -3400,6 +3400,8 @@ function showPage(id){
   if(id==='vans') setTimeout(refreshVanInvPage,0);
   // Phone Numbers page — lazy-load Telnyx numbers + local config
   if(id==='phone-numbers') setTimeout(()=>{try{phoneNumbersLoad();}catch(e){console.warn(e);}},30);
+  // Voicemails page — lazy-load voicemail inbox
+  if(id==='phone-voicemail') setTimeout(()=>{try{voicemailsLoad();}catch(e){console.warn(e);}},30);
   // Location Stock — always pull fresh from Supabase so quantities are never stale
   if(id==='locstock') setTimeout(refreshLocStockPage,0);
   // Persist current page so refresh restores it
@@ -18495,10 +18497,179 @@ function bPhone(){ setTimeout(()=>showPage('phone-monitor'),0); return _phoneStu
 function bPhoneMonitor(){ return _phoneStub('Call Center Monitor','Live agent availability, active calls, and supervisor listen/whisper/barge controls. Built in Phase 3c.'); }
 function bPhoneNumbers(){ return bPhoneNumbersPage(); }
 function bPhoneMessages(){ return _phoneStub('Messages','Shared inbox for call-center numbers, 1-to-1 threads, MMS. Built in Phase 3d.'); }
-function bPhoneVoicemail(){ return _phoneStub('Voicemails','Voicemail inbox with audio playback, transcription, and close-out workflow. Built in Phase 3b.'); }
+function bPhoneVoicemail(){ return bPhoneVoicemailPage(); }
 function bPhoneCallRecordings(){ return _phoneStub('Call Recordings','Searchable recording archive with permission-gated playback. 5-year retention. Built in Phase 3b.'); }
 function bPhoneTemplates(){ return _phoneStub('SMS Templates','Automated work-order and dispatch text templates with merge fields and on/off toggles. Built in Phase 3e.'); }
 function bPhoneSettings(){ return _phoneStub('Phone Settings','Global recording retention, business-hours presets, default greetings, and agent-presence defaults. Built across 3b–3e.'); }
+
+// ─── VOICEMAILS PAGE (Phase 3b) ─────────────────────────────────────────────
+// Inbox of voicemail messages left by callers. Audio playback, customer
+// match, and close-out workflow (rep confirms follow-up, optional notes).
+
+let _vmFilter='new'; // 'new' | 'listened' | 'closed_out' | 'all'
+
+function bPhoneVoicemailPage(){
+  if(!hasPerm('phone','view_voicemail')){
+    return `<div class="pc">${_phoneHeader('Voicemails')}
+      <div class="pb"><div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+        You don't have permission to view voicemails. Contact an admin.
+      </div></div></div>`;
+  }
+  const tab=(k,l)=>`<button class="vm-tab${_vmFilter===k?' on':''}" onclick="voicemailSetFilter('${k}')">${l}<span id="vm-count-${k}" style="margin-left:6px;opacity:.7"></span></button>`;
+  return `<div class="pc">
+    ${_phoneHeader('Voicemails','Inbox of voicemail messages. Listen, match to a customer, and close out with follow-up notes.')}
+    <div class="pb">
+      <style>
+        .vm-tab{background:var(--bg2);border:1px solid var(--bdr);color:var(--navy);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .vm-tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+        .vm-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:14px;margin-bottom:10px}
+        .vm-card.new{border-left:3px solid var(--green)}
+        .vm-card.listened{border-left:3px solid var(--amber)}
+        .vm-card.closed_out{border-left:3px solid var(--muted);opacity:.75}
+        .vm-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+        .vm-from{font-size:15px;font-weight:700;color:var(--navy);font-family:monospace}
+        .vm-name{font-size:12px;color:var(--muted);margin-top:1px}
+        .vm-meta{font-size:11px;color:var(--muted)}
+        .vm-pill{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:10px;letter-spacing:.04em}
+        .vm-pill.new{background:#dcfce7;color:#14532d}
+        .vm-pill.listened{background:#fef3c7;color:#78350f}
+        .vm-pill.closed_out{background:#e5e7eb;color:#374151}
+        .vm-audio{width:100%;margin:8px 0;height:36px}
+        .vm-actions{display:flex;gap:8px;flex-wrap:wrap}
+        .vm-notes{font-size:12px;color:var(--navy);background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.5}
+      </style>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        ${tab('new','📬 New')}
+        ${tab('listened','🎧 Listened')}
+        ${tab('closed_out','✅ Closed Out')}
+        ${tab('all','📁 All')}
+      </div>
+      <div id="vm-list"><div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Loading voicemails…</div></div>
+    </div>
+  </div>`;
+}
+
+function voicemailSetFilter(f){
+  _vmFilter=f;
+  // Re-render tabs (toggle .on) without full page rebuild
+  document.querySelectorAll('.vm-tab').forEach(b=>b.classList.remove('on'));
+  const active=document.querySelector(`.vm-tab[onclick*="'${f}'"]`);
+  if(active) active.classList.add('on');
+  voicemailsLoad();
+}
+
+async function voicemailsLoad(){
+  const el=document.getElementById('vm-list');
+  if(!el) return;
+  try{
+    let q=DB.from('lhs_voicemails').select('*').order('created_at',{ascending:false}).limit(200);
+    if(_vmFilter!=='all') q=q.eq('status',_vmFilter);
+    const {data:rows,error}=await q;
+    if(error) throw error;
+    // Update counts badge for each filter tab (unfiltered to all)
+    _voicemailRefreshCounts();
+    if(!rows||!rows.length){
+      el.innerHTML=`<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px">
+        <div style="font-size:36px;opacity:.4;margin-bottom:8px">📭</div>
+        No voicemails ${_vmFilter==='all'?'yet':'in this view'}.
+      </div>`;
+      return;
+    }
+    // Pull related phone numbers + customers + closers to enrich rows
+    const phoneIds=[...new Set(rows.map(r=>r.phone_number_id).filter(Boolean))];
+    const custIds =[...new Set(rows.map(r=>r.customer_id     ).filter(Boolean))];
+    const userIds =[...new Set(rows.map(r=>r.closed_out_by   ).filter(Boolean))];
+    const [phRes,cuRes,uRes]=await Promise.all([
+      phoneIds.length?DB.from('lhs_phone_numbers').select('id,e164,label').in('id',phoneIds):{data:[]},
+      custIds.length ?DB.from('lhs_customers').select('id,first_name,last_name,phone').in('id',custIds):{data:[]},
+      userIds.length ?DB.from('lhs_users').select('id,name').in('id',userIds):{data:[]},
+    ]);
+    const phMap=Object.fromEntries((phRes.data||[]).map(p=>[p.id,p]));
+    const cuMap=Object.fromEntries((cuRes.data||[]).map(c=>[c.id,c]));
+    const uMap =Object.fromEntries((uRes.data ||[]).map(u=>[u.id,u]));
+
+    el.innerHTML=rows.map(v=>_voicemailCard(v,phMap,cuMap,uMap)).join('');
+  }catch(e){
+    console.error('voicemailsLoad:',e);
+    el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Could not load voicemails: ${esc(e.message||'unknown error')}</div>`;
+  }
+}
+
+async function _voicemailRefreshCounts(){
+  try{
+    const {data}=await DB.from('lhs_voicemails').select('status');
+    const all=data||[];
+    const c={new:0,listened:0,closed_out:0,all:all.length};
+    all.forEach(r=>{ if(c[r.status]!=null) c[r.status]++; });
+    ['new','listened','closed_out','all'].forEach(k=>{
+      const el=document.getElementById('vm-count-'+k);
+      if(el) el.textContent=c[k]?`(${c[k]})`:'';
+    });
+  }catch{}
+}
+
+function _voicemailCard(v,phMap,cuMap,uMap){
+  const from=v.from_number||'';
+  const fromFmt=_fmtPhone(from)||from||'Unknown';
+  const ph=v.phone_number_id?phMap[v.phone_number_id]:null;
+  const phLabel=ph?(ph.label||_fmtPhone(ph.e164)):'—';
+  const cust=v.customer_id?cuMap[v.customer_id]:null;
+  const custName=cust?`${cust.first_name||''} ${cust.last_name||''}`.trim():'';
+  const dt=new Date(v.created_at);
+  const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const dur=v.duration_seconds>0?`${Math.floor(v.duration_seconds/60)}:${String(v.duration_seconds%60).padStart(2,'0')}`:'';
+  const status=v.status||'new';
+  const canClose=hasPerm('phone','close_voicemail');
+  const closedBy=v.closed_out_by?uMap[v.closed_out_by]?.name||'':'';
+  const closedAt=v.closed_out_at?new Date(v.closed_out_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  return `<div class="vm-card ${status}" id="vm-${v.id}">
+    <div class="vm-row">
+      <div style="min-width:0">
+        <div class="vm-from">${esc(fromFmt)}</div>
+        ${custName?`<div class="vm-name">👤 ${esc(custName)}</div>`:''}
+        <div class="vm-meta">${esc(dateStr)}${dur?` · ${dur}`:''} · Called ${esc(phLabel)}</div>
+      </div>
+      <span class="vm-pill ${status}">${status.replace('_',' ')}</span>
+    </div>
+    ${v.r2_url?`<audio class="vm-audio" controls preload="none" src="${esc(v.r2_url)}" onplay="voicemailMarkListened('${v.id}')"></audio>`:`<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">Audio unavailable</div>`}
+    ${v.transcript?`<div class="vm-notes">📝 <em>${esc(v.transcript)}</em></div>`:''}
+    ${status==='closed_out'&&v.closed_out_notes?`<div class="vm-notes"><strong>Follow-up:</strong> ${esc(v.closed_out_notes)}${closedBy?` <span style="color:var(--muted)">— ${esc(closedBy)}${closedAt?`, ${esc(closedAt)}`:''}</span>`:''}</div>`:''}
+    <div class="vm-actions" style="margin-top:10px">
+      ${from?`<button class="btn btn-o sm" onclick="clickToCall('${esc(from)}',${custName?`'${esc(custName)}'`:'\'\''})">📞 Call Back</button>`:''}
+      ${cust?`<button class="btn btn-o sm" onclick="openCustomer('${v.customer_id}')">👤 Open Customer</button>`:''}
+      ${canClose&&status!=='closed_out'?`<button class="btn sm" onclick="voicemailCloseOut('${v.id}')">✅ Close Out</button>`:''}
+    </div>
+  </div>`;
+}
+
+async function voicemailMarkListened(id){
+  try{
+    // Only promote 'new' → 'listened'; don't overwrite 'closed_out'
+    const {data}=await DB.from('lhs_voicemails').select('status').eq('id',id).maybeSingle();
+    if(data&&data.status==='new'){
+      await DB.from('lhs_voicemails').update({status:'listened'}).eq('id',id);
+      _voicemailRefreshCounts();
+    }
+  }catch(e){console.warn('markListened:',e);}
+}
+
+async function voicemailCloseOut(id){
+  const notes=prompt('Follow-up notes (what action was taken?):','');
+  if(notes===null) return;
+  try{
+    const uid=(typeof CU!=='undefined'&&CU)?CU.id:null;
+    const {error}=await DB.from('lhs_voicemails').update({
+      status:'closed_out',
+      closed_out_by:uid,
+      closed_out_at:new Date().toISOString(),
+      closed_out_notes:notes.trim()||null,
+    }).eq('id',id);
+    if(error) throw error;
+    voicemailsLoad();
+  }catch(e){
+    alert('Could not close out: '+(e.message||'unknown error'));
+  }
+}
 
 // ─── PHONE NUMBERS PAGE (Phase 3a) ──────────────────────────────────────────
 // Admin page for provisioning, listing, and configuring phone numbers.
