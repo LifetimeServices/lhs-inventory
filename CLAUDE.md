@@ -40,14 +40,15 @@ customers, work_orders, wo_materials, schedule, audit_log.
 ## Current Status
 
 - **Active branch:** `claude/review-claude-md-czd9X`
-- **Last shipped:** ✅ **Estimates save properly again (confirmed by user).**
-  Root cause was the Opportunity linked-estimates "Open" button wired to
-  `svEstimate` (the save function) instead of `openEstimate` — every
-  click on Open inserted a blank ghost row (empty estimate_number, null
-  customer_id, no lines, $0). Fixed the wiring and added a DOM guard in
-  `svEstimate` that refuses to save when the form isn't mounted, so
-  this class of wiring mistake can't silently corrupt data again.
-  Ghost rows purged from `lhs_estimates` via SQL cleanup.
+- **Last shipped:**
+  1. ✅ **Softphone auto-inits at login** — incoming calls now ring
+     anywhere in the app (Dashboard, Dispatch, etc), not only when the
+     Phone panel is open. Answer from the banner auto-opens the panel.
+  2. ✅ **Detail views pre-fetch on-demand data** — opportunity, WO,
+     property, lead, estimate, business and commercial detail modals
+     now fetch their primary record + linked customer from Supabase if
+     not already in local cache, so every user sees the same fields
+     regardless of what they've loaded in their session.
 - **Actively working on:** TBD — pick next open thread.
 
 ---
@@ -114,10 +115,15 @@ _Populate as items come up. Close out or move to "Shipped" when done._
   Client-side: audio attachment now uses `pc.getReceivers()` (standard
   WebRTC) rather than SDK-specific paths; works reliably in Safari.
 
-- [ ] **Phone panel must be open to accept calls.** Currently the WebRTC
-  client only initializes when the Phone panel is opened. Needs: init at
-  app load, global incoming-call banner anywhere in the app, accept/decline
-  without needing to open the panel first. Medium-sized refactor.
+- [x] ~~**Phone panel must be open to accept calls.**~~ ✅ **RESOLVED
+  2026-04-19.** Turned out to be a tiny change — the incoming-call
+  banner, ringer and remote-audio element were already globally
+  mounted. Only reason the panel had to be open was that
+  `initTelnyxClient()` was gated behind `togglePhonePanel`. Moved the
+  init into `startApp()` (after `warmCache`), gated on
+  `DEFAULT_PERMS[CU.role]?.phone` + `lhs:telnyx_api_key`. Also updated
+  `phoneAnswer()` to auto-open the panel if the user answers from the
+  global banner while the panel was closed.
 
 ---
 
@@ -125,6 +131,28 @@ _Populate as items come up. Close out or move to "Shipped" when done._
 
 _Append newest first. One paragraph per session: what we did, what's next.
 Keep each entry tight — this is a map, not the territory._
+
+### 2026-04-19 late evening — Phone auto-init + cross-user data parity
+Two shipped. **(1) Phone panel must be open to accept calls** — turned
+out to be a five-line fix, not the medium refactor we thought. The
+incoming-call banner and audio element were already globally mounted;
+only `initTelnyxClient()` was gated behind opening the panel. Moved
+init into `startApp()` after `warmCache` (guarded on the user's role
+having phone perms + an API key in settings), and made `phoneAnswer()`
+auto-open the panel if the user answers from the banner while it was
+closed. Calls now ring anywhere in the app.
+**(2) Cross-user data parity on detail views** — user George saw the
+property address on Tyler Fish's opportunity but teammate Scott saw
+blank. Root cause: `lhs_customers` is on-demand (not bulk-loaded at
+login) and the opportunity modal reads the customer's address from
+local cache only. A user who'd already searched/loaded that customer
+this session had the data; others didn't. Fix: `openOpportunity` now
+pre-fetches the customer from Supabase if missing. Extended the same
+pattern across `openWO`, `openProperty`, `openLead`, `openEstimate`,
+`openBusiness`, `openCommercial` — all now pre-fetch self (where they
+can be outside a row-limit cap) + linked customer before rendering.
+Next: pick next open thread (invoice-from-closeout regression is the
+biggest remaining item).
 
 ### 2026-04-19 evening — Estimate blank-ghost save bug fixed (confirmed)
 User reported estimates weren't saving — opening a saved estimate showed
