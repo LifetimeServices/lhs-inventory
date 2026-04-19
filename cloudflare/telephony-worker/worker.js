@@ -35,7 +35,7 @@ export default {
     try {
       if (request.method === 'OPTIONS') return cors(new Response(null));
       switch (url.pathname) {
-        case '/health':             return json({ ok: true, v: 'phase3b-v9' });
+        case '/health':             return json({ ok: true, v: 'phase3b-v10' });
         case '/telnyx/call-events': return await handleCallEvent(request, env);
         case '/telnyx/recording':   return await handleRecording(request, env);
         default:                    return new Response('Not found', { status: 404 });
@@ -230,6 +230,12 @@ async function onCallHangup(p, env) {
   const finalStatus = wasAnswered ? 'completed'
                     : cause === 'call_rejected' ? 'missed'
                     : 'missed';
+
+  // If the caller hung up while the bridged WebRTC leg is still up, tear it
+  // down too — otherwise the browser phone stays "On Call" forever.
+  if (row?.telnyx_leg_id) {
+    await ctl(env, row.telnyx_leg_id, 'hangup').catch(e => console.warn('Outbound leg hangup failed:', e?.message));
+  }
 
   await supa(env, `/lhs_phone_calls?telnyx_call_control_id=eq.${callControlId}`, {
     method: 'PATCH', prefer: 'return=minimal',

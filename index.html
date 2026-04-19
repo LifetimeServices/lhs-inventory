@@ -49583,15 +49583,34 @@ async function initTelnyxClient(){
 
 function phoneHandleInbound(call){
   _telnyxCall=call;
-  const from=(call.remoteCallerNumber||(call.options&&call.options.remoteCallerNumber)||'Unknown');
-  const name=call.remoteCallerName||'';
-  document.getElementById('incoming-caller-id').textContent=_fmtPhone(from);
+  // Real caller number lives in a custom SIP header (set by the worker) because
+  // From: is pinned to the LMS number. Fall back to remoteCallerName (which the
+  // worker sets via from_display_name) and finally remoteCallerNumber.
+  const from=_extractRealCaller(call);
+  const name=_lookupContactName(from)||'';
+  document.getElementById('incoming-caller-id').textContent=_fmtPhone(from)||from||'Unknown';
   document.getElementById('incoming-caller-name').textContent=name;
   // Customer match by phone number (Phase 3b)
   _phoneMatchCustomer(from);
   document.getElementById('incoming-call-banner').style.display='block';
   phoneSetStatus('Incoming call...','#4ade80');
   _logCall({direction:'inbound',from_number:from,to_number:S.get('lhs:telnyx_caller_id')||'',status:'ringing'});
+}
+
+// Extract the real originating caller from a Telnyx inbound call.
+// Priority: X-LMS-Original-Caller SIP header → remoteCallerName → remoteCallerNumber.
+function _extractRealCaller(call){
+  try{
+    const hdrs=(call&&call.options&&call.options.customHeaders)||call.customHeaders||[];
+    if(Array.isArray(hdrs)){
+      const h=hdrs.find(x=>(x.name||x.header||'').toLowerCase()==='x-lms-original-caller');
+      if(h&&(h.value||h.val)) return (h.value||h.val);
+    }
+  }catch(e){}
+  const nm=(call&&call.remoteCallerName)||'';
+  // If remoteCallerName looks like a phone number, prefer it over remoteCallerNumber
+  if(nm&&/^\+?\d[\d\s\-()]{6,}$/.test(nm)) return nm;
+  return (call&&call.remoteCallerNumber)||(call&&call.options&&call.options.remoteCallerNumber)||'Unknown';
 }
 
 // ─── CUSTOMER MATCH & SCREEN-POP (Phase 3b) ─────────────────────────────────
@@ -49641,30 +49660,64 @@ function phoneDecline(){
 function _attachRemoteStream(call){
   // Stop any ringback tone
   _phoneStopRingback();
-  // Get the remote stream and attach it to an audio element we control
+  // Create/grab the hidden audio element
+  let audioEl=document.getElementById('phone-remote-audio');
+  if(!audioEl){
+    audioEl=document.createElement('audio');
+    audioEl.id='phone-remote-audio';
+    audioEl.autoplay=true;
+    audioEl.playsInline=true;
+    audioEl.style.display='none';
+    document.body.appendChild(audioEl);
+  }
+  // Try several SDK paths for the remote MediaStream (varies by SDK version).
+  const _pull=()=>{
+    if(!call) return null;
+    return call.remoteStream
+      ||(call.peer&&call.peer.remoteStream)
+      ||(call.peer&&call.peer.instance&&call.peer.instance.remoteStream)
+      ||null;
+  };
+  // Also hook the peer connection's ontrack if we can — guarantees we catch
+  // streams that arrive AFTER 'active' fires.
   try{
-    const remoteStream=call.remoteStream||(call.peer&&call.peer.remoteStream)||null;
-    let audioEl=document.getElementById('phone-remote-audio');
-    if(!audioEl){
-      audioEl=document.createElement('audio');
-      audioEl.id='phone-remote-audio';
-      audioEl.autoplay=true;
-      audioEl.style.display='none';
-      document.body.appendChild(audioEl);
+    const pc=(call.peer&&call.peer.instance)||(call.peer&&call.peer.connection)||null;
+    if(pc&&!pc._lmsTrackHooked){
+      pc._lmsTrackHooked=true;
+      pc.addEventListener&&pc.addEventListener('track',ev=>{
+        const s=(ev.streams&&ev.streams[0])||null;
+        if(s){
+          audioEl.srcObject=s;
+          audioEl.play().catch(e=>console.warn('[Telnyx] play(ontrack) err:',e));
+          console.log('[Telnyx] Remote stream attached via ontrack');
+        }
+      });
     }
-    if(remoteStream){
-      audioEl.srcObject=remoteStream;
+  }catch(e){}
+  // Immediate attempt
+  const immediate=_pull();
+  if(immediate){
+    audioEl.srcObject=immediate;
+    audioEl.play().catch(e=>console.warn('[Telnyx] Audio play error:',e));
+    console.log('[Telnyx] Remote stream attached (immediate)');
+    return;
+  }
+  // Poll up to ~3 seconds in case stream populates late
+  let tries=0;
+  const maxTries=15;
+  const iv=setInterval(()=>{
+    tries++;
+    const s=_pull();
+    if(s){
+      audioEl.srcObject=s;
       audioEl.play().catch(e=>console.warn('[Telnyx] Audio play error:',e));
-      console.log('[Telnyx] Remote stream attached');
-    } else {
-      // Fallback: try after short delay (stream may not be ready yet)
-      setTimeout(()=>{
-        const s=call.remoteStream||(call.peer&&call.peer.remoteStream)||null;
-        if(s){audioEl.srcObject=s;audioEl.play().catch(()=>{});}
-        console.log('[Telnyx] Remote stream attached (delayed)');
-      },500);
+      console.log('[Telnyx] Remote stream attached (poll #'+tries+')');
+      clearInterval(iv);
+    } else if(tries>=maxTries){
+      console.warn('[Telnyx] Remote stream never populated after '+tries+' tries — relying on ontrack');
+      clearInterval(iv);
     }
-  }catch(e){console.warn('[Telnyx] Stream attach error:',e);}
+  },200);
 }
 
 let _phoneRingbackCtx=null,_phoneRingbackNode=null;
@@ -49692,12 +49745,16 @@ function _phoneStopRingback(){
 function phoneHandleActive(call){
   _telnyxCall=call;
   _attachRemoteStream(call);
-  const num=(call.remoteCallerNumber||(call.options&&call.options.remoteCallerNumber)||(document.getElementById('phone-display')&&document.getElementById('phone-display').textContent)||'');
+  // For inbound calls, prefer the real caller number from our custom SIP header
+  // (since From: is pinned to the LMS number). For outbound, use what we dialed.
+  const num=(call.direction==='inbound')
+    ? _extractRealCaller(call)
+    : (call.remoteCallerNumber||(call.options&&call.options.remoteCallerNumber)||(document.getElementById('phone-display')&&document.getElementById('phone-display').textContent)||'');
   // Match to a customer so the post-call notes modal can populate on hangup
   if(!_phoneMatchedCustomer) _phoneMatchedCustomer=_matchCustomerByNumber(num);
   document.getElementById('phone-active-call').style.display='block';
-  document.getElementById('phone-call-number').textContent=_fmtPhone(num);
-  document.getElementById('phone-call-name').textContent=(call.remoteCallerName||_lookupContactName(num)||(_phoneMatchedCustomer?`${_phoneMatchedCustomer.first_name||''} ${_phoneMatchedCustomer.last_name||''}`.trim():''));
+  document.getElementById('phone-call-number').textContent=_fmtPhone(num)||num||'';
+  document.getElementById('phone-call-name').textContent=(_lookupContactName(num)||(_phoneMatchedCustomer?`${_phoneMatchedCustomer.first_name||''} ${_phoneMatchedCustomer.last_name||''}`.trim():''));
   document.getElementById('phone-mute-btn').style.display='flex';
   document.getElementById('phone-hangup-btn').style.display='flex';
 
