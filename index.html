@@ -50321,28 +50321,47 @@ async function postCallNotesSave(customerId,duration){
   const disp=g('pcn-disp')?.value||'';
   const follow=g('pcn-follow')?.checked?g('pcn-follow-date')?.value:null;
   try{
-    // Update the most recent call row for this customer if it exists, else insert
-    const update={notes:notes||null,disposition:disp||null,follow_up_date:follow||null};
+    // Legacy table update (existing _logCall flow uses lhs_call_logs)
     if(_activeCallLogId){
-      // Legacy table update (existing _logCall flow uses lhs_call_logs)
-      await DB.from('lhs_call_logs').update(update).eq('id',_activeCallLogId).then(()=>{}).catch(()=>{});
+      await DB.from('lhs_call_logs').update({notes:notes||null,disposition:disp||null,follow_up_date:follow||null}).eq('id',_activeCallLogId).then(()=>{}).catch(()=>{});
     }
-    // Also write a structured row to the new lhs_phone_calls table tied to the customer
-    await DB.from('lhs_phone_calls').insert({
-      direction:'inbound',
-      customer_id:customerId,
-      user_id:CU?.id||null,
-      status:'completed',
-      duration_seconds:duration,
-      notes:notes||null,
-      disposition:disp||null,
-      follow_up_date:follow||null,
-      started_at:new Date(Date.now()-duration*1000).toISOString(),
-      ended_at:new Date().toISOString(),
-    });
+    // lhs_phone_calls: prefer updating the row we inserted on dial so
+    // we don't duplicate. If no active row (initial insert failed), fall
+    // back to inserting a fresh row tied to the customer.
+    const basePayload={notes:notes||null,disposition:disp||null,follow_up_date:follow||null,ended_at:new Date().toISOString(),duration_seconds:duration,status:'completed'};
+    let saveErr=null;
+    if(_activePhoneCallId){
+      const r=await DB.from('lhs_phone_calls').update(basePayload).eq('id',_activePhoneCallId);
+      if(r.error) saveErr=r.error;
+    } else {
+      // Insert — direction derived from _activeCallDir (not hardcoded 'inbound').
+      const insertRow={
+        direction:_activeCallDir||'outbound',
+        customer_id:customerId,
+        user_id:CU?.id||null,
+        started_at:new Date(Date.now()-duration*1000).toISOString(),
+        ...basePayload,
+      };
+      let r=await DB.from('lhs_phone_calls').insert(insertRow);
+      if(r.error && /user_id/.test(r.error.message||'')){
+        // Retry without user_id if the FK is the blocker
+        delete insertRow.user_id;
+        r=await DB.from('lhs_phone_calls').insert(insertRow);
+      }
+      if(r.error) saveErr=r.error;
+    }
+    if(saveErr){
+      console.error('postCallNotesSave:',saveErr.message,saveErr.details);
+      tst('Call logged, but DB save failed: '+saveErr.message,'error');
+      return;
+    }
+    _activePhoneCallId=null;
     tst('✓ Call logged to customer record','success');
     cMod();
+    // Refresh the Account hub Activity tab if it's open for this customer.
+    if(typeof acctHubPhoneLoad==='function') setTimeout(()=>acctHubPhoneLoad(customerId),100);
   }catch(e){
+    console.error('postCallNotesSave exception:',e);
     tst('Save failed: '+(e.message||e),'error');
   }
 }
